@@ -22,15 +22,23 @@
 package fs2
 package io
 
-import java.io.{ByteArrayInputStream, InputStream, OutputStream}
-import java.util.concurrent.Executors
 import cats.effect.{Blocker, IO, Resource}
 import fs2.Fs2Suite
-import scala.concurrent.ExecutionContext
 import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
+import java.io.{ByteArrayInputStream, InputStream, OutputStream}
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.Executors
+
 class IoSuite extends Fs2Suite {
+
+  // This suite runs for a long time, this avoids timeouts in CI.
+  override def munitTimeout: Duration = 1.minute
+
   group("readInputStream") {
     test("non-buffered") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
@@ -203,6 +211,31 @@ class IoSuite extends Fs2Suite {
             .compile
             .drain
         }
+      }
+    }
+
+    test("can copy more than Int.MaxValue bytes") {
+      // Unit test adapted from the original issue reproduction at https://github.com/mrdziuban/fs2-writeOutputStream.
+
+      val byteStream =
+        Stream
+          .chunk[IO, Byte](Chunk.array(("foobar" * 50000).getBytes(StandardCharsets.UTF_8)))
+          .repeatN(7200L) // 6 * 50,000 * 7,200 == 2,160,000,000 > 2,147,483,647 == Int.MaxValue
+
+      def writeToOutputStream(out: OutputStream, blocker: Blocker): IO[Unit] =
+        byteStream
+          .through(writeOutputStream(IO.pure(out), blocker))
+          .compile
+          .drain
+
+      Blocker[IO].use { blocker =>
+        readOutputStream[IO](blocker, 1024 * 8)(writeToOutputStream(_, blocker))
+          .chunkN(6 * 50000)
+          .map(c => new String(c.toArray[Byte], StandardCharsets.UTF_8))
+          .evalMap(str => IO.pure(str).assertEquals("foobar" * 50000))
+          .drain
+          .compile
+          .drain
       }
     }
   }
