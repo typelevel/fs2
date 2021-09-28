@@ -35,7 +35,7 @@ object checksum {
   def crc32[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32Builder)
 
   /** Computes a CRC32C checksum.
-    * @see [[scodec.bits.crc32c]]
+    * @see [[scodec.bits.crc.crc32c]]
     */
   def crc32c[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32cBuilder)
 
