@@ -202,24 +202,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
   /** Feeds the values from this stream (source) to all the given pipes,
-    * which process them in parallel, and coordinates the progress.
+    * which process them in parallel. and coordinates its progress.
     *
-    * The result stream pulls from one instance of `this` stream (the source)
-    * and feeds its output values to each pipe. Source values are fed
-    * one chunk at a time.
+    * The new stream has one instance of `this` stream (the source), from
+    * which it pulls its outputs. To balance the progress amongst pipes and
+    * source, outputs are passed chunk-by-chunk, via a Topic.
+    * This creates a one-chunk buffer in front of each pipe. A pipe starts
+    * processing a chunk after pulling it from its buffer.
+    * The topic enforces some temporal constraints:
+    * - No chunk is pushed to the buffer of any pipe until after the
+    *   previous chunk has been published to all pipes.
+    * - No chunk is pushed to a pipe until the pipe pulls the previous chunk.
+    * - A chunk may be pushed to some pipes, and pulled by them, before other
+    *   pipes have pulled the previous chunk.
     *
-    * Internally, this method uses a buffer to keep the latest chunk pulled
-    * from the source. Once in the buffer, each chunk is available for all pipes
-    * to pull it and start processing it. The following source chunk is not
-    * pulled until the current one is vacated, after all pipes have pulled it.
-    * Thus, no chunk is given to any pipe until after all pipes have started
-    * processing the previous chunk.
-    *
-    * The goal here is to keep a balance between the progress of pulling
-    * from each pipe and the source stream, to prevent any of those
-    * getting too far ahead. On the other hand, this can slow down fast
-    * pipes until slower ones catch up. To ameliorate this, consider using
-    * the `prefetch` and `prefetchN` combinators on the slow pipes.
+    * Thus, in processing source values, a fast pipe may be up to two chunks
+    * ahead of a slower one. This keeps a balance of progress, and
+    * prevents any pipe from getting too far ahead. On the other hand, this
+    * slows down fast pipes until slower ones catch up. To ameliorate this,
+    * consider using a `prefetch` combinators on the slow pipes.
     *
     * **Error** Any error raised from the input stream, or from any pipe,
     * will stop the pulling from `this` stream and from any pipe,
