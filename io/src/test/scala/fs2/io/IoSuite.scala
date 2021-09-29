@@ -22,6 +22,7 @@
 package fs2
 package io
 
+import cats.data.EitherT
 import cats.effect.{Blocker, IO, Resource}
 import fs2.Fs2Suite
 import org.scalacheck.{Arbitrary, Gen, Shrink}
@@ -215,7 +216,8 @@ class IoSuite extends Fs2Suite {
     }
 
     test("can copy more than Int.MaxValue bytes") {
-      // Unit test adapted from the original issue reproduction at https://github.com/mrdziuban/fs2-writeOutputStream.
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-writeOutputStream.
 
       val byteStream =
         Stream
@@ -236,6 +238,16 @@ class IoSuite extends Fs2Suite {
           .drain
           .compile
           .drain
+      }
+    }
+
+    test("works with short-circuiting monad transformers") {
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-readOutputStream-EitherT.
+
+      Blocker[IO].use { blocker =>
+        readOutputStream(blocker, 1)(_ => EitherT.left[Unit](IO.unit)).compile.drain.value
+          .timeout(5.seconds)
       }
     }
   }
