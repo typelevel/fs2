@@ -21,13 +21,9 @@
 
 package fs2
 
-import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext
-
-import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
-import cats.effect.kernel.testkit.TestContext
-
 import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
+
+import scala.concurrent.ExecutionContext
 
 abstract class Fs2Suite
     extends CatsEffectSuite
@@ -44,25 +40,6 @@ abstract class Fs2Suite
   override def munitFlakyOK = true
 
   override val munitExecutionContext: ExecutionContext = ExecutionContext.global
-
-  /* Creates a new environment for deterministic tests which require stepping through */
-  protected def createDeterministicRuntime: (TestContext, IORuntime) = {
-    val ctx = TestContext()
-
-    val scheduler = new Scheduler {
-      def sleep(delay: FiniteDuration, action: Runnable): Runnable = {
-        val cancel = ctx.schedule(delay, action)
-        new Runnable { def run() = cancel() }
-      }
-
-      def nowMillis() = ctx.now().toMillis
-      def monotonicNanos() = ctx.now().toNanos
-    }
-
-    val runtime = IORuntime(ctx, ctx, scheduler, () => (), IORuntimeConfig())
-
-    (ctx, runtime)
-  }
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
