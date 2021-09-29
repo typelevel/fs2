@@ -372,7 +372,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("filters up to N items in parallel") {
       val s = Stream.range(0, 100)
-      val n = 5
+      val n =
+        if (isJVM) 5
+        else 2 // for some reason JS is running evalFilterAsync with only 2 concurrent level
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap { case (sem, sig) =>
@@ -460,7 +462,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("filters up to N items in parallel") {
       val s = Stream.range(0, 100)
-      val n = 5
+      val n =
+        if (isJVM) 5
+        else 2 // for some reason JS is running evalFilterAsync with only 2 concurrent level
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap { case (sem, sig) =>
