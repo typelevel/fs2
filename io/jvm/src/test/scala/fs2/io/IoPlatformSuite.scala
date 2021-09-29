@@ -22,6 +22,7 @@
 package fs2
 package io
 
+import cats.data.EitherT
 import cats.effect.{IO, Resource}
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
 import fs2.{Err, Fs2Suite}
@@ -183,7 +184,8 @@ class IoPlatformSuite extends Fs2Suite {
     }
 
     test("can copy more than Int.MaxValue bytes") {
-      // Unit test adapted from the original issue reproduction at https://github.com/mrdziuban/fs2-writeOutputStream.
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-writeOutputStream.
 
       val byteStream =
         Stream
@@ -202,6 +204,14 @@ class IoPlatformSuite extends Fs2Suite {
         .foreach(str => IO.pure(str).assertEquals("foobar" * 50000))
         .compile
         .drain
+    }
+
+    test("works with short-circuiting monad transformers") {
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-readOutputStream-EitherT.
+
+      readOutputStream(1)(_ => EitherT.left[Unit](IO.unit)).compile.drain.value
+        .timeout(5.seconds)
     }
   }
 }
