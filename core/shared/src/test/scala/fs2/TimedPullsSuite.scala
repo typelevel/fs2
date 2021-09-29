@@ -54,7 +54,7 @@ class TimedPullsSuite extends Fs2Suite {
   }
 
   test("pulls elements with timeouts, no timeouts trigger") {
-    // TODO cannot use PropF with `.ticked` at the moment
+    // TODO cannot use PropF with `TestControl.executeEmbed` at the moment
     val l = List.range(1, 100)
     val s = Stream.emits(l).covary[IO].rechunkRandomly()
     val period = 500.millis

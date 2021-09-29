@@ -24,7 +24,6 @@ package fs2
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
 
-import cats.effect.IO
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig, Scheduler}
 import cats.effect.kernel.testkit.TestContext
 
@@ -46,17 +45,6 @@ abstract class Fs2Suite
 
   override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
-  implicit class Deterministically[F[_], A](private val self: IO[A]) {
-
-    /** Allows to run an IO deterministically through TextContext.
-      * Assumes you want to run the IO to completion, if you need to step through execution,
-      * you will have to do it manually, starting from `createDeterministicRuntime`
-      */
-    def ticked: Deterministic[A] = Deterministic(self)
-  }
-
-  case class Deterministic[A](fa: IO[A])
-
   /* Creates a new environment for deterministic tests which require stepping through */
   protected def createDeterministicRuntime: (TestContext, IORuntime) = {
     val ctx = TestContext()
@@ -75,22 +63,6 @@ abstract class Fs2Suite
 
     (ctx, runtime)
   }
-
-  override def munitValueTransforms: List[ValueTransform] =
-    super.munitValueTransforms ++ List(
-      munitDeterministicIOTransform
-    )
-
-  private val munitDeterministicIOTransform: ValueTransform =
-    new ValueTransform(
-      "Deterministic IO",
-      { case e: Deterministic[_] =>
-        val (ctx, runtime) = createDeterministicRuntime
-        val r = e.fa.unsafeToFuture()(runtime)
-        ctx.tickAll()
-        r
-      }
-    )
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =
