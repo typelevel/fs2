@@ -545,25 +545,24 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
   )(implicit F: Concurrent[F2]): Stream[F2, O] = {
     val fstream: F2[Stream[F2, O]] = for {
       interrupt <- Deferred[F2, Unit]
-      doneR <- Deferred[F2, Either[Throwable, Unit]]
+      backResult <- Deferred[F2, Either[Throwable, Unit]]
     } yield {
-      def runR: F2[Unit] =
-        that.interruptWhen(interrupt.get.attempt).compile.drain.attempt.flatMap { r =>
-          doneR.complete(r) >> {
-            if (r.isLeft)
-              interrupt
-                .complete(())
-                .attempt
-                .void // interrupt only if this failed otherwise give change to `this` to finalize
-            else F.unit
-          }
-        }
+      def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt)
+
+      val compileBack: F2[Unit] = watch(that).compile.drain.guaranteeCase {
+        // Pass the result of backstream completion in the backResult deferred.
+        // If result of back-stream was failed, interrupt fore. Otherwise, let it be
+        case ExitCase.Error(t) =>
+          backResult.complete(Left(t)).attempt >> interrupt.complete(()).handleError(_ => ())
+        case _ => backResult.complete(Right(())).handleError(_ => ())
+      }
 
       // stop background process but await for it to finalise with a result
-      val stopBack: F2[Unit] = interrupt.complete(()).attempt >> doneR.get.flatMap(F.fromEither)
+      // We use F.fromEither to bring errors from the back into the fore
+      val stopBack: F2[Unit] =
+        interrupt.complete(()).attempt >> backResult.get.flatMap(F.fromEither)
 
-      Stream.bracket(F.start(runR))(_ => stopBack) >>
-        this.interruptWhen(interrupt.get.attempt)
+      Stream.bracket(F.start(compileBack))(_ => stopBack) >> watch(this)
     }
 
     Stream.eval(fstream).flatten
