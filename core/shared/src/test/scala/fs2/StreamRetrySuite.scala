@@ -21,10 +21,11 @@
 
 package fs2
 
-import scala.concurrent.duration._
-
 import cats.effect.IO
+import cats.effect.testkit.TestControl
 import cats.syntax.all._
+
+import scala.concurrent.duration._
 
 class StreamRetrySuite extends Fs2Suite {
 
@@ -103,31 +104,32 @@ class StreamRetrySuite extends Fs2Suite {
   }
 
   test("delays") {
-    IO.ref(List.empty[FiniteDuration])
-      .flatMap { delays =>
-        IO.monotonic.flatMap { start =>
-          val unit = 200L
-          val maxTries = 5
-          val measuredDelays = delays.get.map {
-            _.sliding(2)
-              .map(s => (s.tail.head - s.head) / unit)
-              .toList
-          }
-          val job = IO.monotonic.flatMap { t =>
-            delays.update(_ :+ (t - start)) >> IO.raiseError(RetryErr())
-          }
-          val expected = List.range(1, maxTries).map(_.millis)
-
-          Stream
-            .retry(job, unit.millis, _ + unit.millis, maxTries)
-            .compile
-            .drain
-            .map(_ => fail("Expected a RetryErr"))
-            .recoverWith { case RetryErr(_) =>
-              measuredDelays.assertEquals(expected)
+    TestControl.executeEmbed(
+      IO.ref(List.empty[FiniteDuration])
+        .flatMap { delays =>
+          IO.monotonic.flatMap { start =>
+            val unit = 200L
+            val maxTries = 5
+            val measuredDelays = delays.get.map {
+              _.sliding(2)
+                .map(s => (s.tail.head - s.head) / unit)
+                .toList
             }
+            val job = IO.monotonic.flatMap { t =>
+              delays.update(_ :+ (t - start)) >> IO.raiseError(RetryErr())
+            }
+            val expected = List.range(1, maxTries).map(_.millis)
+
+            Stream
+              .retry(job, unit.millis, _ + unit.millis, maxTries)
+              .compile
+              .drain
+              .map(_ => fail("Expected a RetryErr"))
+              .recoverWith { case RetryErr(_) =>
+                measuredDelays.assertEquals(expected)
+              }
+          }
         }
-      }
-      .ticked
+    )
   }
 }

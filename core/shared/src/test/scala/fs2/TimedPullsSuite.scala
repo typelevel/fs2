@@ -60,23 +60,25 @@ class TimedPullsSuite extends Fs2Suite {
     val period = 500.millis
     val timeout = 600.millis
 
-    TestControl.executeEmbed(
-      s.metered(period)
-        .pull
-        .timed { tp =>
-          def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
-            tp.uncons.flatMap {
-              case None                   => Pull.done
-              case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
-              case Some((Left(_), _))     => fail("unexpected timeout")
-            }
+    TestControl
+      .executeEmbed(
+        s.metered(period)
+          .pull
+          .timed { tp =>
+            def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+              tp.uncons.flatMap {
+                case None                   => Pull.done
+                case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
+                case Some((Left(_), _))     => fail("unexpected timeout")
+              }
 
-          tp.timeout(timeout) >> loop(tp)
-        }
-        .stream
-        .compile
-        .toList
-    ).map(it => assertEquals(it, l))
+            tp.timeout(timeout) >> loop(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
+      .map(it => assertEquals(it, l))
   }
 
   test("times out whilst pulling a single element") {
@@ -103,24 +105,26 @@ class TimedPullsSuite extends Fs2Suite {
     val t = 100.millis
     val timeout = 350.millis
 
-    TestControl.executeEmbed(
-      s
-        .metered(t)
-        .pull
-        .timed { tp =>
-          def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
-            tp.uncons.flatMap {
-              case Some((Right(c), n)) => Pull.output(c) >> go(n)
-              case Some((Left(_), _))  => Pull.done
-              case None                => fail("Unexpected end of input")
-            }
+    TestControl
+      .executeEmbed(
+        s
+          .metered(t)
+          .pull
+          .timed { tp =>
+            def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+              tp.uncons.flatMap {
+                case Some((Right(c), n)) => Pull.output(c) >> go(n)
+                case Some((Left(_), _))  => Pull.done
+                case None                => fail("Unexpected end of input")
+              }
 
-          tp.timeout(timeout) >> go(tp)
-        }
-        .stream
-        .compile
-        .toList
-    ).map(it => assertEquals(it, l))
+            tp.timeout(timeout) >> go(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
+      .map(it => assertEquals(it, l))
   }
 
   test("pulls elements with timeouts, timeouts trigger after reset") {
@@ -130,22 +134,25 @@ class TimedPullsSuite extends Fs2Suite {
     val s = Stream.constant(1).covary[IO].metered(t).take(n)
     val expected = Stream("timeout", "elem").repeat.take(n * 2).compile.toList
 
-    TestControl.executeEmbed(
-      s.pull
-        .timed { tp =>
-          def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
-            tp.uncons.flatMap {
-              case None                   => Pull.done
-              case Some((Right(_), next)) => Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
-              case Some((Left(_), next))  => Pull.output1("timeout") >> go(next)
-            }
+    TestControl
+      .executeEmbed(
+        s.pull
+          .timed { tp =>
+            def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
+              tp.uncons.flatMap {
+                case None => Pull.done
+                case Some((Right(_), next)) =>
+                  Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
+                case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
+              }
 
-          tp.timeout(timeout) >> go(tp)
-        }
-        .stream
-        .compile
-        .toList
-    ).map(it => assertEquals(it, expected))
+            tp.timeout(timeout) >> go(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
+      .map(it => assertEquals(it, expected))
   }
 
   test("timeout can be reset before triggering") {
