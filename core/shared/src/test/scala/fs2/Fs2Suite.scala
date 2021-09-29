@@ -87,7 +87,7 @@ abstract class Fs2Suite
       { case e: Deterministic[_] =>
         val (ctx, runtime) = createDeterministicRuntime
         val r = e.fa.unsafeToFuture()(runtime)
-        ctx.tickAll(3.days)
+        ctx.tickAll()
         r
       }
     )
