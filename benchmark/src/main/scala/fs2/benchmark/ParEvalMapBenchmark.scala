@@ -44,6 +44,7 @@ class ParEvalMapBenchmark {
   def parEvalMapUnordered10(): Unit =
     execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
 
-  private def getStream: Stream[IO, Unit] = Stream.constant((), chunkSize).take(size).covary[IO]
+  private def getStream: Stream[IO, Unit] =
+    Stream.constant((), chunkSize).take(size.toLong).covary[IO]
   private def execute(s: Stream[IO, Unit]): Unit = s.compile.drain.unsafeRunSync()
 }

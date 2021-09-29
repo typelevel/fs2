@@ -30,7 +30,6 @@ import cats.syntax.all._
 import org.reactivestreams._
 
 import java.util.concurrent.atomic.AtomicReference
-import scala.annotation.nowarn
 
 /** Implementation of a `org.reactivestreams.Subscriber`.
   *
@@ -45,7 +44,6 @@ final class StreamSubscriber[F[_], A](
 ) extends Subscriber[A] {
 
   @deprecated("Use a constructor without dispatcher instead", "3.1.4")
-  @nowarn("cat=unused-params")
   def this(sub: StreamSubscriber.FSM[F, A], dispatcher: Dispatcher[F])(implicit
       F: ApplicativeError[F, Throwable]
   ) = this(sub)
@@ -82,7 +80,6 @@ object StreamSubscriber {
     fsm[F, A].map(new StreamSubscriber(_))
 
   @deprecated("Use apply method without dispatcher instead", "3.1.4")
-  @nowarn("cat=unused-params")
   def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
     apply[F, A]
 
