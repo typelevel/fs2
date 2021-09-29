@@ -23,10 +23,13 @@ package fs2
 
 import scala.concurrent.duration._
 
+import cats.data.{EitherT, OptionT}
 import cats.effect.IO
 import cats.effect.concurrent.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
+
+import scala.util.control.NoStackTrace
 
 class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
@@ -37,7 +40,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(1)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .map(it => assertEquals(it.toSet, expected))
     }
   }
 
@@ -50,7 +53,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(n)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .map(it => assertEquals(it.toSet, expected))
     }
   }
 
@@ -63,7 +66,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .parJoin(n)
         .compile
         .toList
-        .map(it => assert(it.toSet == expected))
+        .map(it => assertEquals(it.toSet, expected))
     }
   }
 
@@ -71,7 +74,7 @@ class StreamParJoinSuite extends Fs2Suite {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val parJoined = Stream(s1.covary[IO], s2).parJoin(2).compile.toList.map(_.toSet)
       val merged = s1.covary[IO].merge(s2).compile.toList.map(_.toSet)
-      (parJoined, merged).tupled.map { case (pj, m) => assert(pj == m) }
+      (parJoined, merged).tupled.map { case (pj, m) => assertEquals(pj, m) }
     }
   }
 
@@ -129,10 +132,10 @@ class StreamParJoinSuite extends Fs2Suite {
                       val expectedFinalizers = streamRunned.map { idx =>
                         s"Inner $idx"
                       } :+ "Outer"
-                      assert(finalizers.toSet == expectedFinalizers.toSet)
-                      assert(finalizers.lastOption == Some("Outer"))
-                      if (streamRunned.contains(biasIdx)) assert(r == Left(err))
-                      else assert(r == Right(()))
+                      assertEquals(finalizers.toSet, expectedFinalizers.toSet)
+                      assertEquals(finalizers.lastOption, Some("Outer"))
+                      if (streamRunned.contains(biasIdx)) assertEquals(r, Left(err))
+                      else assertEquals(r, Right(()))
                     }
                   }
                 }
@@ -158,7 +161,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .take(1)
         .compile
         .toList
-        .map(it => assert(it == List(42)))
+        .map(it => assertEquals(it, List(42)))
     }
     test("2") {
       Stream(full, hang2)
@@ -166,7 +169,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .take(1)
         .compile
         .toList
-        .map(it => assert(it == List(42)))
+        .map(it => assertEquals(it, List(42)))
     }
     test("3") {
       Stream(full, hang3)
@@ -174,7 +177,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .take(1)
         .compile
         .toList
-        .map(it => assert(it == List(42)))
+        .map(it => assertEquals(it, List(42)))
     }
     test("4") {
       Stream(hang3, hang2, full)
@@ -182,7 +185,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .take(1)
         .compile
         .toList
-        .map(it => assert(it == List(42)))
+        .map(it => assertEquals(it, List(42)))
     }
   }
 
@@ -200,6 +203,126 @@ class StreamParJoinSuite extends Fs2Suite {
     (Stream
       .emit(Stream.raiseError[IO](err))
       .parJoinUnbounded ++ Stream.emit(1)).compile.toList.attempt
-      .map(it => assert(it == Left(err)))
+      .map(it => assertEquals(it, Left(err)))
+  }
+
+  group("short-circuiting transformers") {
+    test("do not block while evaluating a stream of streams in IO in parallel") {
+      def f(n: Int): Stream[IO, String] = Stream(n).map(_.toString)
+
+      Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .map(_.toSet)
+        .flatMap { actual =>
+          IO(assertEquals(actual, Set("1", "2", "3")))
+        }
+    }
+
+    test(
+      "do not block while evaluating a stream of streams in EitherT[IO, Throwable, *] in parallel - right"
+    ) {
+      def f(n: Int): Stream[EitherT[IO, Throwable, *], String] = Stream(n).map(_.toString)
+
+      Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .map(_.toSet)
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Right(Set("1", "2", "3"))))
+        }
+    }
+
+    test(
+      "do not block while evaluating a stream of streams in EitherT[IO, Throwable, *] in parallel - left"
+    ) {
+      case object TestException extends Throwable with NoStackTrace
+
+      def f(n: Int): Stream[EitherT[IO, Throwable, *], String] =
+        if (n % 2 != 0) Stream(n).map(_.toString)
+        else Stream.eval[EitherT[IO, Throwable, *], String](EitherT.leftT(TestException))
+
+      Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Left(TestException)))
+        }
+    }
+
+    test("do not block while evaluating an EitherT.left outer stream") {
+      case object TestException extends Throwable with NoStackTrace
+
+      def f(n: Int): Stream[EitherT[IO, Throwable, *], String] = Stream(n).map(_.toString)
+
+      Stream
+        .eval[EitherT[IO, Throwable, *], Int](EitherT.leftT[IO, Int](TestException))
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Left(TestException)))
+        }
+    }
+
+    test(
+      "do not block while evaluating a stream of streams in OptionT[IO, *] in parallel - some"
+    ) {
+      def f(n: Int): Stream[OptionT[IO, *], String] = Stream(n).map(_.toString)
+
+      Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .map(_.toSet)
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Some(Set("1", "2", "3"))))
+        }
+    }
+
+    test(
+      "do not block while evaluating a stream of streams in OptionT[IO, *] in parallel - none"
+    ) {
+      def f(n: Int): Stream[OptionT[IO, *], String] =
+        if (n % 2 != 0) Stream(n).map(_.toString)
+        else Stream.eval[OptionT[IO, *], String](OptionT.none)
+
+      Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, None))
+        }
+    }
+
+    test("do not block while evaluating an OptionT.none outer stream") {
+      def f(n: Int): Stream[OptionT[IO, *], String] = Stream(n).map(_.toString)
+
+      Stream
+        .eval[OptionT[IO, *], Int](OptionT.none[IO, Int])
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, None))
+        }
+    }
   }
 }

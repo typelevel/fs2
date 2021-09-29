@@ -2069,98 +2069,162 @@ final class Stream[+F[_], +O] private[fs2] (private val free: FreeC[F, O, Unit])
     val _ = (ev, ev2)
     val outer = this.asInstanceOf[Stream[F2, Stream[F2, O2]]]
 
-    val fstream: F2[Stream[F2, O2]] = for {
-      done <- SignallingRef(None: Option[Option[Throwable]])
-      available <- Semaphore(maxOpen.toLong)
-      // starts with 1 because outer stream is running by default
-      running <- SignallingRef(1L)
-      // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
-      outputQ <- Queue.synchronousNoneTerminated[F2, Chunk[O2]]
-    } yield {
-      // stops the join evaluation
-      // all the streams will be terminated. If err is supplied, that will get attached to any error currently present
-      def stop(rslt: Option[Throwable]): F2[Unit] =
-        done.update {
-          case rslt0 @ Some(Some(err0)) =>
-            rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
-              Some(Some(CompositeFailure(err0, err)))
-            }
-          case _ => Some(rslt)
-        } >> outputQ.enqueue1(None)
+    if (maxOpen === 1) outer.flatten
+    else {
 
-      val incrementRunning: F2[Unit] = running.update(_ + 1)
-      val decrementRunning: F2[Unit] =
-        running
-          .updateAndGet(_ - 1)
-          .flatMap(now => (if (now == 0) stop(None) else F2.unit))
-
-      // "block" and await until the `running` counter drops to zero.
-      val awaitWhileRunning: F2[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
-
-      // runs one inner stream,
-      // each stream is forked.
-      // terminates when killSignal is true
-      // failures will be propagated through `done` Signal
-      // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
-      // and that it must be released once the inner stream terminates or fails.
-      def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
-        F2.uncancelable {
-          outerScope.lease
-            .flatMap[Scope.Lease[F2]] {
-              case Some(lease) => lease.pure[F2]
-              case None =>
-                F2.raiseError(
-                  new Throwable("Outer scope is closed during inner stream startup")
-                )
-            }
-            .flatTap(_ => available.acquire >> incrementRunning)
-            .flatMap { lease =>
-              F2.start {
-                inner.chunks
-                  .evalMap(s => outputQ.enqueue1(Some(s)))
-                  .interruptWhen(
-                    done.map(_.nonEmpty)
-                  ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
-                  .compile
-                  .drain
-                  .attempt
-                  .flatMap { runResult =>
-                    (lease.cancel <* available.release).flatMap { cancelResult =>
-                      (CompositeFailure.fromResults(runResult, cancelResult) match {
-                        case Right(()) => F2.unit
-                        case Left(err) => stop(Some(err))
-                      })
-                    }
-                  } >> decrementRunning
+      val fstream: F2[Stream[F2, O2]] = for {
+        done <- SignallingRef(None: Option[Option[Throwable]])
+        available <- Semaphore(maxOpen.toLong)
+        // starts with 1 because the outer stream is running by default
+        running <- SignallingRef(1)
+        // a queue where inner fibers can enqueue themselves so that their eventual result can be sequenced
+        // this helps with sequencing of short-circuiting monad transformers such as `OptionT` and `EitherT`
+        // a note on how the queues are closed after using:
+        // after exhausting all forked streams, or in the case of an error, the `stop` method is called which
+        // sets the `done` ref. This in turn interrupts all forked fibers, which causes them to enqueue themselves
+        // on the `fibers` queue. After the last running fiber has enqueued itself, it will close the `fibers`
+        // queue. After the `fibers` queue has been exhausted by the `fiberJoiner`, it will close the `outputQ` queue.
+        fibers <- Queue.noneTerminated[F2, Fiber[F2, Unit]]
+        // sync queue assures we won't overload heap when resulting stream is not able to catchup with inner streams
+        outputQ <- Queue.synchronousNoneTerminated[F2, Chunk[O2]]
+      } yield {
+        // stops the stream evaluation and combines multiple failures
+        def stop(rslt: Option[Throwable]): F2[Unit] =
+          done.update {
+            case rslt0 @ Some(Some(err0)) =>
+              rslt.fold[Option[Option[Throwable]]](rslt0) { err =>
+                Some(Some(CompositeFailure(err0, err)))
               }
+            case _ => Some(rslt)
+          }
+
+        val incrementRunning: F2[Unit] = running.update(_ + 1)
+
+        // the last fiber closes the `fibers` queue after enqueueing itself
+        val decrementRunning: F2[Unit] =
+          running
+            .updateAndGet(_ - 1)
+            .flatMap(now => if (now == 0) fibers.enqueue1(None) else F2.unit)
+
+        // "block" and await until the `running` counter drops to zero.
+        val awaitWhileRunning: F2[Unit] = running.discrete.dropWhile(_ > 0).take(1).compile.drain
+
+        // runs one inner stream,
+        // each stream is forked.
+        // terminates when killSignal is true
+        // failures will be propagated through `done` Signal
+        // note that supplied scope's resources must be leased before the inner stream forks the execution to another thread
+        // and that it must be released once the inner stream terminates or fails.
+        def runInner(inner: Stream[F2, O2], outerScope: Scope[F2]): F2[Unit] =
+          F2.uncancelable {
+            outerScope.lease
+              .flatMap[Scope.Lease[F2]] {
+                case Some(lease) => lease.pure[F2]
+                case None =>
+                  F2.raiseError(
+                    new Throwable("Outer scope is closed during inner stream startup")
+                  )
+              }
+              .flatTap(_ => available.acquire >> incrementRunning)
+              .flatMap { lease =>
+                // a trick for obtaining the the current fiber from inside the fiber itself
+                Deferred[F2, Fiber[F2, Unit]].flatMap { fiberDef =>
+                  F2.start {
+                    inner.chunks
+                      .evalMap(s => outputQ.enqueue1(Some(s)))
+                      .interruptWhen(
+                        done.map(_.nonEmpty)
+                      ) // must be AFTER enqueue to the sync queue, otherwise the process may hang to enqueue last item while being interrupted
+                      .compile
+                      .drain
+                      .guaranteeCase { oc =>
+                        val runResult = oc match {
+                          case ExitCase.Error(t) => Left(t)
+                          case _                 => Right(())
+                        }
+
+                        lease.cancel.flatMap { cancelResult =>
+                          (CompositeFailure.fromResults(runResult, cancelResult) match {
+                            case Right(()) =>
+                              // the fiber enqueues itself after completing, notice that we're executing in `guaranteeCase`
+                              fiberDef.get.flatMap(f => fibers.enqueue1(Some(f)))
+                            case Left(err) =>
+                              // an error has been raised, signal to other fibers that they need to interrupt
+                              stop(Some(err))
+                          })
+                        } >> (available.release >> decrementRunning) // the inner fiber is done and deregisters
+                      }
+                      .attempt
+                      .void
+                  }.flatMap(fiberDef.complete)
+                }
+              }
+          }
+
+        def runOuter: F2[Unit] =
+          F2.uncancelable {
+            Deferred[F2, Fiber[F2, Unit]]
+              .flatMap { fiberDef =>
+                F2.start {
+                  outer
+                    .flatMap(inner =>
+                      Stream.getScope[F2].evalMap(outerScope => runInner(inner, outerScope))
+                    )
+                    .interruptWhen(done.map(_.nonEmpty)) // stop forking inner fibers on error
+                    .compile
+                    .drain
+                    .guaranteeCase {
+                      case ExitCase.Error(t) =>
+                        // an error has been raised, signal to other fibers that they need to interrupt
+                        stop(Some(t)) >> decrementRunning
+                      case _ =>
+                        // the fiber enqueues itself after completing, notice that we're executing in `guaranteeCase`
+                        fiberDef.get.flatMap(f => fibers.enqueue1(Some(f))) >> decrementRunning
+                    }
+                    .attempt
+                    .void
+                }.flatMap(fiberDef.complete)
+              }
+          }
+
+        def fiberJoiner: F2[Unit] =
+          fibers.dequeue
+            .evalMap(_.join) // join all fibers as they arrive
+            .compile
+            .drain
+            .guaranteeCase {
+              case ExitCase.Error(t) =>
+                // joining a fiber led to an error, announce that all fibers need to stop
+                stop(Some(t)) >> outputQ.enqueue1(None)
+              case _ =>
+                // after all fibers have been joined, close the output queue
+                stop(None) >> outputQ.enqueue1(None)
             }
-        }.void
+            .attempt
+            .void
 
-      // runs the outer stream, interrupts when kill == true, and then decrements the `running`
-      def runOuter: F2[Unit] =
-        outer
-          .flatMap(inner => Stream.getScope[F2].evalMap(outerScope => runInner(inner, outerScope)))
-          .interruptWhen(done.map(_.nonEmpty))
-          .compile
-          .drain
-          .attempt
-          .flatMap {
-            case Left(err) => stop(Some(err))
-            case Right(_)  => F2.unit
-          } >> decrementRunning
+        // awaits when all streams (outer + inner) finished,
+        // and then collects result of the stream (outer + inner) execution
+        def signalResult(fiber: Fiber[F2, Unit]): F2[Unit] =
+          done.get.flatMap(_.flatten.fold[F2[Unit]](F2.unit)(F2.raiseError)).guarantee(fiber.join)
 
-      // awaits when all streams (outer + inner) finished,
-      // and then collects result of the stream (outer + inner) execution
-      def signalResult: F2[Unit] =
-        done.get.flatMap(_.flatten.fold[F2[Unit]](F2.unit)(F2.raiseError))
+        Stream
+          .bracket(F2.start(runOuter) >> F2.start(fiberJoiner))(f =>
+            stop(None) >>
+              // in case of short-circuiting, the `fiberJoiner` would not have had a chance
+              // to wait until all fibers have been joined, so we need to do it manually
+              // by waiting on the counter
+              awaitWhileRunning >>
+              // join the `fiberJoiner` fiber to sequence the results of all inner fibers
+              // (sequences short-circuiting monad transformers)
+              signalResult(f)
+          ) >>
+          outputQ.dequeue
+            .flatMap(Stream.chunk(_).covary[F2])
+      }
 
-      Stream
-        .bracket(F2.start(runOuter))(_ => stop(None) >> awaitWhileRunning >> signalResult) >>
-        outputQ.dequeue
-          .flatMap(Stream.chunk(_).covary[F2])
+      Stream.eval(fstream).flatten
     }
-
-    Stream.eval(fstream).flatten
   }
 
   /** Like [[parJoin]] but races all inner streams simultaneously. */
