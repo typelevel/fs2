@@ -21,7 +21,8 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.6"
 ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", Scala213)
 
-ThisBuild / githubWorkflowJavaVersions := Seq("adopt@1.11")
+ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
+ThisBuild / githubWorkflowJavaVersions := Seq("adoptium@11")
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
