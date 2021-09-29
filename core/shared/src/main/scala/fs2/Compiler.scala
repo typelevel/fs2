@@ -177,7 +177,10 @@ object Compiler extends CompilerLowPriority {
       private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = None
     }
 
-    implicit def forSync[F[_]: Sync]: Target[F] =
+    def forSync[F[_]: Sync]: Target[F] =
+      new SyncTarget
+
+    implicit def forSyncIO: Target[SyncIO] =
       new SyncTarget
   }
 
