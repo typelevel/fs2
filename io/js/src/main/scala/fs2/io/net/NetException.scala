@@ -33,14 +33,14 @@ import scala.util.matching.Regex
 
 class SocketException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
-private class JavaScriptSocketException(cause: js.JavaScriptException)
-    extends SocketException("Connection reset", cause)
+private class JavaScriptSocketException(message: String, cause: js.JavaScriptException)
+    extends SocketException(message, cause)
     with NoStackTrace
 object SocketException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
     cause.exception match {
       case error: js.Error if error.message.contains("ECONNRESET") =>
-        Some(new JavaScriptSocketException(cause))
+        Some(new JavaScriptSocketException("Connection reset by peer", cause))
       case _ => BindException.unapply(cause).orElse(ConnectException.unapply(cause))
     }
 }
