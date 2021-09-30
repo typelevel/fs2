@@ -23,8 +23,12 @@ package fs2
 package io
 package net
 
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.SocketAddress
+
 import scala.scalajs.js
 import scala.util.control.NoStackTrace
+import scala.util.matching.Regex
 
 class SocketException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
@@ -32,37 +36,40 @@ private class JavaScriptSocketException(cause: js.JavaScriptException)
     extends SocketException(cause = cause)
     with NoStackTrace
 object SocketException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] = cause match {
-    case js.JavaScriptException(error: js.Error) if error.message.contains("ECONNRESET") =>
-      Some(new JavaScriptSocketException(cause))
-    case _ => BindException.unapply(cause).orElse(ConnectException.unapply(cause))
-  }
+  private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
+    cause.exception match {
+      case error: js.Error if error.message.contains("ECONNRESET") =>
+        Some(new JavaScriptSocketException(cause))
+      case _ => BindException.unapply(cause).orElse(ConnectException.unapply(cause))
+    }
 }
 
 class BindException(message: String = null, cause: Throwable = null)
     extends SocketException(message, cause)
 private class JavaScriptBindException(cause: js.JavaScriptException)
-    extends BindException(cause = cause)
+    extends BindException("Address already in use", cause)
     with NoStackTrace
 object BindException {
-  private[net] def unapply(cause: js.JavaScriptException): Option[BindException] = cause match {
-    case js.JavaScriptException(error: js.Error) if error.message.contains("EADDRINUSE") =>
-      Some(new JavaScriptBindException(cause))
-    case _ => None
-  }
+  private[net] def unapply(cause: js.JavaScriptException): Option[BindException] =
+    cause.exception match {
+      case error: js.Error if error.message.contains("EADDRINUSE") =>
+        Some(new JavaScriptBindException(cause))
+      case _ => None
+    }
 }
 
 class ConnectException(message: String = null, cause: Throwable = null)
     extends SocketException(message, cause)
 private class JavaScriptConnectException(cause: js.JavaScriptException)
-    extends ConnectException(cause = cause)
+    extends ConnectException("Connection refused", cause)
     with NoStackTrace
 object ConnectException {
-  private[net] def unapply(cause: js.JavaScriptException): Option[ConnectException] = cause match {
-    case js.JavaScriptException(error: js.Error) if error.message.contains("ECONNREFUSED") =>
-      Some(new JavaScriptConnectException(cause))
-    case _ => None
-  }
+  private[net] def unapply(cause: js.JavaScriptException): Option[ConnectException] =
+    cause.exception match {
+      case error: js.Error if error.message.contains("ECONNREFUSED") =>
+        Some(new JavaScriptConnectException(cause))
+      case _ => None
+    }
 }
 
 class SocketTimeoutException(message: String = null, cause: Throwable = null)
@@ -72,8 +79,8 @@ private class JavaScriptSocketTimeoutException(cause: js.JavaScriptException)
     with NoStackTrace
 object SocketTimeoutException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketTimeoutException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("ETIMEDOUT") =>
+    cause.exception match {
+      case error: js.Error if error.message.contains("ETIMEDOUT") =>
         Some(new JavaScriptSocketTimeoutException(cause))
       case _ => None
     }
@@ -81,15 +88,23 @@ object SocketTimeoutException {
 
 class UnknownHostException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
-private class JavaScriptUnknownException(cause: js.JavaScriptException)
-    extends UnknownHostException(cause = cause)
+private class JavaScriptUnknownHostException(host: String, cause: js.JavaScriptException)
+    extends UnknownHostException(s"$host: nodename nor servname provided, or not known", cause)
     with NoStackTrace
 object UnknownHostException {
   private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error)
-          if error.message.contains("ENOTFOUND") || error.message.contains("EAI_AGAIN") =>
-        Some(new JavaScriptUnknownException(cause))
+    cause.exception match {
+      case error: js.Error =>
+        pattern.findFirstMatchIn(error.message).collect { case Regex.Groups(addr) =>
+          val host =
+            Option(addr)
+              .flatMap { addr =>
+                SocketAddress.fromString(addr).map(_.host).orElse(Host.fromString(addr))
+              }
+              .fold("<unknown>")(_.toString)
+          new JavaScriptUnknownHostException(host, cause)
+        }
       case _ => None
     }
+  private[this] val pattern = raw"(?:ENOTFOUND|EAI_AGAIN)(?: (\S+))?".r
 }
