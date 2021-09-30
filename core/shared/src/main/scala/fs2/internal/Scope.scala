@@ -396,11 +396,12 @@ private[fs2] final class Scope[F[_]] private (
   def interruptWhen(haltWhen: F[Either[Throwable, Unit]]): F[Fiber[F, Throwable, Unit]] =
     interruptible match {
       case None =>
-        F.raiseError(
-          new IllegalStateException(
-            "Scope#interruptWhen called for Scope that cannot be interrupted. This can happen when a Stream uses Concurrent operations but is compiled with only a Sync constraint."
-          )
-        )
+        // Interruption is a no-op when there is no interruption context
+        F.pure(new Fiber[F, Throwable, Unit] {
+          def cancel: F[Unit] = F.unit
+          def join: F[Outcome[F, Throwable, Unit]] =
+            F.pure(Outcome.Succeeded(F.unit))
+        })
       case Some(iCtx) =>
         val outcome: F[InterruptionOutcome] = haltWhen.map(
           _.fold(
