@@ -25,6 +25,7 @@ package net
 
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.SocketAddress
+import fs2.internal.jsdeps.node.osMod
 
 import scala.scalajs.js
 import scala.util.control.NoStackTrace
@@ -89,7 +90,7 @@ object SocketTimeoutException {
 class UnknownHostException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
 private class JavaScriptUnknownHostException(host: String, cause: js.JavaScriptException)
-    extends UnknownHostException(s"$host: nodename nor servname provided, or not known", cause)
+    extends UnknownHostException(s"$host: ${UnknownHostException.message}", cause)
     with NoStackTrace
 object UnknownHostException {
   private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
@@ -107,4 +108,8 @@ object UnknownHostException {
       case _ => None
     }
   private[this] val pattern = raw"(?:ENOTFOUND|EAI_AGAIN)(?: (\S+))?".r
+  private[net] val message = osMod.`type`() match {
+    case "Darwin" => "nodename nor servname provided, or not known"
+    case _        => "Name or service not known"
+  }
 }
