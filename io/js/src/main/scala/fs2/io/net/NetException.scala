@@ -81,7 +81,7 @@ object SocketTimeoutException {
 
 class UnknownHostException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
-private class JavaScriptUnknownException(cause: js.JavaScriptException)
+private class JavaScriptUnknownHostException(cause: js.JavaScriptException)
     extends UnknownHostException(cause = cause)
     with NoStackTrace
 object UnknownHostException {
@@ -89,7 +89,7 @@ object UnknownHostException {
     cause match {
       case js.JavaScriptException(error: js.Error)
           if error.message.contains("ENOTFOUND") || error.message.contains("EAI_AGAIN") =>
-        Some(new JavaScriptUnknownException(cause))
+        Some(new JavaScriptUnknownHostException(cause))
       case _ => None
     }
 }
