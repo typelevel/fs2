@@ -23,20 +23,40 @@ package fs2.io
 
 import fs2.io.file.FileSystemException
 import fs2.io.net.SocketException
+import fs2.io.net.SocketTimeoutException
 import fs2.io.net.UnknownHostException
 import fs2.io.net.tls.SSLException
 
 import scala.scalajs.js
-import fs2.io.net.SocketTimeoutException
+import scala.util.control.NoStackTrace
+
+private class JavaScriptIOException(message: String, cause: js.JavaScriptException)
+    extends IOException(message, cause)
+    with NoStackTrace
 
 object IOException {
   private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    SocketException
+    InterruptedIOException
       .unapply(cause)
-      .orElse(SocketTimeoutException.unapply(cause))
+      .orElse(SocketException.unapply(cause))
       .orElse(SSLException.unapply(cause))
       .orElse(FileSystemException.unapply(cause))
       .orElse(UnknownHostException.unapply(cause))
+      .orElse {
+        cause.exception match {
+          case error: js.Error if error.message.contains("EPIPE") =>
+            Some(new JavaScriptIOException("Broken pipe", cause))
+          case _ => None
+        }
+      }
+}
+
+class InterruptedIOException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
+
+object InterruptedIOException {
+  private[io] def unapply(cause: js.JavaScriptException): Option[InterruptedIOException] =
+    SocketTimeoutException.unapply(cause)
 }
 
 class ClosedChannelException extends IOException

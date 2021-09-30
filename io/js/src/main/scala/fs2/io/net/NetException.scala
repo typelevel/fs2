@@ -34,7 +34,7 @@ import scala.util.matching.Regex
 class SocketException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
 private class JavaScriptSocketException(cause: js.JavaScriptException)
-    extends SocketException(cause = cause)
+    extends SocketException("Connection reset", cause)
     with NoStackTrace
 object SocketException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketException] =
@@ -74,9 +74,9 @@ object ConnectException {
 }
 
 class SocketTimeoutException(message: String = null, cause: Throwable = null)
-    extends IOException(message, cause)
+    extends InterruptedIOException(message, cause)
 private class JavaScriptSocketTimeoutException(cause: js.JavaScriptException)
-    extends SocketTimeoutException(cause = cause)
+    extends SocketTimeoutException("Connection timed out", cause)
     with NoStackTrace
 object SocketTimeoutException {
   private[io] def unapply(cause: js.JavaScriptException): Option[SocketTimeoutException] =
