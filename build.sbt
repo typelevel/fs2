@@ -25,7 +25,7 @@ val NewScala = "2.13.6"
 ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", NewScala)
 
 ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
-ThisBuild / githubWorkflowJavaVersions := Seq("adoptium@17")
+ThisBuild / githubWorkflowJavaVersions := Seq("adoptium@8", "adoptium@17")
 
 ThisBuild / spiewakCiReleaseSnapshots := true
 
