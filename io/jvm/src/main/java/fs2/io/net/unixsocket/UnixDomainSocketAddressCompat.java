@@ -30,7 +30,8 @@ final class UnixDomainSocketAddressCompat {
   private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
   private static final Class<?> UNIX_DOMAIN_SOCKET_ADDRESS_CLASS = initUnixDomainSocketAddressClass();
 
-  private static final MethodType OF_METHOD_TYPE = MethodType.methodType(SocketAddress.class, String.class);
+  private static final MethodType OF_METHOD_TYPE = MethodType.methodType(UNIX_DOMAIN_SOCKET_ADDRESS_CLASS,
+      String.class);
   private static final MethodHandle OF_METHOD_HANDLE = initOfMethodHandle();
 
   private static Class<?> initUnixDomainSocketAddressClass() {
