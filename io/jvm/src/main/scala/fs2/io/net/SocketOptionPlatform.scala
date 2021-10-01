@@ -64,7 +64,7 @@ private[net] trait SocketOptionCompanionPlatform {
     boolean(StandardSocketOptions.SO_REUSEADDR, value)
 
   def reusePort(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.SO_REUSEPORT, value)
+    boolean(StandardSocketOptionsCompat.SO_REUSEPORT, value)
 
   def sendBufferSize(value: Int): SocketOption =
     integer(StandardSocketOptions.SO_SNDBUF, value)
