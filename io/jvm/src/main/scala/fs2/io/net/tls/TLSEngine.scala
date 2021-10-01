@@ -221,7 +221,7 @@ private[tls] object TLSEngine {
                     )
                 }
             }
-          case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
+          case _ /* SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN */ =>
             unwrapHandshake
         }
 
