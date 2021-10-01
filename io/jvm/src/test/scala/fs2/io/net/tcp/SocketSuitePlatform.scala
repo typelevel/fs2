@@ -25,12 +25,17 @@ import fs2.io.net.SocketOption
 
 trait SocketSuitePlatform {
 
+  private val modernJDKs = Set("11", "17")
+
   val setupOptionsPlatform = List(SocketOption.sendBufferSize(10000))
   val optionsPlatform = List(
     SocketOption.receiveBufferSize(1024),
     SocketOption.reuseAddress(true),
-    SocketOption.reusePort(true),
     SocketOption.sendBufferSize(1024)
-  )
+  ) ++ {
+    if (modernJDKs.contains(System.getProperty("java.version").substring(0, 2)))
+      List(SocketOption.reusePort(true))
+    else Nil
+  }
 
 }

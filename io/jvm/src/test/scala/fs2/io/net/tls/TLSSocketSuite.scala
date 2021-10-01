@@ -104,12 +104,21 @@ class TLSSocketSuite extends TLSSuite {
             .catchNonFatal(SSLContext.getInstance(protocol))
             .isRight
 
+        val modernJDKs = Set("11", "17")
+
         val enabled: Boolean =
           Either
             .catchNonFatal {
               val disabledAlgorithms = Security.getProperty("jdk.tls.disabledAlgorithms")
               !disabledAlgorithms.contains(protocol)
             }
+            .filterOrElse(
+              { _ =>
+                val version = System.getProperty("java.version")
+                protocol != "TLSv1.3" || modernJDKs.contains(version.substring(0, 2))
+              },
+              false
+            )
             .getOrElse(false)
 
         if (!supportedByPlatform)
