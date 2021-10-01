@@ -55,11 +55,11 @@ sealed trait TLSParameters {
     * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set on this `TLSParameters`, then `needClientAuth` takes precedence.
     */
   def toSSLParameters: SSLParameters = {
-    val p = new SSLParameters()
+    val p = new SSLParametersCompat()
     algorithmConstraints.foreach(p.setAlgorithmConstraints)
     applicationProtocols.foreach(ap => p.setApplicationProtocols(ap.toArray))
     cipherSuites.foreach(cs => p.setCipherSuites(cs.toArray))
-    enableRetransmissions.foreach(p.setEnableRetransmissions)
+    enableRetransmissions.foreach(p.setEnableRetransmissionsCompat)
     endpointIdentificationAlgorithm.foreach(p.setEndpointIdentificationAlgorithm)
     maximumPacketSize.foreach(p.setMaximumPacketSize)
     protocols.foreach(ps => p.setProtocols(ps.toArray))
