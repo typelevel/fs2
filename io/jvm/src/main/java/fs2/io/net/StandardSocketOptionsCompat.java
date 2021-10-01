@@ -23,7 +23,6 @@ package fs2.io.net;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.net.SocketOption;
 import java.net.StandardSocketOptions;
 
 import javax.management.RuntimeErrorException;
@@ -34,17 +33,17 @@ final class StandardSocketOptionsCompat {
 
   private static MethodHandle initSoReusePortMethodHandle() {
     try {
-      return LOOKUP.findStaticGetter(StandardSocketOptions.class, "SO_REUSEPORT", SocketOption.class);
+      return LOOKUP.findStaticGetter(StandardSocketOptions.class, "SO_REUSEPORT", java.net.SocketOption.class);
     } catch (Throwable t) {
       throw new ExceptionInInitializerError(t);
     }
   }
 
-  static final SocketOption<Boolean> SO_REUSEPORT = initSoReusePort();
+  static final java.net.SocketOption<Boolean> SO_REUSEPORT = initSoReusePort();
 
-  private static SocketOption<Boolean> initSoReusePort() {
+  private static java.net.SocketOption<Boolean> initSoReusePort() {
     try {
-      return (SocketOption<Boolean>) SO_REUSEPORT_METHOD_HANDLE.invokeExact();
+      return (java.net.SocketOption<Boolean>) SO_REUSEPORT_METHOD_HANDLE.invokeExact();
     } catch (Throwable t) {
       throw new ExceptionInInitializerError(t);
     }
