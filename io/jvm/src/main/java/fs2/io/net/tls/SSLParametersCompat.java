@@ -67,11 +67,11 @@ final class SSLParametersCompat extends SSLParameters {
   }
 
   void setEnableRetransmissionsCompat(boolean enableRetransmissions) throws Throwable {
-    SET_ENABLE_RETRANSMISSIONS_METHOD_HANDLE.invokeExact(enableRetransmissions);
+    SET_ENABLE_RETRANSMISSIONS_METHOD_HANDLE.invokeExact(this, enableRetransmissions);
   }
 
   void setMaximumPacketSizeCompat(int maximumPacketSize) throws Throwable {
-    SET_MAXIMUM_PACKET_SIZE_METHOD_HANDLE.invokeExact(maximumPacketSize);
+    SET_MAXIMUM_PACKET_SIZE_METHOD_HANDLE.invokeExact(this, maximumPacketSize);
   }
 
   private void fauxSetEnableRetransmissions(boolean setEnableRetransmissions) {
