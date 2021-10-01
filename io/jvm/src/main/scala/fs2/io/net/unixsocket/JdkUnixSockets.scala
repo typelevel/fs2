@@ -22,8 +22,7 @@
 package fs2.io.net.unixsocket
 
 import cats.effect.kernel.Async
-import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
-import java.nio.channels.{ServerSocketChannel, SocketChannel}
+import java.net.StandardProtocolFamily
 
 object JdkUnixSockets {
 
@@ -36,15 +35,15 @@ object JdkUnixSockets {
 private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
   protected def openChannel(address: UnixSocketAddress) = F.delay {
-    val ch = SocketChannel.open(StandardProtocolFamily.UNIX)
-    ch.connect(UnixDomainSocketAddress.of(address.path))
+    val ch = SocketChannelCompat.open(StandardProtocolFamilyCompat.UNIX)
+    ch.connect(UnixDomainSocketAddressCompat.of(address.path))
     ch
   }
 
   protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+    val serverChannel = ServerSocketChannelCompat.open(StandardProtocolFamilyCompat.UNIX)
     serverChannel.configureBlocking(false)
-    serverChannel.bind(UnixDomainSocketAddress.of(address.path))
+    serverChannel.bind(UnixDomainSocketAddressCompat.of(address.path))
     (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
   }
 }
