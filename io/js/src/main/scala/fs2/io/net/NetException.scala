@@ -31,6 +31,9 @@ import scala.scalajs.js
 import scala.util.control.NoStackTrace
 import scala.util.matching.Regex
 
+class ProtocolException(message: String = null, cause: Throwable = null)
+    extends IOException(message, cause)
+
 class SocketException(message: String = null, cause: Throwable = null)
     extends IOException(message, cause)
 private class JavaScriptSocketException(message: String, cause: js.JavaScriptException)
