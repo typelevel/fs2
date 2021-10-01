@@ -61,7 +61,7 @@ sealed trait TLSParameters {
     cipherSuites.foreach(cs => p.setCipherSuites(cs.toArray))
     enableRetransmissions.foreach(p.setEnableRetransmissionsCompat)
     endpointIdentificationAlgorithm.foreach(p.setEndpointIdentificationAlgorithm)
-    maximumPacketSize.foreach(p.setMaximumPacketSize)
+    maximumPacketSize.foreach(p.setMaximumPacketSizeCompat)
     protocols.foreach(ps => p.setProtocols(ps.toArray))
     serverNames.foreach(sn => p.setServerNames(sn.asJava))
     sniMatchers.foreach(sm => p.setSNIMatchers(sm.asJava))

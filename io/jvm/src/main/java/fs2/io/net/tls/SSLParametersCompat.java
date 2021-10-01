@@ -32,6 +32,8 @@ final class SSLParametersCompat extends SSLParameters {
   private static final MethodType SET_ENABLE_RETRANSMISSIONS_METHOD_TYPE = MethodType.methodType(void.class,
       boolean.class);
   private static final MethodHandle SET_ENABLE_RETRANSMISSIONS_METHOD_HANDLE = initSetEnableRetransmissionsMethodHandle();
+  private static final MethodType SET_MAXIMUM_PACKET_SIZE_METHOD_TYPE = MethodType.methodType(void.class, int.class);
+  private static final MethodHandle SET_MAXIMUM_PACKET_SIZE_METHOD_HANDLE = initSetMaximumPacketSizeMethodHandle();
 
   private static MethodHandle initSetEnableRetransmissionsMethodHandle() {
     try {
@@ -49,10 +51,32 @@ final class SSLParametersCompat extends SSLParameters {
     }
   }
 
+  private static MethodHandle initSetMaximumPacketSizeMethodHandle() {
+    try {
+      return LOOKUP.findVirtual(SSLParametersCompat.class, "setMaximumPacketSize", SET_MAXIMUM_PACKET_SIZE_METHOD_TYPE);
+    } catch (NoSuchMethodException e) {
+      try {
+        return LOOKUP.findVirtual(SSLParametersCompat.class, "fauxSetMaximumPacketSize",
+            SET_MAXIMUM_PACKET_SIZE_METHOD_TYPE);
+      } catch (Throwable t) {
+        throw new ExceptionInInitializerError(t);
+      }
+    } catch (Throwable t) {
+      throw new ExceptionInInitializerError(t);
+    }
+  }
+
   void setEnableRetransmissionsCompat(boolean enableRetransmissions) throws Throwable {
     SET_ENABLE_RETRANSMISSIONS_METHOD_HANDLE.invokeExact(enableRetransmissions);
   }
 
+  void setMaximumPacketSizeCompat(int maximumPacketSize) throws Throwable {
+    SET_MAXIMUM_PACKET_SIZE_METHOD_HANDLE.invokeExact(maximumPacketSize);
+  }
+
   private void fauxSetEnableRetransmissions(boolean setEnableRetransmissions) {
+  }
+
+  private void fauxSetMaximumPacketSize(int maximumPacketSize) {
   }
 }
