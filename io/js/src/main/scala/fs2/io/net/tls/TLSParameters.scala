@@ -34,8 +34,8 @@ import cats.syntax.all._
 import cats.effect.kernel.Async
 import cats.effect.std.Dispatcher
 
-/** Parameters used in creation of a TLS session.
-  * See [[https://nodejs.org/api/tls.html]] for detailed documentation on each parameter.
+/** Parameters used in creation of a TLS session. See [[https://nodejs.org/api/tls.html]] for
+  * detailed documentation on each parameter.
   */
 sealed trait TLSParameters {
   val requestCert: Option[Boolean]

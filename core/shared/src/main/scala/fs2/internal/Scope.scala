@@ -31,52 +31,57 @@ import cats.syntax.all._
 import fs2.{Compiler, CompositeFailure}
 import fs2.internal.InterruptContext.InterruptionOutcome
 
-/** Represents a period of stream execution in which resources are acquired and released.
-  * A scope has a state, consisting of resources (with associated finalizers) acquired in this scope
-  * and child scopes spawned from this scope.
+/** Represents a period of stream execution in which resources are acquired and released. A scope
+  * has a state, consisting of resources (with associated finalizers) acquired in this scope and
+  * child scopes spawned from this scope.
   *
-  * === Scope lifetime ===
+  * ===Scope lifetime===
   *
-  * When stream interpretation starts, one `root` scope is created. Scopes are then created and closed based on the
-  * stream structure. Every time a `Pull` is converted to a `Stream`, a scope is created.
+  * When stream interpretation starts, one `root` scope is created. Scopes are then created and
+  * closed based on the stream structure. Every time a `Pull` is converted to a `Stream`, a scope is
+  * created.
   *
-  * For example, `s.chunks` is defined with `s.repeatPull` which in turn is defined with `Pull.loop(...).stream`.
-  * In this case, a single scope is created as a result of the call to `.stream`.
+  * For example, `s.chunks` is defined with `s.repeatPull` which in turn is defined with
+  * `Pull.loop(...).stream`. In this case, a single scope is created as a result of the call to
+  * `.stream`.
   *
-  * Scopes may also be opened and closed manually with `Stream#scope`. For the stream `s.scope`, a scope
-  * is opened before evaluation of `s` and closed once `s` finishes evaluation.
+  * Scopes may also be opened and closed manually with `Stream#scope`. For the stream `s.scope`, a
+  * scope is opened before evaluation of `s` and closed once `s` finishes evaluation.
   *
-  * === Scope organization ===
+  * ===Scope organization===
   *
-  * Scopes are organized in tree structure, with each scope having at max one parent (a root scope has no parent)
-  * with 0 or more child scopes.
+  * Scopes are organized in tree structure, with each scope having at max one parent (a root scope
+  * has no parent) with 0 or more child scopes.
   *
-  * Every time a new scope is created, it inherits parent from the current scope and adds itself as a child
-  * of that parent.
+  * Every time a new scope is created, it inherits parent from the current scope and adds itself as
+  * a child of that parent.
   *
-  * During the interpretation of nondeterministic streams (i.e. merge), there may be multiple scopes attached
-  * to a single parent and these scopes may be created and closed in a nondeterministic order.
+  * During the interpretation of nondeterministic streams (i.e. merge), there may be multiple scopes
+  * attached to a single parent and these scopes may be created and closed in a nondeterministic
+  * order.
   *
-  * A child scope never outlives its parent scope. I.e., when a parent scope is closed for whatever reason,
-  * the child scopes are closed too.
+  * A child scope never outlives its parent scope. I.e., when a parent scope is closed for whatever
+  * reason, the child scopes are closed too.
   *
-  * === Resources ===
+  * ===Resources===
   *
-  * The primary role of a scope is tracking resource allocation and release. The stream interpreter guarantees that
-  * resources allocated in a scope are always released when the scope closes.
+  * The primary role of a scope is tracking resource allocation and release. The stream interpreter
+  * guarantees that resources allocated in a scope are always released when the scope closes.
   *
-  * === Resource allocation ===
+  * ===Resource allocation===
   *
-  * Resources are allocated when the interpreter interprets the `Acquire` element, which is typically constructed
-  * via `Stream.bracket`. See [[ScopedResource]] docs for more information.
+  * Resources are allocated when the interpreter interprets the `Acquire` element, which is
+  * typically constructed via `Stream.bracket`. See [[ScopedResource]] docs for more information.
   *
-  * @param id              Unique identification of the scope
-  * @param parent          If empty indicates root scope. If non-empty, indicates parent of this scope.
-  * @param interruptible   If defined, allows this scope to interrupt any of its operation. Interruption
-  *                       is performed using the supplied context.
-  *                       Normally the interruption awaits next step in Algebra to be evaluated, with exception
-  *                       of Eval, that when interruption is enabled on scope will be wrapped in race,
-  *                       that eventually allows interruption while eval is evaluating.
+  * @param id
+  *   Unique identification of the scope
+  * @param parent
+  *   If empty indicates root scope. If non-empty, indicates parent of this scope.
+  * @param interruptible
+  *   If defined, allows this scope to interrupt any of its operation. Interruption is performed
+  *   using the supplied context. Normally the interruption awaits next step in Algebra to be
+  *   evaluated, with exception of Eval, that when interruption is enabled on scope will be wrapped
+  *   in race, that eventually allows interruption while eval is evaluating.
   */
 private[fs2] final class Scope[F[_]] private (
     val id: Unique.Token,
@@ -87,8 +92,8 @@ private[fs2] final class Scope[F[_]] private (
 
   def isRoot: Boolean = parent.isEmpty
 
-  /** Gives the level or distance of this scope from the root,
-    * where the root has level 0, its children level 1, etc.
+  /** Gives the level or distance of this scope from the root, where the root has level 0, its
+    * children level 1, etc.
     */
   def level: Int = {
     @tailrec def go(scope: Scope[F], acc: Int): Int = scope.parent match {
@@ -109,8 +114,8 @@ private[fs2] final class Scope[F[_]] private (
 
   /** Opens a child scope.
     *
-    * If this scope is currently closed, then the child scope is opened on the first
-    * open ancestor of this scope.
+    * If this scope is currently closed, then the child scope is opened on the first open ancestor
+    * of this scope.
     *
     * Returns scope that has to be used in next compilation step.
     */
@@ -169,15 +174,17 @@ private[fs2] final class Scope[F[_]] private (
     }
   }
 
-  /** fs2 Stream is interpreted synchronously, as such the resource acquisition is fully synchronous.
-    * No next step (even when stream was interrupted) is run before the resource
-    * is fully acquired.
+  /** fs2 Stream is interpreted synchronously, as such the resource acquisition is fully
+    * synchronous. No next step (even when stream was interrupted) is run before the resource is
+    * fully acquired.
     *
-    * If, during resource acquisition the stream is interrupted, this will still await for the resource to be fully
-    * acquired, and then such stream will continue, likely with resource cleanup during the interpretation of the stream.
+    * If, during resource acquisition the stream is interrupted, this will still await for the
+    * resource to be fully acquired, and then such stream will continue, likely with resource
+    * cleanup during the interpretation of the stream.
     *
-    * There is only one situation where resource cleanup may be somewhat concurrent and that is when resources are
-    * leased in `parJoin`. But even then the order of the lease of the resources respects acquisition of the resources that leased them.
+    * There is only one situation where resource cleanup may be somewhat concurrent and that is when
+    * resources are leased in `parJoin`. But even then the order of the lease of the resources
+    * respects acquisition of the resources that leased them.
     */
   def acquireResource[R](
       acquire: Poll[F] => F[R],
@@ -217,8 +224,8 @@ private[fs2] final class Scope[F[_]] private (
 
   /** Unregisters the child scope identified by the supplied id.
     *
-    * As a result of unregistering a child scope, its resources are no longer
-    * reachable from its parent.
+    * As a result of unregistering a child scope, its resources are no longer reachable from its
+    * parent.
     */
   private def releaseChildScope(id: Unique.Token): F[Unit] =
     state.update {
@@ -226,7 +233,9 @@ private[fs2] final class Scope[F[_]] private (
       case s: Scope.State.Closed[F] => s
     }
 
-  /** Returns all direct resources of this scope (does not return resources in ancestor scopes or child scopes). * */
+  /** Returns all direct resources of this scope (does not return resources in ancestor scopes or
+    * child scopes). *
+    */
   private def resources: F[Chain[ScopedResource[F]]] =
     state.get.map {
       case s: Scope.State.Open[F]   => s.resources
@@ -255,8 +264,8 @@ private[fs2] final class Scope[F[_]] private (
     * If this scope has a parent scope, this scope will be unregistered from its parent.
     *
     * Note that if there were leased or not yet acquired resources, these resource will not yet be
-    * finalized after this scope is closed, but they will get finalized shortly after. See [[ScopedResource]] for
-    * more details.
+    * finalized after this scope is closed, but they will get finalized shortly after. See
+    * [[ScopedResource]] for more details.
     */
   def close(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
     state.modify(s => Scope.State.closed -> s).flatMap {
@@ -296,7 +305,8 @@ private[fs2] final class Scope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** @returns true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
+  /** @returns
+    *   true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
     */
   def descendsFrom(scopeId: Unique.Token): Boolean = findSelfOrAncestor(scopeId).isDefined
 
@@ -313,9 +323,8 @@ private[fs2] final class Scope[F[_]] private (
     go(self)
   }
 
-  /** Looks for the scopeId in this scope lineage, that being either
-    * its ancestors or its descendants, but not lateral branches.
-    * (brothers, uncles, nephews, etc)
+  /** Looks for the scopeId in this scope lineage, that being either its ancestors or its
+    * descendants, but not lateral branches. (brothers, uncles, nephews, etc)
     */
   def findInLineage(scopeId: Unique.Token): F[Option[Scope[F]]] =
     findSelfOrAncestor(scopeId).pure[F].orElse(findSelfOrChild(scopeId))
@@ -347,8 +356,8 @@ private[fs2] final class Scope[F[_]] private (
       }
   }
 
-  /** Tries to shift from the current scope with the given ScopeId, if one exists.
-    * If not, throws an error.
+  /** Tries to shift from the current scope with the given ScopeId, if one exists. If not, throws an
+    * error.
     */
   def shiftScope(scopeId: Unique.Token, context: => String): F[Scope[F]] =
     findStepScope(scopeId).flatMap {
@@ -366,12 +375,11 @@ private[fs2] final class Scope[F[_]] private (
         F.raiseError(new RuntimeException(msg))
     }
 
-  /** Tries to locate scope for the step.
-    * It is good chance, that scope is either current scope or the sibling of current scope.
-    * As such the order of search is:
-    * - check if id is current scope,
-    * - check if id is parent or any of its children
-    * - traverse all known scope ids, starting from the root.
+  /** Tries to locate scope for the step. It is good chance, that scope is either current scope or
+    * the sibling of current scope. As such the order of search is:
+    *   - check if id is current scope,
+    *   - check if id is parent or any of its children
+    *   - traverse all known scope ids, starting from the root.
     */
   def findStepScope(scopeId: Unique.Token): F[Option[Scope[F]]] = {
     @tailrec
@@ -412,10 +420,9 @@ private[fs2] final class Scope[F[_]] private (
         iCtx.completeWhen(outcome)
     }
 
-  /** Checks if current scope is interrupted.
-    * If yields to None, scope is not interrupted and evaluation may normally proceed.
-    * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next`  stream
-    * to evaluate
+  /** Checks if current scope is interrupted. If yields to None, scope is not interrupted and
+    * evaluation may normally proceed. If yields to Some(Right(scope,next)) that yields to next
+    * `scope`, that has to be run and `next` stream to evaluate
     */
   def isInterrupted: F[Option[InterruptionOutcome]] =
     interruptible match {
@@ -423,16 +430,16 @@ private[fs2] final class Scope[F[_]] private (
       case Some(iCtx) => iCtx.ref.get
     }
 
-  /** When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
-    * when scope allows interruption.
-    * Instead of just allowing eval to complete, this will race between eval and interruption promise.
-    * Then, if eval completes without interrupting, this will return on `Right`.
+  /** When the stream is evaluated, there may be `Eval` that needs to be cancelled early, when scope
+    * allows interruption. Instead of just allowing eval to complete, this will race between eval
+    * and interruption promise. Then, if eval completes without interrupting, this will return on
+    * `Right`.
     *
-    * However when the evaluation is normally interrupted the this evaluates on `Left` - `Right` where we signal
-    * what is the next scope from which we should calculate the next step to take.
+    * However when the evaluation is normally interrupted the this evaluates on `Left` - `Right`
+    * where we signal what is the next scope from which we should calculate the next step to take.
     *
-    * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the exception
-    * that caused the interruption is returned so that it can be handled.
+    * Or if the evaluation is interrupted by a failure this evaluates on `Left` - `Left` where the
+    * exception that caused the interruption is returned so that it can be handled.
     */
   private[fs2] def interruptibleEval[A](f: F[A]): F[Either[InterruptionOutcome, A]] =
     interruptible match {
@@ -447,24 +454,25 @@ private[fs2] final class Scope[F[_]] private (
     * Note that this leases all resources in this scope, resources in all parent scopes (up to root)
     * and resources of all child scopes.
     *
-    * An error is raised if this scope is already closed. Otherwise a lease is returned,
-    * which must be cancelled. Upon cancellation, resource finalizers may be run, depending on the
-    * state of the owning scopes.
+    * An error is raised if this scope is already closed. Otherwise a lease is returned, which must
+    * be cancelled. Upon cancellation, resource finalizers may be run, depending on the state of the
+    * owning scopes.
     *
-    * Resources may be finalized during the execution of this method and before the lease has been acquired
-    * for a resource. In such an event, the already finalized resource won't be leased. As such, it is
-    * important to call `lease` only when all resources are known to be non-finalized / non-finalizing.
+    * Resources may be finalized during the execution of this method and before the lease has been
+    * acquired for a resource. In such an event, the already finalized resource won't be leased. As
+    * such, it is important to call `lease` only when all resources are known to be non-finalized /
+    * non-finalizing.
     *
     * When the lease is returned, all resources available at the time `lease` was called have been
     * successfully leased.
     */
   def lease: F[Lease[F]] =
     for {
-      children <- (state.get.flatMap[Chain[Scope[F]]] {
+      children <- state.get.flatMap[Chain[Scope[F]]] {
         case x: Scope.State.Open[F] => F.pure(x.children)
         case _: Scope.State.Closed[F] =>
           F.raiseError(new RuntimeException("Scope closed at time of lease"))
-      })
+      }
       allScopes = (children :+ self) ++ ancestors
       allResources <- allScopes.flatTraverse(_.resources)
       allLeases <- allResources.traverseFilter(_.lease)
@@ -493,13 +501,15 @@ private[fs2] object Scope {
   private sealed trait State[F[_]]
   private object State {
 
-    /** @param resources          All acquired resources (that means synchronously, or the ones acquired asynchronously) are
-      *                           registered here. Note that the resources are prepended when acquired, to be released in reverse
-      *                           order s they were acquired.
+    /** @param resources
+      *   All acquired resources (that means synchronously, or the ones acquired asynchronously) are
+      *   registered here. Note that the resources are prepended when acquired, to be released in
+      *   reverse order s they were acquired.
       *
-      * @param children           Children of this scope. Children may appear during the parallel pulls where one scope may
-      *                           split to multiple asynchronously acquired scopes and resources.
-      *                           Still, likewise for resources they are released in reverse order.
+      * @param children
+      *   Children of this scope. Children may appear during the parallel pulls where one scope may
+      *   split to multiple asynchronously acquired scopes and resources. Still, likewise for
+      *   resources they are released in reverse order.
       */
     case class Open[F[_]](resources: Chain[ScopedResource[F]], children: Chain[Scope[F]])
         extends State[F] { self =>

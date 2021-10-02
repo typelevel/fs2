@@ -41,17 +41,17 @@ import scala.annotation.implicitNotFound
 /** Provides compilation of a `Stream[F, O]` to a `G[*]`.
   *
   * In the most common case, `F = G = IO` or another "fully featured" effect type. However, there
-  * are other common instantiations like `F = Pure, G = Id`, which allows compiling a
-  * `Stream[Pure, A]` in to pure values.
+  * are other common instantiations like `F = Pure, G = Id`, which allows compiling a `Stream[Pure,
+  * A]` in to pure values.
   *
   * For the common case where `F = G`, the `target` implicit constructor provides an instance of
-  * `Compiler[F, F]` -- `target` requires a `Compiler.Target[F]` instance. The `Compiler.Target[F]` is a
-  * super charged `MonadErrorThrow[F]`, providing additional capabilities needed for stream compilation.
-  * `Compiler.Target[F]` instances are given for all `F[_]` which have:
-  *  - `Concurrent[F]` instances
-  *  - both `MonadCancelThrow[F]` and `Sync[F]` intances
-  *  - only `Sync[F]` instances
-  * Support for stream interruption requires compilation to an effect which has a `Concurrent` instance.
+  * `Compiler[F, F]` -- `target` requires a `Compiler.Target[F]` instance. The `Compiler.Target[F]`
+  * is a super charged `MonadErrorThrow[F]`, providing additional capabilities needed for stream
+  * compilation. `Compiler.Target[F]` instances are given for all `F[_]` which have:
+  *   - `Concurrent[F]` instances
+  *   - both `MonadCancelThrow[F]` and `Sync[F]` intances
+  *   - only `Sync[F]` instances Support for stream interruption requires compilation to an effect
+  *     which has a `Concurrent` instance.
   */
 @implicitNotFound(
   "Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope"
@@ -80,8 +80,8 @@ private[fs2] trait CompilerLowPriority2 {
 
 private[fs2] trait CompilerLowPriority1 extends CompilerLowPriority2 {
 
-  /** Provides a `Compiler[F, F]` instance for an effect `F` which has a `Compiler.Target`
-    * instance (i.e., either a `Concurrent` or `Sync` instance).
+  /** Provides a `Compiler[F, F]` instance for an effect `F` which has a `Compiler.Target` instance
+    * (i.e., either a `Concurrent` or `Sync` instance).
     */
   implicit def target[F[_]](implicit F: Compiler.Target[F]): Compiler[F, F] =
     new Compiler[F, F] {
@@ -136,9 +136,8 @@ object Compiler extends CompilerLowPriority {
         .unsafeRunSync()
   }
 
-  /** Type class that describes the effect used during stream compilation.
-    * Instances exist for all effects which have either a `Concurrent` instance or
-    * a `Sync` instance.
+  /** Type class that describes the effect used during stream compilation. Instances exist for all
+    * effects which have either a `Concurrent` instance or a `Sync` instance.
     */
   sealed trait Target[F[_]] extends MonadCancelThrow[F] {
     protected implicit val F: MonadCancelThrow[F]

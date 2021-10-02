@@ -50,8 +50,8 @@ package object file {
   ): Stream[F, Byte] = Files[F].readAll(path, chunkSize)
 
   /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
-    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
-    * two bytes are read.
+    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2, two bytes are
+    * read.
     */
   @deprecated("Use Files[F].readRange", "3.0.0")
   def readRange[F[_]: Async](
@@ -61,12 +61,12 @@ package object file {
       end: Long
   ): Stream[F, Byte] = Files[F].readRange(path, chunkSize, start, end)
 
-  /** Returns an infinite stream of data from the file at the specified path.
-    * Starts reading from the specified offset and upon reaching the end of the file,
-    * polls every `pollDuration` for additional updates to the file.
+  /** Returns an infinite stream of data from the file at the specified path. Starts reading from
+    * the specified offset and upon reaching the end of the file, polls every `pollDuration` for
+    * additional updates to the file.
     *
-    * Read operations are limited to emitting chunks of the specified chunk size
-    * but smaller chunks may occur.
+    * Read operations are limited to emitting chunks of the specified chunk size but smaller chunks
+    * may occur.
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
@@ -80,7 +80,8 @@ package object file {
 
   /** Writes all data to the file at the specified `java.nio.file.Path`.
     *
-    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the
+    * CREATE flag.
     */
   @deprecated("Use Files[F].writeAll", "3.0.0")
   def writeAll[F[_]: Async](
@@ -90,10 +91,9 @@ package object file {
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
-    * The `computePath` operation is used to compute the path of the first file
-    * and every subsequent file. Typically, the next file should be determined
-    * by analyzing the current state of the filesystem -- e.g., by looking at all
-    * files in a directory and generating a unique name.
+    * The `computePath` operation is used to compute the path of the first file and every subsequent
+    * file. Typically, the next file should be determined by analyzing the current state of the
+    * filesystem -- e.g., by looking at all files in a directory and generating a unique name.
     */
   @deprecated("Use Files[F].writeRotate", "3.0.0")
   def writeRotate[F[_]](
@@ -114,7 +114,8 @@ package object file {
 
   /** Watches a single path.
     *
-    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the
+    * resulting stream is finalized.
     */
   @deprecated("Use Files[F].watch", "3.0.0")
   def watch[F[_]](
@@ -127,10 +128,9 @@ package object file {
 
   /** Checks if a file exists
     *
-    * Note that the result of this method is immediately outdated. If this
-    * method indicates the file exists then there is no guarantee that a
-    * subsequence access will succeed. Care should be taken when using this
-    * method in security sensitive applications.
+    * Note that the result of this method is immediately outdated. If this method indicates the file
+    * exists then there is no guarantee that a subsequence access will succeed. Care should be taken
+    * when using this method in security sensitive applications.
     */
   @deprecated("Use Files[F].exists", "3.0.0")
   def exists[F[_]: Async](
@@ -175,8 +175,8 @@ package object file {
 
   /** Deletes a file.
     *
-    * If the file is a directory then the directory must be empty for this action to succeed.
-    * This action will fail if the path doesn't exist.
+    * If the file is a directory then the directory must be empty for this action to succeed. This
+    * action will fail if the path doesn't exist.
     */
   @deprecated("Use Files[F].delete", "3.0.0")
   def delete[F[_]: Async](path: JPath): F[Unit] =
@@ -274,7 +274,8 @@ package object file {
   ): F[JPath] =
     Files[F].createDirectory(path, flags)
 
-  /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
+  /** Creates a new directory at the given path and creates all nonexistent parent directories
+    * beforehand.
     */
   @deprecated("Use Files[F].createDirectories", "3.0.0")
   def createDirectories[F[_]: Async](
@@ -313,7 +314,8 @@ package object file {
   def walk[F[_]: Async](start: JPath): Stream[F, JPath] =
     Files[F].walk(start)
 
-  /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options.
+    * Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](

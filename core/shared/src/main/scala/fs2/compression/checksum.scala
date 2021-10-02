@@ -30,17 +30,20 @@ import scodec.bits.BitVector
 object checksum {
 
   /** Computes a CRC32 checksum.
-    * @see [[scodec.bits.crc.crc32]]
+    * @see
+    *   [[scodec.bits.crc.crc32]]
     */
   def crc32[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32Builder)
 
   /** Computes a CRC32C checksum.
-    * @see [[scodec.bits.crc.crc32c]]
+    * @see
+    *   [[scodec.bits.crc.crc32c]]
     */
   def crc32c[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32cBuilder)
 
   /** Computes a CRC checksum using the specified polynomial.
-    * @see [[scodec.bits.crc]]
+    * @see
+    *   [[scodec.bits.crc]]
     */
   def crc[F[_]](
       poly: BitVector,

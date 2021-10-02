@@ -28,20 +28,16 @@ import org.reactivestreams._
 
 /** Implementation of the reactivestreams protocol for fs2
   *
-  * @example {{{
-  * scala> import fs2._
-  * scala> import fs2.interop.reactivestreams._
-  * scala> import cats.effect.{IO, Resource}, cats.effect.unsafe.implicits.global
-  * scala>
-  * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO])
-  * scala>
-  * scala> downstream.compile.toVector.unsafeRunSync()
-  * res0: Vector[Int] = Vector(1, 2, 3)
-  * }}}
+  * @example
+  *   {{{ scala> import fs2._ scala> import fs2.interop.reactivestreams._ scala> import
+  *   cats.effect.{IO, Resource}, cats.effect.unsafe.implicits.global scala> scala> val upstream:
+  *   Stream[IO, Int] = Stream(1, 2, 3).covary[IO] scala> val publisher: Resource[IO,
+  *   StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher scala> val downstream:
+  *   Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO]) scala> scala>
+  *   downstream.compile.toVector.unsafeRunSync() res0: Vector[Int] = Vector(1, 2, 3) }}}
   *
-  * @see [[http://www.reactive-streams.org/]]
+  * @see
+  *   [[http://www.reactive-streams.org/]]
   */
 package object reactivestreams {
 
@@ -65,8 +61,8 @@ package object reactivestreams {
 
     /** Creates a [[StreamUnicastPublisher]] from a stream.
       *
-      * This publisher can only have a single subscription.
-      * The stream is only ran when elements are requested.
+      * This publisher can only have a single subscription. The stream is only ran when elements are
+      * requested.
       */
     def toUnicastPublisher(implicit
         F: Async[F]

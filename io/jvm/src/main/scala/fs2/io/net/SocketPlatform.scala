@@ -63,7 +63,9 @@ private[net] trait SocketCompanionPlatform {
     /** Performs a single channel read operation in to the supplied buffer. */
     protected def readChunk(buffer: ByteBuffer): F[Int]
 
-    /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
+    /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer
+      * contents.
+      */
     private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
       F.delay {
         val read = buffer.position()
