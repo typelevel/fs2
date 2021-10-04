@@ -302,37 +302,20 @@ private[fs2] trait FilesCompanionPlatform {
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
       Stream
-        .resource(
-          readReadableResource(
-            F.async_[Readable] { cb =>
-              val rs = fsMod
-                .createReadStream(
-                  path.toString,
-                  f(
-                    js.Dynamic
-                      .literal(flags = combineFlags(flags))
-                      .asInstanceOf[fsMod.ReadStreamOptions]
-                      .setHighWaterMark(chunkSize.toDouble)
-                  )
-                )
-              rs.once_ready(
-                nodeStrings.ready,
-                () => {
-                  rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-                  cb(Right(rs.asInstanceOf[Readable]))
-                }
+        .resource(suspendReadableAndRead() {
+          fsMod
+            .createReadStream(
+              path.toString,
+              f(
+                js.Dynamic
+                  .literal(flags = combineFlags(flags))
+                  .asInstanceOf[fsMod.ReadStreamOptions]
+                  .setHighWaterMark(chunkSize.toDouble)
               )
-              rs.once_error(
-                nodeStrings.error,
-                error => {
-                  rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-                  cb(Left(js.JavaScriptException(error)))
-                }
-              )
-            }
-          )
-        )
-        .flatten
+            )
+            .asInstanceOf[Readable]
+        })
+        .flatMap(_._2)
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)

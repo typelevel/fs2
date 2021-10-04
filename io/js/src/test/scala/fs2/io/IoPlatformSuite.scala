@@ -33,7 +33,7 @@ class IoPlatformSuite extends Fs2Suite {
       bytes
         .through(toReadable[IO])
         .flatMap { readable =>
-          Stream.resource(readReadableResource(IO.pure(readable))).flatten
+          Stream.resource(suspendReadableAndRead[IO, Readable]()(readable)).flatMap(_._2)
         }
         .compile
         .toVector
@@ -55,8 +55,8 @@ class IoPlatformSuite extends Fs2Suite {
         .through {
           toDuplexAndRead[IO] { duplex =>
             Stream
-              .resource(readReadableResource[IO](IO.pure(duplex)))
-              .flatten
+              .resource(suspendReadableAndRead[IO, Duplex]()(duplex))
+              .flatMap(_._2)
               .merge(bytes2.covary[IO].through(writeWritable[IO](IO.pure(duplex))))
               .compile
               .toVector

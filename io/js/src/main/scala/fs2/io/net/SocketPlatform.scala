@@ -42,12 +42,13 @@ private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]](
       sock: netMod.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
-    readReadableResource(
-      F.delay(sock.asInstanceOf[Readable]),
+    suspendReadableAndRead(
       destroyIfNotEnded = false,
       destroyIfCanceled = false
-    ).flatMap(SuspendedStream(_))
-      .map(new AsyncSocket(sock, _))
+    )(sock.asInstanceOf[Readable])
+      .flatMap { case (_, stream) =>
+        SuspendedStream(stream).map(new AsyncSocket(sock, _))
+      }
       .onFinalize {
         F.delay {
           if (!sock.destroyed)

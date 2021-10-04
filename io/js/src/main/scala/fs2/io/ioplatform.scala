@@ -22,6 +22,7 @@
 package fs2
 package io
 
+import cats.effect.SyncIO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
@@ -41,67 +42,79 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
-  @deprecated("Use readReadableResource for safer variant", "3.1.4")
+  @deprecated("Use suspendReadableAndRead instead", "3.1.4")
   def readReadable[F[_]](
       readable: F[Readable],
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
   )(implicit
       F: Async[F]
-  ): Stream[F, Byte] =
-    Stream.resource(readReadableResource(readable, destroyIfNotEnded, destroyIfCanceled)).flatten
+  ): Stream[F, Byte] = Stream
+    .eval(readable)
+    .flatMap(r => Stream.resource(suspendReadableAndRead(destroyIfNotEnded, destroyIfCanceled)(r)))
+    .flatMap(_._2)
 
-  /** Reads all bytes from the specified `Readable`.
-    * Note that until the resource is opened, it is not safe to use the `Readable`
-    * without risking loss of data or events (e.g., termination, error).
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
     */
-  def readReadableResource[F[_]](
-      readable: F[Readable],
+  def suspendReadableAndRead[F[_], R <: Readable](
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
-  )(implicit
-      F: Async[F]
-  ): Resource[F, Stream[F, Byte]] =
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
     (for {
-      readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
-        case (readable, Resource.ExitCase.Succeeded) =>
-          F.delay {
-            if (!readable.readableEnded & destroyIfNotEnded)
-              readable.destroy()
-          }
-        case (readable, Resource.ExitCase.Errored(ex)) =>
-          F.delay(readable.destroy(js.Error(ex.getMessage())))
-        case (readable, Resource.ExitCase.Canceled) =>
-          if (destroyIfCanceled)
-            F.delay(readable.destroy())
-          else
-            F.unit
-      }
       dispatcher <- Dispatcher[F]
       queue <- Queue.synchronous[F, Option[Unit]].toResource
       error <- F.deferred[Throwable].toResource
-      _ <- registerListener0(readable, nodeStrings.readable)(_.on_readable(_, _)) { () =>
-        dispatcher.unsafeRunAndForget(queue.offer(Some(())))
-      }
-      _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
-        dispatcher.unsafeRunAndForget(queue.offer(None))
-      }
-      _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
-        dispatcher.unsafeRunAndForget(queue.offer(None))
-      }
-      _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
-        dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
-      }
-    } yield (Stream
-      .fromQueueNoneTerminated(queue)
-      .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
-      Stream
-        .evalUnChunk(
-          F.delay(
-            Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
-              .fold(Chunk.empty[Byte])(_.toChunk)
-          )
-        )).adaptError { case IOException(ex) => ex }).adaptError { case IOException(ex) => ex }
+      // Implementation Note: why suspend in `SyncIO` and then `unsafeRunSync()` inside `F.delay`?
+      // In many cases creating a `Readable` starts async side-effects (e.g. negotiating TLS handshake or opening a file handle).
+      // Furthermore, these side-effects will invoke the listeners we register to the `Readable`.
+      // Therefore, it is critical that the listeners are registered to the `Readable` _before_ these async side-effects occur:
+      // in other words, before we next yield (cede) to the event loop. Because an arbitrary effect `F` (particularly `IO`) may cede at any time,
+      // our only recourse is to suspend the entire creation/listener registration process within a single atomic `delay`.
+      readableResource = for {
+        readable <- Resource.makeCase(SyncIO(thunk).map(_.asInstanceOf[streamMod.Readable])) {
+          case (readable, Resource.ExitCase.Succeeded) =>
+            SyncIO {
+              if (!readable.readableEnded & destroyIfNotEnded)
+                readable.destroy()
+            }
+          case (readable, Resource.ExitCase.Errored(ex)) =>
+            SyncIO(readable.destroy(js.Error(ex.getMessage())))
+          case (readable, Resource.ExitCase.Canceled) =>
+            if (destroyIfCanceled)
+              SyncIO(readable.destroy())
+            else
+              SyncIO.unit
+        }
+        _ <- registerListener0(readable, nodeStrings.readable)(_.on_readable(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(queue.offer(Some(())))
+        }(SyncIO.syncForSyncIO)
+        _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(queue.offer(None))
+        }(SyncIO.syncForSyncIO)
+        _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
+          dispatcher.unsafeRunAndForget(queue.offer(None))
+        }(SyncIO.syncForSyncIO)
+        _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
+          dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
+        }(SyncIO.syncForSyncIO)
+      } yield readable
+      readable <- Resource
+        .make(F.delay {
+          readableResource.allocated.unsafeRunSync()
+        }) { case (_, close) => close.to[F] }
+        .map(_._1)
+      stream =
+        (Stream
+          .fromQueueNoneTerminated(queue)
+          .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
+          Stream
+            .evalUnChunk(
+              F.delay(
+                Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
+                  .fold(Chunk.empty[Byte])(_.toChunk)
+              )
+            )).adaptError { case IOException(ex) => ex }
+    } yield (readable.asInstanceOf[R], stream)).adaptError { case IOException(ex) => ex }
 
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
     * that ends whenever the resulting stream terminates.
