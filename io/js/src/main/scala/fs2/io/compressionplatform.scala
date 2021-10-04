@@ -43,13 +43,15 @@ private[io] trait compressionplatform {
           .setStrategy(deflateParams.strategy.juzDeflaterStrategy.toDouble)
           .setFlush(deflateParams.flushMode.juzDeflaterFlushMode.toDouble)
         Stream
-          .eval(F.delay((deflateParams.header match {
+          .bracket(F.delay(deflateParams.header match {
             case ZLibParams.Header.GZIP => zlibMod.createGzip(options)
             case ZLibParams.Header.ZLIB => zlibMod.createDeflate(options)
-          }).asInstanceOf[Duplex]))
-          .flatMap { deflate =>
-            readReadable[F](deflate.pure.widen)
-              .concurrently(in.through(writeWritable[F](deflate.pure.widen)))
+          }))(z => F.async_(cb => z.close(() => cb(Right(())))))
+          .flatMap { _deflate =>
+            val deflate = _deflate.asInstanceOf[Duplex].pure
+            Stream
+              .resource(readReadableResource[F](deflate.widen))
+              .flatMap(_.concurrently(in.through(writeWritable[F](deflate.widen))))
           }
       }
 
@@ -58,14 +60,15 @@ private[io] trait compressionplatform {
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
         Stream
-          .eval(F.delay((inflateParams.header match {
+          .bracket(F.delay(inflateParams.header match {
             case ZLibParams.Header.GZIP => zlibMod.createGunzip(options)
             case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
-          }).asInstanceOf[Duplex]))
-          .flatMap { inflate =>
-            readReadable[F](inflate.pure.widen)
-              .concurrently(in.through(writeWritable[F](inflate.pure.widen)))
-
+          }))(z => F.async_(cb => z.close(() => cb(Right(())))))
+          .flatMap { _inflate =>
+            val inflate = _inflate.asInstanceOf[Duplex].pure
+            Stream
+              .resource(readReadableResource[F](inflate.widen))
+              .flatMap(_.concurrently(in.through(writeWritable[F](inflate.widen))))
           }
       }
 

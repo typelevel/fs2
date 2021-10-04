@@ -31,7 +31,6 @@ import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
-import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.SuspendedStream
@@ -43,32 +42,12 @@ private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]](
       sock: netMod.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
-    SuspendedStream(
-      readReadable(
-        F.delay(sock.asInstanceOf[Readable]),
-        destroyIfNotEnded = false,
-        destroyIfCanceled = false
-      )
-    ).evalTap { _ =>
-      // Block until an error listener is registered
-      F.async_[Unit] { cb =>
-        val emitter = sock.asInstanceOf[eventsMod.EventEmitter]
-        if (emitter.listenerCount("error") > 0)
-          cb(Right(()))
-        else {
-          def go(): Unit =
-            emitter.once(
-              "newListener",
-              eventName =>
-                if (eventName.asInstanceOf[String] == "error")
-                  cb(Right(()))
-                else
-                  go()
-            )
-          go()
-        }
-      }
-    }.map(new AsyncSocket(sock, _))
+    readReadableResource(
+      F.delay(sock.asInstanceOf[Readable]),
+      destroyIfNotEnded = false,
+      destroyIfCanceled = false
+    ).flatMap(SuspendedStream(_))
+      .map(new AsyncSocket(sock, _))
       .onFinalize {
         F.delay {
           if (!sock.destroyed)

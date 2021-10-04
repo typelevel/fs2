@@ -84,12 +84,13 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
           eventEmitter.removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
         }
       }
+      readable <- readReadableResource(
+        F.delay(tlsSock.asInstanceOf[Readable]),
+        destroyIfNotEnded = false,
+        destroyIfCanceled = false
+      )
       readStream <- SuspendedStream(
-        readReadable(
-          F.delay(tlsSock.asInstanceOf[Readable]),
-          destroyIfNotEnded = false,
-          destroyIfCanceled = false
-        ).concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
+        readable
       ).race(errorDef.get.flatMap(F.raiseError[SuspendedStream[F, Byte]]).toResource)
         .map(_.merge)
     } yield new AsyncTLSSocket(
