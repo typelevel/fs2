@@ -262,7 +262,7 @@ object text {
       decoder.flush(out) match {
         case res if res.isUnderflow =>
           if (out.position() > 0) {
-            out.flip()
+            (out: Buffer).flip()
             Pull.output1(out.toString) >> Pull.done
           } else
             Pull.done
