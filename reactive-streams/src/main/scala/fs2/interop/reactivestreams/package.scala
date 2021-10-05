@@ -66,7 +66,7 @@ package object reactivestreams {
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    def toStream[F[_]: Async](bufferSize: Long): Stream[F, Chunk[A]] =
+    def toStreamChunk[F[_]: Async](bufferSize: Long): Stream[F, Chunk[A]] =
       fromPublisher(publisher, bufferSize)
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
