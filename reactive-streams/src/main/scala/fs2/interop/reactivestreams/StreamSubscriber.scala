@@ -163,7 +163,7 @@ object StreamSubscriber {
         }
         case OnNext(a) => {
           case WaitingOnUpstream(s, buffer, r) =>
-            val newBuffer = a +: buffer
+            val newBuffer = buffer :+ a
             if (newBuffer.size == bufferSize) {
               val chunk = Chunk.vector(newBuffer)
               Idle(s, Vector.empty) -> (() => r(chunk.some.asRight))
