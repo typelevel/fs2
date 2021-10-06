@@ -80,7 +80,7 @@ object StreamSubscriber {
     fsm[F, A](bufferSize).map(new StreamSubscriber(_))
 
   def apply[F[_]: Async, A]: F[StreamSubscriber[F, A]] =
-    apply(bufferSize = 10)
+    apply(bufferSize = 16)
 
   @deprecated("Use apply method without dispatcher instead", "3.1.4")
   def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
