@@ -153,7 +153,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.interop.reactivestreams.package#PublisherOps.toStream$extension"
+  )
 )
 
 lazy val root = project
