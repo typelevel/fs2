@@ -35,7 +35,7 @@ import org.reactivestreams._
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
   * scala> val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO])
+  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO](bufferSize = 16))
   * scala>
   * scala> downstream.compile.toVector.unsafeRunSync()
   * res0: Vector[Int] = Vector(1, 2, 3)
@@ -58,6 +58,7 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     */
+  @deprecated("Use fromPublisher method with a buffer size", "3.1.4")
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A])
@@ -70,6 +71,7 @@ package object reactivestreams {
       fromPublisher(publisher, bufferSize)
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
+    @deprecated("Use toStream method with a buffer size", "3.1.4")
     def toStream[F[_]: Async]: Stream[F, A] =
       fromPublisher(publisher)
   }
