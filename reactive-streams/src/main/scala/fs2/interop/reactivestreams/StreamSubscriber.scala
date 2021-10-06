@@ -77,11 +77,11 @@ final class StreamSubscriber[F[_], A](
 
 object StreamSubscriber {
 
-  def apply[F[_]: Async, A](bufferSize: Long): F[StreamSubscriber[F, A]] =
+  def apply[F[_]: Async, A](bufferSize: Int): F[StreamSubscriber[F, A]] =
     fsm[F, A](bufferSize).map(new StreamSubscriber(_))
 
   def apply[F[_]: Async, A]: F[StreamSubscriber[F, A]] =
-    apply(bufferSize = 10L)
+    apply(bufferSize = 10)
 
   @deprecated("Use apply method without dispatcher instead", "3.1.4")
   def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
@@ -120,7 +120,7 @@ object StreamSubscriber {
   }
 
   private[reactivestreams] def fsm[F[_], A](
-      bufferSize: Long
+      bufferSize: Int
   )(implicit F: Async[F]): F[FSM[F, A]] = {
     type Out = Either[Throwable, Option[Chunk[A]]]
 
@@ -152,7 +152,7 @@ object StreamSubscriber {
       in match {
         case OnSubscribe(s) => {
           case RequestBeforeSubscription(req) =>
-            WaitingOnUpstream(s, Vector.empty, req) -> (() => s.request(bufferSize))
+            WaitingOnUpstream(s, Vector.empty, req) -> (() => s.request(bufferSize.toLong))
           case Uninitialized => Idle(s, Vector.empty) -> (() => ())
           case o =>
             val err = new Error(s"received subscription in invalid state [$o]")
@@ -199,7 +199,7 @@ object StreamSubscriber {
         case OnDequeue(r) => {
           case Uninitialized => RequestBeforeSubscription(r) -> (() => ())
           case Idle(sub, buffer) =>
-            WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize))
+            WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize.toLong))
           case err @ UpstreamError(e) => err -> (() => r(e.asLeft))
           case UpstreamCompletion     => UpstreamCompletion -> (() => r(None.asRight))
           case o                      => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
