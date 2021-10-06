@@ -108,9 +108,7 @@ object StreamSubscriber {
     def dequeue1: F[Either[Throwable, Option[Chunk[A]]]]
 
     /** downstream stream */
-    def stream(
-        subscribe: F[Unit]
-    )(implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
+    def stream(subscribe: F[Unit])(implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
       Stream.bracket(subscribe)(_ => onFinalize) >> Stream
         .eval(dequeue1)
         .repeat
