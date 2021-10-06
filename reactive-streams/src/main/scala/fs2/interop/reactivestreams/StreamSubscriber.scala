@@ -134,9 +134,9 @@ object StreamSubscriber {
 
     sealed trait State
     case object Uninitialized extends State
-    case class Idle(sub: Subscription, buffer: Vector[A]) extends State
+    case class Idle(sub: Subscription, buffer: Chunk[A]) extends State
     case class RequestBeforeSubscription(req: Out => Unit) extends State
-    case class WaitingOnUpstream(sub: Subscription, buffer: Vector[A], elementRequest: Out => Unit)
+    case class WaitingOnUpstream(sub: Subscription, buffer: Chunk[A], elementRequest: Out => Unit)
         extends State
     case object UpstreamCompletion extends State
     case object DownstreamCancellation extends State
@@ -152,8 +152,8 @@ object StreamSubscriber {
       in match {
         case OnSubscribe(s) => {
           case RequestBeforeSubscription(req) =>
-            WaitingOnUpstream(s, Vector.empty, req) -> (() => s.request(bufferSize.toLong))
-          case Uninitialized => Idle(s, Vector.empty) -> (() => ())
+            WaitingOnUpstream(s, Chunk.empty, req) -> (() => s.request(bufferSize.toLong))
+          case Uninitialized => Idle(s, Chunk.empty) -> (() => ())
           case o =>
             val err = new Error(s"received subscription in invalid state [$o]")
             o -> { () =>
@@ -163,10 +163,9 @@ object StreamSubscriber {
         }
         case OnNext(a) => {
           case WaitingOnUpstream(s, buffer, r) =>
-            val newBuffer = buffer :+ a
+            val newBuffer = buffer ++ Chunk(a)
             if (newBuffer.size == bufferSize) {
-              val chunk = Chunk.vector(newBuffer)
-              Idle(s, Vector.empty) -> (() => r(chunk.some.asRight))
+              Idle(s, Chunk.empty) -> (() => r(newBuffer.some.asRight))
             } else
               WaitingOnUpstream(s, newBuffer, r) -> (() => ())
           case DownstreamCancellation => DownstreamCancellation -> (() => ())
@@ -176,8 +175,7 @@ object StreamSubscriber {
         case OnComplete => {
           case WaitingOnUpstream(_, buffer, r) =>
             if (buffer.nonEmpty) {
-              val chunk = Chunk.vector(buffer)
-              UpstreamCompletion -> (() => r(chunk.some.asRight))
+              UpstreamCompletion -> (() => r(buffer.some.asRight))
             } else {
               UpstreamCompletion -> (() => r(None.asRight))
             }
