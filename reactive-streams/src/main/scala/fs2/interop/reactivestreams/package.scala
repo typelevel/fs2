@@ -49,7 +49,7 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     */
-  def fromPublisher[F[_]: Async, A](p: Publisher[A], bufferSize: Int): Stream[F, Chunk[A]] =
+  def fromPublisher[F[_]: Async, A](p: Publisher[A], bufferSize: Int): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A](bufferSize))
       .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
@@ -61,12 +61,12 @@ package object reactivestreams {
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A])
-      .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))).unchunks)
+      .flatMap(s => s.sub.stream(Sync[F].delay(p.subscribe(s))))
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    def toStreamChunk[F[_]: Async](bufferSize: Int): Stream[F, Chunk[A]] =
+    def toStream[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */

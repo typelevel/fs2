@@ -69,8 +69,7 @@ final class StreamSubscriber[F[_], A](
     sub.onError(t)
   }
 
-  def streamChunk(subscribe: F[Unit]): Stream[F, Chunk[A]] = sub.stream(subscribe)
-  def stream(subscribe: F[Unit]): Stream[F, A] = streamChunk(subscribe).unchunks
+  def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
 
   private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
 }
@@ -111,12 +110,13 @@ object StreamSubscriber {
     /** downstream stream */
     def stream(
         subscribe: F[Unit]
-    )(implicit ev: ApplicativeError[F, Throwable]): Stream[F, Chunk[A]] =
+    )(implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
       Stream.bracket(subscribe)(_ => onFinalize) >> Stream
         .eval(dequeue1)
         .repeat
         .rethrow
         .unNoneTerminate
+        .unchunks
   }
 
   private[reactivestreams] def fsm[F[_], A](
