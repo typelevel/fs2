@@ -66,7 +66,12 @@ package object reactivestreams {
 
   implicit final class PublisherOps[A](val publisher: Publisher[A]) extends AnyVal {
 
-    /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
+    /** Creates a lazy stream from an `org.reactivestreams.Publisher`
+      *
+      * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
+      *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
+      *                   A high number will also lead to more elements in memory.
+      */
     def toStream[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)
 
