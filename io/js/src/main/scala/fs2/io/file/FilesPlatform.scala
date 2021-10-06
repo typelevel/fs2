@@ -301,9 +301,9 @@ private[fs2] trait FilesCompanionPlatform {
     private def readStream(path: Path, chunkSize: Int, flags: Flags)(
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
-      readReadable(
-        F.async_[Readable] { cb =>
-          val rs = fsMod
+      Stream
+        .resource(suspendReadableAndRead() {
+          fsMod
             .createReadStream(
               path.toString,
               f(
@@ -313,22 +313,9 @@ private[fs2] trait FilesCompanionPlatform {
                   .setHighWaterMark(chunkSize.toDouble)
               )
             )
-          rs.once_ready(
-            nodeStrings.ready,
-            () => {
-              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-              cb(Right(rs.asInstanceOf[Readable]))
-            }
-          )
-          rs.once_error(
-            nodeStrings.error,
-            error => {
-              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-              cb(Left(js.JavaScriptException(error)))
-            }
-          )
-        }
-      )
+            .asInstanceOf[Readable]
+        })
+        .flatMap(_._2)
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)

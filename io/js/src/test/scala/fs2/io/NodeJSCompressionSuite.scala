@@ -29,9 +29,6 @@ import fs2.io.internal.ByteChunkOps._
 
 class NodeJSCompressionSuite extends CompressionSuite {
 
-  override def scalaCheckTestParameters =
-    super.scalaCheckTestParameters.withMaxSize(10000)
-
   override def deflateStream(
       b: Array[Byte],
       level: Int,
