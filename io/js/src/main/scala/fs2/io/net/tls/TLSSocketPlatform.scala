@@ -67,33 +67,35 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
           errorDef.complete(IOException.unapply(ex).getOrElse(ex))
         )
       }: js.Function1[js.Error, Unit]
-      tlsSock <- Resource.make {
-        F.delay {
-          val tlsSock = upgrade(duplex.asInstanceOf[streamMod.Duplex])
-          tlsSock.on_session(nodeStrings.session, sessionListener)
-          tlsSock.asInstanceOf[netMod.Socket].on_error(nodeStrings.error, errorListener)
-          tlsSock
-        }
-      } { tlsSock =>
-        F.delay {
-          val eventEmitter = tlsSock.asInstanceOf[eventsMod.EventEmitter]
-          eventEmitter.removeListener(
-            "session",
-            sessionListener.asInstanceOf[js.Function1[Any, Unit]]
-          )
-          eventEmitter.removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
-        }
+      tlsSockReadable <- suspendReadableAndRead(
+        destroyIfNotEnded = false,
+        destroyIfCanceled = false
+      ) {
+        val tlsSock = upgrade(duplex.asInstanceOf[streamMod.Duplex])
+        tlsSock.on_session(nodeStrings.session, sessionListener)
+        tlsSock.asInstanceOf[netMod.Socket].on_error(nodeStrings.error, errorListener)
+        tlsSock.asInstanceOf[Readable]
       }
+        .flatMap { case tlsSockReadable @ (tlsSock, _) =>
+          Resource.pure(tlsSockReadable).onFinalize {
+            F.delay {
+              val eventEmitter = tlsSock.asInstanceOf[eventsMod.EventEmitter]
+              eventEmitter.removeListener(
+                "session",
+                sessionListener.asInstanceOf[js.Function1[Any, Unit]]
+              )
+              eventEmitter
+                .removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
+            }
+          }
+        }
+      (tlsSock, readable) = tlsSockReadable
       readStream <- SuspendedStream(
-        readReadable(
-          F.delay(tlsSock.asInstanceOf[Readable]),
-          destroyIfNotEnded = false,
-          destroyIfCanceled = false
-        ).concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
+        readable
       ).race(errorDef.get.flatMap(F.raiseError[SuspendedStream[F, Byte]]).toResource)
         .map(_.merge)
     } yield new AsyncTLSSocket(
-      tlsSock,
+      tlsSock.asInstanceOf[tlsMod.TLSSocket],
       readStream,
       sessionRef.discrete.unNone.head
         .concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))

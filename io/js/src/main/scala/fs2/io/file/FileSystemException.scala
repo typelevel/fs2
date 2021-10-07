@@ -40,42 +40,45 @@ object FileSystemException {
 
 class AccessDeniedException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
-private class JavaScriptAccessDeniedException(cause: js.JavaScriptException)
-    extends AccessDeniedException(cause = cause)
+private class JavaScriptAccessDeniedException(file: String, cause: js.JavaScriptException)
+    extends AccessDeniedException(file, cause)
     with NoStackTrace
 object AccessDeniedException {
   private[file] def unapply(cause: js.JavaScriptException): Option[AccessDeniedException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("EACCES") =>
-        Some(new JavaScriptAccessDeniedException(cause))
+    cause.exception match {
+      case error: js.Error if error.message.contains("EACCES") =>
+        val file = error.message.split('\'').toList.lastOption.getOrElse("<unknown>")
+        Some(new JavaScriptAccessDeniedException(file, cause))
       case _ => None
     }
 }
 
 class DirectoryNotEmptyException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
-private class JavaScriptDirectoryNotEmptyException(cause: js.JavaScriptException)
-    extends DirectoryNotEmptyException(cause = cause)
+private class JavaScriptDirectoryNotEmptyException(file: String, cause: js.JavaScriptException)
+    extends DirectoryNotEmptyException(file, cause)
     with NoStackTrace
 object DirectoryNotEmptyException {
   private[file] def unapply(cause: js.JavaScriptException): Option[DirectoryNotEmptyException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTEMPTY") =>
-        Some(new JavaScriptDirectoryNotEmptyException(cause))
+    cause.exception match {
+      case error: js.Error if error.message.contains("ENOTEMPTY") =>
+        val file = error.message.split('\'').toList.lastOption.getOrElse("<unknown>")
+        Some(new JavaScriptDirectoryNotEmptyException(file, cause))
       case _ => None
     }
 }
 
 class FileAlreadyExistsException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
-private class JavaScriptFileAlreadyExistsException(cause: js.JavaScriptException)
-    extends FileAlreadyExistsException(cause = cause)
+private class JavaScriptFileAlreadyExistsException(file: String, cause: js.JavaScriptException)
+    extends FileAlreadyExistsException(file, cause)
     with NoStackTrace
 object FileAlreadyExistsException {
   private[file] def unapply(cause: js.JavaScriptException): Option[FileAlreadyExistsException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("EEXIST") =>
-        Some(new JavaScriptFileAlreadyExistsException(cause))
+    cause.exception match {
+      case error: js.Error if error.message.contains("EEXIST") =>
+        val file = error.message.split('\'').toList.lastOption.getOrElse("<unknown>")
+        Some(new JavaScriptFileAlreadyExistsException(file, cause))
       case _ => None
     }
 }
@@ -84,28 +87,30 @@ class FileSystemLoopException(file: String) extends FileSystemException(file)
 
 class NoSuchFileException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
-private class JavaScriptNoSuchFileException(cause: js.JavaScriptException)
-    extends NoSuchFileException(cause = cause)
+private class JavaScriptNoSuchFileException(file: String, cause: js.JavaScriptException)
+    extends NoSuchFileException(file, cause)
     with NoStackTrace
 object NoSuchFileException {
   private[file] def unapply(cause: js.JavaScriptException): Option[NoSuchFileException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOENT") =>
-        Some(new JavaScriptNoSuchFileException(cause))
+    cause.exception match {
+      case error: js.Error if error.message.contains("ENOENT") =>
+        val file = error.message.split('\'').toList.lastOption.getOrElse("<unknown>")
+        Some(new JavaScriptNoSuchFileException(file, cause))
       case _ => None
     }
 }
 
 class NotDirectoryException(message: String = null, cause: Throwable = null)
     extends FileSystemException(message, cause)
-private class JavaScriptNotDirectoryException(cause: js.JavaScriptException)
-    extends NotDirectoryException(cause = cause)
+private class JavaScriptNotDirectoryException(file: String, cause: js.JavaScriptException)
+    extends NotDirectoryException(file, cause)
     with NoStackTrace
 object NotDirectoryException {
   private[file] def unapply(cause: js.JavaScriptException): Option[NotDirectoryException] =
-    cause match {
-      case js.JavaScriptException(error: js.Error) if error.message.contains("ENOTDIR") =>
-        Some(new JavaScriptNotDirectoryException(cause))
+    cause.exception match {
+      case error: js.Error if error.message.contains("ENOTDIR") =>
+        val file = error.message.split('\'').toList.lastOption.getOrElse("<unknown>")
+        Some(new JavaScriptNotDirectoryException(file, cause))
       case _ => None
     }
 }

@@ -53,8 +53,8 @@ import fs2.internal.InterruptContext.InterruptionOutcome
   * Scopes are organized in tree structure, with each scope having at max one parent (a root scope
   * has no parent) with 0 or more child scopes.
   *
-  * Every time a new scope is created, it inherits parent from the current scope and adds itself as
-  * a child of that parent.
+  * Every time a new scope is opened, it is created as a child of the current scope, with its parent set to that scope
+  * and itself added as a child.
   *
   * During the interpretation of nondeterministic streams (i.e. merge), there may be multiple scopes
   * attached to a single parent and these scopes may be created and closed in a nondeterministic

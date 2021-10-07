@@ -36,11 +36,11 @@ private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
       ch: AsynchronousSocketChannel
   ): Resource[F, Socket[F]] =
-    Resource.eval {
+    Resource.make {
       (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
         new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
       }
-    }
+    }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
   private[net] abstract class BufferedReads[F[_]](
       readSemaphore: Semaphore[F]

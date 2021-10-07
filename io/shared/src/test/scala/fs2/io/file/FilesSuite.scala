@@ -45,10 +45,18 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("suspends errors in the effect") {
       Stream
         .eval(tempFile.use(IO.pure))
-        .flatMap(path => Files[IO].readAll(path))
+        .flatMap { path =>
+          Files[IO]
+            .readAll(path)
+            .drain
+            .void
+            .recover { case ex: NoSuchFileException =>
+              assertEquals(ex.getMessage, path.toString)
+            }
+        }
         .compile
         .drain
-        .intercept[NoSuchFileException]
+
     }
   }
 
@@ -109,16 +117,18 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { path =>
-          Stream("Hello", " world!")
+          (Stream("Hello", " world!")
             .covary[IO]
             .through(text.utf8.encode)
             .through(Files[IO].writeAll(path, Flags(Flag.Write, Flag.CreateNew))) ++ Files[IO]
             .readAll(path)
-            .through(text.utf8.decode)
+            .through(text.utf8.decode)).void
+            .recover { case ex: FileAlreadyExistsException =>
+              assertEquals(ex.getMessage(), path.toString)
+            }
         }
         .compile
         .drain
-        .intercept[FileAlreadyExistsException]
     }
   }
 
@@ -154,7 +164,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should fail for a non existent file") {
       Files[IO]
         .getPosixPermissions(Path("nothing"))
-        .intercept[NoSuchFileException]
+        .void
+        .recover { case ex: NoSuchFileException =>
+          assertEquals(ex.getMessage, "nothing")
+        }
     }
     test("should return permissions for existing file") {
       val permissions = PosixPermissions.fromString("rwxrwxr-x").get
@@ -169,10 +182,11 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       val permissions = PosixPermissions.fromString("r--r--r--").get
       tempFile
         .use { p =>
-          Files[IO].setPosixPermissions(p, permissions) >>
-            Files[IO].open(p, Flags.Write).use_.void
+          (Files[IO].setPosixPermissions(p, permissions) >>
+            Files[IO].open(p, Flags.Write).use_.void).recover { case ex: AccessDeniedException =>
+            assertEquals(ex.getMessage, p.toString)
+          }
         }
-        .intercept[AccessDeniedException]
     }
   }
 
@@ -180,7 +194,10 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should fail for a non existent file") {
       Files[IO]
         .setPosixPermissions(Path("nothing"), PosixPermissions())
-        .intercept[NoSuchFileException]
+        .void
+        .recover { case ex: NoSuchFileException =>
+          assertEquals(ex.getMessage, "nothing")
+        }
     }
     test("should correctly change file permissions for existing file") {
       val permissions = PosixPermissions.fromString("rwxrwxr-x").get
@@ -215,11 +232,15 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("should fail on a non existent file") {
       Files[IO]
         .delete(Path("nothing"))
-        .intercept[NoSuchFileException]
+        .recover { case ex: NoSuchFileException =>
+          assertEquals(ex.getMessage, "nothing")
+        }
     }
     test("should fail on a non empty directory") {
       tempFilesHierarchy.use { p =>
-        Files[IO].delete(p).intercept[DirectoryNotEmptyException]
+        Files[IO].delete(p).recover { case ex: DirectoryNotEmptyException =>
+          assertEquals(ex.getMessage, p.toString)
+        }
       }
     }
   }
@@ -423,10 +444,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("fail for non-directory") {
       Stream
         .resource(tempFile)
-        .flatMap(Files[IO].list)
+        .flatMap { p =>
+          Files[IO].list(p).void.recover { case ex: NotDirectoryException =>
+            assertEquals(ex.getMessage, p.toString)
+          }
+        }
         .compile
         .drain
-        .intercept[NotDirectoryException]
     }
   }
 
