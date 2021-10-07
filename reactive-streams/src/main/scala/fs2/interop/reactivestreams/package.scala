@@ -48,6 +48,11 @@ package object reactivestreams {
   /** Creates a lazy stream from an `org.reactivestreams.Publisher`.
     *
     * The publisher only receives a subscriber when the stream is run.
+    *
+    * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
+    *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
+    *                   The publisher can use this `bufferSize` to query elements in batch.
+    *                   A high number will also lead to more elements in memory.
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A], bufferSize: Int): Stream[F, A] =
     Stream
@@ -58,7 +63,10 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     */
-  @deprecated("Use fromPublisher method with a buffer size", "3.1.4")
+  @deprecated(
+    "Use fromPublisher method with a buffer size. Use a buffer size of 1 to keep the same behavior.",
+    "3.1.4"
+  )
   def fromPublisher[F[_]: Async, A](p: Publisher[A]): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A])
@@ -70,13 +78,17 @@ package object reactivestreams {
       *
       * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
       *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
+      *                   The publisher can use this `bufferSize` to query elements in batch.
       *                   A high number will also lead to more elements in memory.
       */
     def toStream[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
-    @deprecated("Use toStream method with a buffer size", "3.1.4")
+    @deprecated(
+      "Use toStream method with a buffer size. Use a buffer size of 1 to keep the same behavior.",
+      "3.1.4"
+    )
     def toStream[F[_]: Async]: Stream[F, A] =
       fromPublisher(publisher)
   }

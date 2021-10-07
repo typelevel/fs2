@@ -79,7 +79,10 @@ object StreamSubscriber {
   def apply[F[_]: Async, A](bufferSize: Int): F[StreamSubscriber[F, A]] =
     fsm[F, A](bufferSize).map(new StreamSubscriber(_))
 
-  @deprecated("Use apply method with a buffer size", "3.1.4")
+  @deprecated(
+    "Use apply method with a buffer size. Use a buffer size of 1 to keep the same behavior.",
+    "3.1.4"
+  )
   def apply[F[_]: Async, A]: F[StreamSubscriber[F, A]] =
     apply(bufferSize = 1)
 
