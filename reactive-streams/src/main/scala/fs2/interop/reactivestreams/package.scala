@@ -35,7 +35,7 @@ import org.reactivestreams._
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
   * scala> val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStream[IO](bufferSize = 16))
+  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStreamBuffered[IO](bufferSize = 16))
   * scala>
   * scala> downstream.compile.toVector.unsafeRunSync()
   * res0: Vector[Int] = Vector(1, 2, 3)
@@ -81,12 +81,12 @@ package object reactivestreams {
       *                   The publisher can use this `bufferSize` to query elements in batch.
       *                   A high number will also lead to more elements in memory.
       */
-    def toStream[F[_]: Async](bufferSize: Int): Stream[F, A] =
+    def toStreamBuffered[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher` */
     @deprecated(
-      "Use toStream method with a buffer size. Use a buffer size of 1 to keep the same behavior.",
+      "Use toStreamBuffered method instead. Use a buffer size of 1 to keep the same behavior.",
       "3.1.4"
     )
     def toStream[F[_]: Async]: Stream[F, A] =

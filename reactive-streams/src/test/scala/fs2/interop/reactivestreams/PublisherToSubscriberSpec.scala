@@ -34,7 +34,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
       val subscriberStream =
         Stream
           .resource(Stream.emits(ints).covary[IO].toUnicastPublisher)
-          .flatMap(_.toStream[IO](bufferSize))
+          .flatMap(_.toStreamBuffered[IO](bufferSize))
 
       assert(subscriberStream.compile.toVector.unsafeRunSync() == (ints.toVector))
     }
@@ -46,7 +46,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
     // TODO unsafeRunSync hangs
     val input: Stream[IO, Int] = Stream(1, 2, 3) ++ Stream.raiseError[IO](TestError)
     val output: Stream[IO, Int] =
-      Stream.resource(input.toUnicastPublisher).flatMap(_.toStream[IO](1))
+      Stream.resource(input.toUnicastPublisher).flatMap(_.toStreamBuffered[IO](1))
 
     assert(output.compile.drain.attempt.unsafeRunSync() == (Left(TestError)))
   }
@@ -57,7 +57,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
         val subscriberStream =
           Stream
             .resource(Stream.emits(as ++ bs).covary[IO].toUnicastPublisher)
-            .flatMap(_.toStream[IO](bufferSize).take(as.size.toLong))
+            .flatMap(_.toStreamBuffered[IO](bufferSize).take(as.size.toLong))
 
         assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
     }
