@@ -77,8 +77,15 @@ final class StreamSubscriber[F[_], A](
 
 object StreamSubscriber {
 
+  def apply[F[_]: Async, A](bufferSize: Int): F[StreamSubscriber[F, A]] =
+    fsm[F, A](bufferSize).map(new StreamSubscriber(_))
+
+  @deprecated(
+    "Use apply method with a buffer size. Use a buffer size of 1 to keep the same behavior.",
+    "3.1.4"
+  )
   def apply[F[_]: Async, A]: F[StreamSubscriber[F, A]] =
-    fsm[F, A].map(new StreamSubscriber(_))
+    apply(bufferSize = 1)
 
   @deprecated("Use apply method without dispatcher instead", "3.1.4")
   def apply[F[_]: Async, A](dispatcher: Dispatcher[F]): F[StreamSubscriber[F, A]] =
@@ -103,7 +110,7 @@ object StreamSubscriber {
     def onFinalize: F[Unit]
 
     /** producer for downstream */
-    def dequeue1: F[Either[Throwable, Option[A]]]
+    def dequeue1: F[Either[Throwable, Option[Chunk[A]]]]
 
     /** downstream stream */
     def stream(subscribe: F[Unit])(implicit ev: ApplicativeError[F, Throwable]): Stream[F, A] =
@@ -112,10 +119,13 @@ object StreamSubscriber {
         .repeat
         .rethrow
         .unNoneTerminate
+        .unchunks
   }
 
-  private[reactivestreams] def fsm[F[_], A](implicit F: Async[F]): F[FSM[F, A]] = {
-    type Out = Either[Throwable, Option[A]]
+  private[reactivestreams] def fsm[F[_], A](
+      bufferSize: Int
+  )(implicit F: Async[F]): F[FSM[F, A]] = {
+    type Out = Either[Throwable, Option[Chunk[A]]]
 
     sealed trait Input
     case class OnSubscribe(s: Subscription) extends Input
@@ -127,9 +137,10 @@ object StreamSubscriber {
 
     sealed trait State
     case object Uninitialized extends State
-    case class Idle(sub: Subscription) extends State
+    case class Idle(sub: Subscription, buffer: Chunk[A]) extends State
     case class RequestBeforeSubscription(req: Out => Unit) extends State
-    case class WaitingOnUpstream(sub: Subscription, elementRequest: Out => Unit) extends State
+    case class WaitingOnUpstream(sub: Subscription, buffer: Chunk[A], elementRequest: Out => Unit)
+        extends State
     case object UpstreamCompletion extends State
     case object DownstreamCancellation extends State
     case class UpstreamError(err: Throwable) extends State
@@ -143,8 +154,9 @@ object StreamSubscriber {
     def step(in: Input): State => (State, () => Unit) =
       in match {
         case OnSubscribe(s) => {
-          case RequestBeforeSubscription(req) => WaitingOnUpstream(s, req) -> (() => s.request(1))
-          case Uninitialized                  => Idle(s) -> (() => ())
+          case RequestBeforeSubscription(req) =>
+            WaitingOnUpstream(s, Chunk.empty, req) -> (() => s.request(bufferSize.toLong))
+          case Uninitialized => Idle(s, Chunk.empty) -> (() => ())
           case o =>
             val err = new Error(s"received subscription in invalid state [$o]")
             o -> { () =>
@@ -153,31 +165,42 @@ object StreamSubscriber {
             }
         }
         case OnNext(a) => {
-          case WaitingOnUpstream(s, r) => Idle(s) -> (() => r(a.some.asRight))
-          case DownstreamCancellation  => DownstreamCancellation -> (() => ())
+          case WaitingOnUpstream(s, buffer, r) =>
+            val newBuffer = buffer ++ Chunk(a)
+            if (newBuffer.size == bufferSize) {
+              Idle(s, Chunk.empty) -> (() => r(newBuffer.some.asRight))
+            } else
+              WaitingOnUpstream(s, newBuffer, r) -> (() => ())
+          case DownstreamCancellation => DownstreamCancellation -> (() => ())
           case o =>
             o -> (() => reportFailure(new Error(s"received record [$a] in invalid state [$o]")))
         }
         case OnComplete => {
-          case WaitingOnUpstream(_, r) => UpstreamCompletion -> (() => r(None.asRight))
-          case _                       => UpstreamCompletion -> (() => ())
+          case WaitingOnUpstream(_, buffer, r) =>
+            if (buffer.nonEmpty) {
+              UpstreamCompletion -> (() => r(buffer.some.asRight))
+            } else {
+              UpstreamCompletion -> (() => r(None.asRight))
+            }
+          case _ => UpstreamCompletion -> (() => ())
         }
         case OnError(e) => {
-          case WaitingOnUpstream(_, r) => UpstreamError(e) -> (() => r(e.asLeft))
-          case _                       => UpstreamError(e) -> (() => ())
+          case WaitingOnUpstream(_, _, r) => UpstreamError(e) -> (() => r(e.asLeft))
+          case _                          => UpstreamError(e) -> (() => ())
         }
         case OnFinalize => {
-          case WaitingOnUpstream(sub, r) =>
+          case WaitingOnUpstream(sub, _, r) =>
             DownstreamCancellation -> { () =>
               sub.cancel()
               r(None.asRight)
             }
-          case Idle(sub) => DownstreamCancellation -> (() => sub.cancel())
-          case o         => o -> (() => ())
+          case Idle(sub, _) => DownstreamCancellation -> (() => sub.cancel())
+          case o            => o -> (() => ())
         }
         case OnDequeue(r) => {
-          case Uninitialized          => RequestBeforeSubscription(r) -> (() => ())
-          case Idle(sub)              => WaitingOnUpstream(sub, r) -> (() => sub.request(1))
+          case Uninitialized => RequestBeforeSubscription(r) -> (() => ())
+          case Idle(sub, buffer) =>
+            WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize.toLong))
           case err @ UpstreamError(e) => err -> (() => r(e.asLeft))
           case UpstreamCompletion     => UpstreamCompletion -> (() => r(None.asRight))
           case o => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
@@ -197,8 +220,8 @@ object StreamSubscriber {
         def onError(t: Throwable): Unit = nextState(OnError(t))
         def onComplete(): Unit = nextState(OnComplete)
         def onFinalize: F[Unit] = F.delay(nextState(OnFinalize))
-        def dequeue1: F[Either[Throwable, Option[A]]] =
-          F.async_[Either[Throwable, Option[A]]] { cb =>
+        def dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
+          F.async_[Either[Throwable, Option[Chunk[A]]]] { cb =>
             nextState(OnDequeue(out => cb(Right(out))))
           }
       }

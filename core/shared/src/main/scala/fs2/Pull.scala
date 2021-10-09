@@ -339,13 +339,13 @@ object Pull extends PullLowPriority {
   /** Lifts the given optional value `O` into a pull that performs no effects, emits the content of
     * that option, and always terminates successfully with a unit result.
     */
-  def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull[Pure, O, Unit] =
+  def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull[F, O, Unit] =
     opt.map(output1).getOrElse(done)
 
   /** Creates a pull that emits the elements of the given chunk. The new pull performs no effects
     * and terminates successfully with a unit result.
     */
-  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[Pure, O, Unit] =
+  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
     if (os.isEmpty) Pull.done else Output[O](os)
 
   private[fs2] def acquire[F[_], R](

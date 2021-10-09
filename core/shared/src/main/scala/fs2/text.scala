@@ -258,7 +258,7 @@ object text {
         decoder: CharsetDecoder,
         out: CharBuffer
     ): Pull[F, String, Unit] = {
-      out.clear()
+      (out: Buffer).clear()
       decoder.flush(out) match {
         case res if res.isUnderflow =>
           if (out.position() > 0) {
