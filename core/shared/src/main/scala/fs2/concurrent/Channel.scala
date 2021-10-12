@@ -117,14 +117,14 @@ object Channel {
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     case class State(
-        values: Vector[A],
+        values: List[A],
         size: Int,
         waiting: Option[Deferred[F, Unit]],
-        producers: Vector[(A, Deferred[F, Unit])],
+        producers: List[(A, Deferred[F, Unit])],
         closed: Boolean
     )
 
-    val initial = State(Vector.empty, 0, None, Vector.empty, false)
+    val initial = State(List.empty, 0, None, List.empty, false)
 
     (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
@@ -146,12 +146,12 @@ object Channel {
                 case State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity)
                     (
-                      State(values :+ a, size + 1, None, producers, false),
+                      State(a ::  values, size + 1, None, producers, false),
                       notifyStream(waiting)
                     )
                   else
                     (
-                      State(values, size, None, producers :+ (a -> producer), false),
+                      State(values, size, None, (a, producer) :: producers, false),
                       notifyStream(waiting) <* waitOnBound(producer, poll)
                     )
               }.flatten
@@ -189,17 +189,16 @@ object Channel {
                     var allValues_ = values
 
                     producers.foreach { case (value, producer) =>
-                      allValues_ = allValues_ :+ value
+                      allValues_ = value :: allValues_
                       unblock_ = unblock_ >> producer.complete(()).void
                     }
 
                     val unblock = unblock_
-                    val allValues = allValues_
 
-                    val toEmit = Chunk.vector(allValues)
+                    val toEmit = makeChunk(allValues_, size)
 
                     (
-                      State(Vector(), 0, None, Vector.empty, closed),
+                      State(List.empty, 0, None, List.empty, closed),
                       // unblock needs to execute in F, so we can make it uncancelable
                       unblock.as(
                         Pull.output(toEmit) >> consumeLoop
@@ -231,6 +230,18 @@ object Channel {
           }
 
         def signalClosure = closedGate.complete(())
+
+        private def makeChunk(allValues : List[A], size: Int): Chunk[A] = {
+          val arr = new Array[Any](size)
+          var i = size - 1
+          var values = allValues
+          while(i >= 0) {
+            arr(i) = values.head
+            values = values.tail
+            i -= 1
+          }
+          Chunk.array(arr).asInstanceOf[Chunk[A]]
+        }
       }
     }
   }
