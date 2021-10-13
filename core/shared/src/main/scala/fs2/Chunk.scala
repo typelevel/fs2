@@ -93,11 +93,16 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.ArraySlice(toArray[O2], 0, size)
 
   /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an `Array[Any]`. */
+  @deprecated("Unsound when used with primitives, use compactBoxed instead", "3.1.6")
   def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] = {
     val arr = new Array[Any](size)
     copyToArray(arr, 0)
     Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
   }
+
+  /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an `Array[Any]`. */
+  def compactBoxed[O2 >: O]: Chunk.BoxedArraySlice[O2] =
+    Chunk.BoxedArraySlice(toArray[Any], 0, size)
 
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
@@ -678,6 +683,7 @@ object Chunk
         this.asInstanceOf[ArraySlice[O2]]
       else super.compact
 
+    @deprecated("Unsound", "3.1.6")
     override def compactUntagged[O2 >: O]: ArraySlice[O2] =
       if ((classOf[Array[Any]] eq values.getClass) && offset == 0 && length == values.length)
         this.asInstanceOf[ArraySlice[O2]]
@@ -706,6 +712,40 @@ object Chunk
   }
   object ArraySlice {
     def apply[O: ClassTag](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
+  }
+  case class BoxedArraySlice[O](values: Array[Any], offset: Int, length: Int)
+      extends Chunk[O] {
+    require(
+      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
+    )
+
+    def size = length
+    def apply(i: Int) = values(offset + i).asInstanceOf[O]
+
+    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
+      if (xs.getClass eq values.getClass)
+        System.arraycopy(values, offset, xs, start, length)
+      else {
+        var i = 0
+        while (i < length) {
+          xs(i + start) = values(i + offset).asInstanceOf[O2]
+          i += 1
+        }
+        ()
+      }
+
+    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
+      BoxedArraySlice(values, offset, n) -> BoxedArraySlice(values, offset + n, length - n)
+
+    override def drop(n: Int): Chunk[O] =
+      if (n <= 0) this
+      else if (n >= size) Chunk.empty
+      else BoxedArraySlice(values, offset + n, length - n)
+
+    override def take(n: Int): Chunk[O] =
+      if (n <= 0) Chunk.empty
+      else if (n >= size) this
+      else BoxedArraySlice(values, offset, n)
   }
 
   sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
@@ -1066,12 +1106,12 @@ object Chunk
     }
 
     override def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
-      compactUntagged.traverse(f)
+      compactBoxed.traverse(f)
 
     override def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit
         F: Applicative[F]
     ): F[Chunk[O2]] =
-      compactUntagged.traverseFilter(f)
+      compactBoxed.traverseFilter(f)
   }
 
   object Queue {
