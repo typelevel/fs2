@@ -96,7 +96,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] = {
     val arr = new Array[Any](size)
     copyToArray(arr, 0)
-    Chunk.array(arr).asInstanceOf[Chunk.ArraySlice[O2]]
+    Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
   }
 
   /** Drops the first `n` elements of this chunk. */
