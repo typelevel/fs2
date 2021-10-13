@@ -94,11 +94,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an `Array[Any]`. */
   @deprecated("Unsound when used with primitives, use compactBoxed instead", "3.1.6")
-  def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] = {
-    val arr = new Array[Any](size)
-    copyToArray(arr, 0)
+  def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
-  }
 
   /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an array buffer. */
   def compactBoxed[O2 >: O]: Chunk[O2] = {
