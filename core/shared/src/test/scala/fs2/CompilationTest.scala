@@ -112,4 +112,5 @@ object ThisModuleShouldCompile {
   Stream(1, 2, 3).compile.to(Set)
   Stream(1, 2, 3).to(List)
   Stream(1, 2, 3).covary[Fallible].to(List)
+  Stream(1, 2, 3).covary[IO].compileInterruptible.to(List)
 }

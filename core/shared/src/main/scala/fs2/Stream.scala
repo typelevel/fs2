@@ -519,6 +519,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream.CompileOps[F2, G, O2] =
     new Stream.CompileOps[F2, G, O2](underlying)
 
+  /** Like [[compile]] but requires a [[cats.effect.Concurrent]] instance, ensuring that
+    *  interruption will work correctly.
+    */
+  def compileInterruptible[F2[x] >: F[x], O2 >: O](implicit
+      concurrent: Concurrent[F2]
+  ): Stream.CompileOps[F2, F2, O2] = compile
+
   /** Runs the supplied stream in the background as elements from this stream are pulled.
     *
     * The resulting stream terminates upon termination of this stream. The background stream will
