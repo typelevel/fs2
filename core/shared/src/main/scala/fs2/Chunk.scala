@@ -88,7 +88,11 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
 
-  /** Converts this chunk to a chunk backed by a single array. */
+  /** Converts this chunk to a chunk backed by a single array.
+    *
+    * Alternatively, call `toIndexedChunk` to get back a chunk with guaranteed O(1) indexed lookup
+    * while also minimizing copying.
+    */
   def compact[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[O2], 0, size)
 
@@ -308,6 +312,21 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def toChain: Chain[O] =
     if (isEmpty) Chain.empty
     else Chain.fromSeq(toList)
+
+  /** Returns a chunk with guaranteed O(1) lookup by index.
+    *
+    * Unlike `compact`, this operation does not copy any elements unless this chunk
+    * does not provide O(1) lookup by index -- e.g., a chunk built via 1 or more usages
+    * of `++`.
+    */
+  def toIndexedChunk: Chunk[O] = this match {
+    case _: Chunk.Queue[_] =>
+      val b = collection.mutable.Buffer.newBuilder[O]
+      b.sizeHint(size)
+      foreach(o => b += o)
+      Chunk.buffer(b.result())
+    case other => other
+  }
 
   /** Converts this chunk to a list. */
   def toList: List[O] =
@@ -1063,6 +1082,14 @@ object Chunk
 
       check(chunks, 0)
     }
+
+    override def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
+      toIndexedChunk.traverse(f)
+
+    override def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit
+        F: Applicative[F]
+    ): F[Chunk[O2]] =
+      toIndexedChunk.traverseFilter(f)
   }
 
   object Queue {

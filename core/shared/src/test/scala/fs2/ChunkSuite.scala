@@ -215,10 +215,4 @@ class ChunkSuite extends Fs2Suite {
   test("compactUntagged - regression #2679") {
     Chunk.Queue.singleton(Chunk.singleton(1)).traverse(x => Option(x))
   }
-
-  test("compactBoxed soundness") {
-    assertEquals(Chunk(1, 2, 3).compactBoxed.compact.values.toList, List(1, 2, 3))
-    assertEquals(Chunk(1, 2, 3).compactBoxed.toList, List(1, 2, 3))
-    assertEquals(Chunk(1, 2, 3).compactBoxed.map((_: Int) + 1).toList, List(2, 3, 4))
-  }
 }
