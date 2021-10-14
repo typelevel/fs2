@@ -97,14 +97,6 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
 
-  /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an array buffer. */
-  def compactBoxed[O2 >: O]: Chunk[O2] = {
-    val b = collection.mutable.Buffer.newBuilder[O]
-    b.sizeHint(size)
-    foreach(e => b += e)
-    Chunk.buffer(b.result())
-  }
-
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
 
@@ -1071,14 +1063,6 @@ object Chunk
 
       check(chunks, 0)
     }
-
-    override def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
-      compactBoxed.traverse(f)
-
-    override def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit
-        F: Applicative[F]
-    ): F[Chunk[O2]] =
-      compactBoxed.traverseFilter(f)
   }
 
   object Queue {
