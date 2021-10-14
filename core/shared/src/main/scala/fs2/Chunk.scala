@@ -88,16 +88,18 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
 
-  /** Converts this chunk to a chunk backed by a single array. */
+  /** Converts this chunk to a chunk backed by a single array.
+    *
+    * Alternatively, call `toIndexedChunk` to get back a chunk with guaranteed O(1) indexed lookup
+    * while also minimizing copying.
+    */
   def compact[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[O2], 0, size)
 
   /** Like `compact` but does not require a `ClassTag`. Elements are boxed and stored in an `Array[Any]`. */
-  def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] = {
-    val arr = new Array[Any](size)
-    copyToArray(arr, 0)
-    Chunk.array(arr).asInstanceOf[Chunk.ArraySlice[O2]]
-  }
+  @deprecated("Unsound when used with primitives, use compactBoxed instead", "3.1.6")
+  def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] =
+    Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
 
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
@@ -310,6 +312,21 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def toChain: Chain[O] =
     if (isEmpty) Chain.empty
     else Chain.fromSeq(toList)
+
+  /** Returns a chunk with guaranteed O(1) lookup by index.
+    *
+    * Unlike `compact`, this operation does not copy any elements unless this chunk
+    * does not provide O(1) lookup by index -- e.g., a chunk built via 1 or more usages
+    * of `++`.
+    */
+  def toIndexedChunk: Chunk[O] = this match {
+    case _: Chunk.Queue[_] =>
+      val b = collection.mutable.Buffer.newBuilder[O]
+      b.sizeHint(size)
+      foreach(o => b += o)
+      Chunk.buffer(b.result())
+    case other => other
+  }
 
   /** Converts this chunk to a list. */
   def toList: List[O] =
@@ -678,6 +695,7 @@ object Chunk
         this.asInstanceOf[ArraySlice[O2]]
       else super.compact
 
+    @deprecated("Unsound", "3.1.6")
     override def compactUntagged[O2 >: O]: ArraySlice[O2] =
       if ((classOf[Array[Any]] eq values.getClass) && offset == 0 && length == values.length)
         this.asInstanceOf[ArraySlice[O2]]
@@ -1066,12 +1084,12 @@ object Chunk
     }
 
     override def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
-      compactUntagged.traverse(f)
+      toIndexedChunk.traverse(f)
 
     override def traverseFilter[F[_], O2](f: O => F[Option[O2]])(implicit
         F: Applicative[F]
     ): F[Chunk[O2]] =
-      compactUntagged.traverseFilter(f)
+      toIndexedChunk.traverseFilter(f)
   }
 
   object Queue {
