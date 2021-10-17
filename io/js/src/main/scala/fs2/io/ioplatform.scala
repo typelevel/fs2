@@ -29,11 +29,13 @@ import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
+import fs2.internal.jsdeps.std
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
+import fs2.io.internal.ThrowableOps._
 
 import scala.annotation.nowarn
 import scala.scalajs.js
@@ -78,7 +80,7 @@ private[fs2] trait ioplatform {
                 readable.destroy()
             }
           case (readable, Resource.ExitCase.Errored(ex)) =>
-            SyncIO(readable.destroy(js.Error(ex.getMessage())))
+            SyncIO(readable.destroy(ex.toJSError))
           case (readable, Resource.ExitCase.Canceled) =>
             if (destroyIfCanceled)
               SyncIO(readable.destroy())
@@ -94,7 +96,7 @@ private[fs2] trait ioplatform {
         _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
           dispatcher.unsafeRunAndForget(queue.offer(None))
         }(SyncIO.syncForSyncIO)
-        _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
+        _ <- registerListener[std.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
           dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
         }(SyncIO.syncForSyncIO)
       } yield readable
@@ -172,7 +174,7 @@ private[fs2] trait ioplatform {
           }
 
           go(in).stream.handleErrorWith { ex =>
-            Stream.eval(F.delay(writable.destroy(js.Error(ex.getMessage))))
+            Stream.eval(F.delay(writable.destroy(ex.toJSError)))
           }.drain
         }
         .adaptError { case IOException(ex) => ex }
@@ -212,7 +214,7 @@ private[fs2] trait ioplatform {
                 dispatcher.unsafeRunAndForget(
                   readQueue.take.attempt.flatMap {
                     case Left(ex) =>
-                      F.delay(readable.destroy(js.Error(ex.getMessage)))
+                      F.delay(readable.destroy(ex.toJSError))
                     case Right(chunk) =>
                       F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
                   }
@@ -227,7 +229,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            .fold[std.Error | Null](null)(_.toJSError)
                         )
                       )
                     )
@@ -242,7 +244,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            .fold[std.Error | Null](null)(_.toJSError)
                         )
                       )
                     )
@@ -260,7 +262,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[js.Error | Null](null)(e => js.Error(e.getMessage()))
+                            .fold[std.Error | Null](null)(_.toJSError)
                         )
                       )
                     )

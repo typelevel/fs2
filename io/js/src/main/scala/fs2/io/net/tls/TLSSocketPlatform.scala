@@ -36,6 +36,7 @@ import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.streamMod
 import fs2.internal.jsdeps.node.tlsMod
+import fs2.internal.jsdeps.std
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.SuspendedStream
 
@@ -66,7 +67,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         dispatcher.unsafeRunAndForget(
           errorDef.complete(IOException.unapply(ex).getOrElse(ex))
         )
-      }: js.Function1[js.Error, Unit]
+      }: js.Function1[std.Error, Unit]
       tlsSockReadable <- suspendReadableAndRead(
         destroyIfNotEnded = false,
         destroyIfCanceled = false
