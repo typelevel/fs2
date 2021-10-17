@@ -247,6 +247,7 @@ lazy val node = crossProject(JSPlatform)
     stOutputPackage := "fs2.internal.jsdeps",
     stPrivateWithin := Some("fs2"),
     stStdlib := List("es2020"),
+    stUseScalaJsDom := false,
     stIncludeDev := true
   )
 
