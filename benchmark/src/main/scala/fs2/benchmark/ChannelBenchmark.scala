@@ -43,9 +43,30 @@ class ChannelBenchmark {
   @Benchmark
   def sendPull(): Unit =
     Channel
-      .bounded[IO, Unit](size)
+      .unbounded[IO, Unit]
       .flatMap { channel =>
-        list.traverse_(_ => channel.send(())) *> channel.close *> channel.stream.compile.drain
+        val action = channel.send(())
+        list.traverse(_ => action) *> channel.close *> channel.stream.compile.drain
+      }
+      .unsafeRunSync()
+
+  @Benchmark
+  def sendPullPar2(): Unit =
+    Channel
+      .unbounded[IO, Unit]
+      .flatMap { channel =>
+        val action = (channel.send(()), channel.send(())).parTupled
+        list.traverse_(_ => action) *> channel.close *> channel.stream.compile.drain
+      }
+      .unsafeRunSync()
+
+  @Benchmark
+  def sendPullPar3(): Unit =
+    Channel
+      .unbounded[IO, Unit]
+      .flatMap { channel =>
+        val action = (channel.send(()), channel.send(()), channel.send(())).parTupled
+        list.traverse_(_ => action) *> channel.close *> channel.stream.compile.drain
       }
       .unsafeRunSync()
 }
