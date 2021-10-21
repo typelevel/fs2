@@ -62,7 +62,7 @@ final class Scan[S, -I, +O](
   def onComplete(s: S): Chunk[O] = onComplete_(s)
 
   /** Converts this scan to a pipe. */
-  def toPipe[F[_]]: Pipe[F, I, O] =
+  def toPipe[F[_]]: Stream[F, I] => Stream[F, O] =
     _.pull
       .scanChunks(initial)(transformAccumulate)
       .flatMap(state => Pull.output(onComplete(state)))

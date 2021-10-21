@@ -34,8 +34,6 @@ import cats.effect.kernel.{Clock, Temporal}
 case class TimeStamped[+A](time: FiniteDuration, value: A) {
   def map[B](f: A => B): TimeStamped[B] = copy(value = f(value))
   def mapTime(f: FiniteDuration => FiniteDuration): TimeStamped[A] = copy(time = f(time))
-
-  def toTimeSeriesValue: TimeSeriesValue[A] = map(Some.apply)
 }
 
 object TimeStamped {
@@ -44,6 +42,8 @@ object TimeStamped {
 
   def now[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] =
     Clock[F].realTime.map(TimeStamped(_, a))
+
+  def tick(time: FiniteDuration): TimeStamped[Option[Nothing]] = TimeStamped(time, None)
 
   /** Orders values by timestamp -- values with the same timestamp are considered equal. */
   def timeBasedOrdering[A]: Ordering[TimeStamped[A]] = new Ordering[TimeStamped[A]] {

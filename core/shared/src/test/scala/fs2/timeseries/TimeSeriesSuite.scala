@@ -60,4 +60,25 @@ class TimeSeriesSuite extends Fs2Suite {
       )
     )
   }
+
+  test("support combining two scans via an either") {
+    val add1: Scan[Unit, Int, Int] = Scan.lift(_ + 1)
+    val add2: Scan[Unit, Int, Int] = Scan.lift(_ + 2)
+    val x: Scan[Unit, Either[Int, Int], Int] = add1.choice(add2).imapState(_._1)(u => (u, u))
+    val source: Stream[Pure, TimeStamped[Option[Either[Int, Int]]]] =
+      Stream(
+        Right(1).at(0.seconds),
+        Left(2).at(0.5.seconds),
+        Right(3).at(1.5.seconds)
+      ).through(TimeSeries.interpolateTicks(1.second))
+    assertEquals(
+      source.through(TimeSeries.preserve(x).toPipe).toList,
+      List(
+        Some(3) at 0.millis,
+        Some(3) at 500.millis,
+        None at 1000.millis,
+        Some(5) at 1500.millis
+      )
+    )
+  }
 }
