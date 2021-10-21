@@ -68,7 +68,7 @@ jobs:
         run: sbt ++${{ matrix.scala }} microsite/mdoc
 
       - name: Compress target directories
-        run: tar cf targets.tar target node/js/target core/js/target core/jvm/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target benchmark/target project/target
+        run: tar cf targets.tar target node/js/target protocols/js/target core/js/target core/jvm/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target benchmark/target project/target
 
       - name: Upload target directories
         uses: actions/upload-artifact@v2
