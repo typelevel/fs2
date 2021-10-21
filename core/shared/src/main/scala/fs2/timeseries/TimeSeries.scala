@@ -48,7 +48,8 @@ object TimeSeries {
       reorderOver: FiniteDuration
   ): Stream[F, TimeStamped[Option[A]]] = {
     val src: Stream[F, TimeStamped[Option[A]]] = source.map(tsa => tsa.map(Some(_): Option[A]))
-    val ticks: Stream[F, TimeStamped[Option[Nothing]]] = timeTicks(tickPeriod).map(tsu => tsu.map(_ => None))
+    val ticks: Stream[F, TimeStamped[Option[Nothing]]] =
+      timeTicks(tickPeriod).map(tsu => tsu.map(_ => None))
     src.merge(ticks).through(TimeStamped.reorderLocally(reorderOver))
   }
 
@@ -61,20 +62,26 @@ object TimeSeries {
     apply(source.map(TimeStamped.unsafeNow), tickPeriod, reorderOver)
 
   /** Lifts a function from `A => B` to a time series pipe. */
-  def lift[F[_], A, B](f: A => B): Stream[F, TimeStamped[Option[A]]] => Stream[F, TimeStamped[Option[B]]] =
+  def lift[F[_], A, B](
+      f: A => B
+  ): Stream[F, TimeStamped[Option[A]]] => Stream[F, TimeStamped[Option[B]]] =
     _.map(_.map(_.map(f)))
 
   /** Time series pipe which discards right values. */
-  def drainRight[F[_], L, R]: Stream[F, TimeStamped[Option[Either[L, R]]]] => Stream[F, TimeStamped[Option[L]]] = _.collect {
-    case tick @ TimeStamped(_, None)    => tick.asInstanceOf[TimeStamped[Option[L]]]
-    case TimeStamped(ts, Some(Left(l))) => TimeStamped(ts, Some(l))
-  }
+  def drainRight[F[_], L, R]
+      : Stream[F, TimeStamped[Option[Either[L, R]]]] => Stream[F, TimeStamped[Option[L]]] =
+    _.collect {
+      case tick @ TimeStamped(_, None)    => tick.asInstanceOf[TimeStamped[Option[L]]]
+      case TimeStamped(ts, Some(Left(l))) => TimeStamped(ts, Some(l))
+    }
 
   /** Time series pipe which discards left values. */
-  def drainLeft[F[_], L, R]: Stream[F, TimeStamped[Option[Either[L, R]]]] => Stream[F, TimeStamped[Option[R]]] = _.collect {
-    case tick @ TimeStamped(_, None)     => tick.asInstanceOf[TimeStamped[Option[R]]]
-    case TimeStamped(ts, Some(Right(r))) => TimeStamped(ts, Some(r))
-  }
+  def drainLeft[F[_], L, R]
+      : Stream[F, TimeStamped[Option[Either[L, R]]]] => Stream[F, TimeStamped[Option[R]]] =
+    _.collect {
+      case tick @ TimeStamped(_, None)     => tick.asInstanceOf[TimeStamped[Option[R]]]
+      case TimeStamped(ts, Some(Right(r))) => TimeStamped(ts, Some(r))
+    }
 
   /** Stream of time ticks spaced by `tickPeriod`. */
   private def timeTicks[F[_]: Temporal](tickPeriod: FiniteDuration): Stream[F, TimeStamped[Unit]] =
