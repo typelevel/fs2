@@ -548,11 +548,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt)
 
-      val compileBack: F2[Boolean] = watch(that).compile.drain.attempt.flatMap {
+      val compileBack: F2[Unit] = watch(that).compile.drain.guaranteeCase {
         // Pass the result of backstream completion in the backResult deferred.
         // IF result of back-stream was failed, interrupt fore. Otherwise, let it be
-        case r @ Right(_) => backResult.complete(r)
-        case l @ Left(_)  => backResult.complete(l) >> interrupt.complete(())
+        case Outcome.Errored(t) => backResult.complete(Left(t)) >> interrupt.complete(()).void
+        case _                  => backResult.complete(Right(())).void
       }
 
       // stop background process but await for it to finalise with a result

@@ -20,31 +20,41 @@
  */
 
 package fs2
-package benchmark
+package compression
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+import scodec.bits
+import scodec.bits.crc.CrcBuilder
+import scodec.bits.BitVector
 
-@State(Scope.Thread)
-class ParEvalMapBenchmark {
-  @Param(Array("100", "10000"))
-  var size: Int = _
+/** Provides various checksums as pipes. */
+object checksum {
 
-  @Param(Array("10", "100"))
-  var chunkSize: Int = _
+  /** Computes a CRC32 checksum.
+    * @see [[scodec.bits.crc.crc32]]
+    */
+  def crc32[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32Builder)
 
-  private def dummyLoad = IO.delay(())
+  /** Computes a CRC32C checksum.
+    * @see [[scodec.bits.crc.crc32c]]
+    */
+  def crc32c[F[_]]: Pipe[F, Byte, Byte] = fromCrcBuilder(bits.crc.crc32cBuilder)
 
-  @Benchmark
-  def evalMap(): Unit =
-    execute(getStream.evalMap(_ => dummyLoad))
+  /** Computes a CRC checksum using the specified polynomial.
+    * @see [[scodec.bits.crc]]
+    */
+  def crc[F[_]](
+      poly: BitVector,
+      initial: BitVector,
+      reflectInput: Boolean,
+      reflectOutput: Boolean,
+      finalXor: BitVector
+  ): Pipe[F, Byte, Byte] =
+    fromCrcBuilder(bits.crc.builder(poly, initial, reflectInput, reflectOutput, finalXor))
 
-  @Benchmark
-  def parEvalMapUnordered10(): Unit =
-    execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
+  private def fromCrcBuilder[F[_]](builder: CrcBuilder[BitVector]): Pipe[F, Byte, Byte] =
+    _.chunks
+      .fold(builder)((builder, bits) => builder.updated(bits.toBitVector))
+      .map(b => Chunk.byteVector(b.result.bytes))
+      .unchunks
 
-  private def getStream: Stream[IO, Unit] =
-    Stream.constant((), chunkSize).take(size.toLong).covary[IO]
-  private def execute(s: Stream[IO, Unit]): Unit = s.compile.drain.unsafeRunSync()
 }

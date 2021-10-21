@@ -20,31 +20,34 @@
  */
 
 package fs2
-package benchmark
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+import fs2.compression.checksum
+import org.scalacheck.Prop.forAll
+import scodec.bits.BitVector
+import scodec.bits.crc
 
-@State(Scope.Thread)
-class ParEvalMapBenchmark {
-  @Param(Array("100", "10000"))
-  var size: Int = _
+class ChecksumSuite extends Fs2Suite {
 
-  @Param(Array("10", "100"))
-  var chunkSize: Int = _
+  test("CRC32") {
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32)
+        .compile
+        .toVector
+      val expected = crc.crc32(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
+    }
+  }
 
-  private def dummyLoad = IO.delay(())
+  test("CRC32C") {
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32c)
+        .compile
+        .toVector
+      val expected = crc.crc32c(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
+    }
+  }
 
-  @Benchmark
-  def evalMap(): Unit =
-    execute(getStream.evalMap(_ => dummyLoad))
-
-  @Benchmark
-  def parEvalMapUnordered10(): Unit =
-    execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
-
-  private def getStream: Stream[IO, Unit] =
-    Stream.constant((), chunkSize).take(size.toLong).covary[IO]
-  private def execute(s: Stream[IO, Unit]): Unit = s.compile.drain.unsafeRunSync()
 }

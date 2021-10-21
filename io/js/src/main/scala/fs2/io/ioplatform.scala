@@ -22,6 +22,7 @@
 package fs2
 package io
 
+import cats.effect.SyncIO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
@@ -41,58 +42,83 @@ import scala.scalajs.js.|
 
 private[fs2] trait ioplatform {
 
+  @deprecated("Use suspendReadableAndRead instead", "3.1.4")
   def readReadable[F[_]](
       readable: F[Readable],
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
   )(implicit
       F: Async[F]
-  ): Stream[F, Byte] =
-    Stream
-      .resource(for {
-        readable <- Resource.makeCase(readable.map(_.asInstanceOf[streamMod.Readable])) {
+  ): Stream[F, Byte] = Stream
+    .eval(readable)
+    .flatMap(r => Stream.resource(suspendReadableAndRead(destroyIfNotEnded, destroyIfCanceled)(r)))
+    .flatMap(_._2)
+
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
+    */
+  def suspendReadableAndRead[F[_], R <: Readable](
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
+    (for {
+      dispatcher <- Dispatcher[F]
+      queue <- Queue.synchronous[F, Option[Unit]].toResource
+      error <- F.deferred[Throwable].toResource
+      // Implementation Note: why suspend in `SyncIO` and then `unsafeRunSync()` inside `F.delay`?
+      // In many cases creating a `Readable` starts async side-effects (e.g. negotiating TLS handshake or opening a file handle).
+      // Furthermore, these side-effects will invoke the listeners we register to the `Readable`.
+      // Therefore, it is critical that the listeners are registered to the `Readable` _before_ these async side-effects occur:
+      // in other words, before we next yield (cede) to the event loop. Because an arbitrary effect `F` (particularly `IO`) may cede at any time,
+      // our only recourse is to suspend the entire creation/listener registration process within a single atomic `delay`.
+      readableResource = for {
+        readable <- Resource.makeCase(SyncIO(thunk).map(_.asInstanceOf[streamMod.Readable])) {
           case (readable, Resource.ExitCase.Succeeded) =>
-            F.delay {
+            SyncIO {
               if (!readable.readableEnded & destroyIfNotEnded)
                 readable.destroy()
             }
           case (readable, Resource.ExitCase.Errored(ex)) =>
-            F.delay(readable.destroy(js.Error(ex.getMessage())))
+            SyncIO(readable.destroy(js.Error(ex.getMessage())))
           case (readable, Resource.ExitCase.Canceled) =>
             if (destroyIfCanceled)
-              F.delay(readable.destroy())
+              SyncIO(readable.destroy())
             else
-              F.unit
+              SyncIO.unit
         }
-        dispatcher <- Dispatcher[F]
-        queue <- Queue.synchronous[F, Option[Unit]].toResource
-        error <- F.deferred[Throwable].toResource
         _ <- registerListener0(readable, nodeStrings.readable)(_.on_readable(_, _)) { () =>
           dispatcher.unsafeRunAndForget(queue.offer(Some(())))
-        }
+        }(SyncIO.syncForSyncIO)
         _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
           dispatcher.unsafeRunAndForget(queue.offer(None))
-        }
+        }(SyncIO.syncForSyncIO)
         _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
           dispatcher.unsafeRunAndForget(queue.offer(None))
-        }
+        }(SyncIO.syncForSyncIO)
         _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
           dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
-        }
-      } yield (readable, queue, error))
-      .flatMap { case (readable, queue, error) =>
-        Stream
+        }(SyncIO.syncForSyncIO)
+      } yield readable
+      readable <- Resource
+        .make(F.delay {
+          readableResource.allocated.unsafeRunSync()
+        }) { case (_, close) => close.to[F] }
+        .map(_._1)
+      stream =
+        (Stream
           .fromQueueNoneTerminated(queue)
           .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
-          Stream.evalUnChunk(
-            F.delay(
-              Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
-                .fold(Chunk.empty[Byte])(_.toChunk)
-            )
-          )
-      }
-      .adaptError { case IOException(ex) => ex }
+          Stream
+            .evalUnChunk(
+              F.delay(
+                Option(readable.read().asInstanceOf[bufferMod.global.Buffer])
+                  .fold(Chunk.empty[Byte])(_.toChunk)
+              )
+            )).adaptError { case IOException(ex) => ex }
+    } yield (readable.asInstanceOf[R], stream)).adaptError { case IOException(ex) => ex }
 
+  /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
+    * that ends whenever the resulting stream terminates.
+    */
   def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
     in =>
       Stream
@@ -111,9 +137,13 @@ private[fs2] trait ioplatform {
         }
         .adaptError { case IOException(ex) => ex }
 
+  /** Like [[toReadable]] but returns a `Resource` rather than a single element stream.
+    */
   def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
     s.through(toReadable).compile.resource.lastOrError
 
+  /** Writes all bytes to the specified `Writable`.
+    */
   def writeWritable[F[_]](
       writable: F[Writable],
       endAfterUse: Boolean = true
@@ -147,9 +177,17 @@ private[fs2] trait ioplatform {
         }
         .adaptError { case IOException(ex) => ex }
 
+  /** Take a function that emits to a `Writable` effectfully,
+    * and return a stream which, when run, will perform that function and emit
+    * the bytes recorded in the `Writable` as an fs2.Stream
+    */
   def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
     Stream.empty.through(toDuplexAndRead(f))
 
+  /** Take a function that reads and writes from a `Duplex` effectfully,
+    * and return a pipe which, when run, will perform that function,
+    * write emitted bytes to the duplex, and read emitted bytes from the duplex
+    */
   def toDuplexAndRead[F[_]: Async](f: Duplex => F[Unit]): Pipe[F, Byte, Byte] =
     in =>
       Stream.resource(mkDuplex(in)).flatMap { case (duplex, out) =>

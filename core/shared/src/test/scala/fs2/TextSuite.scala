@@ -22,6 +22,7 @@
 package fs2
 
 import cats.syntax.all._
+import java.nio.charset.Charset
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 import scodec.bits._
@@ -436,6 +437,21 @@ class TextSuite extends Fs2Suite {
 
           assertEquals(out, in)
         }
+      }
+    }
+
+    test("flushes decoder") {
+      // Obscure example found through property test in http4s.  Most
+      // charsets don't require flushing.  Search "implFlush" in JDK
+      // source for more.
+      if (isJVM) { // Charset not supported by Scala.js
+        val cs = Charset.forName("x-ISCII91")
+        val s = Stream(0xdc.toByte)
+          .covary[Fallible]
+          .through(decodeWithCharset(cs))
+          .compile
+          .string
+        assertEquals(s, Right("\u0940"))
       }
     }
   }

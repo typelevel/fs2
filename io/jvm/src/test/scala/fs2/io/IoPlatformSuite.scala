@@ -22,17 +22,24 @@
 package fs2
 package io
 
-import java.io.OutputStream
-import java.util.concurrent.Executors
+import cats.data.EitherT
 import cats.effect.{IO, Resource}
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
-import fs2.Fs2Suite
-import fs2.Err
-import scala.concurrent.ExecutionContext
+import fs2.{Err, Fs2Suite}
 import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 
+import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
+
+import java.io.OutputStream
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.Executors
+
 class IoPlatformSuite extends Fs2Suite {
+
+  // This suite runs for a long time, this avoids timeouts in CI.
+  override def munitTimeout: Duration = 1.minute
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
@@ -130,51 +137,81 @@ class IoPlatformSuite extends Fs2Suite {
           .drain
       }
     }
-  }
 
-  test("Doesn't deadlock with size-1 thread pool") {
-    def singleThreadedRuntime(): IORuntime = {
-      val compute = {
-        val pool = Executors.newSingleThreadExecutor()
-        (ExecutionContext.fromExecutor(pool), () => pool.shutdown())
-      }
-      val blocking = IORuntime.createDefaultBlockingExecutionContext()
-      val scheduler = IORuntime.createDefaultScheduler()
-      IORuntime(
-        compute._1,
-        blocking._1,
-        scheduler._1,
-        () => {
-          compute._2.apply()
-          blocking._2.apply()
-          scheduler._2.apply()
-        },
-        IORuntimeConfig()
-      )
-    }
-
-    val runtime = Resource.make(IO(singleThreadedRuntime()))(rt => IO(rt.shutdown()))
-
-    def write(os: OutputStream): IO[Unit] =
-      IO.blocking {
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
-        os.write(1)
+    test("Doesn't deadlock with size-1 thread pool") {
+      def singleThreadedRuntime(): IORuntime = {
+        val compute = {
+          val pool = Executors.newSingleThreadExecutor()
+          (ExecutionContext.fromExecutor(pool), () => pool.shutdown())
+        }
+        val blocking = IORuntime.createDefaultBlockingExecutionContext()
+        val scheduler = IORuntime.createDefaultScheduler()
+        IORuntime(
+          compute._1,
+          blocking._1,
+          scheduler._1,
+          () => {
+            compute._2.apply()
+            blocking._2.apply()
+            scheduler._2.apply()
+          },
+          IORuntimeConfig()
+        )
       }
 
-    val prog = readOutputStream[IO](chunkSize = 1)(write)
-      .take(5)
-      .compile
-      .toVector
-      .map(_.size)
-      .assertEquals(5)
+      val runtime = Resource.make(IO(singleThreadedRuntime()))(rt => IO(rt.shutdown()))
 
-    runtime.use { rt =>
-      IO.fromFuture(IO(prog.unsafeToFuture()(rt)))
+      def write(os: OutputStream): IO[Unit] =
+        IO.blocking {
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+          os.write(1)
+        }
+
+      val prog = readOutputStream[IO](chunkSize = 1)(write)
+        .take(5)
+        .compile
+        .toVector
+        .map(_.size)
+        .assertEquals(5)
+
+      runtime.use { rt =>
+        IO.fromFuture(IO(prog.unsafeToFuture()(rt)))
+      }
+    }
+
+    test("can copy more than Int.MaxValue bytes") {
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-writeOutputStream.
+
+      val byteStream =
+        Stream
+          .chunk[IO, Byte](Chunk.array(("foobar" * 50000).getBytes(StandardCharsets.UTF_8)))
+          .repeatN(7200L) // 6 * 50,000 * 7,200 == 2,160,000,000 > 2,147,483,647 == Int.MaxValue
+
+      def writeToOutputStream(out: OutputStream): IO[Unit] =
+        byteStream
+          .through(writeOutputStream(IO.pure(out)))
+          .compile
+          .drain
+
+      readOutputStream[IO](1024 * 8)(writeToOutputStream)
+        .chunkN(6 * 50000)
+        .map(c => new String(c.toArray[Byte], StandardCharsets.UTF_8))
+        .foreach(str => IO.pure(str).assertEquals("foobar" * 50000))
+        .compile
+        .drain
+    }
+
+    test("works with short-circuiting monad transformers") {
+      // Unit test adapted from the original issue reproduction at
+      // https://github.com/mrdziuban/fs2-readOutputStream-EitherT.
+
+      readOutputStream(1)(_ => EitherT.left[Unit](IO.unit)).compile.drain.value
+        .timeout(5.seconds)
     }
   }
-
 }
