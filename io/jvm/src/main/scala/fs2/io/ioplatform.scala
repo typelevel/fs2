@@ -34,8 +34,8 @@ private[fs2] trait ioplatform {
   type InterruptedIOException = java.io.InterruptedIOException
   type ClosedChannelException = java.nio.channels.ClosedChannelException
 
-  /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
-    * that is closed whenever the resulting stream terminates.
+  /** Pipe that converts a stream of bytes to a stream that will emit a single
+    * `java.io.InputStream`, that is closed whenever the resulting stream terminates.
     *
     * If the `close` of resulting input stream is invoked manually, then this will await until the
     * original stream completely terminates.
@@ -43,8 +43,8 @@ private[fs2] trait ioplatform {
     * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
     * should be consumed on a different thread pool than the one that is backing the effect.
     *
-    * Note that the implementation is not thread safe -- only one thread is allowed at any time
-    * to operate on the resulting `java.io.InputStream`.
+    * Note that the implementation is not thread safe -- only one thread is allowed at any time to
+    * operate on the resulting `java.io.InputStream`.
     */
   def toInputStream[F[_]: Async]: Pipe[F, Byte, InputStream] =
     source => Stream.resource(toInputStreamResource(source))
@@ -56,9 +56,9 @@ private[fs2] trait ioplatform {
   ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 
-  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
-    * and return a stream which, when run, will perform that function and emit
-    * the bytes recorded in the OutputStream as an fs2.Stream
+  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully, and return
+    * a stream which, when run, will perform that function and emit the bytes recorded in the
+    * OutputStream as an fs2.Stream
     *
     * The stream produced by this will terminate if:
     *   - `f` returns

@@ -23,11 +23,10 @@ package fs2.io.internal
 
 import java.util.concurrent.locks.AbstractQueuedSynchronizer
 
-/** An alternative implementation of [[java.util.concurrent.Semaphore]] which
-  * holds ''at most'' 1 permit. In the case that this synchronizer is not
-  * acquired, any calls to [[Synchronizer#release]] will ''not'' increase the
-  * permit count, i.e. this synchronizer can still only be acquired by a
-  * ''single'' thread calling [[Synchronizer#acquire]].
+/** An alternative implementation of [[java.util.concurrent.Semaphore]] which holds ''at most'' 1
+  * permit. In the case that this synchronizer is not acquired, any calls to
+  * [[Synchronizer#release]] will ''not'' increase the permit count, i.e. this synchronizer can
+  * still only be acquired by a ''single'' thread calling [[Synchronizer#acquire]].
   */
 private final class Synchronizer {
   private[this] val underlying = new AbstractQueuedSynchronizer {

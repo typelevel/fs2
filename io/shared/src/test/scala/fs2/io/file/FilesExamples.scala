@@ -55,16 +55,16 @@ object Examples {
 
   /** Now let's have some fun with abstract algebra!
     *
-    * Let's define an operation pathWithLeastIn that walks all files rooted at the supplied path
-    * and extracts a user defined "feature" from the attributes of each file. A feature is something
-    * of interest, like the size of the file or the last modified time. We then return the entry
-    * with the minimum value for the feature. E.g., if the feature is the last modified time, we'll
+    * Let's define an operation pathWithLeastIn that walks all files rooted at the supplied path and
+    * extracts a user defined "feature" from the attributes of each file. A feature is something of
+    * interest, like the size of the file or the last modified time. We then return the entry with
+    * the minimum value for the feature. E.g., if the feature is the last modified time, we'll
     * return the file that was modified furthest in the past.
     *
     * Our "feature" is the type parameter `A`, which must have an `Order` constraint so that we can
-    * compare entries. For the implementation, we simply compute the attributes for each path and then
-    * compile the resulting stream using a semigroup which selects the path with the lower extracted
-    * feature.
+    * compare entries. For the implementation, we simply compute the attributes for each path and
+    * then compile the resulting stream using a semigroup which selects the path with the lower
+    * extracted feature.
     */
   def pathWithLeastIn[F[_]: Files: Concurrent, A: Order](
       path: Path,
@@ -81,11 +81,12 @@ object Examples {
   /** We can also select the greatest feature, and in fact we can derive it from pathWithLeastIn!
     *
     * We have two options:
-    * - call pathWithGreatestIn using the inverse of the feature, ensuring to "undo" the inverse on the
-    *   result. This requires a `Group` constraint on A`
-    * - pass a different `Order` instance which reverses the order
+    *   - call pathWithGreatestIn using the inverse of the feature, ensuring to "undo" the inverse
+    *     on the result. This requires a `Group` constraint on A`
+    *   - pass a different `Order` instance which reverses the order
     *
-    * The second option is better for callers and is more general (it doesn't require a `Group[A]` instance).
+    * The second option is better for callers and is more general (it doesn't require a `Group[A]`
+    * instance).
     */
   def pathWithGreatestIn[F[_]: Files: Concurrent, A: Order](
       path: Path,

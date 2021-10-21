@@ -29,8 +29,8 @@ import cats.syntax.all._
 import java.nio.channels.FileChannel
 import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{
-  BasicFileAttributes => JBasicFileAttributes,
   BasicFileAttributeView,
+  BasicFileAttributes => JBasicFileAttributes,
   PosixFileAttributes => JPosixFileAttributes,
   PosixFilePermissions
 }
@@ -57,7 +57,8 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
 
   /** Watches a single path.
     *
-    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the
+    * resulting stream is finalized.
     *
     * JVM only.
     */
@@ -66,7 +67,8 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
 
   /** Watches a single path.
     *
-    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the
+    * resulting stream is finalized.
     *
     * JVM only.
     */

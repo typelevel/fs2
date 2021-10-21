@@ -35,9 +35,11 @@ import com.comcast.ip4s._
 import CollectionCompat._
 import java.util.concurrent.ThreadFactory
 
-/** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector thread.
+/** Supports read/write operations on an arbitrary number of UDP sockets using a shared selector
+  * thread.
   *
-  * Each `AsynchronousDatagramSocketGroup` is assigned a single daemon thread that performs all read/write operations.
+  * Each `AsynchronousDatagramSocketGroup` is assigned a single daemon thread that performs all
+  * read/write operations.
   */
 private[net] trait AsynchronousDatagramSocketGroup {
   type Context

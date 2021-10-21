@@ -35,22 +35,23 @@ import cats.Traverse
   *
   * An instance is available for any effect `F` which has an `Async[F]` instance.
   *
-  * The operations on this trait are implemented for both the JVM and Node.js.
-  * Some operations only work on POSIX file systems, though such methods generally
-  * have "Posix" in their names (e.g. `getPosixPermissions`). A small number of methods
-  * are only available on the JVM (e.g. variant of `list` which takes a glob pattern) and
-  * are indicated as such in their ScalaDoc.
+  * The operations on this trait are implemented for both the JVM and Node.js. Some operations only
+  * work on POSIX file systems, though such methods generally have "Posix" in their names (e.g.
+  * `getPosixPermissions`). A small number of methods are only available on the JVM (e.g. variant of
+  * `list` which takes a glob pattern) and are indicated as such in their ScalaDoc.
   */
 sealed trait Files[F[_]] extends FilesPlatform[F] {
 
-  /** Copies the source to the target, failing if source does not exist or the target already exists.
-    * To replace the existing instead, use `copy(source, target, CopyFlags(CopyFlag.ReplaceExisting))`.
+  /** Copies the source to the target, failing if source does not exist or the target already
+    * exists. To replace the existing instead, use `copy(source, target,
+    * CopyFlags(CopyFlag.ReplaceExisting))`.
     */
   def copy(source: Path, target: Path): F[Unit] =
     copy(source, target, CopyFlags.empty)
 
-  /** Copies the source to the target, following any directives supplied in the flags.
-    * By default, an error occurs if the target already exists, though this can be overriden via `CopyFlag.ReplaceExisting`.
+  /** Copies the source to the target, following any directives supplied in the flags. By default,
+    * an error occurs if the target already exists, though this can be overriden via
+    * `CopyFlag.ReplaceExisting`.
     */
   def copy(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
@@ -58,17 +59,18 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createDirectory(path: Path): F[Unit] = createDirectory(path, None)
 
-  /** Creates the specified directory with the specified permissions. Fails if the parent path does not already exist.
+  /** Creates the specified directory with the specified permissions. Fails if the parent path does
+    * not already exist.
     */
   def createDirectory(path: Path, permissions: Option[Permissions]): F[Unit]
 
   /** Creates the specified directory and any non-existant parent directories. */
   def createDirectories(path: Path): F[Unit] = createDirectories(path, None)
 
-  /** Creates the specified directory and any parent directories, using the supplied permissions for any directories
-    * that get created as a result of this operation. For example if `/a` exists and
-    * `createDirectories(Path("/a/b/c"), Some(p))` is called, `/a/b` and `/a/b/c` are created with permissions set
-    * to `p` on each (and the permissions of `/a` remain unmodified).
+  /** Creates the specified directory and any parent directories, using the supplied permissions for
+    * any directories that get created as a result of this operation. For example if `/a` exists and
+    * `createDirectories(Path("/a/b/c"), Some(p))` is called, `/a/b` and `/a/b/c` are created with
+    * permissions set to `p` on each (and the permissions of `/a` remain unmodified).
     */
   def createDirectories(path: Path, permissions: Option[Permissions]): F[Unit]
 
@@ -76,30 +78,38 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createFile(path: Path): F[Unit] = createFile(path, None)
 
-  /** Creates the specified file with the specified permissions. Fails if the parent path does not already exist.
+  /** Creates the specified file with the specified permissions. Fails if the parent path does not
+    * already exist.
     */
   def createFile(path: Path, permissions: Option[Permissions]): F[Unit]
 
   /** Creates a symbolic link which points to the supplied target. */
   def createSymbolicLink(link: Path, target: Path): F[Unit] = createSymbolicLink(link, target, None)
 
-  /** Creates a symbolic link which points to the supplied target. If defined, the supplied permissions are set on the created link. */
+  /** Creates a symbolic link which points to the supplied target. If defined, the supplied
+    * permissions are set on the created link.
+    */
   def createSymbolicLink(link: Path, target: Path, permissions: Option[Permissions]): F[Unit]
 
-  /** Creates a temporary file.
-    * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
-    * Alternatively, use `tempFile` to get a resource, which is deleted upon resource finalization.
+  /** Creates a temporary file. The created file is not automatically deleted - it is up to the
+    * operating system to decide when the file is deleted. Alternatively, use `tempFile` to get a
+    * resource, which is deleted upon resource finalization.
     */
   def createTempFile: F[Path] = createTempFile(None, "", ".tmp", None)
 
-  /** Creates a temporary file.
-    * The created file is not automatically deleted - it is up to the operating system to decide when the file is deleted.
-    * Alternatively, use `tempFile` to get a resource which deletes upon resource finalization.
+  /** Creates a temporary file. The created file is not automatically deleted - it is up to the
+    * operating system to decide when the file is deleted. Alternatively, use `tempFile` to get a
+    * resource which deletes upon resource finalization.
     *
-    * @param dir the directory which the temporary file will be created in. Pass none to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the file's name
-    * @param suffix the suffix string to be used in generating the file's name
-    * @param permissions permissions to set on the created file
+    * @param dir
+    *   the directory which the temporary file will be created in. Pass none to use the default
+    *   system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the file's name
+    * @param suffix
+    *   the suffix string to be used in generating the file's name
+    * @param permissions
+    *   permissions to set on the created file
     */
   def createTempFile(
       dir: Option[Path],
@@ -108,19 +118,23 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       permissions: Option[Permissions]
   ): F[Path]
 
-  /** Creates a temporary directory.
-    * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
-    * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
+  /** Creates a temporary directory. The created directory is not automatically deleted - it is up
+    * to the operating system to decide when the file is deleted. Alternatively, use `tempDirectory`
+    * to get a resource which deletes upon resource finalization.
     */
   def createTempDirectory: F[Path] = createTempDirectory(None, "", None)
 
-  /** Creates a temporary directory.
-    * The created directory is not automatically deleted - it is up to the operating system to decide when the file is deleted.
-    * Alternatively, use `tempDirectory` to get a resource which deletes upon resource finalization.
+  /** Creates a temporary directory. The created directory is not automatically deleted - it is up
+    * to the operating system to decide when the file is deleted. Alternatively, use `tempDirectory`
+    * to get a resource which deletes upon resource finalization.
     *
-    * @param dir the directory which the temporary directory will be created in. Pass none to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the directory's name
-    * @param permissions permissions to set on the created directory
+    * @param dir
+    *   the directory which the temporary directory will be created in. Pass none to use the default
+    *   system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the directory's name
+    * @param permissions
+    *   permissions to set on the created directory
     */
   def createTempDirectory(
       dir: Option[Path],
@@ -134,31 +148,28 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Deletes the specified file or empty directory, passing if it does not exist. */
   def deleteIfExists(path: Path): F[Boolean]
 
-  /** Deletes the specified file or directory.
-    * If the path is a directory and is non-empty, its contents are recursively deleted.
-    * Symbolic links are not followed (but are deleted).
+  /** Deletes the specified file or directory. If the path is a directory and is non-empty, its
+    * contents are recursively deleted. Symbolic links are not followed (but are deleted).
     */
   def deleteRecursively(
       path: Path
   ): F[Unit] = deleteRecursively(path, false)
 
-  /** Deletes the specified file or directory.
-    * If the path is a directory and is non-empty, its contents are recursively deleted.
-    * Symbolic links are followed when `followLinks` is true.
+  /** Deletes the specified file or directory. If the path is a directory and is non-empty, its
+    * contents are recursively deleted. Symbolic links are followed when `followLinks` is true.
     */
   def deleteRecursively(
       path: Path,
       followLinks: Boolean
   ): F[Unit]
 
-  /** Returns true if the specified path exists.
-    * Symbolic links are followed -- see the overload for more details on links.
+  /** Returns true if the specified path exists. Symbolic links are followed -- see the overload for
+    * more details on links.
     */
   def exists(path: Path): F[Boolean] = exists(path, true)
 
-  /** Returns true if the specified path exists.
-    * Symbolic links are followed when `followLinks` is true.
-    * For example, if the symbolic link `foo` points to `bar` and `bar` does not exist,
+  /** Returns true if the specified path exists. Symbolic links are followed when `followLinks` is
+    * true. For example, if the symbolic link `foo` points to `bar` and `bar` does not exist,
     * `exists(Path("foo"), true)` returns `false` but `exists(Path("foo"), false)` returns `true`.
     */
   def exists(path: Path, followLinks: Boolean): F[Boolean]
@@ -167,46 +178,46 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def getBasicFileAttributes(path: Path): F[BasicFileAttributes] =
     getBasicFileAttributes(path, false)
 
-  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are not followed when `followLinks` is true. */
+  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are not followed when
+    * `followLinks` is true.
+    */
   def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
 
-  /** Gets the last modified time of the supplied path.
-    * The last modified time is represented as a duration since the Unix epoch.
-    * Symbolic links are followed.
+  /** Gets the last modified time of the supplied path. The last modified time is represented as a
+    * duration since the Unix epoch. Symbolic links are followed.
     */
   def getLastModifiedTime(path: Path): F[FiniteDuration] = getLastModifiedTime(path, true)
 
-  /** Gets the last modified time of the supplied path.
-    * The last modified time is represented as a duration since the Unix epoch.
-    * Symbolic links are followed when `followLinks` is true.
+  /** Gets the last modified time of the supplied path. The last modified time is represented as a
+    * duration since the Unix epoch. Symbolic links are followed when `followLinks` is true.
     */
   def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration]
 
-  /** Gets the POSIX attributes for the supplied path.
-    * Symbolic links are not followed.
+  /** Gets the POSIX attributes for the supplied path. Symbolic links are not followed.
     */
   def getPosixFileAttributes(path: Path): F[PosixFileAttributes] =
     getPosixFileAttributes(path, false)
 
-  /** Gets the POSIX attributes for the supplied path.
-    * Symbolic links are followed when `followLinks` is true.
+  /** Gets the POSIX attributes for the supplied path. Symbolic links are followed when
+    * `followLinks` is true.
     */
   def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes]
 
-  /** Gets the POSIX permissions of the supplied path.
-    * Symbolic links are followed.
+  /** Gets the POSIX permissions of the supplied path. Symbolic links are followed.
     */
   def getPosixPermissions(path: Path): F[PosixPermissions] = getPosixPermissions(path, true)
 
-  /** Gets the POSIX permissions of the supplied path.
-    * Symbolic links are followed when `followLinks` is true.
+  /** Gets the POSIX permissions of the supplied path. Symbolic links are followed when
+    * `followLinks` is true.
     */
   def getPosixPermissions(path: Path, followLinks: Boolean): F[PosixPermissions]
 
   /** Returns true if the supplied path exists and is a directory. Symbolic links are followed. */
   def isDirectory(path: Path): F[Boolean] = isDirectory(path, true)
 
-  /** Returns true if the supplied path exists and is a directory. Symbolic links are followed when `followLinks` is true. */
+  /** Returns true if the supplied path exists and is a directory. Symbolic links are followed when
+    * `followLinks` is true.
+    */
   def isDirectory(path: Path, followLinks: Boolean): F[Boolean]
 
   /** Returns true if the supplied path exists and is executable. */
@@ -221,7 +232,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Returns true if the supplied path is a regular file. Symbolic links are followed. */
   def isRegularFile(path: Path): F[Boolean] = isRegularFile(path, true)
 
-  /** Returns true if the supplied path is a regular file. Symbolic links are followed when `followLinks` is true. */
+  /** Returns true if the supplied path is a regular file. Symbolic links are followed when
+    * `followLinks` is true.
+    */
   def isRegularFile(path: Path, followLinks: Boolean): F[Boolean]
 
   /** Returns true if the supplied path is a symbolic link. */
@@ -237,53 +250,56 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def list(path: Path): Stream[F, Path]
 
   /** Moves the source to the target, failing if source does not exist or the target already exists.
-    * To replace the existing instead, use `move(source, target, CopyFlags(CopyFlag.ReplaceExisting))`.
+    * To replace the existing instead, use `move(source, target,
+    * CopyFlags(CopyFlag.ReplaceExisting))`.
     */
   def move(source: Path, target: Path): F[Unit] =
     move(source, target, CopyFlags.empty)
 
-  /** Moves the source to the target, following any directives supplied in the flags.
-    * By default, an error occurs if the target already exists, though this can be overriden via `CopyFlag.ReplaceExisting`.
+  /** Moves the source to the target, following any directives supplied in the flags. By default, an
+    * error occurs if the target already exists, though this can be overriden via
+    * `CopyFlag.ReplaceExisting`.
     */
   def move(source: Path, target: Path, flags: CopyFlags): F[Unit]
 
-  /** Creates a `FileHandle` for the file at the supplied `Path`.
-    * The supplied flags indicate the mode used when opening the file (e.g. read, write, append)
-    * as well as the ability to specify additional options (e.g. automatic deletion at process exit).
+  /** Creates a `FileHandle` for the file at the supplied `Path`. The supplied flags indicate the
+    * mode used when opening the file (e.g. read, write, append) as well as the ability to specify
+    * additional options (e.g. automatic deletion at process exit).
     */
   def open(path: Path, flags: Flags): Resource[F, FileHandle[F]]
 
   /** Reads all bytes from the file specified. */
   def readAll(path: Path): Stream[F, Byte] = readAll(path, 64 * 1024, Flags.Read)
 
-  /** Reads all bytes from the file specified, reading in chunks up to the specified limit,
-    * and using the supplied flags to open the file.
+  /** Reads all bytes from the file specified, reading in chunks up to the specified limit, and
+    * using the supplied flags to open the file.
     */
   def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte]
 
-  /** Returns a `ReadCursor` for the specified path, using the supplied flags when opening the file. */
+  /** Returns a `ReadCursor` for the specified path, using the supplied flags when opening the file.
+    */
   def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]]
 
-  /** Reads a range of data synchronously from the file at the specified path.
-    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
-    * two bytes are read.
+  /** Reads a range of data synchronously from the file at the specified path. `start` is inclusive,
+    * `end` is exclusive, so when `start` is 0 and `end` is 2, two bytes are read.
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-  /** Returns the real path i.e. the actual location of `path`.
-    * The precise definition of this method is implementation dependent but in general
-    * it derives from this path, an absolute path that locates the same file as this path,
-    * but with name elements that represent the actual name of the directories and the file.
+  /** Returns the real path i.e. the actual location of `path`. The precise definition of this
+    * method is implementation dependent but in general it derives from this path, an absolute path
+    * that locates the same file as this path, but with name elements that represent the actual name
+    * of the directories and the file.
     */
   def realPath(path: Path): F[Path]
 
   /** Sets the last modified, last access, and creation time fields of the specified path.
     *
-    * Times which are supplied as `None` are not modified. E.g., `setTimes(p, Some(t), Some(t), None, false)`
-    * sets the last modified and last access time to `t` and does not change the creation time.
+    * Times which are supplied as `None` are not modified. E.g., `setTimes(p, Some(t), Some(t),
+    * None, false)` sets the last modified and last access time to `t` and does not change the
+    * creation time.
     *
-    * If the path is a symbolic link and `followLinks` is true, the target of the link as
-    * times set. Otherwise, the link itself has times set.
+    * If the path is a symbolic link and `followLinks` is true, the target of the link as times set.
+    * Otherwise, the link itself has times set.
     */
   def setFileTimes(
       path: Path,
@@ -299,12 +315,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Gets the size of the supplied path, failing if it does not exist. */
   def size(path: Path): F[Long]
 
-  /** Returns an infinite stream of data from the file at the specified path.
-    * Starts reading from the specified offset and upon reaching the end of the file,
-    * polls every `pollDuration` for additional updates to the file.
+  /** Returns an infinite stream of data from the file at the specified path. Starts reading from
+    * the specified offset and upon reaching the end of the file, polls every `pollDuration` for
+    * additional updates to the file.
     *
-    * Read operations are limited to emitting chunks of the specified chunk size
-    * but smaller chunks may occur.
+    * Read operations are limited to emitting chunks of the specified chunk size but smaller chunks
+    * may occur.
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
@@ -320,11 +336,17 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Creates a temporary file and deletes it upon finalization of the returned resource.
     *
-    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the file's name
-    * @param suffix the suffix string to be used in generating the file's name
-    * @param permissions permissions to set on the created file
-    * @return a resource containing the path of the temporary file
+    * @param dir
+    *   the directory which the temporary file will be created in. Pass in None to use the default
+    *   system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the file's name
+    * @param suffix
+    *   the suffix string to be used in generating the file's name
+    * @param permissions
+    *   permissions to set on the created file
+    * @return
+    *   a resource containing the path of the temporary file
     */
   def tempFile(
       dir: Option[Path],
@@ -339,10 +361,15 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Creates a temporary directory and deletes it upon finalization of the returned resource.
     *
-    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the directory's name
-    * @param permissions permissions to set on the created file
-    * @return a resource containing the path of the temporary directory
+    * @param dir
+    *   the directory which the temporary directory will be created in. Pass in None to use the
+    *   default system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the directory's name
+    * @param permissions
+    *   permissions to set on the created file
+    * @return
+    *   a resource containing the path of the temporary directory
     */
   def tempDirectory(
       dir: Option[Path],
@@ -360,14 +387,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Writes all data to the file at the specified path.
     *
-    * The file is created if it does not exist and is truncated.
-    * Use `writeAll(path, Flags.Append)` to append to the end of
-    * the file, or pass other flags to further customize behavior.
+    * The file is created if it does not exist and is truncated. Use `writeAll(path, Flags.Append)`
+    * to append to the end of the file, or pass other flags to further customize behavior.
     */
   def writeAll(path: Path): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
 
-  /** Writes all data to the file at the specified path, using the
-    * specified flags to open the file.
+  /** Writes all data to the file at the specified path, using the specified flags to open the file.
     */
   def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing]
 
@@ -383,10 +408,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
-    * The `computePath` operation is used to compute the path of the first file
-    * and every subsequent file. Typically, the next file should be determined
-    * by analyzing the current state of the filesystem -- e.g., by looking at all
-    * files in a directory and generating a unique name.
+    * The `computePath` operation is used to compute the path of the first file and every subsequent
+    * file. Typically, the next file should be determined by analyzing the current state of the
+    * filesystem -- e.g., by looking at all files in a directory and generating a unique name.
     */
   def writeRotate(
       computePath: F[Path],

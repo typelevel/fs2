@@ -53,7 +53,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   def createDirectory(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.createDirectory(path, flags: _*))
 
-  /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
+  /** Creates a new directory at the given path and creates all nonexistent parent directories
+    * beforehand.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def createDirectories(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
@@ -61,8 +62,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Deletes a file.
     *
-    * If the file is a directory then the directory must be empty for this action to succeed.
-    * This action will fail if the path doesn't exist.
+    * If the file is a directory then the directory must be empty for this action to succeed. This
+    * action will fail if the path doesn't exist.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def delete(path: JPath): F[Unit] =
@@ -114,10 +115,9 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Checks if a file exists.
     *
-    * Note that the result of this method is immediately outdated. If this
-    * method indicates the file exists then there is no guarantee that a
-    * subsequence access will succeed. Care should be taken when using this
-    * method in security sensitive applications.
+    * Note that the result of this method is immediately outdated. If this method indicates the file
+    * exists then there is no guarantee that a subsequence access will succeed. Care should be taken
+    * when using this method in security sensitive applications.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def exists(path: JPath, flags: Seq[LinkOption] = Seq.empty): F[Boolean] =
@@ -125,17 +125,22 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Tests whether a file is a directory.
     *
-    * The options sequence may be used to indicate how symbolic links are handled for the case that the file is a symbolic link.
-    * By default, symbolic links are followed and the file attribute of the final target of the link is read.
-    * If the option NOFOLLOW_LINKS is present then symbolic links are not followed.
+    * The options sequence may be used to indicate how symbolic links are handled for the case that
+    * the file is a symbolic link. By default, symbolic links are followed and the file attribute of
+    * the final target of the link is read. If the option NOFOLLOW_LINKS is present then symbolic
+    * links are not followed.
     *
-    * Where is it required to distinguish an I/O exception from the case that the
-    * file is not a directory then the file attributes can be read with the
-    * readAttributes method and the file type tested with the BasicFileAttributes.isDirectory() method.
+    * Where is it required to distinguish an I/O exception from the case that the file is not a
+    * directory then the file attributes can be read with the readAttributes method and the file
+    * type tested with the BasicFileAttributes.isDirectory() method.
     *
-    * @param path the path to the file to test
-    * @param options - options indicating how symbolic links are handled
-    * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
+    * @param path
+    *   the path to the file to test
+    * @param options
+    *   - options indicating how symbolic links are handled
+    * @return
+    *   true if the file is a directory; false if the file does not exist, is not a directory, or it
+    *   cannot be determined if the file is a directory or not.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def isDirectory(
@@ -149,17 +154,21 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   /** Tests whether a file is a regular file with opaque content.
     *
     * The options sequence may be used to indicate how symbolic links are handled for the case that
-    * the file is a symbolic link. By default, symbolic links are followed and the file
-    * attribute of the final target of the link is read. If the option NOFOLLOW_LINKS is present
-    * then symbolic links are not followed.
+    * the file is a symbolic link. By default, symbolic links are followed and the file attribute of
+    * the final target of the link is read. If the option NOFOLLOW_LINKS is present then symbolic
+    * links are not followed.
     *
-    * Where is it required to distinguish an I/O exception from the case that the file is
-    * not a regular file then the file attributes can be read with the readAttributes
-    * method and the file type tested with the BasicFileAttributes.isRegularFile() method.
+    * Where is it required to distinguish an I/O exception from the case that the file is not a
+    * regular file then the file attributes can be read with the readAttributes method and the file
+    * type tested with the BasicFileAttributes.isRegularFile() method.
     *
-    * @param path the path to the file
-    * @param options options indicating how symbolic links are handled
-    * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
+    * @param path
+    *   the path to the file
+    * @param options
+    *   options indicating how symbolic links are handled
+    * @return
+    *   true if the file is a regular file; false if the file does not exist, is not a regular file,
+    *   or it cannot be determined if the file is a regular file or not.
     */
   @deprecated("Use isRegularFile which uses fs2.io.file.Path", "3.1.0")
   def isFile(
@@ -202,15 +211,16 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readCursor(path: JPath): Resource[F, ReadCursor[F]] = readCursor(path, Nil)
 
-  /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied flags.
+  /** Returns a `ReadCursor` for the specified path. The `READ` option is added to the supplied
+    * flags.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readCursor(path: JPath, flags: Seq[OpenOption] = Nil): Resource[F, ReadCursor[F]] =
     readCursor(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.READ +: flags))
 
   /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
-    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
-    * two bytes are read.
+    * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2, two bytes are
+    * read.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def readRange(path: JPath, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
@@ -230,12 +240,12 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   def size(path: JPath): F[Long] =
     size(Path.fromNioPath(path))
 
-  /** Returns an infinite stream of data from the file at the specified path.
-    * Starts reading from the specified offset and upon reaching the end of the file,
-    * polls every `pollDuration` for additional updates to the file.
+  /** Returns an infinite stream of data from the file at the specified path. Starts reading from
+    * the specified offset and upon reaching the end of the file, polls every `pollDuration` for
+    * additional updates to the file.
     *
-    * Read operations are limited to emitting chunks of the specified chunk size
-    * but smaller chunks may occur.
+    * Read operations are limited to emitting chunks of the specified chunk size but smaller chunks
+    * may occur.
     *
     * If an error occurs while reading from the file, the overall stream fails.
     */
@@ -248,14 +258,20 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   ): Stream[F, Byte] =
     tail(Path.fromNioPath(path), chunkSize, offset, pollDelay)
 
-  /** Creates a `Resource` which can be used to create a temporary file.
-    *  The file is created during resource allocation, and removed during its release.
+  /** Creates a `Resource` which can be used to create a temporary file. The file is created during
+    * resource allocation, and removed during its release.
     *
-    * @param dir the directory which the temporary file will be created in. Pass in None to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the file's name
-    * @param suffix the suffix string to be used in generating the file's name
-    * @param attributes an optional list of file attributes to set atomically when creating the file
-    * @return a resource containing the path of the temporary file
+    * @param dir
+    *   the directory which the temporary file will be created in. Pass in None to use the default
+    *   system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the file's name
+    * @param suffix
+    *   the suffix string to be used in generating the file's name
+    * @param attributes
+    *   an optional list of file attributes to set atomically when creating the file
+    * @return
+    *   a resource containing the path of the temporary file
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def tempFile(
@@ -273,13 +289,18 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
       }
     }(deleteIfExists(_).void)
 
-  /** Creates a `Resource` which can be used to create a temporary directory.
-    *  The directory is created during resource allocation, and removed during its release.
+  /** Creates a `Resource` which can be used to create a temporary directory. The directory is
+    * created during resource allocation, and removed during its release.
     *
-    * @param dir the directory which the temporary directory will be created in. Pass in None to use the default system temp directory
-    * @param prefix the prefix string to be used in generating the directory's name
-    * @param attributes an optional list of file attributes to set atomically when creating the directory
-    * @return a resource containing the path of the temporary directory
+    * @param dir
+    *   the directory which the temporary directory will be created in. Pass in None to use the
+    *   default system temp directory
+    * @param prefix
+    *   the prefix string to be used in generating the directory's name
+    * @param attributes
+    *   an optional list of file attributes to set atomically when creating the directory
+    * @return
+    *   a resource containing the path of the temporary directory
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def tempDirectory(
@@ -305,7 +326,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   def walk(start: JPath): Stream[F, JPath] =
     walk(start, Seq.empty)
 
-  /** Creates a stream of `JPath`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
+  /** Creates a stream of `JPath`s contained in a given file tree, respecting the supplied options.
+    * Depth is unlimited.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def walk(start: JPath, options: Seq[FileVisitOption]): Stream[F, JPath] =
@@ -334,7 +356,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Watches a single path.
     *
-    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the resulting stream is finalized.
+    * Alias for creating a watcher and watching the supplied path, releasing the watcher when the
+    * resulting stream is finalized.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def watch(
@@ -350,7 +373,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Writes all data to the file at the specified `java.nio.file.JPath`.
     *
-    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the CREATE flag.
+    * Adds the WRITE flag to any other `OpenOption` flags specified. By default, also adds the
+    * CREATE flag.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeAll(
@@ -361,8 +385,8 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Returns a `WriteCursor` for the specified path.
     *
-    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in `flags`,
-    * the offset is initialized to the current size of the file.
+    * The `WRITE` option is added to the supplied flags. If the `APPEND` option is present in
+    * `flags`, the offset is initialized to the current size of the file.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeCursor(
@@ -373,10 +397,9 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
-    * The `computePath` operation is used to compute the path of the first file
-    * and every subsequent file. Typically, the next file should be determined
-    * by analyzing the current state of the filesystem -- e.g., by looking at all
-    * files in a directory and generating a unique name.
+    * The `computePath` operation is used to compute the path of the first file and every subsequent
+    * file. Typically, the next file should be determined by analyzing the current state of the
+    * filesystem -- e.g., by looking at all files in a directory and generating a unique name.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
   def writeRotate(
