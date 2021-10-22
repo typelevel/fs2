@@ -28,30 +28,30 @@ import scodec._
 import scodec.bits._
 import scodec.codecs._
 import fs2.interop.scodec._
-import fs2.protocols.ethernet.{EthernetFrameHeader, EtherType}
+import fs2.protocols.ethernet.{EtherType, EthernetFrameHeader}
 import com.comcast.ip4s.Ipv6Address
 
 /** Simplified model of an IPv6 header -- extension headers are not directly supported. */
 case class Ipv6Header(
-  trafficClass: Int,
-  flowLabel: Int,
-  payloadLength: Int,
-  protocol: Int,
-  hopLimit: Int,
-  sourceIp: Ipv6Address,
-  destinationIp: Ipv6Address
+    trafficClass: Int,
+    flowLabel: Int,
+    payloadLength: Int,
+    protocol: Int,
+    hopLimit: Int,
+    sourceIp: Ipv6Address,
+    destinationIp: Ipv6Address
 )
 
 object Ipv6Header {
   implicit val codec: Codec[Ipv6Header] = {
-    ("version"             | constant(bin"0110")) ~>
-    ("traffic_class"       | uint8) ::
-    ("flow_label"          | uint(20)) ::
-    ("payload_length"      | uint(16)) ::
-    ("next_header"         | uint8) ::
-    ("hop_limit"           | uint8) ::
-    ("source_address"      | Ip4sCodecs.ipv6) ::
-    ("destination_address" | Ip4sCodecs.ipv6)
+    ("version" | constant(bin"0110")) ~>
+      ("traffic_class" | uint8) ::
+      ("flow_label" | uint(20)) ::
+      ("payload_length" | uint(16)) ::
+      ("next_header" | uint8) ::
+      ("hop_limit" | uint8) ::
+      ("source_address" | Ip4sCodecs.ipv6) ::
+      ("destination_address" | Ip4sCodecs.ipv6)
   }.as[Ipv6Header]
 
   def sdecoder(ethernetHeader: EthernetFrameHeader): StreamDecoder[Ipv6Header] =

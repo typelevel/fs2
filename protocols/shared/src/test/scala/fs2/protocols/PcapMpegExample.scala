@@ -30,18 +30,21 @@ import fs2.interop.scodec.StreamDecoder
 import fs2.io.file.{Files, Path}
 import fs2.timeseries.TimeStamped
 
-import pcap.{ CaptureFile, LinkType }
+import pcap.{CaptureFile, LinkType}
 
-/**
- * Example of decoding a PCAP file that contains:
- *  - captured ethernet frames
- *  - of IPv4 packets
- *  - of UDP datagrams
- *  - containing MPEG transport stream packets
- */
+/** Example of decoding a PCAP file that contains:
+  *  - captured ethernet frames
+  *  - of IPv4 packets
+  *  - of UDP datagrams
+  *  - containing MPEG transport stream packets
+  */
 object PcapMpegExample extends IOApp.Simple {
 
-  case class CapturedPacket(source: SocketAddress[Ipv4Address], destination: SocketAddress[Ipv4Address], packet: mpeg.transport.Packet)
+  case class CapturedPacket(
+      source: SocketAddress[Ipv4Address],
+      destination: SocketAddress[Ipv4Address],
+      packet: mpeg.transport.Packet
+  )
 
   val run: IO[Unit] = {
     val decoder: StreamDecoder[TimeStamped[CapturedPacket]] = CaptureFile.payloadStreamDecoderPF {
@@ -54,12 +57,14 @@ object PcapMpegExample extends IOApp.Simple {
             CapturedPacket(
               SocketAddress(ipHeader.sourceIp, udpDatagram.sourcePort),
               SocketAddress(ipHeader.destinationIp, udpDatagram.destinationPort),
-              p)
+              p
+            )
           }
         } yield packets
     }
 
-    Files[IO].readAll(Path("path/to/pcap"))
+    Files[IO]
+      .readAll(Path("path/to/pcap"))
       .through(decoder.toPipeByte)
       .map(_.toString)
       .foreach(IO.println)

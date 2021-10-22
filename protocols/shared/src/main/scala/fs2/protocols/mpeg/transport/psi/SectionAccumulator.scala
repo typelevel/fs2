@@ -26,7 +26,10 @@ package transport
 package psi
 
 /** Accumulates sections of the same table id and table id extension. */
-private[psi] class SectionAccumulator[A <: ExtendedSection] private (val sections: GroupedSections[A], sectionByNumber: Map[Int, A]) {
+private[psi] class SectionAccumulator[A <: ExtendedSection] private (
+    val sections: GroupedSections[A],
+    sectionByNumber: Map[Int, A]
+) {
 
   def add(section: A): Either[String, SectionAccumulator[A]] = {
     def validate(err: => String)(f: Boolean): Either[String, Unit] =
@@ -41,19 +44,26 @@ private[psi] class SectionAccumulator[A <: ExtendedSection] private (val section
       _ <- checkEquality("table id extensions")(_.extension.tableIdExtension)
       _ <- checkEquality("versions")(_.extension.version)
       _ <- checkEquality("last section numbers")(_.extension.lastSectionNumber)
-      _ <- validate("invalid section number")(sectionNumber <= sections.head.extension.lastSectionNumber)
+      _ <- validate("invalid section number")(
+        sectionNumber <= sections.head.extension.lastSectionNumber
+      )
       _ <- validate("duplicate section number")(!sectionByNumber.contains(sectionNumber))
-    } yield new SectionAccumulator(GroupedSections(section, sections.list), sectionByNumber + (section.extension.sectionNumber -> section))
+    } yield new SectionAccumulator(
+      GroupedSections(section, sections.list),
+      sectionByNumber + (section.extension.sectionNumber -> section)
+    )
   }
 
   def complete: Option[GroupedSections[A]] =
-    if (sectionByNumber.size == (sections.head.extension.lastSectionNumber + 1)) Some(sections) else None
+    if (sectionByNumber.size == (sections.head.extension.lastSectionNumber + 1)) Some(sections)
+    else None
 }
 
 private[psi] object SectionAccumulator {
 
   def apply[A <: ExtendedSection](section: A): SectionAccumulator[A] =
-    new SectionAccumulator(GroupedSections(section), Map(section.extension.sectionNumber -> section))
+    new SectionAccumulator(
+      GroupedSections(section),
+      Map(section.extension.sectionNumber -> section)
+    )
 }
-
-

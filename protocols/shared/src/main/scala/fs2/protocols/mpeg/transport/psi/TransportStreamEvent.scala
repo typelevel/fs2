@@ -30,7 +30,7 @@ package psi
 import cats.data.Chain
 import scodec.bits.BitVector
 
-import psi.{ Table => TableMessage }
+import psi.{Table => TableMessage}
 
 abstract class TransportStreamEvent
 
@@ -43,27 +43,33 @@ object TransportStreamEvent {
 
   def pes(pid: Pid, pes: PesPacket): TransportStreamEvent = Pes(pid, pes)
   def table(pid: Pid, table: TableMessage): TransportStreamEvent = Table(pid, table)
-  def scrambledPayload(pid: Pid, content: BitVector): TransportStreamEvent = ScrambledPayload(pid, content)
+  def scrambledPayload(pid: Pid, content: BitVector): TransportStreamEvent =
+    ScrambledPayload(pid, content)
   def metadata[A](md: A): TransportStreamEvent = Metadata(None, md)
   def metadata[A](pid: Pid, md: A): TransportStreamEvent = Metadata(Some(pid), md)
   def error(pid: Pid, e: MpegError): TransportStreamEvent = Error(Some(pid), e)
   def error(pid: Option[Pid], e: MpegError): TransportStreamEvent = Error(pid, e)
 
   private def sectionsToTables[S](
-    group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]], tableBuilder: TableBuilder
-  ): Scan[(Map[Pid, S], TransportStreamIndex), PidStamped[Either[MpegError, Section]], TransportStreamEvent] = {
+      group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]],
+      tableBuilder: TableBuilder
+  ): Scan[(Map[Pid, S], TransportStreamIndex), PidStamped[
+    Either[MpegError, Section]
+  ], TransportStreamEvent] = {
 
     import MpegError._
 
     val sectionsToTablesForPid: Scan[S, Section, Either[MpegError, TableMessage]] =
       group.map {
-        case Left(e) => Left(e)
+        case Left(e)   => Left(e)
         case Right(gs) => tableBuilder.build(gs)
       }
 
-    val sectionsToTables: Scan[Map[Pid, S], PidStamped[Either[MpegError, Section]], PidStamped[Either[MpegError, TableMessage]]] =
-      Scan(Map.empty[Pid, S])({
-        case (state, PidStamped(pid, e)) =>
+    val sectionsToTables: Scan[Map[Pid, S], PidStamped[Either[MpegError, Section]], PidStamped[
+      Either[MpegError, TableMessage]
+    ]] =
+      Scan(Map.empty[Pid, S])(
+        { case (state, PidStamped(pid, e)) =>
           e match {
             case Right(section) =>
               val groupingState = state.getOrElse(pid, group.initial)
@@ -72,35 +78,50 @@ object TransportStreamEvent {
             case Left(err) =>
               (state, Chunk.singleton(PidStamped(pid, Left(err))))
           }
-      }, { state =>
-        Chunk.concat(state.foldLeft(Chain.empty[Chunk[PidStamped[Either[MpegError, TableMessage]]]]) { case (acc, (pid, gs)) =>
-          acc :+ sectionsToTablesForPid.onComplete(gs).map(PidStamped(pid, _))
-        }.toList)
-      })
+        },
+        state =>
+          Chunk.concat(
+            state
+              .foldLeft(Chain.empty[Chunk[PidStamped[Either[MpegError, TableMessage]]]]) {
+                case (acc, (pid, gs)) =>
+                  acc :+ sectionsToTablesForPid.onComplete(gs).map(PidStamped(pid, _))
+              }
+              .toList
+          )
+      )
 
-    sectionsToTables.andThen(PidStamped.preserve(passErrors(TransportStreamIndex.build))).map { case PidStamped(pid, value) =>
-      value match {
-        case Left(e) => error(pid, e)
-        case Right(Left(tsi)) => metadata(tsi)
-        case Right(Right(tbl)) => table(pid, tbl)
-      }
+    sectionsToTables.andThen(PidStamped.preserve(passErrors(TransportStreamIndex.build))).map {
+      case PidStamped(pid, value) =>
+        value match {
+          case Left(e)           => error(pid, e)
+          case Right(Left(tsi))  => metadata(tsi)
+          case Right(Right(tbl)) => table(pid, tbl)
+        }
     }
   }
 
   def fromPacketStream[S](
-    sectionCodec: SectionCodec,
-    group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]],
-    tableBuilder: TableBuilder
-  ): Scan[((Map[Pid, ContinuityCounter], Demultiplexer.State), (Map[Pid, S], TransportStreamIndex)), Packet, TransportStreamEvent] = {
-    val demuxed = {
-      Demultiplexer.demultiplex(sectionCodec).andThen(
-        sectionsToTables(group, tableBuilder).semipass[PidStamped[Either[DemultiplexerError, Demultiplexer.Result]], TransportStreamEvent](
-          {
-            case PidStamped(pid, Right(Demultiplexer.SectionResult(section))) => Right(PidStamped(pid, Right(section)))
+      sectionCodec: SectionCodec,
+      group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]],
+      tableBuilder: TableBuilder
+  ): Scan[
+    ((Map[Pid, ContinuityCounter], Demultiplexer.State), (Map[Pid, S], TransportStreamIndex)),
+    Packet,
+    TransportStreamEvent
+  ] = {
+    val demuxed =
+      Demultiplexer
+        .demultiplex(sectionCodec)
+        .andThen(
+          sectionsToTables(group, tableBuilder).semipass[PidStamped[
+            Either[DemultiplexerError, Demultiplexer.Result]
+          ], TransportStreamEvent]({
+            case PidStamped(pid, Right(Demultiplexer.SectionResult(section))) =>
+              Right(PidStamped(pid, Right(section)))
             case PidStamped(pid, Right(Demultiplexer.PesPacketResult(p))) => Left(pes(pid, p))
-            case PidStamped(pid, Left(e)) => Right(PidStamped(pid, Left(e.toMpegError)))
-          }))
-    }
+            case PidStamped(pid, Left(e))                                 => Right(PidStamped(pid, Left(e.toMpegError)))
+          })
+        )
     demuxed.semipass[Packet, TransportStreamEvent]({
       case Packet(header, _, _, Some(payload)) if header.scramblingControl != 0 =>
         Left(scrambledPayload(header.pid, payload))
@@ -110,8 +131,8 @@ object TransportStreamEvent {
   }
 
   def fromSectionStream[S](
-    group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]],
-    tableBuilder: TableBuilder
+      group: Scan[S, Section, Either[GroupingError, GroupedSections[Section]]],
+      tableBuilder: TableBuilder
   ): Scan[(Map[Pid, S], TransportStreamIndex), PidStamped[Section], TransportStreamEvent] =
     sectionsToTables(group, tableBuilder).contramap[PidStamped[Section]](_.map(Right(_)))
 }

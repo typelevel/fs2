@@ -36,7 +36,10 @@ sealed abstract class TransportStreamIndex {
 
   def pmt(prg: ProgramNumber): Either[LookupError, ProgramMapTable]
 
-  def programMapRecords(program: ProgramNumber, streamType: StreamType): Either[LookupError, List[ProgramMapRecord]] =
+  def programMapRecords(
+      program: ProgramNumber,
+      streamType: StreamType
+  ): Either[LookupError, List[ProgramMapRecord]] =
     for {
       p <- pat.toRight(LookupError.MissingProgramAssociation)
       _ <- p.programByPid.get(program).toRight(LookupError.UnknownProgram)
@@ -44,14 +47,16 @@ sealed abstract class TransportStreamIndex {
       pmrs <- q.componentStreamMapping.get(streamType).toRight(LookupError.UnknownStreamType)
     } yield pmrs
 
-  def programManRecord(program: ProgramNumber, streamType: StreamType): Either[LookupError, ProgramMapRecord] =
-    programMapRecords(program, streamType).map { _.head }
+  def programManRecord(
+      program: ProgramNumber,
+      streamType: StreamType
+  ): Either[LookupError, ProgramMapRecord] =
+    programMapRecords(program, streamType).map(_.head)
 
   def withPat(pat: ProgramAssociationTable): TransportStreamIndex
   def withPmt(pmt: ProgramMapTable): TransportStreamIndex
   def withCat(cat: ConditionalAccessTable): TransportStreamIndex
 }
-
 
 object TransportStreamIndex {
 
@@ -64,9 +69,9 @@ object TransportStreamIndex {
   }
 
   private case class DefaultTransportStreamIndex(
-    pat: Option[ProgramAssociationTable],
-    cat: Option[ConditionalAccessTable],
-    pmts: Map[ProgramNumber, ProgramMapTable]
+      pat: Option[ProgramAssociationTable],
+      cat: Option[ConditionalAccessTable],
+      pmts: Map[ProgramNumber, ProgramMapTable]
   ) extends TransportStreamIndex {
 
     def pmt(prg: ProgramNumber): Either[LookupError, ProgramMapTable] =
@@ -77,9 +82,8 @@ object TransportStreamIndex {
       copy(pat = Some(pat), pmts = pmts.view.filterKeys(programs).toMap)
     }
 
-    def withPmt(pmt: ProgramMapTable): TransportStreamIndex = {
+    def withPmt(pmt: ProgramMapTable): TransportStreamIndex =
       copy(pmts = pmts + (pmt.programNumber -> pmt))
-    }
 
     def withCat(cat: ConditionalAccessTable): TransportStreamIndex =
       copy(cat = Some(cat))
@@ -87,22 +91,23 @@ object TransportStreamIndex {
 
   def empty: TransportStreamIndex = DefaultTransportStreamIndex(None, None, Map.empty)
 
-  def build: Scan[TransportStreamIndex, Table, Either[TransportStreamIndex, Table]] = Scan.stateful(empty) { (tsi, section) =>
-    val updatedTsi = section match {
-      case pat: ProgramAssociationTable =>
-        Some(tsi.withPat(pat))
-      case pmt: ProgramMapTable =>
-        Some(tsi.withPmt(pmt))
-      case cat: ConditionalAccessTable =>
-        Some(tsi.withCat(cat))
-      case other => None
+  def build: Scan[TransportStreamIndex, Table, Either[TransportStreamIndex, Table]] =
+    Scan.stateful(empty) { (tsi, section) =>
+      val updatedTsi = section match {
+        case pat: ProgramAssociationTable =>
+          Some(tsi.withPat(pat))
+        case pmt: ProgramMapTable =>
+          Some(tsi.withPmt(pmt))
+        case cat: ConditionalAccessTable =>
+          Some(tsi.withCat(cat))
+        case other => None
+      }
+      val out = updatedTsi match {
+        case Some(newTsi) if newTsi != tsi =>
+          Chunk(Right(section), Left(newTsi))
+        case _ =>
+          Chunk(Right(section))
+      }
+      (updatedTsi.getOrElse(tsi), out)
     }
-    val out = updatedTsi match {
-      case Some(newTsi) if newTsi != tsi =>
-        Chunk(Right(section), Left(newTsi))
-      case _ =>
-        Chunk(Right(section))
-    }
-    (updatedTsi.getOrElse(tsi), out)
-  }
 }

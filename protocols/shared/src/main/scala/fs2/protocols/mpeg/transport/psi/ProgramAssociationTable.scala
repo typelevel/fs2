@@ -29,13 +29,14 @@ import scodec.Codec
 import scodec.codecs._
 
 case class ProgramAssociationTable(
-  tsid: TransportStreamId,
-  version: Int,
-  current: Boolean,
-  programByPid: Map[ProgramNumber, Pid]
+    tsid: TransportStreamId,
+    version: Int,
+    current: Boolean,
+    programByPid: Map[ProgramNumber, Pid]
 ) extends Table {
   def tableId = ProgramAssociationSection.TableId
-  def toSections: GroupedSections[ProgramAssociationSection] = ProgramAssociationTable.toSections(this)
+  def toSections: GroupedSections[ProgramAssociationSection] =
+    ProgramAssociationTable.toSections(this)
 }
 
 object ProgramAssociationTable {
@@ -47,15 +48,25 @@ object ProgramAssociationTable {
     val groupedEntries = entries.grouped(MaxProgramsPerSection).toVector
     val lastSection = groupedEntries.size - 1
     val sections = groupedEntries.zipWithIndex.map { case (es, idx) =>
-      ProgramAssociationSection(SectionExtension(pat.tsid.value, pat.version, pat.current, idx, lastSection), es)
+      ProgramAssociationSection(
+        SectionExtension(pat.tsid.value, pat.version, pat.current, idx, lastSection),
+        es
+      )
     }
     if (sections.isEmpty)
-      GroupedSections(ProgramAssociationSection(SectionExtension(pat.tsid.value, pat.version, pat.current, 0, 0), Vector.empty))
+      GroupedSections(
+        ProgramAssociationSection(
+          SectionExtension(pat.tsid.value, pat.version, pat.current, 0, 0),
+          Vector.empty
+        )
+      )
     else
       GroupedSections(sections.head, sections.tail.toList)
   }
 
-  def fromSections(sections: GroupedSections[ProgramAssociationSection]): Either[String, ProgramAssociationTable] = {
+  def fromSections(
+      sections: GroupedSections[ProgramAssociationSection]
+  ): Either[String, ProgramAssociationTable] = {
     def extract[A](name: String, f: ProgramAssociationSection => A): Either[String, A] = {
       val extracted = sections.list.map(f).distinct
       if (extracted.size == 1) Right(extracted.head)
@@ -65,7 +76,7 @@ object ProgramAssociationTable {
       tsid <- extract("TSIDs", _.tsid)
       version <- extract("versions", _.extension.version)
     } yield {
-      val current = sections.list.foldLeft(false) { (acc, s) => acc || s.extension.current }
+      val current = sections.list.foldLeft(false)((acc, s) => acc || s.extension.current)
       ProgramAssociationTable(
         tsid,
         version,
@@ -73,21 +84,25 @@ object ProgramAssociationTable {
         (for {
           section <- sections.list
           pidMapping <- section.pidMappings
-        } yield pidMapping).toMap)
+        } yield pidMapping).toMap
+      )
     }
   }
 
-  implicit val tableSupport: TableSupport[ProgramAssociationTable] = new TableSupport[ProgramAssociationTable] {
-    def tableId = ProgramAssociationSection.TableId
-    def toTable(gs: GroupedSections[Section]) =
-      gs.narrow[ProgramAssociationSection].toRight("Not PAT sections").flatMap { sections => fromSections(sections) }
-    def toSections(pat: ProgramAssociationTable) = ProgramAssociationTable.toSections(pat)
-  }
+  implicit val tableSupport: TableSupport[ProgramAssociationTable] =
+    new TableSupport[ProgramAssociationTable] {
+      def tableId = ProgramAssociationSection.TableId
+      def toTable(gs: GroupedSections[Section]) =
+        gs.narrow[ProgramAssociationSection].toRight("Not PAT sections").flatMap { sections =>
+          fromSections(sections)
+        }
+      def toSections(pat: ProgramAssociationTable) = ProgramAssociationTable.toSections(pat)
+    }
 }
 
 case class ProgramAssociationSection(
-  extension: SectionExtension,
-  pidMappings: Vector[(ProgramNumber, Pid)]
+    extension: SectionExtension,
+    pidMappings: Vector[(ProgramNumber, Pid)]
 ) extends ExtendedSection {
   def tableId = ProgramAssociationSection.TableId
   def tsid: TransportStreamId = TransportStreamId(extension.tableIdExtension)
@@ -98,13 +113,12 @@ object ProgramAssociationSection {
 
   private type Fragment = Vector[(ProgramNumber, Pid)]
 
-  private val fragmentCodec: Codec[Fragment] = {
+  private val fragmentCodec: Codec[Fragment] =
     vector {
       ("program_number" | Codec[ProgramNumber]) ::
-      (reserved(3) ~>
-      ("pid" | Codec[Pid]))
+        (reserved(3) ~>
+          ("pid" | Codec[Pid]))
     }
-  }
 
   implicit val sectionFragmentCodec: SectionFragmentCodec[ProgramAssociationSection] =
     SectionFragmentCodec.psi[ProgramAssociationSection, Vector[(ProgramNumber, Pid)]](

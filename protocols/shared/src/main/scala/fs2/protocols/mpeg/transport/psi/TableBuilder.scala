@@ -35,28 +35,29 @@ class TableBuilder private (cases: Map[Int, List[TableSupport[_]]]) {
     new TableBuilder(cases + (ts.tableId -> newCases))
   }
 
-  def build(gs: GroupedSections[Section]): Either[TableBuildingError, Table] = {
+  def build(gs: GroupedSections[Section]): Either[TableBuildingError, Table] =
     cases.get(gs.tableId) match {
       case None | Some(Nil) => Left(TableBuildingError(gs.tableId, "Unknown table id"))
       case Some(list) =>
-        list.dropRight(1).foldRight[Either[String, _]](list.last.toTable(gs)) { (next, res) => res.fold(_ => next.toTable(gs), Right(_)) } match {
+        list.dropRight(1).foldRight[Either[String, _]](list.last.toTable(gs)) { (next, res) =>
+          res.fold(_ => next.toTable(gs), Right(_))
+        } match {
           case Right(table) => Right(table.asInstanceOf[Table])
-          case Left(err) => Left(TableBuildingError(gs.tableId, err))
+          case Left(err)    => Left(TableBuildingError(gs.tableId, err))
         }
     }
-  }
 }
 
 object TableBuilder {
 
   def empty: TableBuilder = new TableBuilder(Map.empty)
 
-  def supporting[T <: Table : TableSupport] = empty.supporting[T]
+  def supporting[T <: Table: TableSupport] = empty.supporting[T]
 
   def psi: TableBuilder =
-    supporting[ProgramAssociationTable].
-    supporting[ProgramMapTable].
-    supporting[ConditionalAccessTable]
+    supporting[ProgramAssociationTable]
+      .supporting[ProgramMapTable]
+      .supporting[ConditionalAccessTable]
 }
 
 trait TableSupport[T <: Table] {
@@ -67,7 +68,7 @@ trait TableSupport[T <: Table] {
 
 object TableSupport {
 
-  def singleton[A <: Section with Table : reflect.ClassTag](tableId: Int): TableSupport[A] = {
+  def singleton[A <: Section with Table: reflect.ClassTag](tableId: Int): TableSupport[A] = {
     val tid = tableId
     new TableSupport[A] {
       def tableId = tid

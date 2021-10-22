@@ -24,7 +24,7 @@
 package fs2.protocols.mpeg
 
 import scodec.bits._
-import scodec.{ Attempt, Decoder, DecodeResult, Err }
+import scodec.{Attempt, DecodeResult, Decoder, Err}
 
 trait PesPacket
 
@@ -40,14 +40,16 @@ object PesPacket {
   def decoder(prefix: PesPacketHeaderPrefix): Decoder[PesPacket] = Decoder { buffer =>
     val id = prefix.streamId
     import PesStreamId._
-    if (id != ProgramStreamMap &&
-        id != PaddingStream &&
-        id != PrivateStream2 &&
-        id != ECM &&
-        id != EMM &&
-        id != ProgramStreamDirectory &&
-        id != DSMCC &&
-        id != `ITU-T Rec. H.222.1 type E`) {
+    if (
+      id != ProgramStreamMap &&
+      id != PaddingStream &&
+      id != PrivateStream2 &&
+      id != ECM &&
+      id != EMM &&
+      id != ProgramStreamDirectory &&
+      id != DSMCC &&
+      id != `ITU-T Rec. H.222.1 type E`
+    ) {
       PesPacketHeader.codec.decode(buffer) match {
         case Attempt.Successful(DecodeResult(header, rest)) =>
           decodeWithHeader(prefix, header, rest)
@@ -58,9 +60,10 @@ object PesPacket {
       id == PrivateStream2 ||
       id == ECM ||
       id == EMM |
-      id == ProgramStreamDirectory ||
-      id == DSMCC ||
-      id == `ITU-T Rec. H.222.1 type E`) {
+        id == ProgramStreamDirectory ||
+        id == DSMCC ||
+        id == `ITU-T Rec. H.222.1 type E`
+    ) {
       Attempt.successful(DecodeResult(WithoutHeader(id, buffer), BitVector.empty))
     } else if (id == PaddingStream) {
       Attempt.successful(DecodeResult(Padding, BitVector.empty))
@@ -69,7 +72,10 @@ object PesPacket {
     }
   }
 
-  def decodeWithHeader(prefix: PesPacketHeaderPrefix, header: PesPacketHeader, data: BitVector): Attempt[DecodeResult[PesPacket]] = {
+  def decodeWithHeader(
+      prefix: PesPacketHeaderPrefix,
+      header: PesPacketHeader,
+      data: BitVector
+  ): Attempt[DecodeResult[PesPacket]] =
     Attempt.successful(DecodeResult(WithHeader(prefix.streamId, header, data), BitVector.empty))
-  }
 }

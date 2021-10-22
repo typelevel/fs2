@@ -37,18 +37,36 @@ class PacketTest extends Fs2Suite {
     val c = ByteVector.fill(10)(2).bits
     val sections = Vector(a, b, c)
     val packets = Packet.packetizeMany(Pid(0), ContinuityCounter(0), sections)
-    assertEquals(packets, Vector(Packet.payload(Pid(0), ContinuityCounter(0), Some(0), a ++ b ++ c ++ BitVector.fill((183 * 8) - a.size - b.size - c.size)(true))))
+    assertEquals(
+      packets,
+      Vector(
+        Packet.payload(
+          Pid(0),
+          ContinuityCounter(0),
+          Some(0),
+          a ++ b ++ c ++ BitVector.fill((183 * 8) - a.size - b.size - c.size)(true)
+        )
+      )
+    )
   }
 
   test("support packetizing multiple sections across multiple packets") {
-    val sections = (0 until 256).map { x => ByteVector.fill(10)(x).bits }.toVector
+    val sections = (0 until 256).map(x => ByteVector.fill(10)(x).bits).toVector
     val data = sections.foldLeft(BitVector.empty)(_ ++ _)
     val packets = Packet.packetizeMany(Pid(0), ContinuityCounter(0), sections)
 
     packets.zipWithIndex.foreach { case (packet, idx) =>
       val payloadOffset = if (idx == 0) 0 else 10 * ((idx * 183) / 10 + 1) - (idx * 183)
       val offset = 183L * 8 * idx
-      assertEquals(packets(idx), Packet.payload(Pid(0), ContinuityCounter(idx), Some(payloadOffset), data.drop(offset).take(183 * 8)))
+      assertEquals(
+        packets(idx),
+        Packet.payload(
+          Pid(0),
+          ContinuityCounter(idx),
+          Some(payloadOffset),
+          data.drop(offset).take(183 * 8)
+        )
+      )
     }
   }
 }

@@ -32,7 +32,7 @@ import Descriptor._
 import scodec._
 import scodec.bits._
 
-import org.scalacheck.{ Arbitrary, Gen, Prop }
+import org.scalacheck.{Arbitrary, Gen, Prop}
 
 class DescriptorTest extends Fs2Suite {
   import DescriptorTestData._
@@ -42,7 +42,7 @@ class DescriptorTest extends Fs2Suite {
       .withMinSuccessfulTests(1000)
 
   test("support relevant descriptors which handles decoding and encoding for valid values") {
-    Prop.forAll { (d: Descriptor) => roundtrip(Descriptor.codec, d) }
+    Prop.forAll((d: Descriptor) => roundtrip(Descriptor.codec, d))
   }
 
   private def roundtrip[A](codec: Codec[A], value: A) = {
@@ -71,7 +71,14 @@ object DescriptorTestData {
     constrainedParameter <- Gen.oneOf(true, false)
     stillPictureFlag <- Gen.oneOf(true, false)
     mpeg1Only <- genMpeg1Only(mpeg1OnlyFlag)
-  } yield VideoStreamDescriptor(multipleFrameRateFlag, frameRateCode, mpeg1OnlyFlag, constrainedParameter, stillPictureFlag, mpeg1Only)
+  } yield VideoStreamDescriptor(
+    multipleFrameRateFlag,
+    frameRateCode,
+    mpeg1OnlyFlag,
+    constrainedParameter,
+    stillPictureFlag,
+    mpeg1Only
+  )
 
   lazy val genAudioStreamDescriptor: Gen[AudioStreamDescriptor] = for {
     freeFormatFlag <- Gen.oneOf(true, false)
@@ -89,27 +96,38 @@ object DescriptorTestData {
     HierarchyType.PrivateStream,
     HierarchyType.MultiViewProfile,
     HierarchyType.Reserved(0),
-    HierarchyType.BaseLayer)
+    HierarchyType.BaseLayer
+  )
 
   lazy val genHierarchyDescriptor: Gen[HierarchyDescriptor] = for {
     hierarchyType <- genHierarchyType
     hierarchyLayerIndex <- Gen.chooseNum(0, 63)
     hierarchyEmbeddedLayerIndex <- Gen.chooseNum(0, 63)
     hierarchyChannel <- Gen.chooseNum(0, 63)
-  } yield HierarchyDescriptor(hierarchyType, hierarchyLayerIndex, hierarchyEmbeddedLayerIndex, hierarchyChannel)
+  } yield HierarchyDescriptor(
+    hierarchyType,
+    hierarchyLayerIndex,
+    hierarchyEmbeddedLayerIndex,
+    hierarchyChannel
+  )
 
   lazy val genRegistrationDescriptor: Gen[RegistrationDescriptor] = for {
     length <- Gen.chooseNum(4, 255)
     formatIdentifier <- Gen.listOfN(4, Gen.chooseNum(0, 255))
     additionalIdentificationInfo <- Gen.listOfN(length - 4, Gen.chooseNum(0, 255))
-  } yield RegistrationDescriptor(ByteVector(formatIdentifier: _*), ByteVector(additionalIdentificationInfo: _*))
+  } yield RegistrationDescriptor(
+    ByteVector(formatIdentifier: _*),
+    ByteVector(additionalIdentificationInfo: _*)
+  )
 
   lazy val genDataStreamAlignmentDescriptor: Gen[DataStreamAlignmentDescriptor] = for {
-    alignmentType <- Gen.oneOf(AlignmentType.Reserved(0),
+    alignmentType <- Gen.oneOf(
+      AlignmentType.Reserved(0),
       AlignmentType.SliceOrVideoAccessUnit,
       AlignmentType.VideoAccessUnit,
       AlignmentType.GopOrSeq,
-      AlignmentType.Seq)
+      AlignmentType.Seq
+    )
   } yield DataStreamAlignmentDescriptor(alignmentType)
 
   lazy val genTargetBackgroundGridDescriptor: Gen[TargetBackgroundGridDescriptor] = for {
@@ -132,8 +150,14 @@ object DescriptorTestData {
   } yield CADescriptor(caSystemId, Pid(caPid), ByteVector(privateData: _*))
 
   lazy val genLanguageField: Gen[LanguageField] = for {
-    iso639LanguageCode  <- Gen.listOfN(3, Gen.alphaChar)
-    audioType <- Gen.oneOf(AudioType.Undefined, AudioType.CleanEffects, AudioType.HearingImpaired, AudioType.VisualImpairedCommentary, AudioType.Reserved(4))
+    iso639LanguageCode <- Gen.listOfN(3, Gen.alphaChar)
+    audioType <- Gen.oneOf(
+      AudioType.Undefined,
+      AudioType.CleanEffects,
+      AudioType.HearingImpaired,
+      AudioType.VisualImpairedCommentary,
+      AudioType.Reserved(4)
+    )
   } yield LanguageField(iso639LanguageCode.mkString, audioType)
 
   lazy val genIso639LanguageDescriptor: Gen[Iso639LanguageDescriptor] = for {
@@ -143,22 +167,34 @@ object DescriptorTestData {
   } yield Iso639LanguageDescriptor(languageFields.toVector)
 
   lazy val genSystemClockDescriptor: Gen[SystemClockDescriptor] = for {
-     externalClockReferenceIndicator <- Gen.oneOf(true, false)
-     clockAccuracyInteger <- Gen.oneOf(0, 63)
-     clockAccuracyExponent <- Gen.oneOf(0, 7)
-  } yield SystemClockDescriptor(externalClockReferenceIndicator, clockAccuracyInteger, clockAccuracyExponent)
+    externalClockReferenceIndicator <- Gen.oneOf(true, false)
+    clockAccuracyInteger <- Gen.oneOf(0, 63)
+    clockAccuracyExponent <- Gen.oneOf(0, 7)
+  } yield SystemClockDescriptor(
+    externalClockReferenceIndicator,
+    clockAccuracyInteger,
+    clockAccuracyExponent
+  )
 
-  lazy val genMultiplexBufferUtilizationDescriptor: Gen[MultiplexBufferUtilizationDescriptor] = for {
-    boundValidFlag <- Gen.oneOf(true, false)
-    ltwOffsetLowerBound <- Gen.oneOf(0, 32767)
-    ltwOffsetUpperBound <- Gen.oneOf(0, 16383)
-  } yield MultiplexBufferUtilizationDescriptor(boundValidFlag, ltwOffsetLowerBound, ltwOffsetUpperBound)
+  lazy val genMultiplexBufferUtilizationDescriptor: Gen[MultiplexBufferUtilizationDescriptor] =
+    for {
+      boundValidFlag <- Gen.oneOf(true, false)
+      ltwOffsetLowerBound <- Gen.oneOf(0, 32767)
+      ltwOffsetUpperBound <- Gen.oneOf(0, 16383)
+    } yield MultiplexBufferUtilizationDescriptor(
+      boundValidFlag,
+      ltwOffsetLowerBound,
+      ltwOffsetUpperBound
+    )
 
   lazy val genCopyrightDescriptor: Gen[CopyrightDescriptor] = for {
     length <- Gen.chooseNum(4, 255)
     copyrightIdentifier <- Gen.listOfN(4, Gen.chooseNum(0, 255))
     additionalCopyrightInfo <- Gen.listOfN(length - 4, Gen.chooseNum(0, 255))
-  } yield CopyrightDescriptor(ByteVector(copyrightIdentifier: _*), ByteVector(additionalCopyrightInfo: _*))
+  } yield CopyrightDescriptor(
+    ByteVector(copyrightIdentifier: _*),
+    ByteVector(additionalCopyrightInfo: _*)
+  )
 
   lazy val genMaximumBitrateDescriptor: Gen[MaximumBitrateDescriptor] = for {
     maximumBitrate <- Gen.chooseNum(0, 4194303)
@@ -177,16 +213,20 @@ object DescriptorTestData {
     for { leakValidFlag <- Gen.oneOf(true, false) } yield StdDescriptor(leakValidFlag)
 
   lazy val genIbpDescriptor: Gen[IbpDescriptor] = for {
-   closedGopFlag <- Gen.oneOf(true, false)
-   identicalGopFlag <- Gen.oneOf(true, false)
-   maxGopLength <- Gen.chooseNum(0, 16383)
+    closedGopFlag <- Gen.oneOf(true, false)
+    identicalGopFlag <- Gen.oneOf(true, false)
+    maxGopLength <- Gen.chooseNum(0, 16383)
   } yield IbpDescriptor(closedGopFlag, identicalGopFlag, maxGopLength)
 
   lazy val genMpeg4VideoDescriptor: Gen[Mpeg4VideoDescriptor] =
-    for { mpeg4VisualProfileAndLevel <- Gen.chooseNum(0, 255) } yield Mpeg4VideoDescriptor(mpeg4VisualProfileAndLevel.toByte)
+    for { mpeg4VisualProfileAndLevel <- Gen.chooseNum(0, 255) } yield Mpeg4VideoDescriptor(
+      mpeg4VisualProfileAndLevel.toByte
+    )
 
   lazy val genMpeg4AudioDescriptor: Gen[Mpeg4AudioDescriptor] =
-    for { mpeg4AudioProfileAndLevel <- Gen.chooseNum(0, 255) } yield Mpeg4AudioDescriptor(mpeg4AudioProfileAndLevel.toByte)
+    for { mpeg4AudioProfileAndLevel <- Gen.chooseNum(0, 255) } yield Mpeg4AudioDescriptor(
+      mpeg4AudioProfileAndLevel.toByte
+    )
 
   lazy val genIodDescriptor: Gen[IodDescriptor] = for {
     scopeOfIodLabel <- Gen.chooseNum(0, 255)
@@ -251,7 +291,8 @@ object DescriptorTestData {
     genExternalEsIdDescriptor,
     genMuxCodeDescriptor,
     genFmxBufferSizeDescriptor,
-    genMultiplexBufferDescriptor)
+    genMultiplexBufferDescriptor
+  )
 
   lazy val genUnknownDescriptor: Gen[UnknownDescriptor] = for {
     tag <- Gen.chooseNum(36, 255)
@@ -259,10 +300,11 @@ object DescriptorTestData {
     data <- Gen.listOfN(length, Gen.chooseNum(0, 255))
   } yield UnknownDescriptor(tag, length, ByteVector(data: _*))
 
-  lazy val genDescriptor: Gen[Descriptor] = Gen.oneOf(genKnownDescriptor, genUnknownDescriptor).map {
-    case known: KnownDescriptor => Right(known)
-    case unknown: UnknownDescriptor => Left(unknown)
-  }
+  lazy val genDescriptor: Gen[Descriptor] =
+    Gen.oneOf(genKnownDescriptor, genUnknownDescriptor).map {
+      case known: KnownDescriptor     => Right(known)
+      case unknown: UnknownDescriptor => Left(unknown)
+    }
 
   implicit lazy val arbitraryDescriptor: Arbitrary[Descriptor] = Arbitrary(genDescriptor)
 }

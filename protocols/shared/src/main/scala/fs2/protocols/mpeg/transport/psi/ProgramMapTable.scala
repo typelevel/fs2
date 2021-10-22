@@ -31,31 +31,35 @@ import scodec.codecs._
 import Descriptor._
 
 case class ProgramMapTable(
-  programNumber: ProgramNumber,
-  version: Int,
-  current: Boolean,
-  pcrPid: Pid,
-  programInfoDescriptors: List[Descriptor],
-  componentStreamMapping: Map[StreamType, List[ProgramMapRecord]]
+    programNumber: ProgramNumber,
+    version: Int,
+    current: Boolean,
+    pcrPid: Pid,
+    programInfoDescriptors: List[Descriptor],
+    componentStreamMapping: Map[StreamType, List[ProgramMapRecord]]
 ) extends Table {
   def tableId = ProgramMapSection.TableId
 }
 
 object ProgramMapTable {
 
-  def toSection(pmt: ProgramMapTable): ProgramMapSection = {
+  def toSection(pmt: ProgramMapTable): ProgramMapSection =
     ProgramMapSection(
       SectionExtension(pmt.programNumber.value, pmt.version, pmt.current, 0, 0),
       pmt.pcrPid,
       pmt.programInfoDescriptors,
-      (for ((st, pmrs) <- pmt.componentStreamMapping.toVector; pmr <- pmrs) yield (st, pmr)).sortBy { case (k, v) => (k.value, v.pid.value) }
+      (for {
+        (st, pmrs) <- pmt.componentStreamMapping.toVector
+        pmr <- pmrs
+      } yield (st, pmr)).sortBy { case (k, v) => (k.value, v.pid.value) }
     )
-  }
 
   def fromSection(section: ProgramMapSection): ProgramMapTable = {
-    val componentStreamMapping = section.componentStreamMapping.foldLeft(Map.empty[StreamType, List[ProgramMapRecord]]) { case (acc, (st, pmr)) =>
-      acc.updated(st, acc.get(st).fold(List(pmr))(existing => pmr :: existing))
-    }.map { case (k, v) => (k, v.reverse) }
+    val componentStreamMapping = section.componentStreamMapping
+      .foldLeft(Map.empty[StreamType, List[ProgramMapRecord]]) { case (acc, (st, pmr)) =>
+        acc.updated(st, acc.get(st).fold(List(pmr))(existing => pmr :: existing))
+      }
+      .map { case (k, v) => (k, v.reverse) }
     ProgramMapTable(
       section.programNumber,
       section.extension.version,
@@ -72,7 +76,7 @@ object ProgramMapTable {
       gs.narrow[ProgramMapSection].toRight("Not PMT sections").flatMap { sections =>
         if (sections.tail.isEmpty) Right(fromSection(sections.head))
         else Left(s"PMT supports only 1 section but got ${sections.list.size}")
-    }
+      }
     def toSections(pmt: ProgramMapTable) = GroupedSections(ProgramMapTable.toSection(pmt))
   }
 }
@@ -84,10 +88,10 @@ object ProgramMapRecord {
 }
 
 case class ProgramMapSection(
-  extension: SectionExtension,
-  pcrPid: Pid,
-  programInfoDescriptors: List[Descriptor],
-  componentStreamMapping: Vector[(StreamType, ProgramMapRecord)]
+    extension: SectionExtension,
+    pcrPid: Pid,
+    programInfoDescriptors: List[Descriptor],
+    componentStreamMapping: Vector[(StreamType, ProgramMapRecord)]
 ) extends ExtendedSection {
   def tableId = ProgramMapSection.TableId
   def programNumber: ProgramNumber = ProgramNumber(extension.tableIdExtension)
@@ -105,18 +109,20 @@ object ProgramMapSection {
       (("pid" | pid) :: ("es_descriptors" | descriptors)).as[ProgramMapRecord]
 
     ("pcr_pid" | pid) ::
-    ("program_info_descriptors" | descriptors) ::
-    vector {
-      ("stream_type" | uint8.as[StreamType]) :: programMapRecord
-    }
+      ("program_info_descriptors" | descriptors) ::
+      vector {
+        ("stream_type" | uint8.as[StreamType]) :: programMapRecord
+      }
   }
 
   implicit val sectionSubCodec: SectionFragmentCodec[ProgramMapSection] =
     SectionFragmentCodec.psi[ProgramMapSection, Fragment](
       TableId,
-      (ext, fragment) => fragment match {
-        case (pcrPid, descriptors, mapping) => ProgramMapSection(ext, pcrPid, descriptors, mapping)
-      },
+      (ext, fragment) =>
+        fragment match {
+          case (pcrPid, descriptors, mapping) =>
+            ProgramMapSection(ext, pcrPid, descriptors, mapping)
+        },
       pmt => (pmt.extension, (pmt.pcrPid, pmt.programInfoDescriptors, pmt.componentStreamMapping))
     )(fragmentCodec)
 }

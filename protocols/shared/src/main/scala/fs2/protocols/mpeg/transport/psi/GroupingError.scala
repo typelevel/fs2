@@ -25,7 +25,8 @@ package fs2.protocols.mpeg
 package transport
 package psi
 
-case class GroupingError(tableId: Int, tableIdExtension: Option[Int], message: String) extends MpegError
+case class GroupingError(tableId: Int, tableIdExtension: Option[Int], message: String)
+    extends MpegError
 
 object GroupingError {
   def apply(tableId: Int, tableIdExtension: Int, message: String): GroupingError =

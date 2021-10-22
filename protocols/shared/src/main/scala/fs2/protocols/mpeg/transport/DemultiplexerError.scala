@@ -33,8 +33,14 @@ sealed abstract class DemultiplexerError {
 
 object DemultiplexerError {
 
-  case class Discontinuity(last: ContinuityCounter, current: ContinuityCounter, adaptationFieldControl: Int) extends DemultiplexerError with MpegError {
-    def message = s"pid discontinuity: $last to $current with adaptation field control $adaptationFieldControl"
+  case class Discontinuity(
+      last: ContinuityCounter,
+      current: ContinuityCounter,
+      adaptationFieldControl: Int
+  ) extends DemultiplexerError
+      with MpegError {
+    def message =
+      s"pid discontinuity: $last to $current with adaptation field control $adaptationFieldControl"
     def toMpegError = this
   }
 

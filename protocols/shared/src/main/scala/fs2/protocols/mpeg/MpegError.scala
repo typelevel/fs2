@@ -42,7 +42,9 @@ object MpegError {
     override def toString = message
   }
 
-  def joinErrors[S, I, O](t: Scan[S, I, Either[MpegError, O]]): Scan[S, Either[MpegError, I], Either[MpegError, O]] =
+  def joinErrors[S, I, O](
+      t: Scan[S, I, Either[MpegError, O]]
+  ): Scan[S, Either[MpegError, I], Either[MpegError, O]] =
     t.semipass(_.fold(e => Left(Left(e)), i => Right(i)))
 
   def passErrors[S, I, O](t: Scan[S, I, O]): Scan[S, Either[MpegError, I], Either[MpegError, O]] =
