@@ -78,7 +78,7 @@ class SectionCodec private (
 
   def decode(bits: BitVector) = (for {
     header <- Codec[SectionHeader]
-    section <- Decoder(decodeSection(header))
+    section <- Decoder(decodeSection(header)(_))
   } yield section).decode(bits)
 
   def decodeSection(header: SectionHeader)(bits: BitVector): Attempt[DecodeResult[Section]] =

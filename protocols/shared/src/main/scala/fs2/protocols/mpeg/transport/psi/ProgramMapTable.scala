@@ -111,9 +111,9 @@ object ProgramMapSection {
     ("pcr_pid" | pid) ::
       ("program_info_descriptors" | descriptors) ::
       vector {
-        ("stream_type" | uint8.as[StreamType]) :: programMapRecord
+        (("stream_type" | uint8.as[StreamType]) :: programMapRecord).as[(StreamType, ProgramMapRecord)]
       }
-  }
+  }.as[Fragment]
 
   implicit val sectionSubCodec: SectionFragmentCodec[ProgramMapSection] =
     SectionFragmentCodec.psi[ProgramMapSection, Fragment](

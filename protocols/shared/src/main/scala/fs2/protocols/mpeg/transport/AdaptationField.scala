@@ -27,6 +27,7 @@ package transport
 import scodec.{Attempt, Codec, DecodeResult, SizeBound}
 import scodec.bits.BitVector
 import scodec.codecs._
+import scodec.compat._
 
 /** Partial modelling of the adaptation field.
   * The field extension, if present, is ignored upon decoding.
@@ -57,14 +58,14 @@ object AdaptationField {
 
     private val pcrCodec: Codec[Clock27MHz] =
       ((ulong(33) <~ ignore(6)) :: uint(9)).xmap[Clock27MHz](
-        { case (base, ext) =>
+        { case base *: ext *: EmptyTuple =>
           Clock27MHz(base * 300 + ext)
         },
         { clock =>
           val value = clock.value
           val base = value / 300
           val ext = (value % 300).toInt
-          (base, ext)
+          base *: ext *: EmptyTuple
         }
       )
     private val transportPrivateData: Codec[BitVector] = variableSizeBits(uint8, bits)

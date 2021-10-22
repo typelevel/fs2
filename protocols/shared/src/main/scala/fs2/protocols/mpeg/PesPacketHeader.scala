@@ -26,6 +26,7 @@ package fs2.protocols.mpeg
 import scodec.bits._
 import scodec.Codec
 import scodec.codecs._
+import scodec.compat._
 
 sealed abstract class PesScramblingControl
 object PesScramblingControl {
@@ -151,10 +152,10 @@ object PesPacketHeader {
   private def tsCodec(prefix: BitVector) =
     (constant(prefix) :: bits(3) :: marker :: bits(15) :: marker :: bits(15) :: marker).dropUnits
       .xmap[Long](
-        { case (a, b, c) => (a ++ b ++ c).toLong() },
+        { case a *: b *: c *: EmptyTuple => (a ++ b ++ c).toLong() },
         l => {
           val b = BitVector.fromLong(l).drop(31)
-          (b.take(3), b.drop(3).take(15), b.drop(18))
+          b.take(3) *: b.drop(3).take(15) *: b.drop(18) *: EmptyTuple
         }
       )
 
@@ -162,7 +163,7 @@ object PesPacketHeader {
     (ignore(2) :: bits(3) :: marker :: bits(15) :: marker :: bits(15) :: marker :: uint(
       9
     ) :: marker).dropUnits.xmap[Long](
-      { case (a, b, c, ext) =>
+      { case a *: b *: c *: ext *: EmptyTuple =>
         val base = (a ++ b ++ c).toLong()
         base * 300 + ext
       },
@@ -170,7 +171,7 @@ object PesPacketHeader {
         val base = (l / 300) % (2L << 32)
         val b = BitVector.fromLong(base).drop(31)
         val ext = (l % 300).toInt
-        (b.take(3), b.drop(3).take(15), b.drop(18), ext)
+        b.take(3) *: b.drop(3).take(15) *: b.drop(18) *: ext *: EmptyTuple
       }
     )
 

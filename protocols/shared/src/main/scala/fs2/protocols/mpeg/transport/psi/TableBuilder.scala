@@ -68,14 +68,14 @@ trait TableSupport[T <: Table] {
 
 object TableSupport {
 
-  def singleton[A <: Section with Table: reflect.ClassTag](tableId: Int): TableSupport[A] = {
+  def singleton[A <: Section with Table](tableId: Int)(implicit ct: reflect.ClassTag[A]): TableSupport[A] = {
     val tid = tableId
     new TableSupport[A] {
       def tableId = tid
       def toTable(gs: GroupedSections[Section]) =
-        gs.narrow[A].toRight(s"Not a ${reflect.ClassTag[A]}").flatMap { sections =>
+        gs.narrow[A].toRight(s"Not a $ct").flatMap { sections =>
           if (sections.tail.isEmpty) Right(sections.head)
-          else Left(s"${reflect.ClassTag[A]} supports only 1 section but got ${sections.list.size}")
+          else Left(s"$ct supports only 1 section but got ${sections.list.size}")
         }
       def toSections(table: A) = GroupedSections(table)
     }
