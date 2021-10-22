@@ -19,22 +19,27 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
 
-import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
-import com.comcast.ip4s._
+package fs2.protocols.mpeg
+package transport
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+import scodec.Err
+import scodec.bits.BitVector
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+sealed abstract class DemultiplexerError {
+  def toMpegError: MpegError
+}
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
+object DemultiplexerError {
 
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+  case class Discontinuity(last: ContinuityCounter, current: ContinuityCounter, adaptationFieldControl: Int) extends DemultiplexerError with MpegError {
+    def message = s"pid discontinuity: $last to $current with adaptation field control $adaptationFieldControl"
+    def toMpegError = this
+  }
+
+  case class Decoding(data: BitVector, decodingError: Err) extends DemultiplexerError {
+    def message = s"decoding error ($decodingError) while decoding ${data.toHex}"
+    def toMpegError = MpegError.Decoding(data, decodingError)
+  }
 }

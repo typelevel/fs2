@@ -19,22 +19,42 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
 
-import scodec.Codec
+package fs2.protocols
+package ip
+
+import scodec._
 import scodec.bits._
 import scodec.codecs._
-import com.comcast.ip4s._
+import fs2.interop.scodec._
+import fs2.protocols.ethernet.{EthernetFrameHeader, EtherType}
+import com.comcast.ip4s.Ipv6Address
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+/** Simplified model of an IPv6 header -- extension headers are not directly supported. */
+case class Ipv6Header(
+  trafficClass: Int,
+  flowLabel: Int,
+  payloadLength: Int,
+  protocol: Int,
+  hopLimit: Int,
+  sourceIp: Ipv6Address,
+  destinationIp: Ipv6Address
+)
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+object Ipv6Header {
+  implicit val codec: Codec[Ipv6Header] = {
+    ("version"             | constant(bin"0110")) ~>
+    ("traffic_class"       | uint8) ::
+    ("flow_label"          | uint(20)) ::
+    ("payload_length"      | uint(16)) ::
+    ("next_header"         | uint8) ::
+    ("hop_limit"           | uint8) ::
+    ("source_address"      | Ip4sCodecs.ipv6) ::
+    ("destination_address" | Ip4sCodecs.ipv6)
+  }.as[Ipv6Header]
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
-
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+  def sdecoder(ethernetHeader: EthernetFrameHeader): StreamDecoder[Ipv6Header] =
+    if (ethernetHeader.ethertype == Some(EtherType.IPv6)) StreamDecoder.once(codec)
+    else StreamDecoder.empty
 }

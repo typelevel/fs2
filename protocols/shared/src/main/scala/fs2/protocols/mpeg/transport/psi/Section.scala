@@ -19,22 +19,38 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
+
+package fs2.protocols.mpeg
+package transport
+package psi
 
 import scodec.Codec
-import scodec.bits._
 import scodec.codecs._
-import com.comcast.ip4s._
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+trait Section {
+  def tableId: Int
+}
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+trait ExtendedSection extends Section {
+  def extension: SectionExtension
+}
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
+case class SectionExtension(
+  tableIdExtension: Int,
+  version: Int,
+  current: Boolean,
+  sectionNumber: Int,
+  lastSectionNumber: Int
+)
 
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+object SectionExtension {
+  implicit val codec: Codec[SectionExtension] = {
+    ("table_id_extension"     | uint16) ::
+    (reserved(2) ~>
+    ("version_number"         | uint(5))) ::
+    ("current_next_indicator" | bool) ::
+    ("section_number"         | uint8) ::
+    ("last_section_number"    | uint8)
+  }.as[SectionExtension]
 }

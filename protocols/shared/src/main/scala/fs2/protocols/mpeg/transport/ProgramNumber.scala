@@ -19,22 +19,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
+
+package fs2.protocols.mpeg
+package transport
 
 import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
-import com.comcast.ip4s._
+import scodec.codecs.uint16
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+case class ProgramNumber(value: Int) {
+  require(value >= ProgramNumber.MinValue && value <= ProgramNumber.MaxValue)
+}
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+object ProgramNumber {
+  val MinValue = 0
+  val MaxValue = 65535
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
-
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+  implicit val codec: Codec[ProgramNumber] = uint16.xmap(ProgramNumber.apply, _.value)
 }

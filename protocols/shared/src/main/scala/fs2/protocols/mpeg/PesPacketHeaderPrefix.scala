@@ -19,22 +19,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
+
+package fs2.protocols.mpeg
 
 import scodec.Codec
-import scodec.bits._
 import scodec.codecs._
-import com.comcast.ip4s._
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+case class PesPacketHeaderPrefix(streamId: Int, length: Int)
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+object PesPacketHeaderPrefix {
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
-
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+  implicit val codec: Codec[PesPacketHeaderPrefix] = {
+    fixedSizeBytes(3,
+      ("stream_id"                | uint8                ) ::
+      ("pes_packet_length"        | uint16)
+    ).as[PesPacketHeaderPrefix]
+  }
 }

@@ -19,22 +19,19 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
 
-import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
-import com.comcast.ip4s._
+package fs2.protocols.mpeg
+package transport
+package psi
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
-
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
-
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
-
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+/**
+ * Indicates the implementor can be treated as a message delivered in an MPEG transport stream.
+ *
+ * This library differentiates tables from sections. Sections are the actual messages delivered
+ * in the transport stream whereas tables are the result of grouping multiple related sections
+ * together in to a single logical message.
+ */
+trait Table {
+  def tableId: Int
 }

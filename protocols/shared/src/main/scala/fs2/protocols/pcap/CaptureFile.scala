@@ -37,7 +37,7 @@ object CaptureFile {
   implicit val codec: Codec[CaptureFile] = "capture-file" |
     Codec[GlobalHeader]
       .flatPrepend { hdr =>
-        vector(Record.codec(hdr.ordering)).hlist
+        vector(Record.codec(hdr.ordering)).tuple
       }
       .as[CaptureFile]
 

@@ -19,22 +19,34 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
+
+package fs2.protocols.mpeg
+package transport
 
 import scodec.Codec
-import scodec.bits._
 import scodec.codecs._
-import com.comcast.ip4s._
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+/** Flags in the adaptation field. */
+case class AdaptationFieldFlags(
+  discontinuity: Boolean,
+  randomAccess: Boolean,
+  priority: Boolean,
+  pcrFlag: Boolean,
+  opcrFlag: Boolean,
+  splicingPointFlag: Boolean,
+  transportPrivateDataFlag: Boolean,
+  adaptationFieldExtension: Boolean)
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
-
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
-
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+object AdaptationFieldFlags {
+  implicit val codec: Codec[AdaptationFieldFlags] = "adaptation_field_flags" | fixedSizeBytes(1,
+    ("discontinuity"             | bool                    ) ::
+    ("randomAccess"              | bool                    ) ::
+    ("priority"                  | bool                    ) ::
+    ("pcrFlag"                   | bool                    ) ::
+    ("opcrFlag"                  | bool                    ) ::
+    ("splicingPointFlag"         | bool                    ) ::
+    ("transportPrivateDataFlag"  | bool                    ) ::
+    ("adaptationFieldExtension"  | bool                    )
+  ).as[AdaptationFieldFlags]
 }

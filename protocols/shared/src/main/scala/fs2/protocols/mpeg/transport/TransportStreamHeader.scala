@@ -21,19 +21,34 @@
 
 // Adapted from scodec-protocols, licensed under 3-clause BSD
 
-package fs2.protocols.pcap
+package fs2.protocols.mpeg
+package transport
 
-import scodec.bits.{BitVector, ByteOrdering}
 import scodec.Codec
 import scodec.codecs._
 
-case class Record(header: RecordHeader, data: BitVector)
+case class TransportStreamHeader(
+  transportErrorIndicator: Boolean,
+  payloadUnitStartIndicator: Boolean,
+  transportPriority: Boolean,
+  pid: Pid,
+  scramblingControl: Int,
+  adaptationFieldControl: Int,
+  continuityCounter: ContinuityCounter
+) {
+  def adaptationFieldIncluded: Boolean = adaptationFieldControl >= 2
+  def payloadIncluded: Boolean = adaptationFieldControl == 1 || adaptationFieldControl == 3
+}
 
-object Record {
-  // format: off
-  implicit def codec(implicit ordering: ByteOrdering): Codec[Record] = "record" | {
-    ("record_header" | RecordHeader.codec                  ).flatPrepend { hdr =>
-    ("record_data"   | bits(hdr.includedLength.toInt * 8L) ).tuple
-  }}.as[Record]
-  // format: on
+object TransportStreamHeader {
+  implicit val codec: Codec[TransportStreamHeader] = "transport_stream_header" | fixedSizeBytes(4,
+    ("syncByte"                  | constant(0x47)          ) ~>
+    ("transportErrorIndicator"   | bool                    ) ::
+    ("payloadUnitStartIndicator" | bool                    ) ::
+    ("transportPriority"         | bool                    ) ::
+    ("pid"                       | Codec[Pid]              ) ::
+    ("scramblingControl"         | uint2                   ) ::
+    ("adaptationFieldControl"    | uint2                   ) ::
+    ("continuityCounter"         | Codec[ContinuityCounter])
+  ).as[TransportStreamHeader]
 }

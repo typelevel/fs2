@@ -45,8 +45,10 @@ object GlobalHeader {
   private val byteOrdering: Codec[ByteOrdering] = new Codec[ByteOrdering] {
     def sizeBound = SizeBound.exact(32)
 
-    def encode(bo: ByteOrdering) =
-      endiannessDependent(uint32, uint32L)(bo).encode(MagicNumber)
+    def encode(bo: ByteOrdering) = {
+      implicit val boImplicit: ByteOrdering = bo
+      endiannessDependent(uint32, uint32L).encode(MagicNumber)
+    }
 
     def decode(buf: BitVector) =
       uint32.decode(buf).flatMap {

@@ -19,22 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
+
+package fs2
+package protocols
+package mpeg
+package transport
 
 import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
-import com.comcast.ip4s._
+import scodec.codecs.uint
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+case class Pid(value: Int) {
+  require(value >= Pid.MinValue && value <= Pid.MaxValue)
+}
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+object Pid {
+  val MinValue = 0
+  val MaxValue = 8191
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
+  implicit val codec: Codec[Pid] = uint(13).as[Pid]
+}
 
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+case class PidStamped[+A](pid: Pid, value: A) {
+  def map[B](f: A => B): PidStamped[B] = copy(value = f(value))
+}
+
+object PidStamped {
+
+  /**
+   * Combinator that converts a `Scan[S, I, O]` in to a `Scan[S, PidStamped[I], PidStamped[O]]` such that
+   * pidstamps are preserved on elements that flow through the stream.
+   */
+  def preserve[S, I, O](t: Scan[S, I, O]): Scan[S, PidStamped[I], PidStamped[O]] =
+    t.lens(_.value, (psi, o) => psi.copy(value = o))
 }

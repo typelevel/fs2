@@ -19,22 +19,32 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols
+// Adapted from scodec-protocols, licensed under 3-clause BSD
 
-import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
-import com.comcast.ip4s._
+package fs2
+package protocols
+package mpeg
 
-object Ip4sCodecs {
-  val ipv4: Codec[Ipv4Address] =
-    bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+import scodec.Err
+import scodec.bits.BitVector
 
-  val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+trait MpegError {
+  def message: String
+}
 
-  val macAddress: Codec[MacAddress] =
-    bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
+object MpegError {
 
-  val port: Codec[Port] = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
+  case class General(message: String) extends MpegError {
+    override def toString = message
+  }
+  case class Decoding(data: BitVector, err: Err) extends MpegError {
+    def message = s"error encountered when decoding: $err ${data.toHex}"
+    override def toString = message
+  }
+
+  def joinErrors[S, I, O](t: Scan[S, I, Either[MpegError, O]]): Scan[S, Either[MpegError, I], Either[MpegError, O]] =
+    t.semipass(_.fold(e => Left(Left(e)), i => Right(i)))
+
+  def passErrors[S, I, O](t: Scan[S, I, O]): Scan[S, Either[MpegError, I], Either[MpegError, O]] =
+    t.right
 }

@@ -307,8 +307,8 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.8"
-                                                             else "2.0.0"),
+                                                               "1.11.9"
+                                                             else "2.1.0"),
     OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
