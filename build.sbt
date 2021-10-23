@@ -407,7 +407,7 @@ lazy val microsite = project
     githubWorkflowArtifactUpload := false,
     fatalWarningsInCI := false
   )
-  .dependsOn(coreJVM, io.jvm, reactiveStreams)
+  .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(MdocPlugin, NoPublishPlugin)
 
 ThisBuild / githubWorkflowBuildPostamble ++= List(
