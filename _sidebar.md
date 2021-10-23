@@ -5,6 +5,8 @@
 - [Guide](guide.md)
 - [Concurrency Primitives](concurrency-primitives.md)
 - [I/O](io.md)
+- [Time Series](timeseries.md)
+- [Scodec](scodec.md)
 - [API Reference](api-reference.md)
 - [FAQ](faq.md)
 - [Documentation](documentation.md)
