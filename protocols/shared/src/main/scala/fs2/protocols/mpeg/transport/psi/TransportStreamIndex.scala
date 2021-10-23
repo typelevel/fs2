@@ -79,7 +79,7 @@ object TransportStreamIndex {
 
     def withPat(pat: ProgramAssociationTable): TransportStreamIndex = {
       val programs = pat.programByPid.keys.toSet
-      copy(pat = Some(pat), pmts = pmts.view.filterKeys(programs).toMap)
+      copy(pat = Some(pat), pmts = pmts.view.filter { case (k, v) => programs(k) }.toMap)
     }
 
     def withPmt(pmt: ProgramMapTable): TransportStreamIndex =
