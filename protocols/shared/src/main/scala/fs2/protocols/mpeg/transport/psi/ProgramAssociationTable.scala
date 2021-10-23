@@ -115,7 +115,8 @@ object ProgramAssociationSection {
 
   private val fragmentCodec: Codec[Fragment] =
     vector {
-      (("program_number" | Codec[ProgramNumber]) :: (reserved(3) ~> ("pid" | Codec[Pid]))).as[(ProgramNumber, Pid)]
+      (("program_number" | Codec[ProgramNumber]) :: (reserved(3) ~> ("pid" | Codec[Pid])))
+        .as[(ProgramNumber, Pid)]
     }
 
   implicit val sectionFragmentCodec: SectionFragmentCodec[ProgramAssociationSection] =

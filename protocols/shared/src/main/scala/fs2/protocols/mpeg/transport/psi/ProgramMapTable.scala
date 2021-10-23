@@ -111,7 +111,8 @@ object ProgramMapSection {
     ("pcr_pid" | pid) ::
       ("program_info_descriptors" | descriptors) ::
       vector {
-        (("stream_type" | uint8.as[StreamType]) :: programMapRecord).as[(StreamType, ProgramMapRecord)]
+        (("stream_type" | uint8.as[StreamType]) :: programMapRecord)
+          .as[(StreamType, ProgramMapRecord)]
       }
   }.as[Fragment]
 

@@ -68,7 +68,9 @@ trait TableSupport[T <: Table] {
 
 object TableSupport {
 
-  def singleton[A <: Section with Table](tableId: Int)(implicit ct: reflect.ClassTag[A]): TableSupport[A] = {
+  def singleton[A <: Section with Table](
+      tableId: Int
+  )(implicit ct: reflect.ClassTag[A]): TableSupport[A] = {
     val tid = tableId
     new TableSupport[A] {
       def tableId = tid
