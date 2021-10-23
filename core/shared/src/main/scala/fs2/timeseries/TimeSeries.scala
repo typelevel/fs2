@@ -87,7 +87,7 @@ object TimeSeries {
   private def timeTicks[F[_]: Temporal](tickPeriod: FiniteDuration): Stream[F, TimeStamped[Unit]] =
     Stream.awakeEvery[F](tickPeriod).map(_ => TimeStamped.unsafeNow(()))
 
-  /** Stream transducer that converts a stream of timestamped values with monotonically increasing timestamps in
+  /** Pipe that converts a stream of timestamped values with monotonically increasing timestamps in
     * to a stream of timestamped ticks or values, where a tick is emitted every `tickPeriod`.
     * Ticks are emitted between values from the source stream.
     */

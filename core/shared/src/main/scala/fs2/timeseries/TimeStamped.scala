@@ -121,7 +121,7 @@ object TimeStamped {
     * Every incoming `A` is echoed to the output.
     *
     * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
-    * using `rate(1.0)(_.size * 8)`, which yields a stream of the emitted bits per second.
+    * using `rate(1.second)(_.size * 8)`, which yields a stream of the emitted bits per second.
     *
     * @param over time period over which to calculate
     * @param f function which extracts a feature of `A`
@@ -358,5 +358,9 @@ object TimeStamped {
       def at(d: FiniteDuration): TimeStamped[A] =
         TimeStamped(d, value)
     }
+  }
+
+  implicit val functor: Functor[TimeStamped[*]] = new Functor[TimeStamped[*]] {
+    def map[A, B](fa: TimeStamped[A])(f: A => B): TimeStamped[B] = fa.map(f)
   }
 }
