@@ -1,6 +1,6 @@
 # Install
 
-The latest version for Cats Effect 3 is `3.0.6`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
+The latest version for Cats Effect 3 is `3.1.1`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
 
 The latest version for Cats Effect 2 is `2.5.9`, which supports Cats Effect 2 and is similarly cross built for various Scala versions.
 
@@ -17,10 +17,11 @@ libraryDependencies += "co.fs2" %% "fs2-io" % "<version>"
 libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "<version>"
 ```
 
-The fs2-core library is also supported on Scala.js:
+The fs2-core as well as fs2-io libraries are also supported on Scala.js:
 
 ```
 libraryDependencies += "co.fs2" %%% "fs2-core" % "<version>"
+libraryDependencies += "co.fs2" %%% "fs2-io" % "<version>" // Node.js only
 ```
 
 Release notes for each release are available on [Github](https://github.com/typelevel/fs2/releases/).

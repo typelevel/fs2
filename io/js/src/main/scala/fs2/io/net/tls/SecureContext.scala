@@ -69,26 +69,26 @@ object SecureContext {
 
     ca.map(toJS).foreach(options.setCa(_))
     cert.map(toJS).foreach(options.setCert(_))
-    ciphers.foreach(options.setCiphers)
-    clientCertEngine.foreach(options.setClientCertEngine)
+    ciphers.foreach(options.setCiphers(_))
+    clientCertEngine.foreach(options.setClientCertEngine(_))
     crl.map(toJS).foreach(options.setCrl(_))
-    dhparam.map(toJS).foreach(options.setDhparam)
-    ecdhCurve.foreach(options.setEcdhCurve)
-    honorCipherOrder.foreach(options.setHonorCipherOrder)
+    dhparam.map(toJS).foreach(options.setDhparam(_))
+    ecdhCurve.foreach(options.setEcdhCurve(_))
+    honorCipherOrder.foreach(options.setHonorCipherOrder(_))
     key
       .map(_.view.map(_.toJS: bufferMod.global.Buffer | tlsMod.KeyObject).toJSArray)
       .foreach(options.setKey(_))
-    maxVersion.map(_.toJS).foreach(options.setMaxVersion)
-    minVersion.map(_.toJS).foreach(options.setMinVersion)
-    passphrase.foreach(options.setPassphrase)
+    maxVersion.map(_.toJS).foreach(options.setMaxVersion(_))
+    minVersion.map(_.toJS).foreach(options.setMinVersion(_))
+    passphrase.foreach(options.setPassphrase(_))
     pfx.map(_.view.map(_.toJS))
-    privateKeyEngine.foreach(options.setPrivateKeyEngine)
-    privateKeyIdentifier.foreach(options.setPrivateKeyIdentifier)
-    secureOptions.map(_.toDouble).foreach(options.setSecureOptions)
-    sessionIdContext.foreach(options.setSessionIdContext)
-    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.setSessionTimeout)
-    sigalgs.foreach(options.setSigalgs)
-    ticketKeys.map(_.toBuffer).foreach(options.setTicketKeys)
+    privateKeyEngine.foreach(options.setPrivateKeyEngine(_))
+    privateKeyIdentifier.foreach(options.setPrivateKeyIdentifier(_))
+    secureOptions.map(_.toDouble).foreach(options.setSecureOptions(_))
+    sessionIdContext.foreach(options.setSessionIdContext(_))
+    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.setSessionTimeout(_))
+    sigalgs.foreach(options.setSigalgs(_))
+    ticketKeys.map(_.toBuffer).foreach(options.setTicketKeys(_))
 
     fromJS(tlsMod.createSecureContext(options))
   }
@@ -116,7 +116,7 @@ object SecureContext {
   final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
     private[SecureContext] def toJS = {
       val key = tlsMod.KeyObject(SecureContext.toJS(pem))
-      passphrase.foreach(key.setPassphrase)
+      passphrase.foreach(key.setPassphrase(_))
       key
     }
   }
@@ -124,7 +124,7 @@ object SecureContext {
   final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
     private[SecureContext] def toJS = {
       val pfx = tlsMod.PxfObject(SecureContext.toJS(buf))
-      passphrase.foreach(pfx.setPassphrase)
+      passphrase.foreach(pfx.setPassphrase(_))
       pfx
     }
   }

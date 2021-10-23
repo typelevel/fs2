@@ -36,6 +36,7 @@ import com.comcast.ip4s.SocketAddress
 import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.internal.jsdeps.std
 import fs2.io.internal.EventEmitterOps._
 
 import scala.scalajs.js
@@ -64,7 +65,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         socket <- Socket.forAsync(sock)
         _ <- F
           .async[Unit] { cb =>
-            registerListener[js.Error](sock, nodeStrings.error)(_.once_error(_, _)) { error =>
+            registerListener[std.Error](sock, nodeStrings.error)(_.once_error(_, _)) { error =>
               cb(Left(js.JavaScriptException(error)))
             }.evalTap(_ =>
               F.delay(sock.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(()))))

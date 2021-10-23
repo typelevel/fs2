@@ -19,17 +19,35 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
 
-/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net {
-  type ProtocolException = java.net.ProtocolException
-  type SocketException = java.net.SocketException
-  type BindException = java.net.BindException
-  type ConnectException = java.net.ConnectException
-  type SocketTimeoutException = java.net.SocketTimeoutException
-  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
-  type UnknownHostException = com.comcast.ip4s.UnknownHostException
-  type DatagramSocketOption = SocketOption
-  val DatagramSocketOption = SocketOption
+import fs2.compression.checksum
+import org.scalacheck.Prop.forAll
+import scodec.bits.BitVector
+import scodec.bits.crc
+
+class ChecksumSuite extends Fs2Suite {
+
+  test("CRC32") {
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32)
+        .compile
+        .toVector
+      val expected = crc.crc32(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
+    }
+  }
+
+  test("CRC32C") {
+    forAll { (bytes: Stream[Pure, Byte]) =>
+      val result = bytes
+        .through(checksum.crc32c)
+        .compile
+        .toVector
+      val expected = crc.crc32c(BitVector(bytes.compile.toVector))
+      assertEquals(BitVector(result), expected)
+    }
+  }
+
 }

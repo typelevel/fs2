@@ -19,17 +19,12 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io
 
-/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net {
-  type ProtocolException = java.net.ProtocolException
-  type SocketException = java.net.SocketException
-  type BindException = java.net.BindException
-  type ConnectException = java.net.ConnectException
-  type SocketTimeoutException = java.net.SocketTimeoutException
-  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
-  type UnknownHostException = com.comcast.ip4s.UnknownHostException
-  type DatagramSocketOption = SocketOption
-  val DatagramSocketOption = SocketOption
+import cats.effect.kernel.Sync
+import fs2.compression.Compression
+
+private[io] trait compressionplatform {
+  implicit def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
 }

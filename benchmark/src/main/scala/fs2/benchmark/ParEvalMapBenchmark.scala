@@ -19,17 +19,32 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package benchmark
 
-/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net {
-  type ProtocolException = java.net.ProtocolException
-  type SocketException = java.net.SocketException
-  type BindException = java.net.BindException
-  type ConnectException = java.net.ConnectException
-  type SocketTimeoutException = java.net.SocketTimeoutException
-  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
-  type UnknownHostException = com.comcast.ip4s.UnknownHostException
-  type DatagramSocketOption = SocketOption
-  val DatagramSocketOption = SocketOption
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+
+@State(Scope.Thread)
+class ParEvalMapBenchmark {
+  @Param(Array("100", "10000"))
+  var size: Int = _
+
+  @Param(Array("10", "100"))
+  var chunkSize: Int = _
+
+  private def dummyLoad = IO.delay(())
+
+  @Benchmark
+  def evalMap(): Unit =
+    execute(getStream.evalMap(_ => dummyLoad))
+
+  @Benchmark
+  def parEvalMapUnordered10(): Unit =
+    execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
+
+  private def getStream: Stream[IO, Unit] =
+    Stream.constant((), chunkSize).take(size.toLong).covary[IO]
+  private def execute(s: Stream[IO, Unit]): Unit = s.compile.drain.unsafeRunSync()
 }

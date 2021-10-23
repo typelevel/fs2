@@ -88,7 +88,7 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Unit] =
       (F.fromPromise(
-        F.delay(fsPromisesMod.link(target.toString, link.toString))
+        F.delay(fsPromisesMod.symlink(target.toString, link.toString))
       ) >> (permissions match {
         case Some(PosixPermissions(value)) =>
           F.fromPromise(F.delay(fsPromisesMod.lchmod(link.toString, value)))
@@ -175,6 +175,7 @@ private[fs2] trait FilesCompanionPlatform {
             fsPromisesMod.lstat(path.toString)
         }
       }.adaptError { case IOException(ex) => ex }
+        .widen
 
     private def access(path: Path, mode: Double): F[Boolean] =
       F.fromPromise(F.delay(fsPromisesMod.access(path.toString, mode)))
@@ -300,9 +301,9 @@ private[fs2] trait FilesCompanionPlatform {
     private def readStream(path: Path, chunkSize: Int, flags: Flags)(
         f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
     ): Stream[F, Byte] =
-      readReadable(
-        F.async_[Readable] { cb =>
-          val rs = fsMod
+      Stream
+        .resource(suspendReadableAndRead() {
+          fsMod
             .createReadStream(
               path.toString,
               f(
@@ -312,28 +313,18 @@ private[fs2] trait FilesCompanionPlatform {
                   .setHighWaterMark(chunkSize.toDouble)
               )
             )
-          rs.once_ready(
-            nodeStrings.ready,
-            () => {
-              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-              cb(Right(rs.asInstanceOf[Readable]))
-            }
-          )
-          rs.once_error(
-            nodeStrings.error,
-            error => {
-              rs.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-              cb(Left(js.JavaScriptException(error)))
-            }
-          )
-        }
-      )
+            .asInstanceOf[Readable]
+        })
+        .flatMap(_._2)
 
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+
+    def realPath(path: Path): F[Path] =
+      F.fromPromise(F.delay(fsPromisesMod.realpath(path.toString))).map(Path(_))
 
     override def setFileTimes(
         path: Path,

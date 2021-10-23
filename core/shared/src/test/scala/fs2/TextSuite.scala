@@ -22,12 +22,14 @@
 package fs2
 
 import cats.syntax.all._
+import java.nio.charset.Charset
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 import scodec.bits._
 import scodec.bits.Bases.Alphabets.Base64Url
-
 import fs2.text._
+
+import java.nio.charset.StandardCharsets
 
 class TextSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
@@ -93,15 +95,16 @@ class TextSuite extends Fs2Suite {
           Stream(l: _*).map(utf8Bytes).unchunks.through(utf8.decode).toList,
           l
         )
-        assertEquals(Stream(l0: _*).map(utf8Bytes).through(utf8.decodeC).toList, l0)
+        assertEquals(Stream(l: _*).map(utf8Bytes).through(utf8.decodeC).toList, l)
       }
     }
 
     property("utf8Encode andThen utf8.decode = id") {
       forAll(genStringNoBom) { (s: String) =>
-        assertEquals(Stream(s).through(utf8.encodeC).through(utf8.decodeC).toList, List(s))
-        if (s.nonEmpty)
+        if (s.nonEmpty) {
+          assertEquals(Stream(s).through(utf8.encodeC).through(utf8.decodeC).toList, List(s))
           assertEquals(Stream(s).through(utf8.encode).through(utf8.decode).toList, List(s))
+        }
       }
     }
 
@@ -404,6 +407,51 @@ class TextSuite extends Fs2Suite {
             .string,
           bs.foldLeft(ByteVector.empty)((acc, arr) => acc ++ ByteVector.view(arr)).toHex
         )
+      }
+    }
+  }
+
+  group("decodeWithCharset") {
+    List(
+      StandardCharsets.UTF_16LE,
+      StandardCharsets.UTF_16BE,
+      StandardCharsets.UTF_16,
+      StandardCharsets.UTF_8
+    ).foreach { charset =>
+      test(s"decode ${charset.toString}") {
+        (1 to 6).foreach { n =>
+          val in = (1 to 50).map(_ => "⁂ boo foo woo ⁋").mkString("")
+          val encoded = in.getBytes(charset)
+          val stream = Stream
+            .chunk(Chunk.array(encoded))
+            .chunkLimit(n)
+            .unchunks
+            .covary[Fallible]
+
+          val out = stream
+            .through(text.decodeWithCharset(charset))
+            .compile
+            .toList
+            .fold(throw _, identity)
+            .mkString("")
+
+          assertEquals(out, in)
+        }
+      }
+    }
+
+    test("flushes decoder") {
+      // Obscure example found through property test in http4s.  Most
+      // charsets don't require flushing.  Search "implFlush" in JDK
+      // source for more.
+      if (isJVM) { // Charset not supported by Scala.js
+        val cs = Charset.forName("x-ISCII91")
+        val s = Stream(0xdc.toByte)
+          .covary[Fallible]
+          .through(decodeWithCharset(cs))
+          .compile
+          .string
+        assertEquals(s, Right("\u0940"))
       }
     }
   }

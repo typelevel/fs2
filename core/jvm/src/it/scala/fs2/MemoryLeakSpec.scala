@@ -6,6 +6,7 @@ import scala.concurrent.duration._
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 
+import cats.~>
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
@@ -261,5 +262,29 @@ class MemoryLeakSpec extends FunSuite {
     Stream
       .constant(())
       .broadcastThrough(pipe)
+  }
+
+  leakTest("eval + flatMap + map (2)") {
+    def unfold: Stream[IO, Unit] = Stream.eval(IO.unit).flatMap(_ => Stream.emits(Nil) ++ unfold)
+    unfold.map(x => x)
+  }
+
+  leakTest("flatMap(flatMap) then uncons") {
+    Stream.constant(1).flatMap(s => Stream(s, s).flatMap(s => Stream(s))).drain
+  }
+
+  leakTest("map, flatMap, translate") {
+    val fk = new (Pure ~> IO) {
+      def apply[A](pa: Pure[A]): IO[A] = IO.pure(pa)
+    }
+    Stream.constant(1).translate(fk).flatMap(s => Stream(s, s).flatMap(s => Stream(s))).drain
+  }
+
+  leakTest("onFinalize + flatten + drain") {
+    Stream.constant(1).covary[IO].map(Stream(_).onFinalize(IO.unit)).flatten.drain
+  }
+
+  leakTest("merge + parJoinUnbounded") {
+    Stream(Stream.constant(1).covary[IO].merge(Stream())).parJoinUnbounded
   }
 }

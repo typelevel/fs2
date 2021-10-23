@@ -19,37 +19,14 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression
+package fs2.io.internal
 
-/** Inflate algorithm parameters. */
-sealed trait InflateParams {
+import fs2.internal.jsdeps.std
 
-  /** Size of the internal buffer. Default size is 32 KB.
-    */
-  val bufferSize: Int
+private[fs2] object ThrowableOps {
+  implicit def toThrowableOps(t: Throwable): ThrowableOps = new ThrowableOps(t)
 
-  /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
-    */
-  val header: ZLibParams.Header
-
-  private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
-}
-
-object InflateParams {
-
-  def apply(
-      bufferSize: Int = 1024 * 32,
-      header: ZLibParams.Header = ZLibParams.Header.ZLIB
-  ): InflateParams =
-    InflateParamsImpl(bufferSize, header)
-
-  /** Reasonable defaults for most applications.
-    */
-  val DEFAULT: InflateParams = InflateParams()
-
-  private case class InflateParamsImpl(
-      bufferSize: Int,
-      header: ZLibParams.Header
-  ) extends InflateParams
-
+  private[fs2] final class ThrowableOps(t: Throwable) {
+    def toJSError: std.Error = std.Error(t.getMessage(), t.getClass.getSimpleName)
+  }
 }

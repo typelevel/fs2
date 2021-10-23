@@ -50,7 +50,7 @@ final class SubscriberWhiteboxSpec
   def createSubscriber(
       p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
-    StreamSubscriber[IO, Int](dispatcher)
+    StreamSubscriber[IO, Int](bufferSize = 1)
       .map(s => new WhiteboxSubscriber(s, p))
       .unsafeRunSync()
 
@@ -95,7 +95,7 @@ final class SubscriberBlackboxSpec
   private val counter = new AtomicInteger()
 
   def createSubscriber(): StreamSubscriber[IO, Int] =
-    StreamSubscriber[IO, Int](dispatcher).unsafeRunSync()
+    StreamSubscriber[IO, Int](bufferSize = 1).unsafeRunSync()
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1

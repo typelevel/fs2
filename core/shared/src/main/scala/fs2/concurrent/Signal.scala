@@ -22,10 +22,11 @@
 package fs2
 package concurrent
 
-import cats.{Applicative, Functor, Invariant}
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Deferred, Ref}
 import cats.syntax.all._
+import cats.{Applicative, Functor, Invariant, Monad}
+
 import scala.collection.immutable.LongMap
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
@@ -52,9 +53,9 @@ trait Signal[F[_], A] {
 object Signal extends SignalInstances {
   def constant[F[_], A](a: A)(implicit F: Concurrent[F]): Signal[F, A] =
     new Signal[F, A] {
-      def get = F.pure(a)
-      def continuous = Stream.constant(a)
-      def discrete = Stream(a) ++ Stream.never
+      def get: F[A] = F.pure(a)
+      def continuous: Stream[Pure, A] = Stream.constant(a)
+      def discrete: Stream[F, A] = Stream(a) ++ Stream.never
     }
 
   def mapped[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
@@ -73,10 +74,17 @@ object Signal extends SignalInstances {
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
-    def interrupt[A](
-        s: Stream[F, A]
-    )(implicit F: Concurrent[F]): Stream[F, A] =
+
+    /** Interrupts the supplied `Stream` when this `Signal` is `true`.
+      */
+    def interrupt[A](s: Stream[F, A])(implicit F: Concurrent[F]): Stream[F, A] =
       s.interruptWhen(self)
+
+    /** Predicates the supplied effect `f` on this `Signal` being `true`.
+      */
+    def predicate[A](f: F[A])(implicit F: Monad[F]): F[Unit] =
+      self.get.flatMap(f.whenA)
+
   }
 }
 

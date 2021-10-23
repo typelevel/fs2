@@ -29,11 +29,11 @@ import org.scalacheck.effect.PropF.forAllF
 class IoPlatformSuite extends Fs2Suite {
 
   test("to/read Readable") {
-    forAllF { bytes: Stream[Pure, Byte] =>
+    forAllF { (bytes: Stream[Pure, Byte]) =>
       bytes
         .through(toReadable[IO])
         .flatMap { readable =>
-          readReadable(IO.pure(readable))
+          Stream.resource(suspendReadableAndRead[IO, Readable]()(readable)).flatMap(_._2)
         }
         .compile
         .toVector
@@ -42,7 +42,7 @@ class IoPlatformSuite extends Fs2Suite {
   }
 
   test("read/write Writable") {
-    forAllF { bytes: Stream[Pure, Byte] =>
+    forAllF { (bytes: Stream[Pure, Byte]) =>
       readWritable[IO] { writable =>
         bytes.covary[IO].through(writeWritable(IO.pure(writable))).compile.drain
       }.compile.toVector.assertEquals(bytes.compile.toVector)
@@ -54,7 +54,9 @@ class IoPlatformSuite extends Fs2Suite {
       bytes1
         .through {
           toDuplexAndRead[IO] { duplex =>
-            readReadable[IO](IO.pure(duplex))
+            Stream
+              .resource(suspendReadableAndRead[IO, Duplex]()(duplex))
+              .flatMap(_._2)
               .merge(bytes2.covary[IO].through(writeWritable[IO](IO.pure(duplex))))
               .compile
               .toVector

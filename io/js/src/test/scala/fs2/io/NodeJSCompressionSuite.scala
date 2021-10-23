@@ -19,17 +19,44 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package io
 
-/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net {
-  type ProtocolException = java.net.ProtocolException
-  type SocketException = java.net.SocketException
-  type BindException = java.net.BindException
-  type ConnectException = java.net.ConnectException
-  type SocketTimeoutException = java.net.SocketTimeoutException
-  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
-  type UnknownHostException = com.comcast.ip4s.UnknownHostException
-  type DatagramSocketOption = SocketOption
-  val DatagramSocketOption = SocketOption
+import fs2.CompressionSuite
+import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.compression._
+import fs2.io.internal.ByteChunkOps._
+
+class NodeJSCompressionSuite extends CompressionSuite {
+
+  override def deflateStream(
+      b: Array[Byte],
+      level: Int,
+      strategy: Int,
+      nowrap: Boolean
+  ): Array[Byte] = {
+    val in = Chunk.array(b).toNodeUint8Array
+    val options = zlibMod
+      .ZlibOptions()
+      .setLevel(level.toDouble)
+      .setStrategy(strategy.toDouble)
+    val out =
+      if (nowrap)
+        zlibMod.gzipSync(in, options)
+      else
+        zlibMod.deflateSync(in, options)
+    out.toChunk.toArray
+  }
+
+  override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
+    val in = Chunk.array(b).toNodeUint8Array
+    val options = zlibMod.ZlibOptions()
+    val out =
+      if (nowrap)
+        zlibMod.gunzipSync(in, options)
+      else
+        zlibMod.inflateSync(in, options)
+    out.toChunk.toArray
+  }
+
 }

@@ -19,17 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2.compression
 
-/** Provides support for doing network I/O -- TCP, UDP, and TLS. */
-package object net {
-  type ProtocolException = java.net.ProtocolException
-  type SocketException = java.net.SocketException
-  type BindException = java.net.BindException
-  type ConnectException = java.net.ConnectException
-  type SocketTimeoutException = java.net.SocketTimeoutException
-  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
-  type UnknownHostException = com.comcast.ip4s.UnknownHostException
-  type DatagramSocketOption = SocketOption
-  val DatagramSocketOption = SocketOption
+/** Inflate algorithm parameters. */
+sealed trait InflateParams {
+
+  /** Size of the internal buffer. Default size is 32 KB.
+    */
+  val bufferSize: Int
+
+  /** Compression header. Defaults to [[ZLibParams.Header.ZLIB]]
+    */
+  val header: ZLibParams.Header
+
+  private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
+}
+
+object InflateParams {
+
+  def apply(
+      bufferSize: Int = 1024 * 32,
+      header: ZLibParams.Header = ZLibParams.Header.ZLIB
+  ): InflateParams =
+    InflateParamsImpl(bufferSize, header)
+
+  /** Reasonable defaults for most applications.
+    */
+  val DEFAULT: InflateParams = InflateParams()
+
+  private case class InflateParamsImpl(
+      bufferSize: Int,
+      header: ZLibParams.Header
+  ) extends InflateParams
+
 }
