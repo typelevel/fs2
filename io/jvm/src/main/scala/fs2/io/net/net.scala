@@ -28,7 +28,8 @@ package object net {
   type BindException = java.net.BindException
   type ConnectException = java.net.ConnectException
   type SocketTimeoutException = java.net.SocketTimeoutException
-  type UnknownHostException = java.net.UnknownHostException
+  @deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
+  type UnknownHostException = com.comcast.ip4s.UnknownHostException
   type DatagramSocketOption = SocketOption
   val DatagramSocketOption = SocketOption
 }

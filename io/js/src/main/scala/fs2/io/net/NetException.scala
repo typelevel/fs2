@@ -23,10 +23,12 @@ package fs2
 package io
 package net
 
+import com.comcast.ip4s
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.SocketAddress
 import fs2.internal.jsdeps.node.osMod
 
+import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.util.control.NoStackTrace
 import scala.util.matching.Regex
@@ -90,8 +92,10 @@ object SocketTimeoutException {
     }
 }
 
+@deprecated("Use ip4s.UnknownHostException instead", "3.2.0")
 class UnknownHostException(message: String = null, cause: Throwable = null)
-    extends IOException(message, cause)
+    extends ip4s.UnknownHostException(message, cause)
+@nowarn("cat=deprecation")
 private class JavaScriptUnknownHostException(host: String, cause: js.JavaScriptException)
     extends UnknownHostException(s"$host: ${UnknownHostException.message}", cause)
     with NoStackTrace

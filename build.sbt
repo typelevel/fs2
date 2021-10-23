@@ -268,7 +268,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0-19-98c5826",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0-27-0b113c0",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
