@@ -369,7 +369,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(List(2, 4, 6, 8))
     }
 
-    test("filters up to N items in parallel") {
+    test("filters up to N items in parallel".flaky) {
       val s = Stream.range(0, 100)
       val n = 5
 

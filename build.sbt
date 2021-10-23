@@ -1,10 +1,10 @@
 import com.typesafe.tools.mima.core._
 import sbtcrossproject.crossProject
 
-addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
+addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
-  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
 )
 addCommandAlias("testJVM", ";rootJVM/test")
 addCommandAlias("testJS", "rootJS/test")
@@ -159,7 +159,19 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, reactiveStreams, benchmark)
+  .aggregate(
+    coreJVM,
+    coreJS,
+    io.jvm,
+    node.js,
+    io.js,
+    scodec.jvm,
+    scodec.js,
+    protocols.jvm,
+    protocols.js,
+    reactiveStreams,
+    benchmark
+  )
 
 lazy val rootJVM = project
   .in(file("."))
@@ -257,7 +269,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0-27-0b113c0",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.0",
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -286,6 +298,65 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))
+
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+  .in(file("scodec"))
+  .enablePlugins(SbtOsgi)
+  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
+  .settings(
+    name := "fs2-scodec",
+    libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
+                                                               scalaVersion.value.startsWith("2.")
+                                                             )
+                                                               "1.11.9"
+                                                             else "2.1.0"),
+    OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings,
+    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
+    }
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .dependsOn(core % "compile->compile;test->test", io % "test")
+
+lazy val protocols = crossProject(JVMPlatform, JSPlatform)
+  .in(file("protocols"))
+  .enablePlugins(SbtOsgi)
+  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
+  .settings(
+    name := "fs2-protocols",
+    OsgiKeys.exportPackage := Seq("fs2.protocols.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings,
+    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
+    }
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .dependsOn(core % "compile->compile;test->test", scodec, io)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
@@ -337,7 +408,7 @@ lazy val microsite = project
     githubWorkflowArtifactUpload := false,
     fatalWarningsInCI := false
   )
-  .dependsOn(coreJVM, io.jvm, reactiveStreams)
+  .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(MdocPlugin, NoPublishPlugin)
 
 ThisBuild / githubWorkflowBuildPostamble ++= List(
