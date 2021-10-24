@@ -28,6 +28,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 
 final class PublisherToSubscriberSpec extends Fs2Suite {
+  import PublisherToSubscriberSpec._
 
   test("should have the same output as input") {
     forAll(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
@@ -40,10 +41,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
     }
   }
 
-  object TestError extends Exception("BOOM")
-
-  test("should propagate errors downstream".ignore) {
-    // TODO unsafeRunSync hangs
+  test("should propagate errors downstream") {
     val input: Stream[IO, Int] = Stream(1, 2, 3) ++ Stream.raiseError[IO](TestError)
     val output: Stream[IO, Int] =
       Stream.resource(input.toUnicastPublisher).flatMap(_.toStreamBuffered[IO](1))
@@ -62,4 +60,8 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
         assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
     }
   }
+}
+
+object PublisherToSubscriberSpec {
+  object TestError extends Exception("BOOM")
 }
