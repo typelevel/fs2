@@ -31,7 +31,7 @@ object Ip4sCodecs {
     bytes(4).xmapc(b => Ipv4Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
 
   val ipv6: Codec[Ipv6Address] =
-    bytes(8).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
+    bytes(16).xmapc(b => Ipv6Address.fromBytes(b.toArray).get)(a => ByteVector.view(a.toBytes))
 
   val macAddress: Codec[MacAddress] =
     bytes(6).xmapc(b => MacAddress.fromBytes(b.toArray).get)(m => ByteVector.view(m.toBytes))
