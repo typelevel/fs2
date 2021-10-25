@@ -31,6 +31,10 @@ import _root_.scodec.Err
 import _root_.scodec.bits._
 import _root_.scodec.codecs
 import _root_.scodec.codecs._
+import _root_.scodec.Decoder
+import cats.effect.IO
+
+import scala.concurrent.duration._
 
 class StreamCodecSuite extends Fs2Suite {
 
@@ -122,5 +126,20 @@ class StreamCodecSuite extends Fs2Suite {
         .encode(Stream(1, 2).covary[Fallible])
         .toList == Right(List(hex"01".bits, hex"02".bits))
     )
+  }
+
+  test("scodec-stream/issues/75") {
+    val twoBytes = hex"0000"
+    val dec = constant(twoBytes)
+    val choiceDec = Decoder.choiceDecoder(dec, dec)
+    val expected = List(())
+    Stream
+      .emits(twoBytes.toArray)
+      .covary[IO]
+      .metered(100.millis)
+      .through(StreamDecoder.tryMany(choiceDec).toPipeByte)
+      .compile
+      .toList
+      .map(actual => assert(actual == expected))
   }
 }
