@@ -1056,6 +1056,50 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .map(results => assert(results.size == 1))
   }
 
+  test("spaced should start immediately if startImmediately is not set") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .spaced(1.second)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 1))
+  }
+
+  test("spaced should not start immediately if startImmediately is set to false") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .spaced(1.second, startImmediately = false)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.isEmpty))
+  }
+
+  test("metered should not wait between events that last longer than the rate") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .metered(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 3))
+  }
+
+  test("spaced should wait between events") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .spaced(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 2))
+  }
+
   test("mapAsyncUnordered") {
     forAllF { (s: Stream[Pure, Int]) =>
       val f = (_: Int) + 1
