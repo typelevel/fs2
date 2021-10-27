@@ -1188,9 +1188,11 @@ object Pull extends PullLowPriority {
 
         case s: StepLeg[G, y] =>
           val v = getCont[Option[Stream.StepLeg[G, y]], G, X]
-          scope.shiftScope(s.scope, s.toString).flatMap { stepScope =>
-            go(stepScope, extendedTopLevelScope, translation, new StepLegRunR(v), s.stream)
-          }
+          val runr = new BuildR[G, y, End]
+          scope
+            .shiftScope(s.scope, s.toString)
+            .flatMap(go(_, extendedTopLevelScope, translation, runr, s.stream).attempt)
+            .flatMap(_.fold(goErr(_, v), _.apply(new StepLegRunR(v))))
 
         case _: GetScope[_] =>
           go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(scope)))
