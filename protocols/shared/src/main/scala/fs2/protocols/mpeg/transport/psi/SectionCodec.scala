@@ -165,7 +165,7 @@ object SectionCodec {
   }
 
   private def unknownSectionCase(tableId: Int): Case[BitVector, UnknownSection] = Case(
-    (hdr, verifyCrc) => bits,
+    (_, _) => bits,
     (privateBits, ext, bits) =>
       Attempt.successful(ext match {
         case Some(e) => UnknownExtendedSection(tableId, privateBits, e, bits.bytes)

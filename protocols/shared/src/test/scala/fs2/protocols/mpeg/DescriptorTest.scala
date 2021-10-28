@@ -163,7 +163,6 @@ object DescriptorTestData {
   lazy val genIso639LanguageDescriptor: Gen[Iso639LanguageDescriptor] = for {
     numberOfLanguagueField <- Gen.chooseNum(0, 63)
     languageFields <- Gen.listOfN(numberOfLanguagueField, genLanguageField)
-    length = languageFields.size * 4
   } yield Iso639LanguageDescriptor(languageFields.toVector)
 
   lazy val genSystemClockDescriptor: Gen[SystemClockDescriptor] = for {

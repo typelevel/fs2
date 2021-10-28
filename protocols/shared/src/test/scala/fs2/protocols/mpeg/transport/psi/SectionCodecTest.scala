@@ -118,8 +118,8 @@ class SectionCodecTest extends Fs2Suite {
       implicit val sfc: SectionFragmentCodec[SmallSection] =
         SectionFragmentCodec.nonExtended[SmallSection, Int](
           0,
-          h => (constant(bin"0") ~> uint(7)),
-          (p, i) => SmallSection(i),
+          _ => (constant(bin"0") ~> uint(7)),
+          (_, i) => SmallSection(i),
           ss => (bin"010", ss.x)
         )
       val sc = SectionCodec.supporting[SmallSection]
@@ -129,7 +129,7 @@ class SectionCodecTest extends Fs2Suite {
       val ss1 = encodedSections(1).bytes
       val indexOfInt = ss0.toIndexedSeq.zipWithIndex
         .find { case (x, idx) => ss1(idx.toLong) != x }
-        .map { case (x, idx) => idx }
+        .map { case (_, idx) => idx }
         .get
       val ss255 = ss0.update(indexOfInt.toLong, 255.toByte)
 

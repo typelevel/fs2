@@ -55,7 +55,7 @@ class PacketTest extends Fs2Suite {
     val data = sections.foldLeft(BitVector.empty)(_ ++ _)
     val packets = Packet.packetizeMany(Pid(0), ContinuityCounter(0), sections)
 
-    packets.zipWithIndex.foreach { case (packet, idx) =>
+    packets.zipWithIndex.foreach { case (_, idx) =>
       val payloadOffset = if (idx == 0) 0 else 10 * ((idx * 183) / 10 + 1) - (idx * 183)
       val offset = 183L * 8 * idx
       assertEquals(

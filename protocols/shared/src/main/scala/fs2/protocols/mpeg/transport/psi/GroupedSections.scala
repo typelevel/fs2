@@ -46,7 +46,7 @@ sealed abstract class GroupedSections[+A <: Section] {
 object GroupedSections {
   implicit class InvariantOps[A <: Section](val self: GroupedSections[A]) extends AnyVal {
     def narrow[B <: A: ClassTag]: Option[GroupedSections[B]] = {
-      val matched = self.list.foldLeft(true) { (acc, s) =>
+      val matched = self.list.foldLeft(true) { (_, s) =>
         s match { case _: B => true; case _ => false }
       }
       if (matched) Some(self.asInstanceOf[GroupedSections[B]])
