@@ -246,6 +246,71 @@ class JvmCompressionSuite extends CompressionSuite {
       .map(compressed => assert(compressed.length < uncompressed.length))
   }
 
+  test("gzip.compresses input, with FLG.FHCRC set") {
+    val uncompressed: Array[Byte] = getBytes("Foo")
+    val crc16: (Byte, (Byte, Byte)) = { // precomputing for all OSs so that we can have a green run regardless of the OS running the test
+      val os = System.getProperty("os.name").toLowerCase()
+      if (
+        os.name.indexOf("nux") > 0 || os.name.indexOf("nix") > 0 || os.indexOf("aix") >= 0
+      ) // UNIX
+        (3.toByte, (-89.toByte, 119.toByte))
+      else if (os.indexOf("win") >= 0) // NTFS_FILESYSTEM
+        (11.toByte, (-107.toByte, -1.toByte))
+      else if (os.indexOf("mac") >= 0) // MACINTOSH
+        (7.toByte, (-66.toByte, -77.toByte))
+      else // UNKNOWN
+        (255.toByte, (-112.toByte, -55.toByte))
+    }
+
+    val expected = Vector[Byte](
+      31, // magic number (2B)
+      -117,
+      8, // CM
+      2, // FLG.FHCRC
+      0, // MTIME (4B)
+      0,
+      0,
+      0,
+      0, // XFL
+      crc16._1, // OS
+      crc16._2._1, // // CRC16 (2B)
+      crc16._2._2,
+      115, // compressed blocks
+      -53,
+      -49,
+      7,
+      0,
+      -63, // CRC32 (4B)
+      35,
+      62,
+      -76,
+      3, // ISIZE (4B)
+      0,
+      0,
+      0
+    )
+    Stream
+      .chunk[IO, Byte](Chunk.array(uncompressed))
+      .through(
+        Compression[IO].gzip(
+          fileName = None,
+          modificationTime = None,
+          comment = None,
+          deflateParams = DeflateParams.apply(
+            bufferSize = 1024 * 32,
+            header = ZLibParams.Header.GZIP,
+            level = DeflateParams.Level.DEFAULT,
+            strategy = DeflateParams.Strategy.DEFAULT,
+            flushMode = DeflateParams.FlushMode.DEFAULT,
+            fhCrcEnabled = true
+          )
+        )
+      )
+      .compile
+      .toVector
+      .map(compressed => assertEquals(compressed, expected))
+  }
+
   test("gunzip limit fileName and comment length") {
     val longString: String =
       Array

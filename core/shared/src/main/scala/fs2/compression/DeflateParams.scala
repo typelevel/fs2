@@ -45,6 +45,13 @@ sealed trait DeflateParams {
     */
   val flushMode: DeflateParams.FlushMode
 
+  /** A [[Boolean]] indicating whether the `FLG.FHCRC` bit is set. Default is `false`.
+    *  This is provided so that the client can opt-in and enable the CRC16 check for the gzip header.
+    *  Why opt-in and not opt-out? It turned out not all clients implemented that right.
+    *  More context [[https://github.com/http4s/http4s/issues/5417 in this issue]].
+    */
+  val fhCrcEnabled: Boolean
+
   private[fs2] val bufferSizeOrMinimum: Int = bufferSize.max(128)
 }
 
@@ -57,14 +64,25 @@ object DeflateParams {
       strategy: DeflateParams.Strategy = DeflateParams.Strategy.DEFAULT,
       flushMode: DeflateParams.FlushMode = DeflateParams.FlushMode.DEFAULT
   ): DeflateParams =
-    DeflateParamsImpl(bufferSize, header, level, strategy, flushMode)
+    DeflateParamsImpl(bufferSize, header, level, strategy, flushMode, false)
+
+  def apply(
+      bufferSize: Int,
+      header: ZLibParams.Header,
+      level: DeflateParams.Level,
+      strategy: DeflateParams.Strategy,
+      flushMode: DeflateParams.FlushMode,
+      fhCrcEnabled: Boolean
+  ): DeflateParams =
+    DeflateParamsImpl(bufferSize, header, level, strategy, flushMode, fhCrcEnabled)
 
   private case class DeflateParamsImpl(
       bufferSize: Int,
       header: ZLibParams.Header,
       level: DeflateParams.Level,
       strategy: DeflateParams.Strategy,
-      flushMode: DeflateParams.FlushMode
+      flushMode: DeflateParams.FlushMode,
+      fhCrcEnabled: Boolean
   ) extends DeflateParams
 
   sealed abstract class Level(private[fs2] val juzDeflaterLevel: Int)
