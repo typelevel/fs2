@@ -153,7 +153,20 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.compression.DeflateParams.fhCrcEnabled"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.this"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.compression.DeflateParams$DeflateParamsImpl$"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.apply"
+  )
 )
 
 lazy val root = project
