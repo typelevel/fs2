@@ -302,7 +302,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
   .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
@@ -334,7 +333,6 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
 lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
   .settings(
     name := "fs2-protocols",
     OsgiKeys.exportPackage := Seq("fs2.protocols.*"),
