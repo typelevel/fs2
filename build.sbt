@@ -265,11 +265,18 @@ lazy val node = crossProject(JSPlatform)
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
+  .jvmEnablePlugins(SbtOsgi)
+  .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.1",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.1"
+  )
+  .jvmSettings(
+    Test / fork := true,
+    libraryDependencies ++= Seq(
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.12" % Optional,
+      "com.google.jimfs" % "jimfs" % "1.2" % Test
+    ),
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -282,13 +289,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     },
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
-  )
-  .jvmSettings(
-    Test / fork := true,
-    libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.12" % Optional,
-      "com.google.jimfs" % "jimfs" % "1.2" % Test
-    )
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
