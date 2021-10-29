@@ -271,7 +271,7 @@ class JvmCompressionSuite extends CompressionSuite {
       .map { compressed =>
         val headerBytes = ByteVector(compressed.take(10))
         val crc32 = crc.crc32(headerBytes.toBitVector).toByteArray
-        val expectedCrc16 = crc32.drop(2).take(2).reverse.toVector
+        val expectedCrc16 = crc32.reverse.take(2).toVector
         val actualCrc16 = compressed.drop(10).take(2)
         assertEquals(actualCrc16, expectedCrc16)
       }
