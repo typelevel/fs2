@@ -46,7 +46,7 @@ sealed trait DeflateParams {
   val flushMode: DeflateParams.FlushMode
 
   /** A [[Boolean]] indicating whether the `FLG.FHCRC` bit is set. Default is `false`.
-    *  This is provided so that the client can opt-in and enable the CRC16 check for the gzip header.
+    *  This is provided so that the compressor can be configured to have the CRC16 check enabled.
     *  Why opt-in and not opt-out? It turned out not all clients implemented that right.
     *  More context [[https://github.com/http4s/http4s/issues/5417 in this issue]].
     */
