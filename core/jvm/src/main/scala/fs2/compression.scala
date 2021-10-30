@@ -68,6 +68,13 @@ object compression {
       */
     val flushMode: DeflateParams.FlushMode
 
+    /** A [[Boolean]] indicating whether the `FLG.FHCRC` bit is set. Default is `false`.
+      *  This is provided so that the compressor can be configured to have the CRC16 check enabled.
+      *  Why opt-in and not opt-out? It turned out not all clients implemented that right.
+      *  More context [[https://github.com/http4s/http4s/issues/5417 in this issue]].
+      */
+    val fhCrcEnabled: Boolean
+
     private[compression] val bufferSizeOrMinimum: Int = bufferSize.max(128)
   }
 
@@ -80,14 +87,25 @@ object compression {
         strategy: DeflateParams.Strategy = DeflateParams.Strategy.DEFAULT,
         flushMode: DeflateParams.FlushMode = DeflateParams.FlushMode.DEFAULT
     ): DeflateParams =
-      DeflateParamsImpl(bufferSize, header, level, strategy, flushMode)
+      DeflateParamsImpl(bufferSize, header, level, strategy, flushMode, false)
+
+    def apply(
+        bufferSize: Int,
+        header: ZLibParams.Header,
+        level: DeflateParams.Level,
+        strategy: DeflateParams.Strategy,
+        flushMode: DeflateParams.FlushMode,
+        fhCrcEnabled: Boolean
+    ): DeflateParams =
+      DeflateParamsImpl(bufferSize, header, level, strategy, flushMode, fhCrcEnabled)
 
     private case class DeflateParamsImpl(
         bufferSize: Int,
         header: ZLibParams.Header,
         level: DeflateParams.Level,
         strategy: DeflateParams.Strategy,
-        flushMode: DeflateParams.FlushMode
+        flushMode: DeflateParams.FlushMode,
+        fhCrcEnabled: Boolean
     ) extends DeflateParams
 
     sealed abstract class Level(private[compression] val juzDeflaterLevel: Int)
@@ -582,7 +600,13 @@ object compression {
               }
             ) { case (deflater, _) => SyncF.delay(deflater.end()) }
             .flatMap { case (deflater, crc32) =>
-              _gzip_header(fileName, modificationTime, comment, params.level.juzDeflaterLevel) ++
+              _gzip_header(
+                fileName,
+                modificationTime,
+                comment,
+                params.level.juzDeflaterLevel,
+                params.fhCrcEnabled
+              ) ++
                 _deflate(
                   params,
                   deflater,
@@ -602,7 +626,8 @@ object compression {
       fileName: Option[String],
       modificationTime: Option[Instant],
       comment: Option[String],
-      deflateLevel: Int
+      deflateLevel: Int,
+      fhCrcEnabled: Boolean
   ): Stream[F, Byte] = {
     // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
     val secondsSince197001010000: Long =
@@ -611,7 +636,7 @@ object compression {
       gzipMagicFirstByte, // ID1: Identification 1
       gzipMagicSecondByte, // ID2: Identification 2
       gzipCompressionMethod.DEFLATE, // CM: Compression Method
-      (gzipFlag.FHCRC + // FLG: Header CRC
+      ((if (fhCrcEnabled) gzipFlag.FHCRC else zeroByte) + // FLG: Header CRC
         fileName.map(_ => gzipFlag.FNAME).getOrElse(zeroByte) + // FLG: File name
         comment.map(_ => gzipFlag.FCOMMENT).getOrElse(zeroByte)).toByte, // FLG: Comment
       (secondsSince197001010000 & 0xff).toByte, // MTIME: Modification Time
@@ -640,10 +665,14 @@ object compression {
       bytes
     }
     val crc32Value = crc32.getValue
-    val crc16 = Array[Byte](
-      (crc32Value & 0xff).toByte,
-      ((crc32Value >> 8) & 0xff).toByte
-    )
+    val crc16 =
+      if (fhCrcEnabled)
+        Array[Byte](
+          (crc32Value & 0xff).toByte,
+          ((crc32Value >> 8) & 0xff).toByte
+        )
+      else
+        Array.emptyByteArray
     Stream.chunk(moveAsChunkBytes(header)) ++
       fileNameEncoded
         .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))

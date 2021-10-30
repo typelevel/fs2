@@ -144,7 +144,20 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.tls.TLSParameters#DefaultTLSParameters.this"
   ),
-  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.Stream#LowPrioCompiler.resourceInstance")
+  ProblemFilters.exclude[NewMixinForwarderProblem]("fs2.Stream#LowPrioCompiler.resourceInstance"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.compression#DeflateParams.fhCrcEnabled"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression#DeflateParams#DeflateParamsImpl.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression#DeflateParams#DeflateParamsImpl.this"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.compression$DeflateParams$DeflateParamsImpl$"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression#DeflateParams#DeflateParamsImpl.apply"
+  )
 )
 
 lazy val root = project
