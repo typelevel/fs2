@@ -50,18 +50,18 @@ object SectionFragmentCodec {
       s => { val (ext, r) = fromSection(s); (PsiPrivateBits, ext, r) }
     )
 
-  def extended[A, R: Codec](
+  def extended[A, R](
       tableId: Int,
       toSection: (BitVector, SectionExtension, R) => A,
       fromSection: A => (BitVector, SectionExtension, R)
-  ): SectionFragmentCodec[A] = {
+  )(implicit codecR: Codec[R]): SectionFragmentCodec[A] = {
     val tid = tableId
     val build = toSection
     val extract = fromSection
     new SectionFragmentCodec[A] {
       type Repr = R
       def tableId = tid
-      def subCodec(header: SectionHeader, verifyCrc: Boolean) = Codec[Repr]
+      def subCodec(header: SectionHeader, verifyCrc: Boolean) = codecR
       def toSection(privateBits: BitVector, extension: Option[SectionExtension], data: Repr) =
         Attempt.fromOption(
           extension.map(ext => build(privateBits, ext, data)),
@@ -125,7 +125,7 @@ object SectionFragmentCodec {
     SectionFragmentCodec.nonExtended[A, A](
       tableId,
       sHdr => toCodec(sHdr),
-      (bits, a) => a,
+      (_, a) => a,
       a => (BitVector.empty, a)
     )
 
@@ -136,7 +136,7 @@ object SectionFragmentCodec {
     SectionFragmentCodec.nonExtendedWithCrc[A, A](
       tableId,
       (sHdr, verifyCrc) => toCodec(sHdr, verifyCrc),
-      (bits, a) => a,
+      (_, a) => a,
       a => (BitVector.empty, a)
     )
 }

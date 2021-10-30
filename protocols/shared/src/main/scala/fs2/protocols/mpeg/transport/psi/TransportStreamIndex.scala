@@ -79,7 +79,7 @@ object TransportStreamIndex {
 
     def withPat(pat: ProgramAssociationTable): TransportStreamIndex = {
       val programs = pat.programByPid.keys.toSet
-      copy(pat = Some(pat), pmts = pmts.view.filter { case (k, v) => programs(k) }.toMap)
+      copy(pat = Some(pat), pmts = pmts.view.filter { case (k, _) => programs(k) }.toMap)
     }
 
     def withPmt(pmt: ProgramMapTable): TransportStreamIndex =
@@ -100,7 +100,7 @@ object TransportStreamIndex {
           Some(tsi.withPmt(pmt))
         case cat: ConditionalAccessTable =>
           Some(tsi.withCat(cat))
-        case other => None
+        case _ => None
       }
       val out = updatedTsi match {
         case Some(newTsi) if newTsi != tsi =>

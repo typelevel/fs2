@@ -858,7 +858,7 @@ object Pull extends PullLowPriority {
           // Inner scope is getting closed b/c a parent was interrupted
           val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
           transformWith(cl)(getCont[Unit, G, X])
-        case action: Action[G, X, y] =>
+        case _: Action[G, X, y] =>
           // all other actions, roll the interruption forwards
           getCont[Unit, G, X](interruption)
         case interrupted: Interrupted => interrupted // impossible
@@ -1164,7 +1164,7 @@ object Pull extends PullLowPriority {
       }
 
       viewL(stream) match {
-        case tst: Translate[h, G, _] => // y = Unit
+        case tst: Translate[h, G, _] @nowarn => // y = Unit
           val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont[Unit, G, X])
           val composed: h ~> F = translation.compose[h](tst.fk)
           go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
@@ -1179,14 +1179,14 @@ object Pull extends PullLowPriority {
           val fmrunr = new FlatMapR(getCont[Unit, G, X], fmout.fun)
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
-        case u: Uncons[G, y] =>
+        case u: Uncons[G, y] @nowarn =>
           val v = getCont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]
           // a Uncons is run on the same scope, without shifting.
           val runr = new BuildR[G, y, End]
           F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
             .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
-        case s: StepLeg[G, y] =>
+        case s: StepLeg[G, y] @nowarn =>
           val v = getCont[Option[Stream.StepLeg[G, y]], G, X]
           val runr = new BuildR[G, y, End]
           scope

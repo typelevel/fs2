@@ -25,7 +25,7 @@ package fs2
 package protocols
 
 import cats.effect.{IO, IOApp}
-import com.comcast.ip4s.{Ipv4Address, Port, SocketAddress}
+import com.comcast.ip4s.{Ipv4Address, SocketAddress}
 import fs2.interop.scodec.StreamDecoder
 import fs2.io.file.{Files, Path}
 import fs2.timeseries.TimeStamped

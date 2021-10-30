@@ -244,7 +244,7 @@ object Demultiplexer {
         payloadUnitStartAfterData: Boolean
     ): StepResult[Out] =
       decodeHeader(acc, startedAtOffsetZero) match {
-        case Attempt.Failure(e: Err.InsufficientBits) =>
+        case Attempt.Failure(_: Err.InsufficientBits) =>
           StepResult.state(DecodeState.AwaitingHeader(acc, startedAtOffsetZero))
         case Attempt.Failure(_: ResetDecodeState) =>
           StepResult.noOutput(None)
