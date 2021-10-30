@@ -404,7 +404,8 @@ private[compression] trait CompressionCompanionPlatform {
                     fileName,
                     modificationTime,
                     comment,
-                    params.level.juzDeflaterLevel
+                    params.level.juzDeflaterLevel,
+                    params.fhCrcEnabled
                   ) ++
                     _deflate(
                       params,
@@ -425,7 +426,8 @@ private[compression] trait CompressionCompanionPlatform {
           fileName: Option[String],
           modificationTime: Option[Instant],
           comment: Option[String],
-          deflateLevel: Int
+          deflateLevel: Int,
+          fhCrcEnabled: Boolean
       ): Stream[F, Byte] = {
         // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
         val secondsSince197001010000: Long =
@@ -434,7 +436,7 @@ private[compression] trait CompressionCompanionPlatform {
           gzipMagicFirstByte, // ID1: Identification 1
           gzipMagicSecondByte, // ID2: Identification 2
           gzipCompressionMethod.DEFLATE, // CM: Compression Method
-          (gzipFlag.FHCRC + // FLG: Header CRC
+          ((if (fhCrcEnabled) gzipFlag.FHCRC else zeroByte) + // FLG: Header CRC
             fileName.map(_ => gzipFlag.FNAME).getOrElse(zeroByte) + // FLG: File name
             comment.map(_ => gzipFlag.FCOMMENT).getOrElse(zeroByte)).toByte, // FLG: Comment
           (secondsSince197001010000 & 0xff).toByte, // MTIME: Modification Time
@@ -463,10 +465,16 @@ private[compression] trait CompressionCompanionPlatform {
           bytes
         }
         val crc32Value = crc32.getValue
-        val crc16 = Array[Byte](
-          (crc32Value & 0xff).toByte,
-          ((crc32Value >> 8) & 0xff).toByte
-        )
+
+        val crc16 =
+          if (fhCrcEnabled)
+            Array[Byte](
+              (crc32Value & 0xff).toByte,
+              ((crc32Value >> 8) & 0xff).toByte
+            )
+          else
+            Array.emptyByteArray
+
         Stream.chunk(moveAsChunkBytes(header)) ++
           fileNameEncoded
             .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))

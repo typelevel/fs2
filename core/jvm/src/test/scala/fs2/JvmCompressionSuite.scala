@@ -30,6 +30,8 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.zip._
 import scala.collection.mutable
+import scodec.bits.crc
+import scodec.bits.ByteVector
 
 class JvmCompressionSuite extends CompressionSuite {
 
@@ -244,6 +246,35 @@ class JvmCompressionSuite extends CompressionSuite {
       .compile
       .toVector
       .map(compressed => assert(compressed.length < uncompressed.length))
+  }
+
+  test("gzip.compresses input, with FLG.FHCRC set") {
+    Stream
+      .chunk[IO, Byte](Chunk.array(getBytes("Foo")))
+      .through(
+        Compression[IO].gzip(
+          fileName = None,
+          modificationTime = None,
+          comment = None,
+          deflateParams = DeflateParams.apply(
+            bufferSize = 1024 * 32,
+            header = ZLibParams.Header.GZIP,
+            level = DeflateParams.Level.DEFAULT,
+            strategy = DeflateParams.Strategy.DEFAULT,
+            flushMode = DeflateParams.FlushMode.DEFAULT,
+            fhCrcEnabled = true
+          )
+        )
+      )
+      .compile
+      .toVector
+      .map { compressed =>
+        val headerBytes = ByteVector(compressed.take(10))
+        val crc32 = crc.crc32(headerBytes.toBitVector).toByteArray
+        val expectedCrc16 = crc32.reverse.take(2).toVector
+        val actualCrc16 = compressed.drop(10).take(2)
+        assertEquals(actualCrc16, expectedCrc16)
+      }
   }
 
   test("gunzip limit fileName and comment length") {
