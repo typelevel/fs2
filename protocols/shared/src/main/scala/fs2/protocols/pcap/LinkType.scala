@@ -27,7 +27,8 @@ import scodec.Codec
 import scodec.bits.ByteOrdering
 
 /** Describes the link layer type in a PCAP capture.
-  * @see http://www.tcpdump.org/linktypes.html
+  * @see
+  *   http://www.tcpdump.org/linktypes.html
   */
 sealed trait LinkType
 

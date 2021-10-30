@@ -91,7 +91,8 @@ object Mpeg extends IOApp.Simple {
 
 /** Processes libpcap files.
   *
-  * @see http://wiki.wireshark.org/Development/LibpcapFileFormat
+  * @see
+  *   http://wiki.wireshark.org/Development/LibpcapFileFormat
   */
 object PcapCodec {
   import scodec.codecs._

@@ -28,20 +28,17 @@ import org.reactivestreams._
 
 /** Implementation of the reactivestreams protocol for fs2
   *
-  * @example {{{
-  * scala> import fs2._
-  * scala> import fs2.interop.reactivestreams._
-  * scala> import cats.effect.{IO, Resource}, cats.effect.unsafe.implicits.global
-  * scala>
-  * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStreamBuffered[IO](bufferSize = 16))
-  * scala>
-  * scala> downstream.compile.toVector.unsafeRunSync()
-  * res0: Vector[Int] = Vector(1, 2, 3)
-  * }}}
+  * @example
+  *   {{{ scala> import fs2._ scala> import fs2.interop.reactivestreams._ scala> import
+  *   cats.effect.{IO, Resource}, cats.effect.unsafe.implicits.global scala> scala> val upstream:
+  *   Stream[IO, Int] = Stream(1, 2, 3).covary[IO] scala> val publisher: Resource[IO,
+  *   StreamUnicastPublisher[IO, Int]] = upstream.toUnicastPublisher scala> val downstream:
+  *   Stream[IO, Int] = Stream.resource(publisher).flatMap(_.toStreamBuffered[IO](bufferSize = 16))
+  *   scala> scala> downstream.compile.toVector.unsafeRunSync() res0: Vector[Int] = Vector(1, 2, 3)
+  *   }}}
   *
-  * @see [[http://www.reactive-streams.org/]]
+  * @see
+  *   [[http://www.reactive-streams.org/]]
   */
 package object reactivestreams {
 
@@ -49,10 +46,11 @@ package object reactivestreams {
     *
     * The publisher only receives a subscriber when the stream is run.
     *
-    * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
-    *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
-    *                   The publisher can use this `bufferSize` to query elements in batch.
-    *                   A high number will also lead to more elements in memory.
+    * @param bufferSize
+    *   setup the number of elements asked each time from the `org.reactivestreams.Publisher`. A
+    *   high number can be useful is the publisher is triggering from IO, like requesting elements
+    *   from a database. The publisher can use this `bufferSize` to query elements in batch. A high
+    *   number will also lead to more elements in memory.
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A], bufferSize: Int): Stream[F, A] =
     Stream
@@ -76,10 +74,11 @@ package object reactivestreams {
 
     /** Creates a lazy stream from an `org.reactivestreams.Publisher`
       *
-      * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
-      *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
-      *                   The publisher can use this `bufferSize` to query elements in batch.
-      *                   A high number will also lead to more elements in memory.
+      * @param bufferSize
+      *   setup the number of elements asked each time from the `org.reactivestreams.Publisher`. A
+      *   high number can be useful is the publisher is triggering from IO, like requesting elements
+      *   from a database. The publisher can use this `bufferSize` to query elements in batch. A
+      *   high number will also lead to more elements in memory.
       */
     def toStreamBuffered[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)
@@ -97,8 +96,8 @@ package object reactivestreams {
 
     /** Creates a [[StreamUnicastPublisher]] from a stream.
       *
-      * This publisher can only have a single subscription.
-      * The stream is only ran when elements are requested.
+      * This publisher can only have a single subscription. The stream is only ran when elements are
+      * requested.
       */
     def toUnicastPublisher(implicit
         F: Async[F]

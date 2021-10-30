@@ -59,48 +59,52 @@ object TimeStamped {
       }
     }
 
-  /** Combinator that converts a `Scan[A, B]` in to a `Scan[TimeStamped[A], TimeStamped[B]]` such that
-    * timestamps are preserved on elements that flow through the stream.
+  /** Combinator that converts a `Scan[A, B]` in to a `Scan[TimeStamped[A], TimeStamped[B]]` such
+    * that timestamps are preserved on elements that flow through the stream.
     */
   def preserve[S, I, O](t: Scan[S, I, O]): Scan[S, TimeStamped[I], TimeStamped[O]] =
     t.lens(_.value, (tsi, o) => tsi.copy(value = o))
 
-  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
-    * `TimeStamped[B]` where `B` is an accumulated feature of `A` over a second.
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of `TimeStamped[B]` where `B`
+    * is an accumulated feature of `A` over a second.
     *
-    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
-    * using `perSecondRate(_.size * 8)`, which yields a stream of the emitted bits per second.
+    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated using
+    * `perSecondRate(_.size * 8)`, which yields a stream of the emitted bits per second.
     *
-    * @param f function which extracts a feature of `A`
+    * @param f
+    *   function which extracts a feature of `A`
     */
   def perSecondRate[A, B: Monoid](
       f: A => B
   ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[B]] =
     rate(1.second)(f)
 
-  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
-    * `TimeStamped[B Either A]` where `B` is an accumulated feature of `A` over a second.
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of `TimeStamped[B Either A]`
+    * where `B` is an accumulated feature of `A` over a second.
     *
     * Every incoming `A` is echoed to the output.
     *
-    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
-    * using `perSecondRate(_.size * 8)`, which yields a stream of the emitted bits per second.
+    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated using
+    * `perSecondRate(_.size * 8)`, which yields a stream of the emitted bits per second.
     *
-    * @param f function which extracts a feature of `A`
+    * @param f
+    *   function which extracts a feature of `A`
     */
   def withPerSecondRate[A, B: Monoid](
       f: A => B
   ): Scan[(Option[FiniteDuration], B), TimeStamped[A], TimeStamped[Either[B, A]]] =
     withRate(1.second)(f)
 
-  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
-    * `TimeStamped[B]` where `B` is an accumulated feature of `A` over a specified time period.
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of `TimeStamped[B]` where `B`
+    * is an accumulated feature of `A` over a specified time period.
     *
-    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
-    * using `rate(1.0)(_.size * 8)`, which yields a stream of the emitted bits per second.
+    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated using
+    * `rate(1.0)(_.size * 8)`, which yields a stream of the emitted bits per second.
     *
-    * @param over time period over which to calculate
-    * @param f function which extracts a feature of `A`
+    * @param over
+    *   time period over which to calculate
+    * @param f
+    *   function which extracts a feature of `A`
     */
   def rate[A, B: Monoid](
       over: FiniteDuration
@@ -115,16 +119,18 @@ object TimeStamped {
     )
   }
 
-  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of
-    * `TimeStamped[Either[B, A]]` where `B` is an accumulated feature of `A` over a specified time period.
+  /** Scan that converts a stream of `TimeStamped[A]` in to a stream of `TimeStamped[Either[B, A]]`
+    * where `B` is an accumulated feature of `A` over a specified time period.
     *
     * Every incoming `A` is echoed to the output.
     *
-    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated
-    * using `rate(1.second)(_.size * 8)`, which yields a stream of the emitted bits per second.
+    * For example, the emitted bits per second of a `Stream[F, ByteVector]` can be calculated using
+    * `rate(1.second)(_.size * 8)`, which yields a stream of the emitted bits per second.
     *
-    * @param over time period over which to calculate
-    * @param f function which extracts a feature of `A`
+    * @param over
+    *   time period over which to calculate
+    * @param f
+    *   function which extracts a feature of `A`
     */
   def withRate[A, B](over: FiniteDuration)(f: A => B)(implicit
       B: Monoid[B]
@@ -158,20 +164,19 @@ object TimeStamped {
 
   /** Returns a stream that is the throttled version of the source stream.
     *
-    * Given two adjacent items from the source stream, `a` and `b`, where `a` is emitted
-    * first and `b` is emitted second, their time delta is `b.time - a.time`.
+    * Given two adjacent items from the source stream, `a` and `b`, where `a` is emitted first and
+    * `b` is emitted second, their time delta is `b.time - a.time`.
     *
-    * This function creates a stream that emits values at wall clock times such that
-    * the time delta between any two adjacent values is proportional to their time delta
-    * in the source stream.
+    * This function creates a stream that emits values at wall clock times such that the time delta
+    * between any two adjacent values is proportional to their time delta in the source stream.
     *
-    * The `throttlingFactor` is a scaling factor that determines how much source time a unit
-    * of wall clock time is worth. A value of 1.0 causes the output stream to emit
-    * values spaced in wall clock time equal to their time deltas. A value of 2.0
-    * emits values at twice the speed of wall clock time.
+    * The `throttlingFactor` is a scaling factor that determines how much source time a unit of wall
+    * clock time is worth. A value of 1.0 causes the output stream to emit values spaced in wall
+    * clock time equal to their time deltas. A value of 2.0 emits values at twice the speed of wall
+    * clock time.
     *
-    * This is particularly useful when timestamped data can be read in bulk (e.g., from a capture file)
-    * but should be "played back" at real time speeds.
+    * This is particularly useful when timestamped data can be read in bulk (e.g., from a capture
+    * file) but should be "played back" at real time speeds.
     */
   def throttle[F[_]: Temporal, A](
       throttlingFactor: Double,
@@ -238,16 +243,15 @@ object TimeStamped {
     source => (source.through2(Stream.awakeEvery[F](tickResolution).as(())))(doThrottle)
   }
 
-  /** Scan that filters the specified timestamped values to ensure
-    * the output time stamps are always increasing in time. Other values are
-    * dropped.
+  /** Scan that filters the specified timestamped values to ensure the output time stamps are always
+    * increasing in time. Other values are dropped.
     */
   def increasing[F[_], A]: Pipe[F, TimeStamped[A], TimeStamped[A]] =
     increasingEither.andThen(_.collect { case Right(out) => out })
 
-  /** Scan that filters the specified timestamped values to ensure
-    * the output time stamps are always increasing in time. The increasing values
-    * are emitted wrapped in `Right`, while out of order values are emitted in `Left`.
+  /** Scan that filters the specified timestamped values to ensure the output time stamps are always
+    * increasing in time. The increasing values are emitted wrapped in `Right`, while out of order
+    * values are emitted in `Left`.
     */
   def increasingEither[F[_], A]: Pipe[F, TimeStamped[A], Either[TimeStamped[A], TimeStamped[A]]] =
     _.scanChunks(Duration.MinusInf: Duration) { (last, chunk) =>
@@ -257,20 +261,20 @@ object TimeStamped {
       }
     }
 
-  /** Scan that reorders a stream of timestamped values that are mostly ordered,
-    * using a time based buffer of the specified duration. See [[attemptReorderLocally]] for details.
+  /** Scan that reorders a stream of timestamped values that are mostly ordered, using a time based
+    * buffer of the specified duration. See [[attemptReorderLocally]] for details.
     *
-    * The resulting stream is guaranteed to always emit values in time increasing order.
-    * Values may be dropped from the source stream if they were not successfully reordered.
+    * The resulting stream is guaranteed to always emit values in time increasing order. Values may
+    * be dropped from the source stream if they were not successfully reordered.
     */
   def reorderLocally[F[_], A](over: FiniteDuration): Pipe[F, TimeStamped[A], TimeStamped[A]] =
     reorderLocallyEither(over).andThen(_.collect { case Right(tsa) => tsa })
 
-  /** Scan that reorders a stream of timestamped values that are mostly ordered,
-    * using a time based buffer of the specified duration. See [[attemptReorderLocally]] for details.
+  /** Scan that reorders a stream of timestamped values that are mostly ordered, using a time based
+    * buffer of the specified duration. See [[attemptReorderLocally]] for details.
     *
     * The resulting stream is guaranteed to always emit output values in time increasing order,
-    * wrapped in `Right`.  Any values that could not be reordered due to insufficient buffer space
+    * wrapped in `Right`. Any values that could not be reordered due to insufficient buffer space
     * are emitted wrapped in `Left`.
     */
   def reorderLocallyEither[F[_], A](
@@ -280,21 +284,19 @@ object TimeStamped {
 
   /** Scan that reorders timestamped values over a specified duration.
     *
-    * Values are kept in an internal buffer. Upon receiving a new value, any buffered
-    * values that are timestamped with `value.time - over` are emitted. Other values,
-    * and the new value, are kept in the buffer.
+    * Values are kept in an internal buffer. Upon receiving a new value, any buffered values that
+    * are timestamped with `value.time - over` are emitted. Other values, and the new value, are
+    * kept in the buffer.
     *
-    * This is useful for ordering mostly ordered streams, where values
-    * may be out of order with close neighbors but are strictly less than values
-    * that come much later in the stream.
+    * This is useful for ordering mostly ordered streams, where values may be out of order with
+    * close neighbors but are strictly less than values that come much later in the stream.
     *
-    * An example of such a structure is the result of merging streams of values generated
-    * with `TimeStamped.now`.
+    * An example of such a structure is the result of merging streams of values generated with
+    * `TimeStamped.now`.
     *
-    * Caution: this scan should only be used on streams that are mostly ordered.
-    * In the worst case, if the source is in reverse order, all values in the source
-    * will be accumulated in to the buffer until the source halts, and then the
-    * values will be emitted in order.
+    * Caution: this scan should only be used on streams that are mostly ordered. In the worst case,
+    * if the source is in reverse order, all values in the source will be accumulated in to the
+    * buffer until the source halts, and then the values will be emitted in order.
     */
   def attemptReorderLocally[F[_], A](
       over: FiniteDuration

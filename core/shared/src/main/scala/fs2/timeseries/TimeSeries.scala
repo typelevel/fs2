@@ -30,12 +30,12 @@ import cats.effect.Temporal
 
 /** A time series is a stream of timestamped values or clock ticks.
   *
-  * Values are represented as `Some` values in a `TimeStamped[Option[A]]`, whereas
-  * clock ticks are represented as `None`s. This encoding allows for an indication
-  * of time passage with no observed values.
+  * Values are represented as `Some` values in a `TimeStamped[Option[A]]`, whereas clock ticks are
+  * represented as `None`s. This encoding allows for an indication of time passage with no observed
+  * values.
   *
-  * Generally, time series appear in increasing order, and many combinators that work with
-  * time series will rely on that. For streams that are globally ordered, but not locally ordered,
+  * Generally, time series appear in increasing order, and many combinators that work with time
+  * series will rely on that. For streams that are globally ordered, but not locally ordered,
   * i.e., near adjacent values might be out of order but values at great distance from each other
   * are ordered, consider using `TimeStamped.reorderLocally` to adjust.
   */
@@ -88,8 +88,8 @@ object TimeSeries {
     Stream.awakeEvery[F](tickPeriod).map(_ => TimeStamped.unsafeNow(()))
 
   /** Pipe that converts a stream of timestamped values with monotonically increasing timestamps in
-    * to a stream of timestamped ticks or values, where a tick is emitted every `tickPeriod`.
-    * Ticks are emitted between values from the source stream.
+    * to a stream of timestamped ticks or values, where a tick is emitted every `tickPeriod`. Ticks
+    * are emitted between values from the source stream.
     */
   def interpolateTicks[F[_], A](
       tickPeriod: FiniteDuration
@@ -127,14 +127,16 @@ object TimeSeries {
       }.stream
   }
 
-  /** Combinator that converts a `Scan[S, I, O]` in to a `Scan[S, TimeStamped[Option[I]], TimeStamped[Option[O]]]` such that
-    * timestamps are preserved on elements that flow through the stream.
+  /** Combinator that converts a `Scan[S, I, O]` in to a `Scan[S, TimeStamped[Option[I]],
+    * TimeStamped[Option[O]]]` such that timestamps are preserved on elements that flow through the
+    * stream.
     */
   def preserve[S, I, O](t: Scan[S, I, O]): Scan[S, TimeStamped[Option[I]], TimeStamped[Option[O]]] =
     preserveTicks(TimeStamped.preserve(t))
 
-  /** Combinator that converts a `Scan[S, TimeStamped[I], TimeStamped[O]]` in to a `Scan[S, TimeStamped[Option[I]], TimeStamped[Option[O]]]` such that
-    * timestamps are preserved on elements that flow through the stream.
+  /** Combinator that converts a `Scan[S, TimeStamped[I], TimeStamped[O]]` in to a `Scan[S,
+    * TimeStamped[Option[I]], TimeStamped[Option[O]]]` such that timestamps are preserved on
+    * elements that flow through the stream.
     */
   def preserveTicks[S, I, O](
       t: Scan[S, TimeStamped[I], TimeStamped[O]]
@@ -147,7 +149,8 @@ object TimeSeries {
       (_, tso) => tso.map(Some(_))
     )
 
-  /** Combinator that combines a `Scan[LS, TimeStamped[Option[L]], O]` and a `Scan[RS, TimeStamped[Option[R]], O]` in to a `Scan[(LS, RS), TimeSeriesVlaue[Either[L, R], O]]`.
+  /** Combinator that combines a `Scan[LS, TimeStamped[Option[L]], O]` and a `Scan[RS,
+    * TimeStamped[Option[R]], O]` in to a `Scan[(LS, RS), TimeSeriesVlaue[Either[L, R], O]]`.
     */
   def choice[LS, L, RS, R, O](
       l: Scan[LS, TimeStamped[Option[L]], O],

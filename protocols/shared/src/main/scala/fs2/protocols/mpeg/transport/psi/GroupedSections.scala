@@ -32,7 +32,8 @@ import fs2._
 
 /** Group of sections that make up a logical message.
   *
-  * Intermediate representation between sections and tables. All sections must share the same table id.
+  * Intermediate representation between sections and tables. All sections must share the same table
+  * id.
   */
 sealed abstract class GroupedSections[+A <: Section] {
   def tableId: Int
@@ -107,8 +108,8 @@ object GroupedSections {
 
   /** Groups sections in to groups.
     *
-    * Extended sections, aka sections with the section syntax indicator set to true, are automatically handled.
-    * Non-extended sections are emitted as singleton groups.
+    * Extended sections, aka sections with the section syntax indicator set to true, are
+    * automatically handled. Non-extended sections are emitted as singleton groups.
     */
   def group: Scan[ExtendedSectionGrouperState[ExtendedSection], Section, Either[
     GroupingError,
@@ -118,8 +119,9 @@ object GroupedSections {
 
   /** Groups sections in to groups.
     *
-    * Extended sections, aka sections with the section syntax indicator set to true, are automatically handled.
-    * The specified `nonExtended` process is used to handle non-extended sections.
+    * Extended sections, aka sections with the section syntax indicator set to true, are
+    * automatically handled. The specified `nonExtended` process is used to handle non-extended
+    * sections.
     */
   def groupGeneral[NonExtendedState](
       initialNonExtendedState: NonExtendedState,
@@ -132,8 +134,9 @@ object GroupedSections {
 
   /** Groups sections in to groups.
     *
-    * Extended sections, aka sections with the section syntax indicator set to true, are automatically handled if `true` is returned from the
-    * `groupExtended` function when applied with the section in question.
+    * Extended sections, aka sections with the section syntax indicator set to true, are
+    * automatically handled if `true` is returned from the `groupExtended` function when applied
+    * with the section in question.
     *
     * The specified `nonExtended` transducer is used to handle non-extended sections.
     */

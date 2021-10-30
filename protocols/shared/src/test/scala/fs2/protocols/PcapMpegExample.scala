@@ -33,10 +33,10 @@ import fs2.timeseries.TimeStamped
 import pcap.{CaptureFile, LinkType}
 
 /** Example of decoding a PCAP file that contains:
-  *  - captured ethernet frames
-  *  - of IPv4 packets
-  *  - of UDP datagrams
-  *  - containing MPEG transport stream packets
+  *   - captured ethernet frames
+  *   - of IPv4 packets
+  *   - of UDP datagrams
+  *   - containing MPEG transport stream packets
   */
 object PcapMpegExample extends IOApp.Simple {
 

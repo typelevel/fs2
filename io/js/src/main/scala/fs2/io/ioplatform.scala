@@ -56,7 +56,8 @@ private[fs2] trait ioplatform {
     .flatMap(r => Stream.resource(suspendReadableAndRead(destroyIfNotEnded, destroyIfCanceled)(r)))
     .flatMap(_._2)
 
-  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that
+    * `Readable`.
     */
   def suspendReadableAndRead[F[_], R <: Readable](
       destroyIfNotEnded: Boolean = true,
@@ -118,8 +119,8 @@ private[fs2] trait ioplatform {
             )).adaptError { case IOException(ex) => ex }
     } yield (readable.asInstanceOf[R], stream)).adaptError { case IOException(ex) => ex }
 
-  /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
-    * that ends whenever the resulting stream terminates.
+  /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`, that
+    * ends whenever the resulting stream terminates.
     */
   def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
     in =>
@@ -179,16 +180,15 @@ private[fs2] trait ioplatform {
         }
         .adaptError { case IOException(ex) => ex }
 
-  /** Take a function that emits to a `Writable` effectfully,
-    * and return a stream which, when run, will perform that function and emit
-    * the bytes recorded in the `Writable` as an fs2.Stream
+  /** Take a function that emits to a `Writable` effectfully, and return a stream which, when run,
+    * will perform that function and emit the bytes recorded in the `Writable` as an fs2.Stream
     */
   def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
     Stream.empty.through(toDuplexAndRead(f))
 
-  /** Take a function that reads and writes from a `Duplex` effectfully,
-    * and return a pipe which, when run, will perform that function,
-    * write emitted bytes to the duplex, and read emitted bytes from the duplex
+  /** Take a function that reads and writes from a `Duplex` effectfully, and return a pipe which,
+    * when run, will perform that function, write emitted bytes to the duplex, and read emitted
+    * bytes from the duplex
     */
   def toDuplexAndRead[F[_]: Async](f: Duplex => F[Unit]): Pipe[F, Byte, Byte] =
     in =>

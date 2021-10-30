@@ -28,18 +28,18 @@ import cats.arrow.Strong
 
 /** A stateful transformation of the elements of a stream.
   *
-  * A scan is primarily represented as a function `(S, I) => (S, Chunk[O])`.
-  * Scans also have an initial state value of type `S` and the ability to emit
-  * elements upon completion via a function `S => Chunk[O]`.
+  * A scan is primarily represented as a function `(S, I) => (S, Chunk[O])`. Scans also have an
+  * initial state value of type `S` and the ability to emit elements upon completion via a function
+  * `S => Chunk[O]`.
   *
-  * A scan is built up incrementally via various combinators and then converted to
-  * a pipe via `.toPipe`. For example, `s.through(Scan.lift(identity).toPipe) == s`.
+  * A scan is built up incrementally via various combinators and then converted to a pipe via
+  * `.toPipe`. For example, `s.through(Scan.lift(identity).toPipe) == s`.
   *
-  * A scan is much less powerful than a pull. Scans cannot evaluate effects or terminate
-  * early. These limitations allow combinators that are not possible on pulls though.
-  * For example, the [[first]] method converts a `Scan[S, I, O]` to a `Scan[S, (I, A), (O, A)]`.
-  * Critically, this method relies on the ability to feed a single `I` to the original scan
-  * and collect the resulting `O` values, pairing each `O` with the `A` that was paired with `I`.
+  * A scan is much less powerful than a pull. Scans cannot evaluate effects or terminate early.
+  * These limitations allow combinators that are not possible on pulls though. For example, the
+  * [[first]] method converts a `Scan[S, I, O]` to a `Scan[S, (I, A), (O, A)]`. Critically, this
+  * method relies on the ability to feed a single `I` to the original scan and collect the resulting
+  * `O` values, pairing each `O` with the `A` that was paired with `I`.
   */
 final class Scan[S, -I, +O](
     val initial: S,
@@ -68,7 +68,9 @@ final class Scan[S, -I, +O](
       .flatMap(state => Pull.output(onComplete(state)))
       .stream
 
-  /** Steps this scan by a single input, returning a new scan and the output elements computed from the input. */
+  /** Steps this scan by a single input, returning a new scan and the output elements computed from
+    * the input.
+    */
   def step(i: I): (Scan[S, I, O], Chunk[O]) = {
     val (s, os) = transform(initial, i)
     (new Scan(s, transform_, onComplete_), os)
@@ -128,9 +130,9 @@ final class Scan[S, -I, +O](
 
   /** Returns a new scan with transformed input and output types.
     *
-    * Upon receiving an `I2`, `get` is invoked and the result is fed to the
-    * original scan. For each output value, `set` is invoked with the original
-    * `I2` input and the computed `O`, yielding a new output of type `O2`.
+    * Upon receiving an `I2`, `get` is invoked and the result is fed to the original scan. For each
+    * output value, `set` is invoked with the original `I2` input and the computed `O`, yielding a
+    * new output of type `O2`.
     */
   def lens[I2, O2](get: I2 => I, set: (I2, O) => O2): Scan[S, I2, O2] =
     Scan[S, I2, O2](initial)(
@@ -141,16 +143,20 @@ final class Scan[S, -I, +O](
       _ => Chunk.empty
     )
 
-  /** Returns a scan that inputs/outputs pairs of elements, with `I` and `O` in the first element of the pair. */
+  /** Returns a scan that inputs/outputs pairs of elements, with `I` and `O` in the first element of
+    * the pair.
+    */
   def first[A]: Scan[S, (I, A), (O, A)] =
     lens(_._1, (t, o) => (o, t._2))
 
-  /** Returns a scan that inputs/outputs pairs of elements, with `I` and `O` in the second element of the pair. */
+  /** Returns a scan that inputs/outputs pairs of elements, with `I` and `O` in the second element
+    * of the pair.
+    */
   def second[A]: Scan[S, (A, I), (A, O)] =
     lens(_._2, (t, o) => (t._1, o))
 
-  /** Like [[lens]] but some elements are passed to the output (skipping the original scan) while other elements
-    * are lensed through the original scan.
+  /** Like [[lens]] but some elements are passed to the output (skipping the original scan) while
+    * other elements are lensed through the original scan.
     */
   def semilens[I2, O2](extract: I2 => Either[O2, I], inject: (I2, O) => O2): Scan[S, I2, O2] =
     Scan[S, I2, O2](initial)(
@@ -169,23 +175,21 @@ final class Scan[S, -I, +O](
   def semipass[I2, O2 >: O](extract: I2 => Either[O2, I]): Scan[S, I2, O2] =
     semilens(extract, (_, o) => o)
 
-  /** Returns a scan that wraps the inputs/outputs with `Either`.
-    * Elements on the left pass through the original scan while elements on
-    * the right pass through directly.
+  /** Returns a scan that wraps the inputs/outputs with `Either`. Elements on the left pass through
+    * the original scan while elements on the right pass through directly.
     */
   def left[A]: Scan[S, Either[I, A], Either[O, A]] =
     semilens(_.fold(i => Right(i), a => Left(Right(a))), (_, o) => Left(o))
 
-  /** Returns a scan that wraps the inputs/outputs with `Either`.
-    * Elements on the right pass through the original scan while elements on
-    * the left pass through directly.
+  /** Returns a scan that wraps the inputs/outputs with `Either`. Elements on the right pass through
+    * the original scan while elements on the left pass through directly.
     */
   def right[A]: Scan[S, Either[A, I], Either[A, O]] =
     semilens(_.fold(a => Left(Left(a)), i => Right(i)), (_, o) => Right(o))
 
-  /** Combines this scan with the supplied scan such that elements on the left
-    * are fed through this scan while elements on the right are fed through the
-    * suppplied scan. The outputs are joined together.
+  /** Combines this scan with the supplied scan such that elements on the left are fed through this
+    * scan while elements on the right are fed through the suppplied scan. The outputs are joined
+    * together.
     */
   def choice[S2, I2, O2 >: O](that: Scan[S2, I2, O2]): Scan[(S, S2), Either[I, I2], O2] =
     Scan[(S, S2), Either[I, I2], O2]((initial, that.initial))(

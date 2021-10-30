@@ -24,19 +24,18 @@ package compression
 
 import java.time.Instant
 
-/** Gunzip decompression results including file properties and
-  * decompressed content stream, used as follows:
-  *   stream
-  *     .through(gunzip[IO]())
-  *     .flatMap { gunzipResult =>
-  *       // Access properties here.
-  *       gunzipResult.content
-  *     }
+/** Gunzip decompression results including file properties and decompressed content stream, used as
+  * follows: stream .through(gunzip[IO]()) .flatMap { gunzipResult => // Access properties here.
+  * gunzipResult.content }
   *
-  * @param content Uncompressed content stream.
-  * @param modificationTime Modification time of compressed file.
-  * @param fileName File name.
-  * @param comment File comment.
+  * @param content
+  *   Uncompressed content stream.
+  * @param modificationTime
+  *   Modification time of compressed file.
+  * @param fileName
+  *   File name.
+  * @param comment
+  *   File comment.
   */
 case class GunzipResult[F[_]](
     content: Stream[F, Byte],

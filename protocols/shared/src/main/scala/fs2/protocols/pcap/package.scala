@@ -29,7 +29,8 @@ import scodec.codecs._
 
 /** Protocol that describes libpcap files.
   *
-  * @see http://wiki.wireshark.org/Development/LibpcapFileFormat
+  * @see
+  *   http://wiki.wireshark.org/Development/LibpcapFileFormat
   */
 package object pcap {
 

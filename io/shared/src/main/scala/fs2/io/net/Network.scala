@@ -27,18 +27,14 @@ import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
   *
-  * @example {{{
-  * import fs2.Stream
-  * import fs2.io.net.{Datagram, Network}
+  * @example
+  *   {{{ import fs2.Stream import fs2.io.net.{Datagram, Network}
   *
-  * def send[F[_]: Network](datagram: Datagram): F[Unit] =
-  *   Network[F].openDatagramSocket().use { socket =>
-  *     socket.write(packet)
-  *   }
-  * }}}
+  * def send[F[_]: Network](datagram: Datagram): F[Unit] = Network[F].openDatagramSocket().use {
+  * socket => socket.write(packet) } }}}
   *
-  * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead
-  * of requiring the much more powerful `Async` constraint.
+  * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead of
+  * requiring the much more powerful `Async` constraint.
   *
   * The `Network` instance has a set of global resources used for managing sockets. Alternatively,
   * use the `socketGroup` and `datagramSocketGroup` operations to manage the lifecycle of underlying

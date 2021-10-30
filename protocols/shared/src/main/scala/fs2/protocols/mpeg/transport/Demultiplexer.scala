@@ -40,17 +40,19 @@ object Demultiplexer {
   case class SectionResult(section: Section) extends Result
   case class PesPacketResult(body: PesPacket) extends Result
 
-  /** Indication that a header was decoded successfully and there was enough information on how to decode the body of the message.
+  /** Indication that a header was decoded successfully and there was enough information on how to
+    * decode the body of the message.
     *
-    * Upon receiving a result of this type, the demultiplexer will accumulate the number of bits specified by `neededBits` if that value
-    * is defined. If `neededBits` is undefined, the demultiplexer will accumulate all payload bits until the start of the next message (as
-    * indicated by the payload unit start indicator). When accumulation has completed, the specified decoder will be invoked to decode
-    * a message.
+    * Upon receiving a result of this type, the demultiplexer will accumulate the number of bits
+    * specified by `neededBits` if that value is defined. If `neededBits` is undefined, the
+    * demultiplexer will accumulate all payload bits until the start of the next message (as
+    * indicated by the payload unit start indicator). When accumulation has completed, the specified
+    * decoder will be invoked to decode a message.
     */
   case class DecodeBody[A](neededBits: Option[Long], decoder: Decoder[A])
 
-  /** Error that indicates any data accumulated by the demultiplexer should be dropped and no further decoding should occur until the next
-    * payload start.
+  /** Error that indicates any data accumulated by the demultiplexer should be dropped and no
+    * further decoding should occur until the next payload start.
     */
   case class ResetDecodeState(context: List[String]) extends Err {
     def message = "reset decode state"
@@ -95,16 +97,17 @@ object Demultiplexer {
 
   /** Stream transducer that converts packets in to sections and PES packets.
     *
-    * The packets may span PID values. De-packetization is performed on each PID and as whole messages are received,
-    * reassembled messages are emitted.
+    * The packets may span PID values. De-packetization is performed on each PID and as whole
+    * messages are received, reassembled messages are emitted.
     *
-    * PES packets emitted by this method never include parsed headers -- that is, every emitted PES packet is of
-    * type `PesPacket.WithoutHeader`. To get PES packets with parsed headers, use `demultiplexWithPesHeaders`.
+    * PES packets emitted by this method never include parsed headers -- that is, every emitted PES
+    * packet is of type `PesPacket.WithoutHeader`. To get PES packets with parsed headers, use
+    * `demultiplexWithPesHeaders`.
     *
     * Errors encountered while depacketizing are emitted.
     *
-    * Upon noticing a PID discontinuity, an error is emitted and PID decoding state is discarded, resulting in any in-progress
-    * section decoding to be lost for that PID.
+    * Upon noticing a PID discontinuity, an error is emitted and PID decoding state is discarded,
+    * resulting in any in-progress section decoding to be lost for that PID.
     */
   def demultiplex[F[_]](
       sectionCodec: SectionCodec
@@ -177,13 +180,15 @@ object Demultiplexer {
     demultiplexGeneral(decodeHeader)
   }
 
-  /** Most general way to perform demultiplexing, allowing parsing of arbitrary headers and decoding of a specified output type.
+  /** Most general way to perform demultiplexing, allowing parsing of arbitrary headers and decoding
+    * of a specified output type.
     *
-    * When processing the payload in a packet, the start of the payload is passed along to `decodeHeader`, which determines how to
-    * process the body of the message.
+    * When processing the payload in a packet, the start of the payload is passed along to
+    * `decodeHeader`, which determines how to process the body of the message.
     *
-    * In addition to the payload data, a flag is passed to `decodeHeader` -- true is passed when the payload data started at byte 0 of
-    * the packet and false is passed when the payload data started later in the packet.
+    * In addition to the payload data, a flag is passed to `decodeHeader` -- true is passed when the
+    * payload data started at byte 0 of the packet and false is passed when the payload data started
+    * later in the packet.
     *
     * See the documentation on `DecodeBody` for more information.
     */

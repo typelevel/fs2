@@ -32,17 +32,17 @@ import cats.MonadThrow
 
 /** Supports binary decoding of a stream that emits elements as they are decoded.
   *
-  * The main purpose of using a `StreamDecoder` over a `scodec.Decoder` is mixing
-  * decoding with processing. For example, `scodec.codecs.vector(decoderA): Decoder[Vector[A]]`
-  * could be used to decode a bit stream but the decoded `Vector[A]` would not be
-  * emitted until the end of the bit stream. With `StreamDecoder.many(decoderA): StreamDecoder[A]`,
-  * each decoded `A` value is emitted as soon as it is decoded.
+  * The main purpose of using a `StreamDecoder` over a `scodec.Decoder` is mixing decoding with
+  * processing. For example, `scodec.codecs.vector(decoderA): Decoder[Vector[A]]` could be used to
+  * decode a bit stream but the decoded `Vector[A]` would not be emitted until the end of the bit
+  * stream. With `StreamDecoder.many(decoderA): StreamDecoder[A]`, each decoded `A` value is emitted
+  * as soon as it is decoded.
   *
-  * The `StreamDecoder` companion has various constructors -- most importantly, `once`
-  * and `many`, that allow a `Decoder[A]` to be lifted to a `StreamDecoder[A]`.
+  * The `StreamDecoder` companion has various constructors -- most importantly, `once` and `many`,
+  * that allow a `Decoder[A]` to be lifted to a `StreamDecoder[A]`.
   *
-  * Given a `StreamDecoder[A]`, a bit stream can be decoded via the `decode` method or
-  * by calling a variant of `toPipe`.
+  * Given a `StreamDecoder[A]`, a bit stream can be decoded via the `decode` method or by calling a
+  * variant of `toPipe`.
   */
 final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) { self =>
 
@@ -59,8 +59,9 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
   def decode[F[_]: RaiseThrowable](s: Stream[F, BitVector]): Stream[F, A] =
     apply(s).void.stream
 
-  /** Returns a `Pull[F, A, Option[Stream[F, BitVector]]]` given a `Stream[F, BitVector]`.
-    * The result of the returned pull is the remainder of the input stream that was not used in decoding.
+  /** Returns a `Pull[F, A, Option[Stream[F, BitVector]]]` given a `Stream[F, BitVector]`. The
+    * result of the returned pull is the remainder of the input stream that was not used in
+    * decoding.
     */
   def apply[F[_]: RaiseThrowable](
       s: Stream[F, BitVector]
@@ -122,9 +123,9 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
         loop(BitVector.empty, s)
     }
 
-  /** Creates a stream decoder that, upon decoding an `A`, applies it to the supplied function and decodes
-    * the next part of the input with the returned decoder. When that decoder finishes, the remainder of
-    * the input is returned to the original decoder for further decoding.
+  /** Creates a stream decoder that, upon decoding an `A`, applies it to the supplied function and
+    * decodes the next part of the input with the returned decoder. When that decoder finishes, the
+    * remainder of the input is returned to the original decoder for further decoding.
     */
   def flatMap[B](f: A => StreamDecoder[B]): StreamDecoder[B] =
     new StreamDecoder[B](
@@ -155,12 +156,13 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
   /** Maps the supplied function over each output of this decoder. */
   def map[B](f: A => B): StreamDecoder[B] = flatMap(a => StreamDecoder.emit(f(a)))
 
-  /** Creates a stream decoder that first decodes until this decoder finishes and then decodes
-    * using the supplied decoder.
+  /** Creates a stream decoder that first decodes until this decoder finishes and then decodes using
+    * the supplied decoder.
     *
-    * Note: this should not be used to write recursive decoders (e.g., `def ints: StreamDecoder[A] = once(int32) ++ ints`)
-    * if each incremental decoding step can fail with `InsufficientBits`. Otherwise, it decoding can get stuck in
-    * an infinite loop, where the remaining bits are fed to the recursive call.
+    * Note: this should not be used to write recursive decoders (e.g., `def ints: StreamDecoder[A] =
+    * once(int32) ++ ints`) if each incremental decoding step can fail with `InsufficientBits`.
+    * Otherwise, it decoding can get stuck in an infinite loop, where the remaining bits are fed to
+    * the recursive call.
     */
   def ++[A2 >: A](that: => StreamDecoder[A2]): StreamDecoder[A2] =
     new StreamDecoder(Append(this, () => that))
@@ -225,8 +227,8 @@ object StreamDecoder {
   def emits[A](as: Iterable[A]): StreamDecoder[A] =
     as.foldLeft(empty: StreamDecoder[A])((acc, a) => acc ++ emit(a))
 
-  /** Creates a stream decoder that decodes one `A` using the supplied decoder.
-    * Input bits are buffered until the decoder is able to decode an `A`.
+  /** Creates a stream decoder that decodes one `A` using the supplied decoder. Input bits are
+    * buffered until the decoder is able to decode an `A`.
     */
   def once[A](decoder: Decoder[A]): StreamDecoder[A] =
     new StreamDecoder[A](
@@ -240,18 +242,18 @@ object StreamDecoder {
       Decode(in => decoder.decode(in).map(_.map(emit)), once = false, failOnErr = true)
     )
 
-  /** Creates a stream decoder that attempts to decode one `A` using the supplied decoder.
-    * Input bits are buffered until the decoder is able to decode an `A`.
-    * If decoding fails, the bits are not consumed and the stream decoder yields no values.
+  /** Creates a stream decoder that attempts to decode one `A` using the supplied decoder. Input
+    * bits are buffered until the decoder is able to decode an `A`. If decoding fails, the bits are
+    * not consumed and the stream decoder yields no values.
     */
   def tryOnce[A](decoder: Decoder[A]): StreamDecoder[A] =
     new StreamDecoder[A](
       Decode(in => decoder.decode(in).map(_.map(emit)), once = true, failOnErr = false)
     )
 
-  /** Creates a stream decoder that repeatedly decodes `A` values until decoding fails.
-    * If decoding fails, the read bits are not consumed and the stream decoder terminates,
-    * having emitted any successfully decoded values earlier.
+  /** Creates a stream decoder that repeatedly decodes `A` values until decoding fails. If decoding
+    * fails, the read bits are not consumed and the stream decoder terminates, having emitted any
+    * successfully decoded values earlier.
     */
   def tryMany[A](decoder: Decoder[A]): StreamDecoder[A] =
     new StreamDecoder[A](
@@ -264,9 +266,8 @@ object StreamDecoder {
   /** Creates a stream decoder that fails decoding with the specified error. */
   def raiseError(err: Err): StreamDecoder[Nothing] = raiseError(CodecError(err))
 
-  /** Creates a stream decoder that reads the specified number of bits and then decodes
-    * them with the supplied stream decoder. Any remainder from the inner stream decoder is
-    * discarded.
+  /** Creates a stream decoder that reads the specified number of bits and then decodes them with
+    * the supplied stream decoder. Any remainder from the inner stream decoder is discarded.
     */
   def isolate[A](bits: Long)(decoder: StreamDecoder[A]): StreamDecoder[A] =
     new StreamDecoder(Isolate(bits, decoder))

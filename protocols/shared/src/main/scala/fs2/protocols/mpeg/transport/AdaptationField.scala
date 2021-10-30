@@ -29,8 +29,8 @@ import scodec.bits.BitVector
 import scodec.codecs._
 import scodec.compat._
 
-/** Partial modelling of the adaptation field.
-  * The field extension, if present, is ignored upon decoding.
+/** Partial modelling of the adaptation field. The field extension, if present, is ignored upon
+  * decoding.
   */
 case class AdaptationField(
     flags: Option[AdaptationFieldFlags],

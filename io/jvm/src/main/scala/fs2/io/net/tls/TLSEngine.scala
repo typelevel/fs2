@@ -188,8 +188,8 @@ private[tls] object TLSEngine {
       private def unwrapThenTakeUnwrapped(maxBytes: Int): F[Option[Chunk[Byte]]] =
         unwrapBuffer.inputRemains.map(_ > 0).ifM(unwrap(maxBytes), takeUnwrapped(maxBytes))
 
-      /** Determines what to do next given the result of a handshake operation.
-        * Must be called with `handshakeSem`.
+      /** Determines what to do next given the result of a handshake operation. Must be called with
+        * `handshakeSem`.
         */
       private def stepHandshake(
           result: SSLEngineResult,

@@ -30,12 +30,13 @@ import _root_.scodec.{Encoder, Err}
 
 import cats.Invariant
 
-/** A streaming encoding process, represented as a `Stream[Pure, A] => Pull[Pure, BitVector, Option[(Stream[Pure, A], StreamEncoder[A])]]`.
+/** A streaming encoding process, represented as a `Stream[Pure, A] => Pull[Pure, BitVector,
+  * Option[(Stream[Pure, A], StreamEncoder[A])]]`.
   */
 final class StreamEncoder[A] private (private val step: StreamEncoder.Step[A]) { self =>
 
-  /** Encode the given sequence of `A` values to a `BitVector`, raising an exception
-    * in the event of an encoding error.
+  /** Encode the given sequence of `A` values to a `BitVector`, raising an exception in the event of
+    * an encoding error.
     */
   def encodeAllValid(in: Seq[A]): BitVector = {
     type ET[X] = Either[Throwable, X]
@@ -84,8 +85,8 @@ final class StreamEncoder[A] private (private val step: StreamEncoder.Step[A]) {
       }
     )
 
-  /** Creates a stream encoder that first encodes with this encoder and then when complete,
-    * encodes the remainder with the supplied encoder.
+  /** Creates a stream encoder that first encodes with this encoder and then when complete, encodes
+    * the remainder with the supplied encoder.
     */
   def ++(that: => StreamEncoder[A]): StreamEncoder[A] =
     new StreamEncoder[A](
@@ -150,8 +151,8 @@ object StreamEncoder {
   /** Creates a stream encoder that encodes all input values using the supplied encoder. */
   def many[A](encoder: Encoder[A]): StreamEncoder[A] = once(encoder).repeat
 
-  /** Creates a stream encoder which encodes a single value, then halts.
-    * Unlike `once`, if an encoding failure occurs, the resulting stream is not terminated.
+  /** Creates a stream encoder which encodes a single value, then halts. Unlike `once`, if an
+    * encoding failure occurs, the resulting stream is not terminated.
     */
   def tryOnce[A](encoder: Encoder[A]): StreamEncoder[A] =
     new StreamEncoder[A](new Step[A] {
@@ -170,8 +171,8 @@ object StreamEncoder {
         }
     })
 
-  /** Creates a stream encoder which encodes all input values, then halts.
-    * Unlike `many`, if an encoding failure occurs, the resulting stream is not terminated.
+  /** Creates a stream encoder which encodes all input values, then halts. Unlike `many`, if an
+    * encoding failure occurs, the resulting stream is not terminated.
     */
   def tryMany[A](encoder: Encoder[A]): StreamEncoder[A] = tryOnce(encoder).repeat
 

@@ -18,7 +18,7 @@ abstract class ConcurrentDataTypes[F[_]: ConcurrentEffect: Timer] {
   refOf[F, Int](1)
   refOf(1)
   ref.map(_.setSync(1))
-  ref.map(_.setAsync(1))/* assert: v1.Removed
+  ref.map(_.setAsync(1)) /* assert: v1.Removed
             ^^^^^^^^
             This got removed. Consider revisiting the implementation  */
   val a = ref.flatMap(_.modify(_ + 1))

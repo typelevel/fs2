@@ -371,9 +371,9 @@ object text {
 
     /** Converts a stream of base 64 text in to a stream of bytes.
       *
-      * If the text is not valid base 64, the pipe fails with an exception. Padding
-      * characters at the end of the input stream are optional, but if present, must
-      * be valid per the base 64 specification. Whitespace characters are ignored.
+      * If the text is not valid base 64, the pipe fails with an exception. Padding characters at
+      * the end of the input stream are optional, but if present, must be valid per the base 64
+      * specification. Whitespace characters are ignored.
       *
       * The default base 64 alphabet is used by this pipe.
       */
@@ -431,7 +431,7 @@ object text {
               }
               mod match {
                 case 0 =>
-                  buffer = (cidx & 0x3f)
+                  buffer = cidx & 0x3f
                   mod += 1
                 case 1 | 2 =>
                   buffer = (buffer << 6) | (cidx & 0x3f)
@@ -489,8 +489,8 @@ object text {
       in => go(State(0, 0, 0), in).stream
     }
 
-    /** Encodes a byte stream in to a stream of base 64 text.
-      * The default base 64 alphabet is used by this pipe.
+    /** Encodes a byte stream in to a stream of base 64 text. The default base 64 alphabet is used
+      * by this pipe.
       */
     def encode[F[_]]: Pipe[F, Byte, String] =
       encodeWithAlphabet(Bases.Alphabets.Base64)
@@ -579,9 +579,9 @@ object text {
 
     /** Converts a stream of hex text in to a stream of bytes.
       *
-      * If the text is not valid hex, the pipe fails with an exception.
-      * There must be an even number of hex digits (nibbles) or the pipe
-      * fails with an exception.  Whitespace characters are ignored.
+      * If the text is not valid hex, the pipe fails with an exception. There must be an even number
+      * of hex digits (nibbles) or the pipe fails with an exception. Whitespace characters are
+      * ignored.
       *
       * The default alphabet is used by this pipe.
       */
@@ -645,8 +645,8 @@ object text {
       s => dropPrefix(s, "").stream
     }
 
-    /** Encodes a byte stream in to a stream of hexadecimal text.
-      * The default hex alphabet is used by this pipe.
+    /** Encodes a byte stream in to a stream of hexadecimal text. The default hex alphabet is used
+      * by this pipe.
       */
     def encode[F[_]]: Pipe[F, Byte, String] =
       encodeWithAlphabet(Bases.Alphabets.HexLowercase)

@@ -28,7 +28,8 @@ import scodec.bits.BitVector
 object Checksum {
 
   /** Computes the 16-bit one's complement checksum of the specified bit vector.
-    * @see [[https://tools.ietf.org/html/rfc1071]]
+    * @see
+    *   [[https://tools.ietf.org/html/rfc1071]]
     */
   def checksum(bits: BitVector): BitVector = {
     var sum = bits.bytes.grouped(2).foldLeft(0) { (acc, b) =>

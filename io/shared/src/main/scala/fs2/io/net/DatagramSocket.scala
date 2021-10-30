@@ -38,13 +38,15 @@ trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
     * Note that multiple `reads` may execute at same time, causing each evaluation to receive fair
     * amount of messages.
     *
-    * @return stream of datagrams
+    * @return
+    *   stream of datagrams
     */
   def reads: Stream[F, Datagram]
 
   /** Writes a single datagram to this udp socket.
     *
-    * @param datagram datagram to write
+    * @param datagram
+    *   datagram to write
     */
   def write(datagram: Datagram): F[Unit]
 
@@ -57,8 +59,10 @@ trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
 
   /** Joins a multicast group on a specific network interface.
     *
-    * @param join group to join
-    * @param interface network interface upon which to listen for datagrams
+    * @param join
+    *   group to join
+    * @param interface
+    *   network interface upon which to listen for datagrams
     */
   def join(
       join: MulticastJoin[IpAddress],

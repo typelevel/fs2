@@ -33,7 +33,8 @@ import org.reactivestreams._
   *
   * This is used to publish elements from a `fs2.Stream` to a downstream reactivestreams system.
   *
-  * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
+  * @see
+  *   [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
 final class StreamUnicastPublisher[F[_]: Async, A](
     val stream: Stream[F, A],
