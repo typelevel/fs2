@@ -38,7 +38,7 @@ We'll consider each of these in this guide.
 
 ### Building streams
 
-A `Stream[F,O]` (formerly `Process`) represents a discrete stream of `O` values which may request evaluation of `F` effects. We'll call `F` the _effect type_ and `O` the _output type_. Let's look at some examples:
+A `Stream[F,O]` represents a discrete stream of `O` values which may request evaluation of `F` effects. We'll call `F` the _effect type_ and `O` the _output type_. Let's look at some examples:
 
 ```scala mdoc
 import fs2.Stream
@@ -132,9 +132,6 @@ import fs2.Chunk
 
 val s1c = Stream.chunk(Chunk.array(Array(1.0, 2.0, 3.0)))
 ```
-
-Note: FS2 used to provide an alternative to `Chunk` which was potentially infinite and supported fusion of arbitrary operations. This type was called `Segment`.
-In FS2 0.10.x, `Segment` played a large role in the core design. In FS2 1.0, `Segment` was completely removed, as chunk based algorithms are often faster than their segment based equivalents and almost always significantly simpler.
 
 ### Basic stream operations
 
