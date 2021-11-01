@@ -129,12 +129,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.6)
+      - name: Download target directories (2.13.7)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.6-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.7-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.6)
+      - name: Inflate target directories (2.13.7)
         run: |
           tar xf targets.tar
           rm targets.tar
@@ -175,12 +175,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.6)
+      - name: Download target directories (2.13.7)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.6-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.7-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.6)
+      - name: Inflate target directories (2.13.7)
         run: |
           tar xf targets.tar
           rm targets.tar
