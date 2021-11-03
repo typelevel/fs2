@@ -21,6 +21,7 @@
 
 package fs2.protocols.ip
 
+import com.comcast.ip4s.Ipv4Address
 import fs2.Fs2Suite
 import scodec.Codec
 import scodec.DecodeResult
@@ -64,6 +65,29 @@ class Ipv4HeaderTest extends Fs2Suite {
 
         val res = Codec[Ipv4Header].decode(packetData).require
         assertHeader(res, options)
+    }
+
+    test("encode IPv4 header with options") {
+        val headerLength = bin"0110" // 6 32-bit words
+        val options = fromInt(1234)
+
+        val rawData = version ++ headerLength ++ BitVector.low(8) ++ fromInt(dataLength + 24, size = 16) ++ id ++
+            flags ++ BitVector.low(13) ++ ttl ++ protocol ++ BitVector.low(16) ++ src ++ dst ++ options
+
+        val checksum = Checksum.checksum(rawData)
+
+        val expectedData = rawData.patch(80, checksum)
+
+        val header = Ipv4Header(dataLength = dataLength,
+            id = id.toInt(signed = false),
+            ttl = ttl.toInt(signed = false),
+            protocol = protocol.toInt(signed = false),
+            sourceIp = Ipv4Address.fromBytes(src.toByteArray).get,
+            destinationIp = Ipv4Address.fromBytes(dst.toByteArray).get,
+            options = options)
+
+        val headerData = Codec[Ipv4Header].encode(header).require
+        assertEquals(headerData.toBin, expectedData.toBin)
     }
 
     private def assertHeader(res: DecodeResult[Ipv4Header], options: BitVector): Unit = {
