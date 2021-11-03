@@ -283,13 +283,54 @@ else Some(c => c.size match {
 
 Otherwise, we return a function which processes the next chunk in the stream. The function first checks the size of the chunk. If it is less than the number of elements to take, it returns the chunk unmodified, causing it to be output downstream, along with the number of remaining elements to take from subsequent chunks (`n - m`). If instead, the chunks size is greater than the number of elements left to take, `n` elements are taken from the chunk and output, along with an indication that there are no more elements to take.
 
+#### Transforming streams using pulls
+
 Sometimes, `scanChunksOpt` isn't powerful enough to express the stream transformation. Regardless of how complex the job, the `fs2.Pull` type can usually express it.
 
-The `Pull[+F[_],+O,+R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
-[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Pull.scala)
+The `Pull[F[_],O,R]` type represents a program that may pull values from one or more streams, write _output_ of type `O`, and return a _result_ of type `R`. It forms a monad in `R` and comes equipped with lots of other useful operations. See the
+[`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/main/core/shared/src/main/scala/fs2/Pull.scala)
 for the full set of operations on `Pull`.
 
-Let's look at an implementation of `take` using `Pull`:
+A pull that writes a single a single output of type `Int` can be constructed with `Pull.output1`.
+
+```scala mdoc:reset
+import fs2._
+val p1 = Pull.output1(1)
+```
+
+This can be converted directly to a stream equivalent to `Stream(1)`.
+
+```scala mdoc
+val s1 = p1.stream
+```
+
+Pulls form a monad in their result `R` and can be composed using monadic operations. The following code produces a `Pull` corresponding to `Stream(1, 2)`.
+
+```scala mdoc
+p1 >> Pull.output1(2)
+```
+
+A `Pull` can be created from a stream using a variety of operations accessed under the `pull` function. For example `echo` converts a stream to its corresponding pull representation.
+
+```scala mdoc
+s1.pull.echo
+```
+
+
+A more useful pull is created by `uncons`. This constructs a pull that pulls the next chunk from the stream.
+
+```scala mdoc
+s1.pull.uncons
+```
+
+Let’s examine its result type.
+ - The `Option` is non-empty if there is a chunk to pull from the stream. If the stream has terminated and there are no more chunks to pull then the result is `None`.
+ - `Chunk[Int]` represents the pulled chunk.
+ - `Stream[Nothing, Int]` represents the tail of the stream.
+
+Note that the output type is `Nothing` because the pull does not output any elements.
+
+Let's look at an implementation of `take` using `uncons`:
 
 ```scala mdoc:reset
 import fs2._
@@ -300,7 +341,7 @@ def tk[F[_],O](n: Long): Pipe[F,O,O] = {
       case Some((hd,tl)) =>
         hd.size match {
           case m if m <= n => Pull.output(hd) >> go(tl, n - m)
-          case _ => Pull.output(hd.take(n.toInt)) >> Pull.done
+          case _ => Pull.output(hd.take(n.toInt))
         }
       case None => Pull.done
     }
@@ -329,11 +370,17 @@ Calling `s.pull` gives us a variety of methods which convert the stream to a `Pu
 case Some((hd,tl)) =>
   hd.size match {
     case m if m <= n => Pull.output(hd) >> go(tl, n - m)
-    case m => Pull.output(hd.take(n)) >> Pull.done
+    case m => Pull.output(hd.take(n.toInt))
   }
 ```
 
-If we receive a `Some`, we destructure the tuple as `hd: Chunk[O]` and `tl: Stream[F,O]`. We then check the size of the head chunk, similar to the logic we used in the `scanChunksOpt` version. If the chunk size is less than or equal to the remaining elements to take, the chunk is output via `Pull.output` and we then recurse on the tail by calling `go`, passing the remaining elements to take. Otherwise we output the first `n` elements of the head and indicate we are done pulling.
+If we receive a `Some`, we destructure the tuple as `hd: Chunk[O]` and `tl: Stream[F,O]`. We then check the size of the head chunk. If the chunk size is less than or equal to the remaining elements to take, the chunk is output via `Pull.output` and we then recurse on the tail of the stream `tl` by calling `go`, passing the remaining elements to take. Otherwise we output the first `n` elements of the head.
+
+```scala
+case None => Pull.done
+```
+
+A `None` is received when there are no more elements to pull from the `in` stream. We finish pulling with `Pull.done`, a pull that does nothing.
 
 ```scala
 in => go(in,n).stream
@@ -348,8 +395,20 @@ s2.toList
 
 FS2 takes care to guarantee that any resources allocated by the `Pull` are released when the stream completes. Note again that _nothing happens_ when we call `.stream` on a `Pull`, it is merely converting back to the `Stream` API.
 
+In practise, explicit recursion is rarely necessary — the methods under `pull` usually recurse for us. The explicit recursion in `tk` could be removed by using `pull.take`.
+
+```scala mdoc:reset
+import fs2._
+
+def tk[F[_],O](n: Long): Pipe[F,O,O] = {
+  in => in.pull.take(n).void.stream
+}
+
+Stream(1,2,3,4).through(tk(2)).toList
+```
+
 There are lots of useful transformation functions in
-[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/Stream.scala)
+[`Stream`](https://github.com/functional-streams-for-scala/fs2/blob/main/core/shared/src/main/scala/fs2/Stream.scala)
 built using the `Pull` type.
 
 ### Exercises Stream Transforming
@@ -560,7 +619,7 @@ Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
 ```
 
 Be sure to check out the
-[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/series/1.0/io/)
+[`fs2.io`](https://github.com/functional-streams-for-scala/fs2/tree/main/io/)
 package which has nice FS2 bindings to Java NIO libraries, using exactly this approach.
 
 #### Asynchronous effects (callbacks invoked multiple times)
@@ -601,8 +660,8 @@ def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] = {
 }
 ```
 
-See [`Queue`](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/core/shared/src/main/scala/fs2/concurrent/Queue.scala)
-for more useful methods. Most concurrent queues in FS2 support tracking their size, which is handy for implementing size-based throttling of the producer.
+See [`Queue`](https://github.com/typelevel/cats-effect/blob/series/3.x/std/shared/src/main/scala/cats/effect/std/Queue.scala)
+for more useful methods. Most concurrent queues in cats effect support tracking their size, which is handy for implementing size-based throttling of the producer.
 
 ### Reactive streams
 
@@ -646,7 +705,7 @@ A unicast publisher must have a single subscriber only.
 Want to learn more?
 
 * Worked examples: these present a nontrivial example of use of the library, possibly making use of lots of different library features.
-  * [The README example](https://github.com/functional-streams-for-scala/fs2/blob/series/1.0/docs/ReadmeExample.md)
+  * [The example](https://fs2.io/#/getstarted/example)
   * More contributions welcome! Open a PR, following the style of one of the examples above. You can either start with a large block of code and break it down line by line, or work up to something more complicated using some smaller bits of code first.
 * Detailed coverage of different modules in the library:
   * File I/O
