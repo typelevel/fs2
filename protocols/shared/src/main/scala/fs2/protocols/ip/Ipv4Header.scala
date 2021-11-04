@@ -52,22 +52,22 @@ object Ipv4Header {
       ("version" | constant(bin"0100")) ::
         ("ihl" | uint4).flatPrepend(ihl =>
           ("dscp" | ignore(6)) ::
-          ("ecn" | ignore(2)) ::
-          ("total_length" | uint16) ::
-          // Word 2 --------------------------------
-          ("id" | uint16) ::
-          ("flags" | ignore(3)) ::
-          ("fragment_offset" | ignore(13)) ::
-          // Word 3 --------------------------------
-          ("ttl" | uint8) ::
-          ("proto" | uint8) ::
-          ("checksum" | bits(16)) ::
-          // Word 4 --------------------------------
-          ("src_ip" | Ip4sCodecs.ipv4) ::
-          // Word 5 --------------------------------
-          ("dest_ip" | Ip4sCodecs.ipv4) ::
-          // Word 6 --------------------------------
-          ("options" | bits(32 * (ihl - 5)))
+            ("ecn" | ignore(2)) ::
+            ("total_length" | uint16) ::
+            // Word 2 --------------------------------
+            ("id" | uint16) ::
+            ("flags" | ignore(3)) ::
+            ("fragment_offset" | ignore(13)) ::
+            // Word 3 --------------------------------
+            ("ttl" | uint8) ::
+            ("proto" | uint8) ::
+            ("checksum" | bits(16)) ::
+            // Word 4 --------------------------------
+            ("src_ip" | Ip4sCodecs.ipv4) ::
+            // Word 5 --------------------------------
+            ("dest_ip" | Ip4sCodecs.ipv4) ::
+            // Word 6 --------------------------------
+            ("options" | bits(32 * (ihl - 5)))
         )
 
     }.dropUnits
