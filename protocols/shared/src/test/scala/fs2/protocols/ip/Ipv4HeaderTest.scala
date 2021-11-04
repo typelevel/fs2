@@ -25,8 +25,7 @@ import com.comcast.ip4s.Ipv4Address
 import fs2.Fs2Suite
 import scodec.Codec
 import scodec.DecodeResult
-import scodec.bits.BinStringSyntax
-import scodec.bits.BitVector
+import scodec.bits._
 import scodec.bits.BitVector.fromInt
 import scodec.bits.ByteOrdering.BigEndian
 import scodec.bits.HexStringSyntax
