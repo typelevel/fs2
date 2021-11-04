@@ -39,16 +39,16 @@ case class TcpFlags(
     fin: Boolean
 )
 object TcpFlags {
-  // format:off
+  // format: off
   implicit val codec: Codec[TcpFlags] = {
     ("cwr" | bool(1)) ::
-      ("ecn" | bool(1)) ::
-      ("urg" | bool(1)) ::
-      ("ack" | bool(1)) ::
-      ("psh" | bool(1)) ::
-      ("rst" | bool(1)) ::
-      ("syn" | bool(1)) ::
-      ("fin" | bool(1))
+    ("ecn" | bool(1)) ::
+    ("urg" | bool(1)) ::
+    ("ack" | bool(1)) ::
+    ("psh" | bool(1)) ::
+    ("rst" | bool(1)) ::
+    ("syn" | bool(1)) ::
+    ("fin" | bool(1))
   }.as[TcpFlags]
-  // format:on
+  // format: on
 }

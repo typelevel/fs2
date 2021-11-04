@@ -45,31 +45,31 @@ case class Ipv4Header(
 
 object Ipv4Header {
 
-  // format:off
   implicit val codec: Codec[Ipv4Header] = {
+    // format: off
     val componentCodec = {
       // Word 1 --------------------------------
-      ("version" | constant(bin"0100")) ::
-        ("ihl" | uint4) ::
-        ("dscp" | ignore(6)) ::
-        ("ecn" | ignore(2)) ::
-        ("total_length" | uint16) ::
-        // Word 2 --------------------------------
-        ("id" | uint16) ::
-        ("flags" | ignore(3)) ::
-        ("fragment_offset" | ignore(13)) ::
-        // Word 3 --------------------------------
-        ("ttl" | uint8) ::
-        ("proto" | uint8) ::
-        ("checksum" | bits(16)) ::
-        // Word 4 --------------------------------
-        ("src_ip" | Ip4sCodecs.ipv4) ::
-        // Word 5 --------------------------------
-        ("dest_ip" | Ip4sCodecs.ipv4) ::
-        // Word 6 --------------------------------
-        ("options" | bits)
+      ("version"         | constant(bin"0100")) ::
+      ("ihl"             | uint4              ).flatPrepend(ihl =>
+      ("dscp"            | ignore(6)          ) ::
+      ("ecn"             | ignore(2)          ) ::
+      ("total_length"    | uint16             ) ::
+      // Word 2 --------------------------------
+      ("id"              | uint16             ) ::
+      ("flags"           | ignore(3)          ) ::
+      ("fragment_offset" | ignore(13)         ) ::
+      // Word 3 --------------------------------
+      ("ttl"             | uint8              ) ::
+      ("proto"           | uint8              ) ::
+      ("checksum"        | bits(16)           ) ::
+      // Word 4 --------------------------------
+      ("src_ip"          | Ip4sCodecs.ipv4    ) ::
+      // Word 5 --------------------------------
+      ("dest_ip"         | Ip4sCodecs.ipv4    ) ::
+      // Word 6 --------------------------------
+      ("options"         | bits((32 * (ihl - 5)).toLong)))
     }.dropUnits
-    // format:on
+    // format: on
 
     new Codec[Ipv4Header] {
       def sizeBound = SizeBound.atLeast(160)
@@ -77,7 +77,7 @@ object Ipv4Header {
       def encode(header: Ipv4Header) = {
         val optionWords = (header.options.size.toInt + 31) / 32
         val options = header.options.padRight((optionWords * 32).toLong)
-        val totalLength = header.dataLength + 20 + (optionWords * 32)
+        val totalLength = header.dataLength + 20 + (optionWords * 4)
         for {
           encoded <- componentCodec.encode(
             (5 + optionWords) *: totalLength *: header.id *: header.ttl *: header.protocol *: BitVector

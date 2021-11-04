@@ -33,15 +33,14 @@ import com.comcast.ip4s.Port
 case class DatagramHeader(sourcePort: Port, destinationPort: Port, length: Int, checksum: Int)
 
 object DatagramHeader {
-  // format:off
+  // format: off
   implicit val codec: Codec[DatagramHeader] = {
-    val port = uint16.xmapc(p => Port.fromInt(p).get)(_.value)
-    ("source port" | port) ::
-      ("destination port" | port) ::
-      ("length" | uint16) ::
-      ("checksum" | uint16)
+    ("src_port" | Ip4sCodecs.port) ::
+    ("dst_port" | Ip4sCodecs.port) ::
+    ("length"   | uint16         ) ::
+    ("checksum" | uint16         )
   }.as[DatagramHeader]
-  // format:on
+  // format: on
 
   def sdecoder(protocol: Int): StreamDecoder[DatagramHeader] =
     if (protocol == 17) StreamDecoder.once(codec)
