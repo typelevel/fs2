@@ -46,7 +46,7 @@ case class Ipv4Header(
 object Ipv4Header {
 
   implicit val codec: Codec[Ipv4Header] = {
-    // format:off
+    // format: off
     val componentCodec = {
       // Word 1 --------------------------------
       ("version"         | constant(bin"0100")) ::
@@ -67,9 +67,9 @@ object Ipv4Header {
       // Word 5 --------------------------------
       ("dest_ip"         | Ip4sCodecs.ipv4    ) ::
       // Word 6 --------------------------------
-      ("options"         | bits(32 * (ihl - 5))))
+      ("options"         | bits((32 * (ihl - 5)).toLong)))
     }.dropUnits
-    // format:on
+    // format: on
 
     new Codec[Ipv4Header] {
       def sizeBound = SizeBound.atLeast(160)

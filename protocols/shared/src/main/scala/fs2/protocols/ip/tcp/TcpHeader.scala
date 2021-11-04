@@ -44,22 +44,21 @@ case class TcpHeader(
 )
 
 object TcpHeader {
-  // format:off
+  // format: off
   implicit val codec: Codec[TcpHeader] = {
-    ("source port" | Ip4sCodecs.port) ::
-      ("destination port" | Ip4sCodecs.port) ::
-      ("seqNumber" | uint32) ::
-      ("ackNumber" | uint32) ::
-      ("dataOffset" | uint4).flatPrepend { headerWords =>
-        ("reserved" | ignore(4)) ::
-          ("flags" | Codec[TcpFlags]) ::
-          ("windowSize" | uint16) ::
-          ("checksum" | uint16) ::
-          ("urgentPointer" | uint16) ::
-          ("options" | listOfN(provide(headerWords - 5), uint32))
-      }
-  }.dropUnits.as[TcpHeader]
-  // format:on
+    ("src_port"      | Ip4sCodecs.port) ::
+    ("dst_port"      | Ip4sCodecs.port) ::
+    ("seqno"         | uint32) ::
+    ("ackno"         | uint32) ::
+    ("data_offset"   | uint4).flatPrepend(headerWords =>
+    ("reserved"      | ignore(4)) ::
+    ("flags"         | Codec[TcpFlags]) ::
+    ("window_size"   | uint16) ::
+    ("checksum"      | uint16) ::
+    ("urgent_ptr"    | uint16) ::
+    ("options"       | listOfN(provide(headerWords - 5), uint32)))
+  }.as[TcpHeader]
+  // format: on
 
   def sdecoder(protocol: Int): StreamDecoder[TcpHeader] =
     if (protocol == 6) StreamDecoder.once(codec)
