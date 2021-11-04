@@ -19,16 +19,14 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols.ip
+package fs2
+package protocols.ip
 
 import com.comcast.ip4s.Ipv4Address
-import fs2.Fs2Suite
-import scodec.Codec
-import scodec.DecodeResult
+import scodec.{Codec, DecodeResult}
 import scodec.bits._
 import scodec.bits.BitVector.fromInt
 import scodec.bits.ByteOrdering.BigEndian
-import scodec.bits.HexStringSyntax
 
 class Ipv4HeaderTest extends Fs2Suite {
   private val version = bin"0100"
