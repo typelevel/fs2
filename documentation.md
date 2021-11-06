@@ -30,6 +30,7 @@
 * [Inference Driven Design](https://mpilquist.github.io/blog/2018/07/04/fs2/), by [Michael Pilquist][mpilquist], describes some of the tradeoffs in designing the API and the code of FS2, used to work around some of the problems in the Scala compiler.
 * [Tips for working with FS2](https://underscore.io/blog/posts/2018/03/20/fs2.html), by [Pere Villega](https://github.com/pvillega),
 * [A streaming library with a superpower: FS2 and functional programming](https://medium.freecodecamp.org/a-streaming-library-with-a-superpower-fs2-and-functional-programming-6f602079f70a).
+* [No leftovers: Working with pulls in fs2](https://blog.kebab-ca.se/chapters/fs2/overview.html), by [Zainab Ali](https://github.com/zainab-ali).
 
 #### Books
 
