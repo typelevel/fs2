@@ -107,4 +107,16 @@ class ChannelSuite extends Fs2Suite {
     p.assertEquals(v)
   }
 
+  test("Closes before channel elements are depleted") {
+    val p = for {
+      chan <- Channel.unbounded[IO, Unit]
+      _ <- chan.send(())
+      _ <- chan.close
+      isClosedBefore <- chan.isClosed
+      _ <- chan.stream.compile.toVector
+    } yield isClosedBefore
+
+    p.assertEquals(true)
+  }
+
 }

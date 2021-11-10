@@ -987,4 +987,47 @@ class StreamSuite extends Fs2Suite {
     identity(p) // Avoid unused warning
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
+
+  group("parEvalMap") {
+
+    test("should preserve element ordering") {
+      forAllF { (stream: Stream[Pure, Int]) =>
+        val smaller = stream.map(i => math.abs(i % 10))
+        val delayed = smaller.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(i.millis).as(i))
+        delayed.compile.toList.assertEquals(smaller.toList)
+      }
+    }
+
+    test("should launch no more than maxConcurrent") {
+      forAllF { (stream: Stream[Pure, Unit], int: Int) =>
+        val concurrency = math.abs(int % 20) + 1
+        Ref[IO]
+          .of(0)
+          .flatMap { open =>
+            stream.covary[IO].parEvalMap(concurrency)(_ => findOpen(open)).compile.toList
+          }
+          .map(_.forall(_ <= concurrency))
+          .assert
+      }
+    }
+
+    test("unordered should launch no more than maxConcurrent") {
+      forAllF { (stream: Stream[Pure, Unit], int: Int) =>
+        val concurrency = math.abs(int % 20) + 1
+        Ref[IO]
+          .of(0)
+          .flatMap { open =>
+            stream.covary[IO].parEvalMapUnordered(concurrency)(_ => findOpen(open)).compile.toList
+          }
+          .map(_.forall(_ <= concurrency))
+          .assert
+      }
+    }
+
+    def findOpen(open: Ref[IO, Int]) = {
+      val start = open.update(_ + 1) *> IO.sleep(5.millis) *> open.get
+      val end = IO.sleep(5.millis) *> open.getAndUpdate(_ - 1)
+      start *> end
+    }
+  }
 }

@@ -25,7 +25,7 @@ import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.{Eval => _, _}
-import cats.data.{Ior, NonEmptyList}
+import cats.data.Ior
 import cats.effect.{Concurrent, SyncIO}
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
@@ -2025,6 +2025,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
+  private type Att[O2] = Either[Throwable, O2]
+
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream in the same order as the input stream. The number of concurrent effects
     * is limited by the `maxConcurrent` parameter.
@@ -2040,40 +2042,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMap[F2[x] >: F[x], O2](
       maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    if (maxConcurrent === 1) evalMap(f)
-    else {
-      val fstream: F2[Stream[F2, O2]] = for {
-        chan <- Channel.bounded[F2, F2[Either[Throwable, O2]]](maxConcurrent)
-        chanReadDone <- F.deferred[Unit]
-      } yield {
-        def forkOnElem(o: O): F2[Stream[F2, Unit]] =
-          for {
-            value <- F.deferred[Either[Throwable, O2]]
-            send = chan.send(value.get).as {
-              Stream.eval(f(o).attempt.flatMap(value.complete(_).void))
-            }
-            eit <- chanReadDone.get.race(send)
-          } yield eit match {
-            case Left(())      => Stream.empty
-            case Right(stream) => stream
-          }
-
-        val background = this
-          .evalMap(forkOnElem)
-          .parJoin(maxConcurrent)
-          .onFinalize(chanReadDone.get.race(chan.close).void)
-
-        val foreground =
-          chan.stream
-            .evalMap(identity)
-            .rethrow
-            .onFinalize(chanReadDone.complete(()).void)
-
-        foreground.concurrently(background)
-      }
-      Stream.eval(fstream).flatten
-    }
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
+    def init(ch: Channel[F2, F2[Att[O2]]], release: F2[Unit]) =
+      Deferred[F2, Att[O2]].flatTap(value => ch.send(value.get <* release))
+    def send(v: Deferred[F2, Att[O2]]) = (el: Att[O2]) => v.complete(el).void
+    parEvalMapAction(maxConcurrent, f)((ch, release) => init(ch, release).map(send))
+  }
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream. The number of concurrent effects is limited by the `maxConcurrent` parameter.
@@ -2090,9 +2064,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     x
   ]: Concurrent, O2](
       maxConcurrent: Int
-  )(f: O => F2[O2]): Stream[F2, O2] =
+  )(f: O => F2[O2]): Stream[F2, O2] = {
+    val init = ().pure[F2]
+    def send(ch: Channel[F2, F2[Att[O2]]], release: F2[Unit]) =
+      (el: Att[O2]) => ch.send(el.pure[F2]) *> release
+    parEvalMapAction(maxConcurrent, f)((ch, release) => init.as(send(ch, release)))
+  }
+
+  private def parEvalMapAction[F2[x] >: F[
+    x
+  ]: Concurrent, O2, T](
+      maxConcurrent: Int,
+      f: O => F2[O2]
+  )(initFork: (Channel[F2, F2[Att[O2]]], F2[Unit]) => F2[Att[O2] => F2[Unit]]): Stream[F2, O2] =
     if (maxConcurrent == 1) evalMap(f)
     else {
+      val F = Concurrent[F2]
       assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
 
       // One is taken by inner stream read.
@@ -2100,66 +2087,39 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val action =
         (
           Semaphore[F2](concurrency.toLong),
-          Channel.bounded[F2, O2](concurrency),
-          Ref[F2].of(none[Either[NonEmptyList[Throwable], Unit]]),
+          Channel.bounded[F2, F2[Att[O2]]](concurrency),
+          Deferred[F2, Unit],
           Deferred[F2, Unit]
-        ).mapN { (semaphore, channel, result, stopReading) =>
+        ).mapN { (semaphore, channel, stop, end) =>
           val releaseAndCheckCompletion =
             semaphore.release *>
-              semaphore.available
-                .product(result.get)
-                .flatMap {
-                  case (`concurrency`, Some(_)) => channel.close.void
-                  case _                        => ().pure[F2]
-                }
-
-          val succeed =
-            result.update {
-              case None  => ().asRight.some
-              case other => other
-            }
-
-          val cancelled = stopReading.complete(()) *> succeed
-
-          def failed(ex: Throwable) =
-            stopReading.complete(()) *>
-              result.update {
-                case Some(Left(nel)) => nel.prepend(ex).asLeft.some
-                case _               => NonEmptyList.one(ex).asLeft.some
+              semaphore.available.flatMap {
+                case `concurrency` => channel.close *> end.complete(()).void
+                case _             => ().pure[F2]
               }
-
-          val completeStream =
-            Stream.force {
-              result.get.map {
-                case Some(Left(nel)) => Stream.raiseError[F2](CompositeFailure.fromNel(nel))
-                case _               => Stream.empty
-              }
-            }
 
           def forkOnElem(el: O): F2[Unit] =
-            semaphore.acquire *>
-              f(el).attempt
-                .race(stopReading.get)
-                .flatMap {
-                  case Left(Left(ex)) => failed(ex)
-                  case Left(Right(a)) => channel.send(a).void
-                  case Right(_)       => ().pure[F2]
+            F.uncancelable { poll =>
+              poll(semaphore.acquire) <*
+                Deferred[F2, Unit].flatMap { pushed =>
+                  initFork(channel, pushed.complete(()).void).flatMap { send =>
+                    val action = stop.get.race(f(el).attempt.flatMap(send) <* pushed.get)
+                    F.start(poll(action).guarantee(releaseAndCheckCompletion))
+                  }
                 }
-                .guarantee(releaseAndCheckCompletion)
-                .start
-                .void
+            }
 
           val background =
             Stream.exec(semaphore.acquire) ++
-              interruptWhen(stopReading.get.map(_.asRight[Throwable]))
+              interruptWhen(stop.get.map(_.asRight[Throwable]))
                 .foreach(forkOnElem)
                 .onFinalizeCase {
-                  case ExitCase.Succeeded   => succeed *> releaseAndCheckCompletion
-                  case ExitCase.Errored(ex) => failed(ex) *> releaseAndCheckCompletion
-                  case ExitCase.Canceled    => cancelled *> releaseAndCheckCompletion
+                  case ExitCase.Succeeded => releaseAndCheckCompletion
+                  case _                  => stop.complete(()) *> releaseAndCheckCompletion
                 }
 
-          channel.stream.concurrently(background) ++ completeStream
+          val foreground = channel.stream.evalMap(identity).rethrow
+          foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
         }
 
       Stream.force(action)
