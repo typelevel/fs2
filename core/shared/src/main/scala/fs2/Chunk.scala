@@ -23,7 +23,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}

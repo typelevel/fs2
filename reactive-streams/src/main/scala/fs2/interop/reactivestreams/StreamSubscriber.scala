@@ -202,7 +202,7 @@ object StreamSubscriber {
             WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize.toLong))
           case err @ UpstreamError(e) => err -> (() => r(e.asLeft))
           case UpstreamCompletion     => UpstreamCompletion -> (() => r(None.asRight))
-          case o                      => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
+          case o => o -> (() => r(new Error(s"received request in invalid state [$o]").asLeft))
         }
       }
 
