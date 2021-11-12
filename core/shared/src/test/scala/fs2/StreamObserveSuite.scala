@@ -131,7 +131,7 @@ class StreamObserveSuite extends Fs2Suite {
           .append(Stream.eval(IO.raiseError(new Err)))
           .observe(
             _.foreach(_ => IO.sleep(100.millis))
-          ) //Have to do some work here, so that we give time for the underlying stream to try pull more
+          ) // Have to do some work here, so that we give time for the underlying stream to try pull more
           .take(1)
           .compile
           .lastOrError
@@ -145,7 +145,7 @@ class StreamObserveSuite extends Fs2Suite {
           .observe(_.drain)
           .flatMap(_ =>
             Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)
-          ) //Have to do some work here, so that we give time for the underlying stream to try pull more
+          ) // Have to do some work here, so that we give time for the underlying stream to try pull more
           .take(2)
           .compile
           .toList

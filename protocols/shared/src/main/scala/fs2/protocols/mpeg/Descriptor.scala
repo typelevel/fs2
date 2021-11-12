@@ -111,7 +111,7 @@ object HierarchyType {
       .typecase(7, provide(MultiViewProfile))
       .typecase(15, provide(BaseLayer))
     (8 to 14).foldLeft(m) { (acc, x) =>
-      acc.subcaseP(x)({ case Reserved(y) if x == y => Reserved(y) })(provide(Reserved(x)))
+      acc.subcaseP(x) { case Reserved(y) if x == y => Reserved(y) }(provide(Reserved(x)))
     }
   }
 }
@@ -162,7 +162,7 @@ object AlignmentType {
       .typecase(3, provide(GopOrSeq))
       .typecase(4, provide(Seq))
     (5 to 255).foldLeft(m) { (acc, x) =>
-      acc.subcaseP(x)({ case Reserved(y) if x == y => Reserved(y) })(provide(Reserved(x)))
+      acc.subcaseP(x) { case Reserved(y) if x == y => Reserved(y) }(provide(Reserved(x)))
     }
   }
 }
@@ -225,7 +225,7 @@ object AudioType {
       .typecase(2, provide(HearingImpaired))
       .typecase(3, provide(VisualImpairedCommentary))
     (4 to 255).foldLeft(m) { (acc, x) =>
-      acc.subcaseP(x)({ case Reserved(y) if x == y => Reserved(y) })(provide(Reserved(x)))
+      acc.subcaseP(x) { case Reserved(y) if x == y => Reserved(y) }(provide(Reserved(x)))
     }
   }
 }

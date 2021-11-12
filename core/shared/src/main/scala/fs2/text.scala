@@ -431,7 +431,7 @@ object text {
               }
               mod match {
                 case 0 =>
-                  buffer = (cidx & 0x3f)
+                  buffer = cidx & 0x3f
                   mod += 1
                 case 1 | 2 =>
                   buffer = (buffer << 6) | (cidx & 0x3f)

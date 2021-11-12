@@ -460,11 +460,11 @@ private[fs2] final class Scope[F[_]] private (
     */
   def lease: F[Lease[F]] =
     for {
-      children <- (state.get.flatMap[Chain[Scope[F]]] {
+      children <- state.get.flatMap[Chain[Scope[F]]] {
         case x: Scope.State.Open[F] => F.pure(x.children)
         case _: Scope.State.Closed[F] =>
           F.raiseError(new RuntimeException("Scope closed at time of lease"))
-      })
+      }
       allScopes = (children :+ self) ++ ancestors
       allResources <- allScopes.flatTraverse(_.resources)
       allLeases <- allResources.traverseFilter(_.lease)
