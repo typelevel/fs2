@@ -4,14 +4,12 @@ import cats.effect._
 import cats.syntax.all._
 import fs2._
 
-
-
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import cats.effect.concurrent
-import cats.effect.concurrent.{ Deferred, Ref, Semaphore }
+import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.effect.syntax.concurrent._
-import fs2.concurrent.{ Signal, SignallingRef }
+import fs2.concurrent.{Signal, SignallingRef}
 
 abstract class ConcurrentDataTypes[F[_]: ConcurrentEffect: Timer] {
   // Ref

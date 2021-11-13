@@ -1,6 +1,6 @@
 /*
 rule = v1
-*/
+ */
 package fix
 
 import akka.stream.scaladsl.Sink
