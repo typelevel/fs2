@@ -106,23 +106,21 @@ private[net] trait SocketCompanionPlatform {
 
     def readN(max: Int): F[Chunk[Byte]] =
       readBufferSemaphore.permit.use { _ =>
-        // readChunk(0) ensures that no read operation is pending
-        // this is necessary to ensure that latestAvailable is synced throughout
-        // the tail-recursion below
-        readChunk(0) >> getBufferContentSize.flatMap { contentLength =>
-          def go(latestAvailable: Int): F[Chunk[Byte]] = {
-            val toRead = max - latestAvailable
-            readChunk(toRead).flatMap { read =>
-              if (read < 0 || toRead == read)
-                cutInitialSegmentOfBuffer(max)
-              else {
-                go(latestAvailable + read)
-              }
+        def go(latestAvailable: Int): F[Chunk[Byte]] = {
+          val toRead = max - latestAvailable
+          readChunk(toRead).flatMap { read =>
+            if (read < 0 || toRead == read)
+              cutInitialSegmentOfBuffer(max)
+            else {
+              go(latestAvailable + read)
             }
           }
-
-          go(contentLength)
         }
+
+        // readChunk(0) ensures that no read operation is pending.
+        // this is necessary to ensure that latestAvailable is synced throughout
+        // the tail-recursion of go
+        readChunk(0) >> getBufferContentSize.flatMap(go)
       }
 
     def reads: Stream[F, Byte] =
