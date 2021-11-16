@@ -60,6 +60,9 @@ private[net] trait SocketCompanionPlatform {
     private def cutInitialSegmentOfBuffer(size: Int): F[Chunk[Byte]] =
       readBuffer.modify(_.splitAt(size).swap)
 
+    private def getBufferContentSize: F[Int] =
+      readBuffer.get.map(_.size)
+
     protected final def storeToReadBuffer(filledBuffer: ByteBuffer): F[Unit] =
       F.delay {
         val read = filledBuffer.position()
@@ -89,7 +92,7 @@ private[net] trait SocketCompanionPlatform {
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
       readBufferSemaphore.permit.use { _ =>
-        readBuffer.get.map(_.size).flatMap { contentLength =>
+        getBufferContentSize.flatMap { contentLength =>
           readChunk(max - contentLength).flatMap { read =>
             if (contentLength == 0 && read < 0)
               F.pure(None)
@@ -103,14 +106,18 @@ private[net] trait SocketCompanionPlatform {
 
     def readN(max: Int): F[Chunk[Byte]] =
       readBufferSemaphore.permit.use { _ =>
-        readBuffer.get.map(_.size).flatMap { contentLength =>
-          def go(currentAvailable: Int): F[Chunk[Byte]] = {
-            val toRead = max - currentAvailable
+        // readChunk(0) ensures that no read operation is pending
+        // this is necessary to ensure that latestAvailable is synced throughout
+        // the tail-recursion below
+        readChunk(0) >> getBufferContentSize.flatMap { contentLength =>
+          def go(latestAvailable: Int): F[Chunk[Byte]] = {
+            val toRead = max - latestAvailable
             readChunk(toRead).flatMap { read =>
               if (read < 0 || toRead == read)
                 cutInitialSegmentOfBuffer(max)
-              else
-                go(currentAvailable + read)
+              else {
+                go(latestAvailable + read)
+              }
             }
           }
 
