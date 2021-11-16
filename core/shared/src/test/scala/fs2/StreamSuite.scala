@@ -23,16 +23,14 @@ package fs2
 
 import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.duration._
-
 import cats.data.Chain
 import cats.effect.{Deferred, IO, Outcome, Ref, Resource, SyncIO}
-import cats.effect.std.Queue
+import cats.effect.std.{CountDownLatch, Queue}
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
-
 import fs2.concurrent.SignallingRef
 
 @nowarn("cat=w-flag-dead-code")
@@ -988,46 +986,199 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
-  group("parEvalMap") {
+  private implicit class verifyOps[T](val action: IO[T]) {
+    def assertNotCompletes(): IO[Unit] =
+      IO.race(IO.sleep(1.second), action).assertEquals(Left(()))
 
-    test("should preserve element ordering") {
-      forAllF { (stream: Stream[Pure, Int]) =>
-        val smaller = stream.map(i => math.abs(i % 10))
-        val delayed = smaller.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(i.millis).as(i))
-        delayed.compile.toList.assertEquals(smaller.toList)
+    def assertCompletes(expected: T): IO[Unit] =
+      IO.race(IO.sleep(1.second), action).assertEquals(Right(expected))
+  }
+
+  val u: IO[Unit] = ().pure[IO]
+
+  val ex: IO[Unit] = IO.raiseError(new RuntimeException)
+
+  group("issue-2686, max distance of concurrently computing elements") {
+    test("shouldn't exceed maxConcurrent in parEvalMap") {
+      run(_.parEvalMap(2)(identity)).assertNotCompletes()
+    }
+
+    test("can exceed maxConcurrent in parEvalMapUnordered") {
+      val action = run(_.parEvalMapUnordered(2)(identity))
+      action.assertCompletes(Right(()))
+    }
+
+    def run(pipe: Pipe[IO, IO[Unit], Unit]): IO[Either[Unit, Unit]] =
+      Deferred[IO, Unit].flatMap { d =>
+        val stream = Stream(IO.sleep(1.minute), u, d.complete(()).void).covary[IO]
+        IO.race(stream.through(pipe).compile.drain, d.get)
+      }
+  }
+
+  group("order") {
+
+    test("should be preserved in parEvalMap") {
+      forAllF { s: Stream[Pure, Int] =>
+        s.zipWithIndex
+          .covary[IO]
+          .parEvalMap(Int.MaxValue) { case (i, ind) => IO.sleep((ind % 3).millis).as(i) }
+          .compile
+          .toList
+          .assertEquals(s.toList)
       }
     }
 
-    test("should launch no more than maxConcurrent") {
-      forAllF { (stream: Stream[Pure, Unit], int: Int) =>
-        val concurrency = math.abs(int % 20) + 1
-        Ref[IO]
-          .of(0)
-          .flatMap { open =>
-            stream.covary[IO].parEvalMap(concurrency)(_ => findOpen(open)).compile.toList
+    test("may not be preserved in parEvalMapUnordered") {
+      run(_.parEvalMapUnordered(Int.MaxValue)(identity)).assertEquals(List(1, 2, 3))
+    }
+
+    def run(pipe: Pipe[IO, IO[Int], Int]) =
+      Stream
+        .emits(List(3, 2, 1))
+        .map(i => IO.sleep(50.millis * i).as(i))
+        .covary[IO]
+        .through(pipe)
+        .compile
+        .toList
+  }
+
+  group("should limit concurrency in") {
+
+    test("parEvalMapUnordered") {
+      forAllF { (l: Int, p: Int) =>
+        val length = math.abs(l % 100) + 1
+        val parallel = math.abs(p % 20) + 2
+        val requested = math.min(length, parallel)
+        val action = runWithLatch(length, requested, _.parEvalMapUnordered(parallel)(identity))
+        action.assertCompletes(())
+      }
+    }
+
+    test("parEvalMap") {
+      forAllF { (l: Int, p: Int) =>
+        val length = math.abs(l % 100) + 1
+        val parallel = math.abs(p % 20) + 2
+        val requested = math.min(length, parallel)
+        val action = runWithLatch(length, requested, _.parEvalMap(parallel)(identity))
+        action.assertCompletes(())
+      }
+    }
+
+    test("parEvalMapUnordered can't launch more than Stream size") {
+      val action = runWithLatch(100, 101, _.parEvalMapUnordered(Int.MaxValue)(identity))
+      action.assertNotCompletes()
+    }
+
+    test("parEvalMap can't launch more than Stream size") {
+      val action = runWithLatch(100, 101, _.parEvalMap(Int.MaxValue)(identity))
+      action.assertNotCompletes()
+    }
+
+    test("parEvalMapUnordered shouldn't launch more than maxConcurrent") {
+      val action = runWithLatch(100, 21, _.parEvalMapUnordered(20)(identity))
+      action.assertNotCompletes()
+    }
+
+    test("parEvalMap shouldn't launch more than maxConcurrent") {
+      val action = runWithLatch(100, 21, _.parEvalMap(20)(identity))
+      action.assertNotCompletes()
+    }
+
+    def runWithLatch(length: Int, parallel: Int, pipe: Pipe[IO, IO[Unit], Unit]) =
+      CountDownLatch[IO](parallel).flatMap { latch =>
+        Stream(latch.release *> latch.await).repeatN(length).through(pipe).compile.drain
+      }
+  }
+
+  group("if two errors happens only one should be reported") {
+    test("parEvalMapUnordered") {
+      forAllF { (i: Int) =>
+        val amount = math.abs(i % 10) + 1
+        CountDownLatch[IO](amount).flatMap { latch =>
+          val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+          stream
+            .parEvalMapUnordered(amount)(identity)
+            .compile
+            .drain
+            .intercept[RuntimeException]
+            .void
+        }
+      }
+    }
+
+    test("parEvalMap") {
+      forAllF { (i: Int) =>
+        val amount = math.abs(i % 10) + 1
+        CountDownLatch[IO](amount).flatMap { latch =>
+          val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+          stream.parEvalMap(amount)(identity).compile.drain.intercept[RuntimeException].void
+        }
+      }
+    }
+  }
+
+  group("if error happens after stream succeeds error should be lost") {
+    test("parEvalMapUnordered") {
+      check(_.parEvalMapUnordered(Int.MaxValue)(identity))
+    }
+
+    test("parEvalMap") {
+      check(_.parEvalMap(Int.MaxValue)(identity))
+    }
+
+    def check(pipe: Pipe[IO, IO[Unit], Unit]) =
+      Deferred[IO, Unit].flatMap { d =>
+        val simple = Stream(u, (d.get *> ex).uncancelable).covary[IO]
+        val stream = simple.through(pipe).take(1).productL(Stream.eval(d.complete(()).void))
+        stream.compile.toList.assertEquals(List(()))
+      }
+  }
+
+  group("cancels unneeded") {
+
+    test("parEvalMapUnordered") {
+      check(_.parEvalMapUnordered(2)(identity))
+    }
+
+    test("parEvalMapUnordered") {
+      check(_.parEvalMap(2)(identity))
+    }
+
+    def check(pipe: Pipe[IO, IO[Unit], Unit]) =
+      Deferred[IO, Unit].flatMap { d =>
+        val cancelled = IO.never.onCancel(d.complete(()).void)
+        val stream = Stream(u, cancelled).covary[IO]
+        val action = stream.through(pipe).take(1).compile.drain
+        action *> d.get.assertCompletes(())
+      }
+  }
+
+  group("waits for uncancellable completion") {
+    test("parEvalMapUnordered") {
+      check(_.parEvalMapUnordered(2)(identity))
+    }
+
+    test("parEvalMap") {
+      check(_.parEvalMap(2)(identity))
+    }
+
+    def check(pipe: Pipe[IO, IO[Unit], Unit]): IO[Unit] = {
+      val uncancMsg = "uncancellable"
+      val onFin2Msg = "onFin2"
+
+      Ref[IO]
+        .of(List.empty[String])
+        .flatMap { ref =>
+          val io = ref.update(uncancMsg :: _).void
+          val onFin2 = ref.update(onFin2Msg :: _)
+          CountDownLatch[IO](2).flatMap { latch =>
+            val w = latch.release *> latch.await
+            val stream = Stream(w *> u, (w *> io).uncancelable).covary[IO]
+            val action = stream.through(pipe).take(1).compile.drain <* onFin2
+            action *> ref.get
           }
-          .map(_.forall(_ <= concurrency))
-          .assert
-      }
-    }
-
-    test("unordered should launch no more than maxConcurrent") {
-      forAllF { (stream: Stream[Pure, Unit], int: Int) =>
-        val concurrency = math.abs(int % 20) + 1
-        Ref[IO]
-          .of(0)
-          .flatMap { open =>
-            stream.covary[IO].parEvalMapUnordered(concurrency)(_ => findOpen(open)).compile.toList
-          }
-          .map(_.forall(_ <= concurrency))
-          .assert
-      }
-    }
-
-    def findOpen(open: Ref[IO, Int]) = {
-      val start = open.update(_ + 1) *> IO.sleep(5.millis) *> open.get
-      val end = IO.sleep(5.millis) *> open.getAndUpdate(_ - 1)
-      start *> end
+        }
+        .assertEquals(List(onFin2Msg, uncancMsg))
     }
   }
 }
