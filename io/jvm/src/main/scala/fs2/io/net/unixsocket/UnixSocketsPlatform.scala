@@ -114,9 +114,6 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         }
       )
 
-    def readChunk(buff: ByteBuffer): F[Int] =
-      F.blocking(ch.read(buff))
-
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
         F.blocking(ch.write(buff)) >> {
