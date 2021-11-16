@@ -24,7 +24,7 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, Ref, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
@@ -37,66 +37,85 @@ private[net] trait SocketCompanionPlatform {
       ch: AsynchronousSocketChannel
   ): Resource[F, Socket[F]] =
     Resource.make {
-      (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
-        new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
+      (Semaphore[F](1), Ref[F].of(Chunk.empty[Byte]), Semaphore[F](1), Semaphore[F](1)).mapN {
+        (readBufferSemaphore, readBuffer, channelReadSemaphore, writeSemaphore) =>
+          new AsyncSocket[F](
+            ch,
+            readBufferSemaphore,
+            readBuffer,
+            channelReadSemaphore,
+            writeSemaphore
+          )
       }
     }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
   private[net] abstract class BufferedReads[F[_]](
-      readSemaphore: Semaphore[F]
-  )(implicit F: Async[F])
-      extends Socket[F] {
+      readBufferSemaphore: Semaphore[F],
+      readBuffer: Ref[F, Chunk[Byte]]
+  )(implicit
+      F: Async[F]
+  ) extends Socket[F] {
     private[this] final val defaultReadSize = 8192
-    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
-    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      readSemaphore.permit.use { _ =>
-        F.delay {
-          if (readBuffer.capacity() < size)
-            readBuffer = ByteBuffer.allocateDirect(size)
-          else
-            (readBuffer: Buffer).limit(size)
-          f(readBuffer)
-        }.flatten
-      }
+    private def cutInitialSegmentOfBuffer(size: Int): F[Chunk[Byte]] =
+      readBuffer.modify(_.splitAt(size).swap)
 
-    /** Performs a single channel read operation in to the supplied buffer. */
-    protected def readChunk(buffer: ByteBuffer): F[Int]
-
-    /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
-    private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
+    protected final def storeToReadBuffer(filledBuffer: ByteBuffer): F[Unit] =
       F.delay {
-        val read = buffer.position()
-        val result =
-          if (read == 0) Chunk.empty
-          else {
-            val dest = ByteBuffer.allocateDirect(read)
-            (buffer: Buffer).flip()
-            dest.put(buffer)
-            (dest: Buffer).flip()
-            Chunk.byteBuffer(dest)
-          }
-        (buffer: Buffer).clear()
-        result
-      }
+        val read = filledBuffer.position()
+
+        if (read == 0) Chunk.empty
+        else {
+          val dest = ByteBuffer.allocateDirect(read)
+          (filledBuffer: Buffer).flip()
+          dest.put(filledBuffer)
+          (dest: Buffer).flip()
+          Chunk.byteBuffer(dest)
+        }
+      }.flatMap(chunk => readBuffer.update(_ ++ chunk))
+
+    /** Performs a single, mutually-exclusive channel read operation that reads
+      * maximum of `max` bytes. The read result is stored to the buffer
+      * via [[storeToReadBuffer]].
+      *
+      * This action itself may be cancellable, but even in the event of cancellation
+      * the underlying read operation, together with the action to store the read result,
+      * are not cancelled.
+      *
+      * The effect returns a number of bytes read, or a negative number if no more bytes
+      * can be read from the channel.
+      */
+    protected def readChunk(maxBytes: Int): F[Int]
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
-      withReadBuffer(max) { buffer =>
-        readChunk(buffer).flatMap { read =>
-          if (read < 0) F.pure(None)
-          else releaseBuffer(buffer).map(Some(_))
+      readBufferSemaphore.permit.use { _ =>
+        readBuffer.get.map(_.size).flatMap { contentLength =>
+          readChunk(max - contentLength).flatMap { read =>
+            if (contentLength == 0 && read < 0)
+              F.pure(None)
+            else
+              F.uncancelable { _ =>
+                cutInitialSegmentOfBuffer(max).map(Some.apply)
+              }
+          }
         }
       }
 
     def readN(max: Int): F[Chunk[Byte]] =
-      withReadBuffer(max) { buffer =>
-        def go: F[Chunk[Byte]] =
-          readChunk(buffer).flatMap { readBytes =>
-            if (readBytes < 0 || buffer.position() >= max)
-              releaseBuffer(buffer)
-            else go
+      readBufferSemaphore.permit.use { _ =>
+        readBuffer.get.map(_.size).flatMap { contentLength =>
+          def go(currentAvailable: Int): F[Chunk[Byte]] = {
+            val toRead = max - currentAvailable
+            readChunk(toRead).flatMap { read =>
+              if (read < 0 || toRead == read)
+                cutInitialSegmentOfBuffer(max)
+              else
+                go(currentAvailable + read)
+            }
           }
-        go
+
+          go(contentLength)
+        }
       }
 
     def reads: Stream[F, Byte] =
@@ -108,18 +127,23 @@ private[net] trait SocketCompanionPlatform {
 
   private final class AsyncSocket[F[_]](
       ch: AsynchronousSocketChannel,
-      readSemaphore: Semaphore[F],
+      bufferSemaphore: Semaphore[F],
+      buffer: Ref[F, Chunk[Byte]],
+      channelReadSemaphore: Semaphore[F],
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
-      extends BufferedReads[F](readSemaphore) {
-    protected def readChunk(buffer: ByteBuffer): F[Int] =
-      F.async_[Int] { cb =>
-        ch.read(
-          buffer,
-          null,
-          new IntCallbackHandler(cb)
+      extends BufferedReads[F](bufferSemaphore, buffer) {
+    override protected def readChunk(maxBytes: Int): F[Int] =
+      F.start(
+        channelReadSemaphore.permit.use(_ =>
+          F.delay(ByteBuffer.allocateDirect(maxBytes)).flatMap { buffer =>
+            F.async_[Int](cb => ch.read(buffer, null, new IntCallbackHandler(cb))).flatTap { _ =>
+              storeToReadBuffer(buffer)
+            }
+          }
         )
-      }
+      ).flatMap(_.join)
+        .flatMap(_.embedNever /* the child fiber is never cancelled */ )
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =

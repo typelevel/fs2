@@ -21,6 +21,7 @@
 
 package fs2.io.net.unixsocket
 
+import cats.effect.Ref
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
@@ -28,6 +29,7 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
 import fs2.io.file.{Files, Path}
 import fs2.io.net.Socket
+
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
@@ -89,17 +91,28 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       ch: SocketChannel
   ): Resource[F, Socket[F]] =
     Resource.make {
-      (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
-        new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
+      (Semaphore[F](1), Ref[F].of(Chunk.empty[Byte]), Semaphore[F](1)).mapN {
+        (readSemaphore, readBuffer, writeSemaphore) =>
+          new AsyncSocket[F](ch, readSemaphore, readBuffer, writeSemaphore)
       }
     }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
   private final class AsyncSocket[F[_]](
       ch: SocketChannel,
-      readSemaphore: Semaphore[F],
+      readBufferSemaphore: Semaphore[F],
+      readBuffer: Ref[F, Chunk[Byte]],
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
-      extends Socket.BufferedReads[F](readSemaphore) {
+      extends Socket.BufferedReads[F](readBufferSemaphore, readBuffer) {
+
+    override def readChunk(maxBytes: Int): F[Int] =
+      F.uncancelable(_ =>
+        F.delay(ByteBuffer.allocateDirect(maxBytes)).flatMap { buffer =>
+          F.blocking(ch.read(buffer)).flatTap { _ =>
+            storeToReadBuffer(buffer)
+          }
+        }
+      )
 
     def readChunk(buff: ByteBuffer): F[Int] =
       F.blocking(ch.read(buff))
