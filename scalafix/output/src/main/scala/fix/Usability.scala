@@ -12,3 +12,4 @@ trait Usability {
   val join = Stream.emit(s).parJoin(1)
   val joinUnbounded = Stream.emit(s).parJoinUnbounded
 }
+

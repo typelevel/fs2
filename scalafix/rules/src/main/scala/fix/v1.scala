@@ -7,11 +7,8 @@ import fixUtils._
 
 class v1 extends SemanticRule("v1") {
   override def fix(implicit doc: SemanticDocument): Patch =
-    (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(
-      doc.tree
-    ) ++ ConcurrentDataTypesRules(doc.tree) ++ ChunkRules(doc.tree) ++ UsabilityRenameRules(
-      doc.tree
-    ) ++ SinkToPipeRules(doc.tree)).asPatch
+    (StreamAppRules(doc.tree) ++ SchedulerRules(doc.tree) ++ BracketRules(doc.tree) ++ ConcurrentDataTypesRules(
+      doc.tree) ++ ChunkRules(doc.tree) ++ UsabilityRenameRules(doc.tree) ++ SinkToPipeRules(doc.tree)).asPatch
 }
 
 object fixUtils {
@@ -40,14 +37,13 @@ object fixUtils {
 
   // From https://scalacenter.github.io/scalafix/docs/developers/semantic-type.html
   def getType(symbol: Symbol)(implicit doc: SemanticDocument): SemanticType =
-    symbol.info
-      .map(_.signature match {
-        case MethodSignature(_, _, returnType) =>
-          returnType
-        case _ =>
-          NoType
-      })
-      .getOrElse(NoType)
+    symbol.info.map(_.signature match {
+      case MethodSignature(_, _, returnType) =>
+      returnType
+    case _ =>
+      NoType
+    }
+    ).getOrElse(NoType)
 
   def containsImport(importer: Importer)(implicit doc: SemanticDocument): Boolean =
     doc.tree
@@ -71,8 +67,8 @@ object BracketRules {
       case b: Term.Tuple =>
         b.args.map(replaceBracket).asPatch
       case b: Term.Block =>
-        b.stats.collect { case s: Term.Apply =>
-          replaceBracket(s)
+        b.stats.collect {
+          case s: Term.Apply => replaceBracket(s)
         }.asPatch
       case d: Defn.Val =>
         d.rhs match {
@@ -94,17 +90,17 @@ object BracketRules {
   def replaceBracket(p: Tree): Patch =
     p match {
       case b @ Term.Apply(
-            Term.Apply(
-              s @ Term.Select(_, Term.Name("bracket")),
-              List(
-                _
-              )
-            ),
-            List(
-              _,
-              _
-            )
-          ) =>
+      Term.Apply(
+      s @ Term.Select(_, Term.Name("bracket")),
+      List(
+      _
+      )
+      ),
+      List(
+      _,
+      _
+      )
+      ) =>
         val newBracket = traverseBracket(b)
         Patch.replaceTree(b, newBracket.toString)
       case b => apply(b).asPatch
@@ -112,18 +108,12 @@ object BracketRules {
 
   def traverseBracket(s: Stat): Stat =
     s match {
-      case Term.Apply(
-            Term.Apply(t @ Term.Select(_, Term.Name("bracket")), List(acquire)),
-            List(use, release)
-          ) =>
+      case Term.Apply(Term.Apply(t @ Term.Select(_, Term.Name("bracket")), List(acquire)),
+      List(use, release)) =>
         val newBracket =
-          Term.Apply(
-            Term.Select(
-              Term.Apply(Term.Apply(t, List(acquire)), List(release)),
-              Term.Name("flatMap")
-            ),
-            List(traverseUse(use))
-          )
+          Term.Apply(Term.Select(Term.Apply(Term.Apply(t, List(acquire)), List(release)),
+            Term.Name("flatMap")),
+            List(traverseUse(use)))
         newBracket
       case t => t
     }
@@ -135,38 +125,30 @@ object BracketRules {
     }
 }
 
+
 object ConcurrentDataTypesRules {
 
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
     replaceSemaphore :: renameQueue :: renameTopic :: t.collect {
       // fs2 Ref -> cats effect Ref
       case Term.Apply(refMatcher(n: Term.Name), _) =>
-        Patch.replaceTree(n, "Ref.of") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Ref.")
-        )
+        Patch.replaceTree(n, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Type.Apply(t @ Type.Name("Ref"), _) =>
         Patch.replaceTree(t, "Ref") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(Term.ApplyType(r @ refMatcher(_), _), _) =>
         Patch.replaceTree(r, "Ref") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(r @ Term.Name("refOf"), _) =>
-        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Ref.")
-        )
+        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case Term.Apply(Term.ApplyType(r @ Term.Name("refOf"), _), _) =>
-        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Ref.")
-        )
+        Patch.replaceTree(r, "Ref.of") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Ref."))
       case setSyncMatcher(Term.Apply(t @ Term.Select(_, s), _)) =>
         Patch.replaceTree(s, "set")
       case setAsyncMatcher(Term.Apply(t @ Term.Select(_, s), _)) =>
         Patch.lint(
-          Diagnostic(
-            "Removed",
+          Diagnostic("Removed",
             message = "This got removed. Consider revisiting the implementation",
             position = s.pos,
-            severity = LintSeverity.Error
-          )
-        )
+            severity = LintSeverity.Error))
       case modifyMatcher(Term.Apply(Term.Select(_, s), _)) =>
         Patch.replaceTree(s, "update")
       case modify2Matcher(Term.Apply(Term.Select(_, s), _)) =>
@@ -178,23 +160,15 @@ object ConcurrentDataTypesRules {
 
       // Promise -> Deferred
       case t @ Term.Select(promiseMatcher(_), Term.Name("empty")) =>
-        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Deferred.")
-        )
+        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case promiseMatcher(t @ Type.Name("Promise")) =>
-        Patch.replaceTree(t, s"Deferred") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Deferred.")
-        )
+        Patch.replaceTree(t, s"Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case t @ promiseLowercaseMatcher(_) =>
-        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(
-          Symbol("cats/effect/concurrent/Deferred.")
-        )
+        Patch.replaceTree(t, "Deferred") + Patch.addGlobalImport(Symbol("cats/effect/concurrent/Deferred."))
       case cancellableGetMatcher(Term.Select(_, s)) =>
         Patch.replaceTree(s, "get")
       case timedGetMatcher(s @ Term.Apply(Term.Select(pre, Term.Name("timedGet")), List(d, _))) =>
-        Patch.replaceTree(s, s"${pre}.get.timeout($d)") + Patch.addGlobalImport(
-          importer"cats.effect.syntax.concurrent._"
-        )
+        Patch.replaceTree(s, s"${pre}.get.timeout($d)") + Patch.addGlobalImport(importer"cats.effect.syntax.concurrent._")
 
       // Signal
       case t @ immutableSignalMatcher(_: Term.Name) =>
@@ -202,18 +176,15 @@ object ConcurrentDataTypesRules {
       case immutableSignalMatcher(Type.Apply(s, _)) =>
         Patch.replaceTree(s, "Signal") + Patch.addGlobalImport(Symbol("fs2/concurrent/Signal."))
       case mutableSignalMatcher(Term.Apply(s, _)) =>
-        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(
-          Symbol("fs2/concurrent/SignallingRef.")
-        )
+        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(Symbol("fs2/concurrent/SignallingRef."))
       case mutableSignalMatcher(Type.Apply(s, _)) =>
-        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(
-          Symbol("fs2/concurrent/SignallingRef.")
-        )
+        Patch.replaceTree(s, "SignallingRef") + Patch.addGlobalImport(Symbol("fs2/concurrent/SignallingRef."))
 
       // Imports
       case i: Import =>
-        i.collect { case Term.Select(Term.Name("fs2"), Term.Name("async")) =>
-          Patch.replaceTree(i, "")
+        i.collect{
+          case Term.Select(Term.Name("fs2"), Term.Name("async")) =>
+            Patch.replaceTree(i, "")
         }.asPatch
     }
 
@@ -249,78 +220,71 @@ object ConcurrentDataTypesRules {
 
 }
 
+
 object SchedulerRules {
 
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
     t.collect {
       case t @ schedulerMatcher(_: Type.Name) =>
-        Patch.replaceTree(t, timer(Type.Name("F")).toString()) // TODO: Use actual effect
+        Patch.replaceTree(t, timer(Type.Name("F")).toString()) //TODO: Use actual effect
       case Term.ApplyType(s, List(f)) if isScheduler(s) =>
         Patch.replaceTree(t, timer(f).toString())
       case sched @ Term.Apply(
-            Term.ApplyType(Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("sleep")), _),
-            List(d)
-          ) if isScheduler(s) =>
+      Term.ApplyType(Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("sleep")), _),
+      List(d)) if isScheduler(s) =>
         val timerSleep = Term.Apply(Term.Select(s, Term.Name("sleep")), List(d))
         Patch.replaceTree(sched, timerSleep.toString())
       case sched @ Term
-            .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep")), List(f)), List(d))
-          if isScheduler(s) =>
+      .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep")), List(f)), List(d))
+        if isScheduler(s) =>
         val stream =
-          Term.Apply(
-            Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep")), List(f)),
-            List(d)
-          )
+          Term.Apply(Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep")), List(f)),
+            List(d))
         Patch.replaceTree(sched, stream.toString())
       case sched @ Term
-            .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep_")), List(f)), List(d))
-          if isScheduler(s) =>
+      .Apply(Term.ApplyType(Term.Select(s, Term.Name("sleep_")), List(f)), List(d))
+        if isScheduler(s) =>
         val stream =
-          Term.Apply(
-            Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep_")), List(f)),
-            List(d)
-          )
+          Term.Apply(Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("sleep_")), List(f)),
+            List(d))
         Patch.replaceTree(sched, stream.toString())
       case sched @ Term
-            .Apply(Term.ApplyType(Term.Select(s, Term.Name("awakeEvery")), List(f)), List(d))
-          if isScheduler(s) =>
+      .Apply(Term.ApplyType(Term.Select(s, Term.Name("awakeEvery")), List(f)), List(d))
+        if isScheduler(s) =>
         val stream = Term.Apply(
           Term.ApplyType(Term.Select(Term.Name("Stream"), Term.Name("awakeEvery")), List(f)),
-          List(d)
-        )
+          List(d))
         Patch.replaceTree(sched, stream.toString())
       case sched @ Term
-            .Apply(Term.Select(s, Term.Name("retry")), params) if isScheduler(s) =>
+      .Apply(Term.Select(s, Term.Name("retry")), params) if isScheduler(s) =>
         val stream = Term.Apply(Term.Select(Term.Name("Stream"), Term.Name("retry")), params)
         Patch.replaceTree(sched, stream.toString())
       case sched @ Term.Apply(
-            Term.Select(
-              s,
-              Term.Name("through")
-            ),
-            List(
-              Term.Apply(
-                Term.Select(_, debounce @ Term.Name("debounce")),
-                d
-              )
-            )
-          ) if isStream(s) =>
+      Term.Select(
+      s,
+      Term.Name("through")
+      ),
+      List(
+      Term.Apply(
+      Term.Select(_, debounce @ Term.Name("debounce")),
+      d
+      )
+      )
+      ) if isStream(s) =>
         val newStream = Term.Apply(Term.Select(s, debounce), d)
         Patch.replaceTree(sched, newStream.toString())
       case sched @ Term.Apply(
-            Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("delayCancellable")),
-            List(fa, d)
-          ) if isScheduler(s) =>
+      Term.Select(Term.Select(s, Term.Name("effect")), Term.Name("delayCancellable")),
+      List(fa, d)) if isScheduler(s) =>
         val concurrent = Term.Apply(
           Term.Select(
             Term.ApplyType(Term.Name("Concurrent"), List(Type.Name(getEffectType(fa.symbol)))),
-            Term.Name("race")
-          ),
+            Term.Name("race")),
           List(fa, Term.Apply(Term.Select(s, Term.Name("sleep")), List(d)))
         )
         Patch.replaceTree(sched, concurrent.toString())
       case sched @ Term.Apply(Term.Select(s, Term.Name("delay")), List(stream, d))
-          if isScheduler(s) && isStream(stream) =>
+        if isScheduler(s) && isStream(stream) =>
         val newStream = Term.Apply(Term.Select(stream, Term.Name("delayBy")), List(d))
         Patch.replaceTree(sched, newStream.toString())
     }
@@ -345,40 +309,34 @@ object StreamAppRules {
         replaceStreamApp(d)
       case exitCodeSuccessMatcher(fs2ExitCode @ Name(_)) =>
         Patch.lint(
-          Diagnostic(
-            "StreamAppExitCode",
+          Diagnostic("StreamAppExitCode",
             message = "You can remove this",
             position = fs2ExitCode.pos,
-            severity = LintSeverity.Warning
-          )
-        )
+            severity = LintSeverity.Warning))
       case i @ Importee.Name(Name("StreamApp")) =>
         Patch.removeImportee(i) + addCatsEffectImports + addCatsSyntaxImport
     }
 
   private[this] def replaceStreamApp(d: Defn)(implicit doc: SemanticDocument): Patch = d match {
     case c @ Defn.Class(_, _, _, _, tpl @ Template(_, is, _, _)) if is.exists {
-          case streamAppInit(_) => true; case _ => false
-        } =>
+      case streamAppInit(_) => true; case _ => false
+    } =>
       (replaceClassTemplate(tpl) ++ streamAppObjects(c).map(o =>
-        replaceObjectTemplate(o.templ)
-      )).asPatch + removeExtends(c)
+        replaceObjectTemplate(o.templ))).asPatch + removeExtends(c)
 
     case o @ Defn.Object(_, _, tpl @ Template(_, is, _, _)) if is.exists {
-          case streamAppInit(_) => true; case _ => false
-        } =>
+      case streamAppInit(_) => true; case _ => false
+    } =>
       replaceTemplate(tpl).asPatch
     case _ => Patch.empty
   }
 
   def removeExtends(c: Defn.Class): Patch =
     if (c.templ.inits.length == 1) {
-      c.tokens
-        .collectFirst { case t: Token.KwExtends =>
+      c.tokens.collectFirst{
+        case t: Token.KwExtends =>
           t
-        }
-        .map(t => Patch.removeToken(t))
-        .getOrElse(Patch.empty)
+      }.map(t => Patch.removeToken(t)).getOrElse(Patch.empty)
     } else {
       Patch.empty
     }
@@ -390,9 +348,8 @@ object StreamAppRules {
     }
   }
 
-  private[this] def streamAppObjects(
-      c: Defn.Class
-  )(implicit doc: SemanticDocument): List[Defn.Object] =
+  private[this] def streamAppObjects(c: Defn.Class)(
+    implicit doc: SemanticDocument): List[Defn.Object] =
     doc.tree.collect {
       case o: Defn.Object =>
         o.templ.inits.flatMap {
@@ -410,14 +367,14 @@ object StreamAppRules {
 
   private[this] def addIOAppType(inits: List[Init]): List[Patch] =
     inits.map {
-      case s @ streamAppInit(_) =>
+      case s@streamAppInit(_) =>
         Patch.addRight(s.tokens.head, "IOApp")
       case _ => Patch.empty
     }
 
   private[this] def removeStreamAppType(inits: List[Init]): List[Patch] =
     inits.map {
-      case s @ streamAppInit(_) =>
+      case s@streamAppInit(_) =>
         Patch.removeTokens(s.tokens)
       case _ => Patch.empty
     }
@@ -431,62 +388,40 @@ object StreamAppRules {
   private[this] def replaceObjectTemplate(tpl: Template): Patch =
     Patch.replaceTree(
       tpl,
-      tpl
-        .copy(
-          inits = tpl.inits :+ Init(Type.Name("IOApp"), Name("IOApp"), List()),
-          stats = addProgramRun(tpl.stats)
-        )
-        .toString()
+      tpl.copy(
+        inits = tpl.inits :+ Init(Type.Name("IOApp"), Name("IOApp"), List()),
+        stats = addProgramRun(tpl.stats)).toString()
     ) + Patch.addLeft(tpl, "extends ")
 
   private[this] def replaceStats(stats: List[Stat]): List[Patch] =
-    stats.flatMap {
+    stats.flatMap{
       case d @ Defn.Def(_, Term.Name("stream"), _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
-        List(
-          Patch.replaceTree(d.name, "run"),
-          Patch.addRight(body, ".compile.drain.as(ExitCode.Success)")
-        ) ++
-          d.paramss.flatMap(_.lift(1)).map(p => Patch.removeTokens(p.tokens)) ++
-          d.tokens.collectFirst { case t: Token.Comma =>
-            Patch.removeToken(t)
-          } ++
-          d.decltpe.map(t =>
-            Patch.replaceTree(
-              t,
-              Type.Apply(Type.Name(fName), List(Type.Name("ExitCode"))).toString()
-            )
-          )
+        List(Patch.replaceTree(d.name, "run"), Patch.addRight(body, ".compile.drain.as(ExitCode.Success)")) ++
+        d.paramss.flatMap(_.lift(1)).map(p => Patch.removeTokens(p.tokens)) ++
+        d.tokens.collectFirst{
+          case t: Token.Comma => Patch.removeToken(t)
+        } ++
+        d.decltpe.map(t => Patch.replaceTree(t, Type.Apply(Type.Name(fName), List(Type.Name("ExitCode"))).toString()))
       case _ => List(Patch.empty)
     }
 
   private[this] val params = List(
-    Term.Param(
-      List(),
+    Term.Param(List(),
       Name("args"),
       Some(Type.Apply(Type.Name("List"), List(Type.Name("String")))),
-      None
-    )
-  )
+      None))
 
   private[this] def replaceClassStats(stats: List[Stat]): List[Patch] =
     stats.flatMap {
       case d @ Defn.Def(_, _, _, _, tpe, body) =>
         val fName = tpe.flatMap(getFName).get
-        List(
-          Patch.replaceTree(d.name, "program"),
-          Patch.addRight(body, ".compile.drain.as(ExitCode.Success)")
-        ) ++
+        List(Patch.replaceTree(d.name, "program"), Patch.addRight(body, ".compile.drain.as(ExitCode.Success)")) ++
           d.paramss.flatMap(_.lift(1)).map(p => Patch.removeTokens(p.tokens)) ++
-          d.tokens.collectFirst { case t: Token.Comma =>
-            Patch.removeToken(t)
+          d.tokens.collectFirst{
+            case t: Token.Comma => Patch.removeToken(t)
           } ++
-          d.decltpe.map(t =>
-            Patch.replaceTree(
-              t,
-              Type.Apply(Type.Name(fName), List(Type.Name("ExitCode"))).toString()
-            )
-          )
+          d.decltpe.map(t => Patch.replaceTree(t, Type.Apply(Type.Name(fName), List(Type.Name("ExitCode"))).toString()))
       case _ => List(Patch.empty)
     }
 
@@ -513,18 +448,15 @@ object StreamAppRules {
   }
 
   private[this] def addCatsEffectImports(implicit doc: SemanticDocument): Patch =
-    if (
-      !containsImport(importer"cats.effect._")
-    ) // the other cases are handled directly by scalafix
+    if (!containsImport(importer"cats.effect._")) // the other cases are handled directly by scalafix
       Patch.addGlobalImport(Symbol("cats/effect/IO.")) +
         Patch.addGlobalImport(Symbol("cats/effect/ExitCode.")) +
         Patch.addGlobalImport(Symbol("cats/effect/IOApp."))
     else Patch.empty
 
   private[this] def addCatsSyntaxImport(implicit doc: SemanticDocument): Patch =
-    if (
-      containsImport(importer"cats.syntax.functor._") || containsImport(importer"cats.syntax.all._")
-    )
+    if (containsImport(importer"cats.syntax.functor._") || containsImport(
+      importer"cats.syntax.all._"))
       Patch.empty
     else Patch.addGlobalImport(importer"cats.syntax.functor._")
 
@@ -534,7 +466,7 @@ object StreamAppRules {
 
 object ChunkRules {
   def apply(t: Tree)(implicit doc: SemanticDocument): List[Patch] =
-    t.collect {
+    t.collect{
       case t @ segmentsMatcher(_: Term.Name) =>
         Patch.replaceTree(t, "chunks")
       case t @ mapSegmentsMatcher(_: Term.Name) =>
@@ -547,7 +479,7 @@ object ChunkRules {
         Patch.replaceTree(t, "uncons")
       case t @ pullOutputMatcher(_: Term.Name) =>
         Patch.replaceTree(t, "output")
-      case segmentMatcher(s @ Type.Apply(_, List(o, _))) =>
+      case segmentMatcher(s@Type.Apply(_, List(o, _))) =>
         Patch.replaceTree(s, s"Chunk[$o]") + Patch.addGlobalImport(Symbol("fs2/Chunk."))
     } :+ Patch.removeGlobalImport(Symbol("fs2/Segment."))
 
@@ -584,12 +516,13 @@ object SinkToPipeRules {
   val toMethodMatcher = pre102ToMethodMatcher + post102ToMethodMatcher
 
   def isFs2SinkImported(t: Tree): Boolean =
-    t.collect { case Importer(Term.Name("fs2"), importees) =>
-      importees.collectFirst {
-        case Importee.Name(Name("Sink")) => ()
-        case _: Importee.Wildcard        => ()
-      }.isDefined
-    }.exists(identity)
+    t.collect {
+      case Importer(Term.Name("fs2"), importees) =>
+        importees.collectFirst {
+          case Importee.Name(Name("Sink")) => ()
+          case _: Importee.Wildcard => ()
+        }.isDefined
+   }.exists(identity)
 
   def replaceImport(sinkImportee: Importee)(implicit doc: SemanticDocument): Patch = List(
     Patch.removeImportee(sinkImportee),
@@ -600,13 +533,14 @@ object SinkToPipeRules {
     val sinkMatcher = SymbolMatcher.exact("fs2/package.Sink#")
     if (isFs2SinkImported(t)) {
       t.collect {
-        case toMethodMatcher(t @ Term.Apply(Term.Select(obj, _), args)) =>
+        case toMethodMatcher(t @ Term.Apply(Term.Select(obj, _), args)) => {
           Patch.replaceTree(t, Term.Apply(Term.Select(obj, Term.Name("through")), args).toString)
+        }
 
         case sink @ Type.Apply(sinkMatcher(name), List(f, a)) =>
           name match {
             case t"Sink" => Patch.replaceTree(sink, s"Pipe[$f, $a, Unit]")
-            case _       => Patch.addRight(a, ", Unit")
+            case _ => Patch.addRight(a, ", Unit")
           }
 
         case sink @ Importee.Rename(Name("Sink"), rename) =>

@@ -1,6 +1,6 @@
 /*
 rule = v1
- */
+*/
 package fix
 
 import fs2._
