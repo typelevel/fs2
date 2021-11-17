@@ -236,17 +236,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val coreJVM = core.jvm
-  .enablePlugins(SbtOsgi)
   .settings(
-    Test / fork := true,
-    OsgiKeys.exportPackage := Seq("fs2.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""", "*")
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    Test / fork := true
   )
 
 lazy val coreJS = core.js
@@ -278,7 +269,6 @@ lazy val node = crossProject(JSPlatform)
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .jvmEnablePlugins(SbtOsgi)
   .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
@@ -289,19 +279,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "com.github.jnr" % "jnr-unixsocket" % "0.38.12" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
-    ),
-    OsgiKeys.exportPackage := Seq("fs2.io.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    )
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
@@ -314,7 +292,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
-  .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
@@ -322,18 +299,6 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                              )
                                                                "1.11.9"
                                                              else "2.1.0"),
-    OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings,
     mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
       VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
     }
@@ -345,21 +310,8 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
 
 lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
-  .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-protocols",
-    OsgiKeys.exportPackage := Seq("fs2.protocols.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings,
     mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
       VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
     }
@@ -371,7 +323,6 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
-  .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-reactive-streams",
     Test / fork := true,
@@ -379,19 +330,7 @@ lazy val reactiveStreams = project
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
       ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
-    ),
-    OsgiKeys.exportPackage := Seq("fs2.interop.reactivestreams.*"),
-    OsgiKeys.privatePackage := Seq(),
-    OsgiKeys.importPackage := {
-      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
-      Seq(
-        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
-        """fs2.*;version="${Bundle-Version}"""",
-        "*"
-      )
-    },
-    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
-    osgiSettings
+    )
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
