@@ -1019,12 +1019,8 @@ class StreamSuite extends Fs2Suite {
 
     test("should be preserved in parEvalMap") {
       forAllF { s: Stream[Pure, Int] =>
-        s.zipWithIndex
-          .covary[IO]
-          .parEvalMap(Int.MaxValue) { case (i, ind) => IO.sleep((ind % 3).millis).as(i) }
-          .compile
-          .toList
-          .assertEquals(s.toList)
+        val s2 = s.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(math.abs(i % 3).millis).as(i))
+        s2.compile.toList.assertEquals(s.toList)
       }
     }
 
