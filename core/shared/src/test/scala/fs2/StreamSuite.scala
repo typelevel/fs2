@@ -987,11 +987,7 @@ class StreamSuite extends Fs2Suite {
   }
 
   private implicit class verifyOps[T](val action: IO[T]) {
-    def assertNotCompletes(): IO[Unit] =
-      IO.race(IO.sleep(1.second), action).assertEquals(Left(()))
-
-    def assertCompletes(expected: T): IO[Unit] =
-      IO.race(IO.sleep(1.second), action).assertEquals(Right(expected))
+    def assertNotCompletes(): IO[Unit] = IO.race(IO.sleep(1.second), action).assertEquals(Left(()))
   }
 
   val u: IO[Unit] = ().pure[IO]
@@ -1005,7 +1001,7 @@ class StreamSuite extends Fs2Suite {
 
     test("can exceed maxConcurrent in parEvalMapUnordered") {
       val action = run(_.parEvalMapUnordered(2)(identity))
-      action.assertCompletes(Right(()))
+      action.assertEquals(Right(()))
     }
 
     def run(pipe: Pipe[IO, IO[Unit], Unit]): IO[Either[Unit, Unit]] =
@@ -1046,7 +1042,7 @@ class StreamSuite extends Fs2Suite {
         val parallel = math.abs(p % 20) + 2
         val requested = math.min(length, parallel)
         val action = runWithLatch(length, requested, _.parEvalMapUnordered(parallel)(identity))
-        action.assertCompletes(())
+        action.assertEquals(())
       }
     }
 
@@ -1056,7 +1052,7 @@ class StreamSuite extends Fs2Suite {
         val parallel = math.abs(p % 20) + 2
         val requested = math.min(length, parallel)
         val action = runWithLatch(length, requested, _.parEvalMap(parallel)(identity))
-        action.assertCompletes(())
+        action.assertEquals(())
       }
     }
 
@@ -1090,25 +1086,26 @@ class StreamSuite extends Fs2Suite {
     test("parEvalMapUnordered") {
       forAllF { (i: Int) =>
         val amount = math.abs(i % 10) + 1
-        CountDownLatch[IO](amount).flatMap { latch =>
-          val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
-          stream
-            .parEvalMapUnordered(amount)(identity)
-            .compile
-            .drain
-            .intercept[RuntimeException]
-            .void
-        }
+        CountDownLatch[IO](amount)
+          .flatMap { latch =>
+            val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+            stream.parEvalMapUnordered(amount)(identity).compile.drain
+          }
+          .intercept[RuntimeException]
+          .void
       }
     }
 
     test("parEvalMap") {
       forAllF { (i: Int) =>
         val amount = math.abs(i % 10) + 1
-        CountDownLatch[IO](amount).flatMap { latch =>
-          val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
-          stream.parEvalMap(amount)(identity).compile.drain.intercept[RuntimeException].void
-        }
+        CountDownLatch[IO](amount)
+          .flatMap { latch =>
+            val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+            stream.parEvalMap(amount)(identity).compile.drain
+          }
+          .intercept[RuntimeException]
+          .void
       }
     }
   }
@@ -1123,11 +1120,34 @@ class StreamSuite extends Fs2Suite {
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]) =
-      Deferred[IO, Unit].flatMap { d =>
-        val simple = Stream(u, (d.get *> ex).uncancelable).covary[IO]
-        val stream = simple.through(pipe).take(1).productL(Stream.eval(d.complete(()).void))
-        stream.compile.toList.assertEquals(List(()))
-      }
+      IO.deferred[Unit]
+        .flatMap { d =>
+          val simple = Stream(u, (d.get *> ex).uncancelable).covary[IO]
+          val stream = simple.through(pipe).take(1).productL(Stream.eval(d.complete(()).void))
+          stream.compile.toList
+        }
+        .assertEquals(List(()))
+  }
+
+  group("cancels running computations when error raised") {
+
+    test("parEvalMapUnordered") {
+      check(_.parEvalMap(Int.MaxValue)(identity))
+    }
+
+    test("parEvalMap") {
+      check(_.parEvalMap(Int.MaxValue)(identity))
+    }
+
+    def check(pipe: Pipe[IO, IO[Unit], Unit]) =
+      (CountDownLatch[IO](2), IO.deferred[Unit])
+        .mapN { (latch, d) =>
+          val w = latch.release *> latch.await
+          val s = Stream(w *> ex, w *> IO.never.onCancel(d.complete(()).void)).covary[IO]
+          IO.race(pipe(s).compile.drain, d.get)
+        }
+        .flatten
+        .assertEquals(Right(()))
   }
 
   group("cancels unneeded") {
@@ -1136,17 +1156,19 @@ class StreamSuite extends Fs2Suite {
       check(_.parEvalMapUnordered(2)(identity))
     }
 
-    test("parEvalMapUnordered") {
+    test("parEvalMap") {
       check(_.parEvalMap(2)(identity))
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]) =
-      Deferred[IO, Unit].flatMap { d =>
-        val cancelled = IO.never.onCancel(d.complete(()).void)
-        val stream = Stream(u, cancelled).covary[IO]
-        val action = stream.through(pipe).take(1).compile.drain
-        action *> d.get.assertCompletes(())
-      }
+      IO.deferred[Unit]
+        .flatMap { d =>
+          val cancelled = IO.never.onCancel(d.complete(()).void)
+          val stream = Stream(u, cancelled).covary[IO]
+          val action = stream.through(pipe).take(1).compile.drain
+          action *> d.get
+        }
+        .assertEquals(())
   }
 
   group("waits for uncancellable completion") {
@@ -1159,14 +1181,13 @@ class StreamSuite extends Fs2Suite {
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]): IO[Unit] = {
-      val uncancMsg = "uncancellable"
-      val onFin2Msg = "onFin2"
+      val uncancellableMsg = "uncancellable"
+      val onFinalizeMsg = "onFinalize"
 
-      Ref[IO]
-        .of(List.empty[String])
+      IO.ref(Vector.empty[String])
         .flatMap { ref =>
-          val io = ref.update(uncancMsg :: _).void
-          val onFin2 = ref.update(onFin2Msg :: _)
+          val io = ref.update(_ :+ uncancellableMsg).void
+          val onFin2 = ref.update(_ :+ onFinalizeMsg)
           CountDownLatch[IO](2).flatMap { latch =>
             val w = latch.release *> latch.await
             val stream = Stream(w *> u, (w *> io).uncancelable).covary[IO]
@@ -1174,7 +1195,7 @@ class StreamSuite extends Fs2Suite {
             action *> ref.get
           }
         }
-        .assertEquals(List(onFin2Msg, uncancMsg))
+        .assertEquals(Vector(uncancellableMsg, onFinalizeMsg))
     }
   }
 }
