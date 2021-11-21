@@ -987,4 +987,15 @@ class StreamSuite extends Fs2Suite {
     identity(p) // Avoid unused warning
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
+
+  group("Stream[F, Either[Throwable, O]]") {
+    test(".evalMap(_.pure.rethrow).mask <-> .rethrow.mask") {
+      forAllF { (stream: Stream[Pure, Int]) =>
+        val s = stream.map(i => if (i > 0) i.asRight else (new RuntimeException).asLeft)
+        s.evalMap(_.pure[IO].rethrow).mask.compile.toList.flatMap { expected =>
+          s.covary[IO].rethrow.mask.compile.toList.assertEquals(expected)
+        }
+      }
+    }
+  }
 }
