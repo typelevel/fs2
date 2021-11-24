@@ -112,7 +112,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
-    val b = collection.mutable.ArrayBuilder.make(thisClassTag)
+    val b = makeArrayBuilder(thisClassTag)
     b.sizeHint(size)
     foreach(e => if (p(e)) b += e)
     Chunk.array(b.result()).asInstanceOf[Chunk[O]]
@@ -187,7 +187,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
-    val b = collection.mutable.ArrayBuilder.make[Any]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach(e => b += f(e))
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
@@ -198,7 +198,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * the output state of the previous invocation.
     */
   def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
-    val b = collection.mutable.ArrayBuilder.make[Any]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     var s = init
     foreach { o =>
@@ -211,7 +211,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val b = collection.mutable.ArrayBuilder.make[Any]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
@@ -326,7 +326,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def toIndexedChunk: Chunk[O] = this match {
     case _: Chunk.Queue[_] =>
-      val b = collection.mutable.ArrayBuilder.make[Any]
+      val b = makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
       Chunk.array(b.result()).asInstanceOf[Chunk[O]]
