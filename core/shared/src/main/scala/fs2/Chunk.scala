@@ -187,10 +187,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
-    val b = makeArrayBuilder[Any]
-    b.sizeHint(size)
-    foreach(e => b += f(e))
-    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+    val arr = new Array[Any](size)
+    foreachWithIndex((e, i) => arr(i) = f(e))
+    Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** Maps the supplied stateful function over each element, outputting the final state and the accumulated outputs.
@@ -198,15 +197,14 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * the output state of the previous invocation.
     */
   def mapAccumulate[S, O2](init: S)(f: (S, O) => (S, O2)): (S, Chunk[O2]) = {
-    val b = makeArrayBuilder[Any]
-    b.sizeHint(size)
+    val arr = new Array[Any](size)
     var s = init
-    foreach { o =>
+    foreachWithIndex { (o, i) =>
       val (s2, o2) = f(s, o)
-      b += o2
+      arr(i) = o2
       s = s2
     }
-    s -> Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+    s -> Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
