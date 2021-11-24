@@ -188,7 +188,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Creates a new chunk by applying `f` to each element in this chunk. */
   def map[O2](f: O => O2): Chunk[O2] = {
     val arr = new Array[Any](size)
-    foreachWithIndex((e, i) => arr(i) = f(e))
+    foreachWithIndex((o, i) => arr(i) = f(o))
     Chunk.array(arr).asInstanceOf[Chunk[O2]]
   }
 
