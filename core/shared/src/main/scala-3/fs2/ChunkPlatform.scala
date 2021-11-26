@@ -115,4 +115,8 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       if (offset == 0 && length == values.length) values
       else super.toIArray[O2]
   }
+
+  /** Creates a chunk from a `scala.collection.IterableOnce`. */
+  def iterableOnce[O](i: collection.IterableOnce[O]): Chunk[O] =
+    iterator(i.iterator)
 }

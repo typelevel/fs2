@@ -596,12 +596,11 @@ object Chunk
       case ix: GIndexedSeq[O] => indexedSeq(ix)
       case _ =>
         if (i.isEmpty) empty
-        else iterableOnce(i)
+        else iterator(i.iterator)
     })
 
-  /** Creates a chunk from a `scala.collection.IterableOnce`. */
-  def iterableOnce[O](i: collection.IterableOnce[O]): Chunk[O] = {
-    val itr = i.iterator
+  /** Creates a chunk from a `scala.collection.Iterator`. */
+  def iterator[O](itr: collection.Iterator[O]): Chunk[O] =
     if (itr.isEmpty) empty
     else {
       val head = itr.next()
@@ -612,7 +611,6 @@ object Chunk
         buffer(bldr.result())
       } else singleton(head)
     }
-  }
 
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
@@ -624,7 +622,7 @@ object Chunk
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
     if (c.isEmpty) empty
-    else iterableOnce(c.iterator)
+    else iterator(c.iterator)
 
   /** Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
     * it is passed to this function.

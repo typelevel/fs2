@@ -59,4 +59,8 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
     val arr = arraySeq.unsafeArray.asInstanceOf[Array[O]]
     array(arr)(ClassTag[O](arr.getClass.getComponentType))
   }
+
+  /** Creates a chunk from a `scala.collection.IterableOnce`. */
+  def iterableOnce[O](i: collection.IterableOnce[O]): Chunk[O] =
+    iterator(i.iterator)
 }
