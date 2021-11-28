@@ -274,7 +274,7 @@ class StreamZipSuite extends Fs2Suite {
 
         _ <- testControlResult.results
           .flatMap {
-            case None                       => IO.raiseError[Vector[(String, Int)]](new Throwable("Results not found"))
+            case None => IO.raiseError[Vector[(String, Int)]](new Throwable("Results not found"))
             case Some(Outcome.Succeeded(v)) => IO.pure(v)
             case Some(Outcome.Errored(ex))  => IO.raiseError[Vector[(String, Int)]](ex)
             case Some(Outcome.Canceled()) =>
