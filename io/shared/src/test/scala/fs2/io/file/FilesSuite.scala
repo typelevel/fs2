@@ -541,6 +541,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use(Files[IO].isDirectory(_))
         .assertEquals(true)
     }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isDirectory(_))
+        .assertEquals(false)
+    }
   }
 
   group("isFile") {
@@ -553,6 +560,95 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns false if the path is for a directory") {
       tempDirectory
         .use(Files[IO].isRegularFile(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isRegularFile(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isReadable") {
+    test("returns true if the path is for a readable file") {
+      tempFile
+        .use(Files[IO].isReadable(_))
+        .assertEquals(true)
+    }
+
+    test("returns true if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isReadable(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isReadable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isWritable") {
+    test("returns true if the path is for a readable file") {
+      tempFile
+        .use(Files[IO].isWritable(_))
+        .assertEquals(true)
+    }
+
+    test("returns true if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isWritable(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isWritable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isHidden") {
+    // TODO test the true-case
+
+    test("returns false if the path is for a readable file") {
+      tempFile
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isWritable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isSymbolicLink") {
+    // TODO test the true-case with an actual symlink
+
+    test("returns false if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isSymbolicLink(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isSymbolicLink(_))
         .assertEquals(false)
     }
   }

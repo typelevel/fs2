@@ -217,7 +217,7 @@ private[fs2] trait FilesCompanionPlatform {
       getPosixFileAttributes(path, followLinks).map(_.permissions)
 
     override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
-      stat(path, followLinks).map(_.isDirectory())
+      stat(path, followLinks).map(_.isDirectory()).recover { case _: NoSuchFileException => false }
 
     override def isExecutable(path: Path): F[Boolean] =
       access(path, fsMod.constants.X_OK)
@@ -234,10 +234,10 @@ private[fs2] trait FilesCompanionPlatform {
       access(path, fsMod.constants.R_OK)
 
     override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] =
-      stat(path, followLinks).map(_.isFile())
+      stat(path, followLinks).map(_.isFile()).recover { case _: NoSuchFileException => false }
 
     override def isSymbolicLink(path: Path): F[Boolean] =
-      stat(path).map(_.isSymbolicLink())
+      stat(path).map(_.isSymbolicLink()).recover { case _: NoSuchFileException => false }
 
     override def isWritable(path: Path): F[Boolean] =
       access(path, fsMod.constants.W_OK)
