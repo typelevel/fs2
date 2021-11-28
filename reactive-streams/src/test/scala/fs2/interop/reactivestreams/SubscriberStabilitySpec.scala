@@ -58,7 +58,7 @@ class SubscriberStabilitySpec extends Fs2Suite {
       Stream.repeatEval(randomDelay(rnd))
     }
 
-    val stream = fromPublisher[IO, ByteBuffer](publisher)
+    val stream = fromPublisher[IO, ByteBuffer](publisher, bufferSize = 16)
       .map(Left(_))
       .interleave(randomStream.map(Right(_)))
       .collect { case Left(buf) => buf }

@@ -21,6 +21,7 @@
 
 package fs2
 
+import cats.ApplicativeThrow
 import java.nio.{Buffer, ByteBuffer, CharBuffer}
 import java.nio.charset.{
   CharacterCodingException,
@@ -250,8 +251,31 @@ object text {
               outBufferSize + (decoder.maxCharsPerByte() * nextAcc.size).toInt
             )
           )
-        else Pull.done // no more input, no more output
+        else flush(decoder, lastOutBuffer) // no more input, flush for final output
       }
+
+    def flush(
+        decoder: CharsetDecoder,
+        out: CharBuffer
+    ): Pull[F, String, Unit] = {
+      (out: Buffer).clear()
+      decoder.flush(out) match {
+        case res if res.isUnderflow =>
+          if (out.position() > 0) {
+            (out: Buffer).flip()
+            Pull.output1(out.toString) >> Pull.done
+          } else
+            Pull.done
+        case res if res.isOverflow =>
+          // Can't find any that output more than two chars. This
+          // oughtta do it.
+          val newSize = (out.capacity + decoder.maxCharsPerByte * 2).toInt
+          val bigger = CharBuffer.allocate(newSize)
+          flush(decoder, bigger)
+        case res =>
+          ApplicativeThrow[Pull[F, String, *]].catchNonFatal(res.throwException())
+      }
+    }
 
     { s =>
       Stream.suspend(Stream.emit(charset.newDecoder())).flatMap { decoder =>
@@ -407,7 +431,7 @@ object text {
               }
               mod match {
                 case 0 =>
-                  buffer = (cidx & 0x3f)
+                  buffer = cidx & 0x3f
                   mod += 1
                 case 1 | 2 =>
                   buffer = (buffer << 6) | (cidx & 0x3f)

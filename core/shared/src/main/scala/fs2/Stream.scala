@@ -548,11 +548,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     } yield {
       def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt)
 
-      val compileBack: F2[Boolean] = watch(that).compile.drain.attempt.flatMap {
+      val compileBack: F2[Unit] = watch(that).compile.drain.guaranteeCase {
         // Pass the result of backstream completion in the backResult deferred.
         // IF result of back-stream was failed, interrupt fore. Otherwise, let it be
-        case r @ Right(_) => backResult.complete(r)
-        case l @ Left(_)  => backResult.complete(l) >> interrupt.complete(())
+        case Outcome.Errored(t) => backResult.complete(Left(t)) >> interrupt.complete(()).void
+        case _                  => backResult.complete(Right(())).void
       }
 
       // stop background process but await for it to finalise with a result
@@ -674,6 +674,30 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def meteredStartImmediately[F2[x] >: F[x]: Temporal](rate: FiniteDuration): Stream[F2, O] =
     (Stream.emit(()) ++ Stream.fixedRate[F2](rate)).zipRight(this)
+
+  /** Waits the specified `delay` between each event.
+    *
+    * The resulting stream emits the same elements from `this` stream,
+    * but split into singleton chunks. Between each chunk (element) it
+    * adds a pause of a fixed `delay` duration.
+    *
+    * This method differs in the timing of elements from [[metered]].
+    * The [[metered]] combinator takes a "schedule" for elements to be released,
+    * and before each element introduces just the necessary delay to hit that time.
+    * To do so, it deducts from the pause any delay caused by other effects
+    * in the stream, or the pauses the stream consumer takes while pulling.
+    * This method, instead, simply introduced a fixed sleep time between elements,
+    * irrespective of other pauses in the stream or the consumer.
+    *
+    * Starts immediately, same as [[meteredStartImmediately]]
+    * unless parameter `startImmediately` is set to false.
+    */
+  def spaced[F2[x] >: F[x]: Temporal](
+      delay: FiniteDuration,
+      startImmediately: Boolean = true
+  ): Stream[F2, O] =
+    ((if (startImmediately) Stream.emit(()) else Stream.empty) ++ Stream.fixedDelay[F2](delay))
+      .zipRight(this)
 
   /** Logs the elements of this stream as they are pulled.
     *

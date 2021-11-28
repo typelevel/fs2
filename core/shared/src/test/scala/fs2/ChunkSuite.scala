@@ -211,4 +211,8 @@ class ChunkSuite extends Fs2Suite {
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
   }
+
+  test("compactUntagged - regression #2679") {
+    Chunk.Queue.singleton(Chunk.singleton(1)).traverse(x => Option(x))
+  }
 }

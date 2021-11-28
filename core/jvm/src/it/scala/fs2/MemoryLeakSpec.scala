@@ -287,4 +287,12 @@ class MemoryLeakSpec extends FunSuite {
   leakTest("merge + parJoinUnbounded") {
     Stream(Stream.constant(1).covary[IO].merge(Stream())).parJoinUnbounded
   }
+
+  leakTest("observe + zip") {
+    Stream
+      .iterate(0)(_ + 1)
+      .covary[IO]
+      .observe(_.drain)
+      .zipLeft(Stream.constant(1))
+  }
 }

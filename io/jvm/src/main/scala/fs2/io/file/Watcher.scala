@@ -28,15 +28,15 @@ import scala.concurrent.duration._
 import cats.effect.kernel._
 import cats.syntax.all._
 import java.nio.file.{
-  Files => JFiles,
   FileSystem,
   FileSystems,
   FileVisitResult,
+  Files => JFiles,
   Path => JPath,
   SimpleFileVisitor,
   StandardWatchEventKinds,
-  WatchKey,
   WatchEvent,
+  WatchKey,
   WatchService
 }
 import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes}

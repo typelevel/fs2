@@ -12,7 +12,7 @@ You can build the site and preview it locally.
 ## With Nix
 
 1. Run `nix-shell --run "sbt 'microsite/mdoc --watch'"`.
-2. Run `nix-shell --run "node_modules/docsify-cli/bin/docsify serve target/website/docs/"` in a different terminal.
+2. Run `nix-shell --run "node_modules/docsify-cli/bin/docsify serve target/website/"` in a different terminal.
 
 ## Without Nix
 

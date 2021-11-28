@@ -23,7 +23,7 @@ package fs2
 
 import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{IO, Sync}
 import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
 import cats.syntax.all._
@@ -399,5 +399,18 @@ class StreamInterruptSuite extends Fs2Suite {
       .compile
       .toList
       .assertEquals(List(2))
+  }
+
+  def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = s.compile
+
+  test("23 - sync compiler interruption - succeeds when interrupted never") {
+    compileWithSync(Stream.empty[IO].interruptWhen(IO.never[Either[Throwable, Unit]])).toList
+      .assertEquals(Nil)
+  }
+
+  test("24 - sync compiler interruption - non-terminating when interrupted") {
+    val s = Stream.never[IO].interruptWhen(IO.unit.attempt)
+    val interrupt = IO.sleep(250.millis)
+    IO.race(compileWithSync(s).drain, interrupt).map(_.isRight).assert
   }
 }

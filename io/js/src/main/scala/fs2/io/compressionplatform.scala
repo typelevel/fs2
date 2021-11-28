@@ -42,14 +42,20 @@ private[io] trait compressionplatform {
           .setLevel(deflateParams.level.juzDeflaterLevel.toDouble)
           .setStrategy(deflateParams.strategy.juzDeflaterStrategy.toDouble)
           .setFlush(deflateParams.flushMode.juzDeflaterFlushMode.toDouble)
+
         Stream
-          .eval(F.delay((deflateParams.header match {
-            case ZLibParams.Header.GZIP => zlibMod.createGzip(options)
-            case ZLibParams.Header.ZLIB => zlibMod.createDeflate(options)
-          }).asInstanceOf[Duplex]))
-          .flatMap { deflate =>
-            readReadable[F](deflate.pure.widen)
+          .resource(suspendReadableAndRead() {
+            (deflateParams.header match {
+              case ZLibParams.Header.GZIP => zlibMod.createGzip(options)
+              case ZLibParams.Header.ZLIB => zlibMod.createDeflate(options)
+            }).asInstanceOf[Duplex]
+          })
+          .flatMap { case (deflate, out) =>
+            out
               .concurrently(in.through(writeWritable[F](deflate.pure.widen)))
+              .onFinalize(
+                F.async_[Unit](cb => deflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(()))))
+              )
           }
       }
 
@@ -58,17 +64,20 @@ private[io] trait compressionplatform {
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
         Stream
-          .eval(F.delay((inflateParams.header match {
-            case ZLibParams.Header.GZIP => zlibMod.createGunzip(options)
-            case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
-          }).asInstanceOf[Duplex]))
-          .flatMap { inflate =>
-            readReadable[F](inflate.pure.widen)
+          .resource(suspendReadableAndRead() {
+            (inflateParams.header match {
+              case ZLibParams.Header.GZIP => zlibMod.createGunzip(options)
+              case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
+            }).asInstanceOf[Duplex]
+          })
+          .flatMap { case (inflate, out) =>
+            out
               .concurrently(in.through(writeWritable[F](inflate.pure.widen)))
-
+              .onFinalize(
+                F.async_[Unit](cb => inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(()))))
+              )
           }
       }
 
     }
-
 }

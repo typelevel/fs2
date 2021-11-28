@@ -29,16 +29,13 @@ import fs2.io.internal.ByteChunkOps._
 
 class NodeJSCompressionSuite extends CompressionSuite {
 
-  override def scalaCheckTestParameters =
-    super.scalaCheckTestParameters.withMaxSize(10000)
-
   override def deflateStream(
       b: Array[Byte],
       level: Int,
       strategy: Int,
       nowrap: Boolean
   ): Array[Byte] = {
-    val in = Chunk.array(b).toUint8Array
+    val in = Chunk.array(b).toNodeUint8Array
     val options = zlibMod
       .ZlibOptions()
       .setLevel(level.toDouble)
@@ -52,7 +49,7 @@ class NodeJSCompressionSuite extends CompressionSuite {
   }
 
   override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
-    val in = Chunk.array(b).toUint8Array
+    val in = Chunk.array(b).toNodeUint8Array
     val options = zlibMod.ZlibOptions()
     val out =
       if (nowrap)

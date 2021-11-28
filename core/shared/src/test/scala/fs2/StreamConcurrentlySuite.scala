@@ -23,6 +23,7 @@ package fs2
 
 import scala.concurrent.duration._
 
+import cats.data.EitherT
 import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.std.Semaphore
@@ -169,5 +170,24 @@ class StreamConcurrentlySuite extends Fs2Suite {
       .compile
       .lastOrError
       .map(cnt => assert(cnt >= iterations, s"cnt: $cnt, iterations: $iterations"))
+  }
+
+  test("background stream completes with short-circuiting transformers") {
+    Stream(1, 2, 3)
+      .concurrently(Stream.eval(EitherT.leftT[IO, Int]("left")))
+      .compile
+      .lastOrError
+      .value
+      .assertEquals(Right(3))
+  }
+
+  test("foreground stream short-circuits") {
+    Stream(1, 2, 3)
+      .evalMap(n => EitherT.cond[IO](n % 2 == 0, n, "left"))
+      .concurrently(Stream.eval(EitherT.rightT[IO, String](42)))
+      .compile
+      .lastOrError
+      .value
+      .assertEquals(Left("left"))
   }
 }

@@ -1,10 +1,10 @@
 import com.typesafe.tools.mima.core._
 import sbtcrossproject.crossProject
 
-addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
+addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
-  "; compile:scalafmtCheck; test:scalafmtCheck; it:scalafmtCheck; scalafmtSbtCheck"
+  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
 )
 addCommandAlias("testJVM", ";rootJVM/test")
 addCommandAlias("testJS", "rootJS/test")
@@ -12,7 +12,7 @@ addCommandAlias("testJS", "rootJS/test")
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
-ThisBuild / baseVersion := "3.1"
+ThisBuild / baseVersion := "3.2"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -20,9 +20,9 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-val NewScala = "2.13.6"
+val NewScala = "2.13.7"
 
-ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.1.0", "2.12.15", NewScala)
 
 ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
 ThisBuild / githubWorkflowJavaVersions := Seq("adoptium@17")
@@ -153,13 +153,38 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadCancelTarget"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Compiler$TargetLowPriority$MonadErrorTarget"),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.Compiler$TargetLowPriority$SyncTarget"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$VectorChunk"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.compression.DeflateParams.fhCrcEnabled"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.this"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.compression.DeflateParams$DeflateParamsImpl$"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.DeflateParams#DeflateParamsImpl.apply"
+  )
 )
 
 lazy val root = project
   .in(file("."))
   .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
-  .aggregate(coreJVM, coreJS, io.jvm, node.js, io.js, reactiveStreams, benchmark)
+  .aggregate(
+    coreJVM,
+    coreJS,
+    io.jvm,
+    node.js,
+    io.js,
+    scodec.jvm,
+    scodec.js,
+    protocols.jvm,
+    protocols.js,
+    reactiveStreams,
+    benchmark
+  )
 
 lazy val rootJVM = project
   .in(file("."))
@@ -186,8 +211,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect-laws" % "3.3-162-2022ef9" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.3-162-2022ef9" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.29",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.5" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.3" % Test,
+      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.6" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
     ),
     Compile / unmanagedSourceDirectories ++= {
@@ -247,16 +272,24 @@ lazy val node = crossProject(JSPlatform)
     stOutputPackage := "fs2.internal.jsdeps",
     stPrivateWithin := Some("fs2"),
     stStdlib := List("es2020"),
+    stUseScalaJsDom := false,
     stIncludeDev := true
   )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .enablePlugins(SbtOsgi)
-  .jsConfigure(_.enablePlugins(ScalaJSBundlerPlugin))
+  .jvmEnablePlugins(SbtOsgi)
+  .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.0.4",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.1"
+  )
+  .jvmSettings(
+    Test / fork := true,
+    libraryDependencies ++= Seq(
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.13" % Optional,
+      "com.google.jimfs" % "jimfs" % "1.2" % Test
+    ),
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -270,13 +303,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
-  .jvmSettings(
-    Test / fork := true,
-    libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.11" % Optional,
-      "com.google.jimfs" % "jimfs" % "1.2" % Test
-    )
-  )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
@@ -285,6 +311,63 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))
+
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+  .in(file("scodec"))
+  .enablePlugins(SbtOsgi)
+  .settings(
+    name := "fs2-scodec",
+    libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
+                                                               scalaVersion.value.startsWith("2.")
+                                                             )
+                                                               "1.11.9"
+                                                             else "2.1.0"),
+    OsgiKeys.exportPackage := Seq("fs2.interop.scodec.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings,
+    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
+    }
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .dependsOn(core % "compile->compile;test->test", io % "test")
+
+lazy val protocols = crossProject(JVMPlatform, JSPlatform)
+  .in(file("protocols"))
+  .enablePlugins(SbtOsgi)
+  .settings(
+    name := "fs2-protocols",
+    OsgiKeys.exportPackage := Seq("fs2.protocols.*"),
+    OsgiKeys.privatePackage := Seq(),
+    OsgiKeys.importPackage := {
+      val Some((major, minor)) = CrossVersion.partialVersion(scalaVersion.value)
+      Seq(
+        s"""scala.*;version="[$major.$minor,$major.${minor + 1})"""",
+        """fs2.*;version="${Bundle-Version}"""",
+        "*"
+      )
+    },
+    OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
+    osgiSettings,
+    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
+      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
+    }
+  )
+  .jsSettings(
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .dependsOn(core % "compile->compile;test->test", scodec, io)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
@@ -336,13 +419,13 @@ lazy val microsite = project
     githubWorkflowArtifactUpload := false,
     fatalWarningsInCI := false
   )
-  .dependsOn(coreJVM, io.jvm, reactiveStreams)
+  .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(MdocPlugin, NoPublishPlugin)
 
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
     List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '2.13.6'")
+    cond = Some(s"matrix.scala == '2.13.7'")
   )
 )
 

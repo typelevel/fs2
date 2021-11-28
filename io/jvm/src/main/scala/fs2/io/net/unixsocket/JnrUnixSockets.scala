@@ -24,8 +24,8 @@ package fs2.io.net.unixsocket
 import cats.effect.kernel.Async
 import jnr.unixsocket.{
   UnixServerSocketChannel,
-  UnixSocketChannel,
-  UnixSocketAddress => JnrUnixSocketAddress
+  UnixSocketAddress => JnrUnixSocketAddress,
+  UnixSocketChannel
 }
 
 object JnrUnixSockets {

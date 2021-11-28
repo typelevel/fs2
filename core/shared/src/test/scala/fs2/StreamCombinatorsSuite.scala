@@ -370,7 +370,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(List(2, 4, 6, 8))
     }
 
-    test("filters up to N items in parallel") {
+    test("filters up to N items in parallel".flaky) {
       val s = Stream.range(0, 100)
       val n =
         if (isJVM) 5
@@ -1063,6 +1063,50 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .compile
       .toList
       .map(results => assert(results.size == 1))
+  }
+
+  test("spaced should start immediately if startImmediately is not set") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .spaced(1.second)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 1))
+  }
+
+  test("spaced should not start immediately if startImmediately is set to false") {
+    Stream
+      .emit[IO, Int](1)
+      .repeatN(10)
+      .spaced(1.second, startImmediately = false)
+      .interruptAfter(500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.isEmpty))
+  }
+
+  test("metered should not wait between events that last longer than the rate") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .metered(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 3))
+  }
+
+  test("spaced should wait between events") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .spaced(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 2))
   }
 
   test("mapAsyncUnordered") {

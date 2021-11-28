@@ -25,6 +25,7 @@ package net
 package tcp
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
@@ -162,13 +163,25 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     test("errors - should be captured in the effect") {
       (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
-        _ <- Network[IO].client(bindAddress).use(_ => IO.unit)
-      } yield ()).intercept[ConnectException] >> (for {
+        _ <- Network[IO].client(bindAddress).use(_ => IO.unit).recover {
+          case ex: ConnectException => assertEquals(ex.getMessage, "Connection refused")
+        }
+      } yield ()) >> (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
-        _ <- Network[IO].serverResource(Some(bindAddress.host), Some(bindAddress.port))
-      } yield ()).use_.intercept[BindException] >> (for {
-        _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_
-      } yield ()).intercept[UnknownHostException]
+        _ <- Network[IO]
+          .serverResource(Some(bindAddress.host), Some(bindAddress.port))
+          .void
+          .recover { case ex: BindException =>
+            assertEquals(ex.getMessage, "Address already in use")
+          }
+      } yield ()).use_ >> (for {
+        _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_.recover {
+          case ex: UnknownHostException =>
+            assert(
+              ex.getMessage == "not.example.com: Name or service not known" || ex.getMessage == "not.example.com: nodename nor servname provided, or not known"
+            )
+        }
+      } yield ())
     }
 
     test("options - should work with socket options") {
