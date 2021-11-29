@@ -24,10 +24,7 @@ package fs2
 import scala.collection.mutable.{ArrayBuilder, WrappedArray}
 import scala.reflect.ClassTag
 
-private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
-  protected def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
-    ArrayBuilder.make()(ct)
-}
+private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
 
 private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
 
@@ -36,6 +33,9 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       case a: WrappedArray[O] => Some(wrappedArray(a))
       case _                  => None
     }
+
+  private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make()(ct)
 
   /** Creates a chunk backed by a `WrappedArray`
     */

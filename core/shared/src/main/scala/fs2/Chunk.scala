@@ -112,7 +112,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
-    val b = makeArrayBuilder(thisClassTag)
+    val b = Chunk.makeArrayBuilder(thisClassTag)
     b.sizeHint(size)
     foreach(e => if (p(e)) b += e)
     Chunk.array(b.result()).asInstanceOf[Chunk[O]]
@@ -209,7 +209,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val b = makeArrayBuilder[Any]
+    val b = Chunk.makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
@@ -324,7 +324,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def toIndexedChunk: Chunk[O] = this match {
     case _: Chunk.Queue[_] =>
-      val b = makeArrayBuilder[Any]
+      val b = Chunk.makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
       Chunk.array(b.result()).asInstanceOf[Chunk[O]]
@@ -608,10 +608,10 @@ object Chunk
     else {
       val head = itr.next()
       if (itr.hasNext) {
-        val bldr = collection.mutable.Buffer.newBuilder[O]
+        val bldr = Chunk.makeArrayBuilder[Any]
         bldr += head
         bldr ++= itr
-        buffer(bldr.result())
+        array(bldr.result()).asInstanceOf[Chunk[O]]
       } else singleton(head)
     }
 

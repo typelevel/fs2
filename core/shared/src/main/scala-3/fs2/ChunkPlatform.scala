@@ -28,9 +28,6 @@ import scala.reflect.ClassTag
 
 private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
 
-  protected def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
-    ArrayBuilder.make(ct)
-
   def toArraySeq[O2 >: O: ClassTag]: ArraySeq[O2] = {
     val array: Array[O2] = new Array[O2](size)
     copyToArray(array)
@@ -65,6 +62,9 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       case a: immutable.ArraySeq[O] => Some(arraySeq(a))
       case _                        => None
     }
+
+  private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make(ct)
 
   /** Creates a chunk backed by an immutable `ArraySeq`.
     */
