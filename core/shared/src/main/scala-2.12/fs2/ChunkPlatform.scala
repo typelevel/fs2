@@ -21,10 +21,13 @@
 
 package fs2
 
-import scala.collection.mutable.WrappedArray
+import scala.collection.mutable.{ArrayBuilder, WrappedArray}
 import scala.reflect.ClassTag
 
-private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
+private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
+  protected def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make()(ct)
+}
 
 private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
 

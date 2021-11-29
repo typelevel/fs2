@@ -23,9 +23,13 @@ package fs2
 
 import scala.collection.immutable.ArraySeq
 import scala.collection.immutable
+import scala.collection.mutable.ArrayBuilder
 import scala.reflect.ClassTag
 
 private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
+
+  protected def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make(ct)
 
   def toArraySeq[O2 >: O: ClassTag]: ArraySeq[O2] = {
     val array: Array[O2] = new Array[O2](size)
