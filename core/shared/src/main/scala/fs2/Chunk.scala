@@ -32,7 +32,8 @@ import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, Traver
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
-/** Strict, finite sequence of values that allows index-based random access of elements.
+/** Immutable, strict, finite sequence of values that supports efficient index-based random access of elements,
+  * is memory efficient for all sizes, and avoids unnecessary copying.
   *
   * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
   * (e.g., `Chunk.array`, `Chunk.seq`, `Chunk.vector`).
@@ -107,12 +108,14 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
   def dropRight(n: Int): Chunk[O] = if (n <= 0) this else take(size - n)
 
+  protected def thisClassTag: ClassTag[Any] = implicitly[ClassTag[Any]]
+
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
-    val b = collection.mutable.Buffer.newBuilder[O]
+    val b = makeArrayBuilder(thisClassTag)
     b.sizeHint(size)
     foreach(e => if (p(e)) b += e)
-    Chunk.buffer(b.result())
+    Chunk.array(b.result()).asInstanceOf[Chunk[O]]
   }
 
   /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
@@ -206,13 +209,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
       if (o2.isDefined) b += o2.get
     }
-    Chunk.buffer(b.result())
+    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
   /** False if size is zero, true otherwise. */
@@ -321,10 +324,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def toIndexedChunk: Chunk[O] = this match {
     case _: Chunk.Queue[_] =>
-      val b = collection.mutable.Buffer.newBuilder[O]
+      val b = makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
-      Chunk.buffer(b.result())
+      Chunk.array(b.result()).asInstanceOf[Chunk[O]]
     case other => other
   }
 
@@ -678,9 +681,12 @@ object Chunk
 
   case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
       extends Chunk[O] {
+
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
+
+    override protected def thisClassTag: ClassTag[Any] = ct.asInstanceOf[ClassTag[Any]]
 
     def size = length
     def apply(i: Int) = values(offset + i)

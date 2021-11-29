@@ -205,8 +205,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.6.1",
-      "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
+      "org.typelevel" %%% "cats-core" % "2.7.0",
+      "org.typelevel" %%% "cats-laws" % "2.7.0" % Test,
       "org.typelevel" %%% "cats-effect" % "3.2.9",
       "org.typelevel" %%% "cats-effect-laws" % "3.2.9" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.2.9" % Test,
@@ -287,7 +287,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.12" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.13" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     ),
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
