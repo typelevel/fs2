@@ -372,9 +372,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("filters up to N items in parallel".flaky) {
       val s = Stream.range(0, 100)
-      val n =
-        if (isJVM) 5
-        else 2 // for some reason JS is running evalFilterAsync with only 2 concurrent level
+      val n = 5
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap { case (sem, sig) =>
@@ -389,7 +387,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
               ensureAcquired
                 .bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  sig.update(_ + 1).bracket(_ => IO.sleep(100.millis))(_ => sig.update(_ - 1))
                 )(_ => sem.release)
                 .as(true)
             }
@@ -462,9 +460,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("filters up to N items in parallel") {
       val s = Stream.range(0, 100)
-      val n =
-        if (isJVM) 5
-        else 2 // for some reason JS is running evalFilterNotAsync with only 2 concurrent level
+      val n = 5
 
       (Semaphore[IO](n.toLong), SignallingRef[IO, Int](0)).tupled
         .flatMap { case (sem, sig) =>
@@ -479,7 +475,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
               ensureAcquired
                 .bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  sig.update(_ + 1).bracket(_ => IO.sleep(100.millis))(_ => sig.update(_ - 1))
                 )(_ => sem.release)
                 .as(false)
             }
