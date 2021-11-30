@@ -2384,7 +2384,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @example {{{
     * scala> import cats.effect.SyncIO
     * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[SyncIO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync()
-    * res0: List[Int] = List(-1)
+    * res0: List[Int] = List(1, 2, -1)
     * }}}
     */
   def rethrow[F2[x] >: F[x], O2](implicit
@@ -2392,11 +2392,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       rt: RaiseThrowable[F2]
   ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
-      val firstError = c.collectFirst { case Left(err) => err }
-      firstError match {
-        case None    => Stream.chunk(c.collect { case Right(i) => i })
-        case Some(h) => Stream.raiseError[F2](h)
-      }
+      val size = c.size
+      val builder = Chunk.makeArrayBuilder[Any]
+      builder.sizeHint(size)
+      var i = 0
+      var exOpt: Option[Throwable] = None
+      while (i < size && exOpt.isEmpty)
+        c(i) match {
+          case Left(ex) =>
+            exOpt = ex.some
+          case Right(o) =>
+            builder += o
+            i += 1
+        }
+      val chunk = Chunk.array(builder.result()).asInstanceOf[Chunk[O2]]
+      Stream.chunk(chunk) ++ exOpt.map(Stream.raiseError[F2]).getOrElse(Stream.empty)
     }
 
   /** Left fold which outputs all intermediate results.
