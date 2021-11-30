@@ -21,19 +21,15 @@
 
 package fs2
 
-import cats._
 import cats.effect.kernel.Sync
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream}
-import java.nio.charset.Charset
 
 /** Provides various ways to work with streams that perform IO.
   */
 package object io extends ioplatform {
   type IOException = java.io.IOException
-
-  private val utf8Charset = Charset.forName("UTF-8")
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -115,31 +111,5 @@ package object io extends ioplatform {
         else Stream.eval(fos)
       os.flatMap(os => useOs(os) ++ Stream.exec(F.blocking(os.flush())))
     }
-
-  //
-  // STDIN/STDOUT Helpers
-
-  /** Stream of bytes read asynchronously from standard input. */
-  def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
-    readInputStream(Sync[F].blocking(System.in), bufSize, false)
-
-  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
-    writeOutputStream(Sync[F].blocking(System.out), false)
-
-  /** Writes this stream to standard output asynchronously, converting each element to
-    * a sequence of bytes via `Show` and the given `Charset`.
-    *
-    * Each write operation is performed on the supplied execution context. Writes are
-    * blocking so the execution context should be configured appropriately.
-    */
-  def stdoutLines[F[_]: Sync, O: Show](
-      charset: Charset = utf8Charset
-  ): Pipe[F, O, INothing] =
-    _.map(_.show).through(text.encode(charset)).through(stdout)
-
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
-    stdin(bufSize).through(text.utf8.decode)
 
 }

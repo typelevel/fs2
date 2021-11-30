@@ -21,12 +21,13 @@
 
 package fs2
 
+import cats.effect.kernel.Outcome
+import cats.effect.testkit.TestControl
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 
 import scala.annotation.nowarn
 import scala.concurrent.duration._
-
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
@@ -226,8 +227,6 @@ class StreamZipSuite extends Fs2Suite {
     }
 
     test("parZip evaluates effects with bounded concurrency") {
-      val (env, runtime) = createDeterministicRuntime
-
       // track progress of the computation
       @volatile var lhs: Int = 0
       @volatile var rhs: Int = 0
@@ -248,25 +247,43 @@ class StreamZipSuite extends Fs2Suite {
         Stream(1, 2, 3).evalTap(_ => IO { rhs = rhs + 1 })
       ).evalTap(x => IO { output = output :+ x })
 
-      val result = stream.compile.toVector.unsafeToFuture()(runtime)
+      for {
+        testControlResult <- TestControl.execute(stream.compile.toVector)
 
-      // lhsAt, rhsAt and output at time T = [1s, 2s, ..]
-      val snapshots = Vector(
-        (1, 0, Vector()),
-        (1, 1, Vector("a" -> 1)),
-        (1, 2, Vector("a" -> 1)),
-        (2, 2, Vector("a" -> 1, "b" -> 2)),
-        (3, 2, Vector("a" -> 1, "b" -> 2)),
-        (3, 3, Vector("a" -> 1, "b" -> 2, "c" -> 3))
-      )
+        // lhsAt, rhsAt and output at time T = [1s, 2s, ..]
+        snapshots = Vector(
+          (1, 0, Vector()),
+          (1, 1, Vector("a" -> 1)),
+          (1, 2, Vector("a" -> 1)),
+          (2, 2, Vector("a" -> 1, "b" -> 2)),
+          (3, 2, Vector("a" -> 1, "b" -> 2)),
+          (3, 3, Vector("a" -> 1, "b" -> 2, "c" -> 3))
+        )
 
-      snapshots.foreach { snapshot =>
-        env.tick(1.second)
-        assertEquals((lhs, rhs, output), snapshot)
-      }
+        _ <- testControlResult.tick
 
-      env.tick(1.second)
-      result.map(r => assertEquals(r, snapshots.last._3))(munitExecutionContext)
+        _ <- snapshots.traverse_ { snapshot =>
+          testControlResult.nextInterval.flatMap(nextInterval =>
+            testControlResult
+              .advanceAndTick(nextInterval)
+              .map(_ => assertEquals((lhs, rhs, output), snapshot))
+          )
+        }
+
+        _ <- testControlResult.tickAll
+
+        _ <- testControlResult.results
+          .flatMap {
+            case None => IO.raiseError[Vector[(String, Int)]](new Throwable("Results not found"))
+            case Some(Outcome.Succeeded(v)) => IO.pure(v)
+            case Some(Outcome.Errored(ex))  => IO.raiseError[Vector[(String, Int)]](ex)
+            case Some(Outcome.Canceled()) =>
+              IO.raiseError[Vector[(String, Int)]](
+                new Throwable("Cancelled found on results outcome")
+              )
+          }
+          .map(r => assertEquals(r, snapshots.last._3))
+      } yield ()
     }
   }
 

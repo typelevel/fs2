@@ -217,27 +217,24 @@ private[fs2] trait FilesCompanionPlatform {
       getPosixFileAttributes(path, followLinks).map(_.permissions)
 
     override def isDirectory(path: Path, followLinks: Boolean): F[Boolean] =
-      stat(path, followLinks).map(_.isDirectory())
+      stat(path, followLinks).map(_.isDirectory()).recover { case _: NoSuchFileException => false }
 
     override def isExecutable(path: Path): F[Boolean] =
       access(path, fsMod.constants.X_OK)
 
-    private val HiddenPattern = raw"/(^|\/)\.[^\/\.]/g".r
     override def isHidden(path: Path): F[Boolean] = F.pure {
-      path.toString match {
-        case HiddenPattern() => true
-        case _               => false
-      }
+      val fileName = path.fileName.toString
+      fileName.length >= 2 && fileName(0) == '.' && fileName(1) != '.'
     }
 
     override def isReadable(path: Path): F[Boolean] =
       access(path, fsMod.constants.R_OK)
 
     override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] =
-      stat(path, followLinks).map(_.isFile())
+      stat(path, followLinks).map(_.isFile()).recover { case _: NoSuchFileException => false }
 
     override def isSymbolicLink(path: Path): F[Boolean] =
-      stat(path).map(_.isSymbolicLink())
+      stat(path).map(_.isSymbolicLink()).recover { case _: NoSuchFileException => false }
 
     override def isWritable(path: Path): F[Boolean] =
       access(path, fsMod.constants.W_OK)
