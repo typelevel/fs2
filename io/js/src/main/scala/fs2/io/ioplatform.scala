@@ -209,6 +209,7 @@ private[fs2] trait ioplatform {
           new streamMod.Duplex(
             streamMod
               .DuplexOptions()
+              .setAutoDestroy(false)
               .setRead { (duplex, _) =>
                 val readable = duplex.asInstanceOf[streamMod.Readable]
                 dispatcher.unsafeRunAndForget(
