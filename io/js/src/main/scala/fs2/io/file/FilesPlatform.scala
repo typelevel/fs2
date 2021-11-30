@@ -222,12 +222,9 @@ private[fs2] trait FilesCompanionPlatform {
     override def isExecutable(path: Path): F[Boolean] =
       access(path, fsMod.constants.X_OK)
 
-    private val HiddenPattern = raw"/(^|\/)\.[^\/\.]/g".r
     override def isHidden(path: Path): F[Boolean] = F.pure {
-      path.toString match {
-        case HiddenPattern() => true
-        case _               => false
-      }
+      val fileName = path.fileName.toString
+      fileName.length >= 2 && fileName(0) == '.' && fileName(1) != '.'
     }
 
     override def isReadable(path: Path): F[Boolean] =

@@ -614,18 +614,60 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
   }
 
   group("isHidden") {
-    // TODO test the true-case
 
-    test("returns false if the path is for a readable file") {
+    test("returns false if the path is for a non-hidden file") {
       tempFile
         .use(Files[IO].isHidden(_))
         .assertEquals(false)
     }
 
-    test("returns false if the path is for a directory") {
+    test("returns false if the path is for a non-hidden directory") {
       tempDirectory
         .use(Files[IO].isHidden(_))
         .assertEquals(false)
+    }
+
+    test("returns true if the path is for a hidden file") {
+      val hiddenFile = for {
+        dir <- tempDirectory
+        hiddenFilePath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createFile(hiddenFilePath)) { _ =>
+          Files[IO].deleteIfExists(hiddenFilePath).void
+        }
+      } yield hiddenFilePath
+      hiddenFile
+        .use(Files[IO].isHidden(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path is for a non-hidden file in a hidden directory") {
+      val fileInHiddenDir = for {
+        dir <- tempDirectory
+        hiddenDirPath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createDirectory(hiddenDirPath)) { _ =>
+          Files[IO].deleteIfExists(hiddenDirPath).void
+        }
+        filePath = hiddenDirPath.resolve("not-hidden")
+        _ <- Resource.make(Files[IO].createFile(filePath)) { _ =>
+          Files[IO].deleteIfExists(filePath).void
+        }
+      } yield filePath
+      fileInHiddenDir
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns true if the path is for a hidden directory") {
+      val hiddenDir = for {
+        dir <- tempDirectory
+        hiddenDirPath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createDirectory(hiddenDirPath)) { _ =>
+          Files[IO].deleteIfExists(hiddenDirPath).void
+        }
+      } yield hiddenDirPath
+      hiddenDir
+        .use(Files[IO].isHidden(_))
+        .assertEquals(true)
     }
 
     test("returns false if the path does not exist") {
