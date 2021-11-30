@@ -22,21 +22,26 @@
 package fs2
 package io
 
+import cats.Show
 import cats.effect.SyncIO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
+import cats.effect.kernel.Sync
 import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.internal.jsdeps.std
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.internal.jsdeps.node.processMod
 import fs2.internal.jsdeps.node.streamMod
+import fs2.internal.jsdeps.std
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
 import fs2.io.internal.ThrowableOps._
 
+import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
 import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
@@ -288,4 +293,78 @@ private[fs2] trait ioplatform {
       duplex.asInstanceOf[Duplex],
       drainIn.merge(out).adaptError { case IOException(ex) => ex }
     )
+
+  /** Stream of bytes read asynchronously from standard input. */
+  def stdin[F[_]: Async]: Stream[F, Byte] = stdinAsync
+
+  private def stdinAsync[F[_]: Async]: Stream[F, Byte] =
+    Stream
+      .resource(suspendReadableAndRead(false, false)(processMod.stdin.asInstanceOf[Readable]))
+      .flatMap(_._2)
+
+  /** Stream of bytes read asynchronously from standard input.
+    * Takes a dummy `Int` parameter for source-compatibility with JVM.
+    */
+  @nowarn("cat=unused")
+  def stdin[F[_]: Async](ignored: Int): Stream[F, Byte] = stdin
+
+  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
+  def stdout[F[_]: Async]: Pipe[F, Byte, INothing] = stdoutAsync
+
+  private def stdoutAsync[F[_]: Async]: Pipe[F, Byte, INothing] =
+    writeWritable(processMod.stdout.asInstanceOf[Writable].pure, false)
+
+  /** Pipe of bytes that writes emitted values to standard error asynchronously. */
+  def stderr[F[_]: Async]: Pipe[F, Byte, INothing] =
+    writeWritable(processMod.stderr.asInstanceOf[Writable].pure, false)
+
+  /** Writes this stream to standard output asynchronously, converting each element to
+    * a sequence of bytes via `Show` and the given `Charset`.
+    */
+  def stdoutLines[F[_]: Async, O: Show](
+      charset: Charset = StandardCharsets.UTF_8
+  ): Pipe[F, O, INothing] =
+    _.map(_.show).through(text.encode(charset)).through(stdoutAsync)
+
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
+  def stdinUtf8[F[_]: Async]: Stream[F, String] =
+    stdinAsync.through(text.utf8.decode)
+
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
+    * Takes a dummy `Int` parameter for source-compatibility with JVM.
+    */
+  @nowarn("cat=unused")
+  def stdinUtf8[F[_]: Async](ignored: Int): Stream[F, String] =
+    stdinAsync.through(text.utf8.decode)
+
+  // Copied JVM implementations, for bincompat
+
+  /** Stream of bytes read asynchronously from standard input. */
+  private[fs2] def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] = stdinSync(bufSize)
+
+  private def stdinSync[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
+    readInputStream(Sync[F].blocking(System.in), bufSize, false)
+
+  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
+  private[fs2] def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] = stdoutSync
+
+  private def stdoutSync[F[_]: Sync]: Pipe[F, Byte, INothing] =
+    writeOutputStream(Sync[F].blocking(System.out), false)
+
+  /** Pipe of bytes that writes emitted values to standard error asynchronously. */
+  private[fs2] def stderr[F[_]: Sync]: Pipe[F, Byte, INothing] =
+    writeOutputStream(Sync[F].blocking(System.err), false)
+
+  /** Writes this stream to standard output asynchronously, converting each element to
+    * a sequence of bytes via `Show` and the given `Charset`.
+    */
+  private[fs2] def stdoutLines[F[_]: Sync, O: Show](
+      charset: Charset
+  ): Pipe[F, O, INothing] =
+    _.map(_.show).through(text.encode(charset)).through(stdoutSync)
+
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
+  private[fs2] def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
+    stdinSync(bufSize).through(text.utf8.decode)
+
 }
