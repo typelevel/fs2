@@ -22,11 +22,11 @@
 package fs2
 
 import cats.effect.IO
+import cats.effect.testkit.TestControl
 import cats.syntax.all._
+import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._
-
-import org.scalacheck.effect.PropF.forAllF
 
 class TimedPullsSuite extends Fs2Suite {
 
@@ -54,46 +54,49 @@ class TimedPullsSuite extends Fs2Suite {
   }
 
   test("pulls elements with timeouts, no timeouts trigger") {
-    // TODO cannot use PropF with `.ticked` at the moment
+    // TODO cannot use PropF with `TestControl.executeEmbed` at the moment
     val l = List.range(1, 100)
     val s = Stream.emits(l).covary[IO].rechunkRandomly()
     val period = 500.millis
     val timeout = 600.millis
 
-    s.metered(period)
-      .pull
-      .timed { tp =>
-        def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
-          tp.uncons.flatMap {
-            case None                   => Pull.done
-            case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
-            case Some((Left(_), _))     => fail("unexpected timeout")
-          }
+    TestControl
+      .executeEmbed(
+        s.metered(period)
+          .pull
+          .timed { tp =>
+            def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+              tp.uncons.flatMap {
+                case None                   => Pull.done
+                case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
+                case Some((Left(_), _))     => fail("unexpected timeout")
+              }
 
-        tp.timeout(timeout) >> loop(tp)
-      }
-      .stream
-      .compile
-      .toList
+            tp.timeout(timeout) >> loop(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
       .map(it => assertEquals(it, l))
-      .ticked
   }
 
   test("times out whilst pulling a single element") {
-    Stream
-      .sleep[IO](300.millis)
-      .pull
-      .timed { tp =>
-        tp.timeout(100.millis) >>
-          tp.uncons.flatMap {
-            case Some((Left(_), _)) => Pull.done
-            case _                  => fail("timeout expected")
-          }
-      }
-      .stream
-      .compile
-      .drain
-      .ticked
+    TestControl.executeEmbed(
+      Stream
+        .sleep[IO](300.millis)
+        .pull
+        .timed { tp =>
+          tp.timeout(100.millis) >>
+            tp.uncons.flatMap {
+              case Some((Left(_), _)) => Pull.done
+              case _                  => fail("timeout expected")
+            }
+        }
+        .stream
+        .compile
+        .drain
+    )
   }
 
   test("times out after pulling multiple elements") {
@@ -102,24 +105,26 @@ class TimedPullsSuite extends Fs2Suite {
     val t = 100.millis
     val timeout = 350.millis
 
-    s
-      .metered(t)
-      .pull
-      .timed { tp =>
-        def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
-          tp.uncons.flatMap {
-            case Some((Right(c), n)) => Pull.output(c) >> go(n)
-            case Some((Left(_), _))  => Pull.done
-            case None                => fail("Unexpected end of input")
-          }
+    TestControl
+      .executeEmbed(
+        s
+          .metered(t)
+          .pull
+          .timed { tp =>
+            def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+              tp.uncons.flatMap {
+                case Some((Right(c), n)) => Pull.output(c) >> go(n)
+                case Some((Left(_), _))  => Pull.done
+                case None                => fail("Unexpected end of input")
+              }
 
-        tp.timeout(timeout) >> go(tp)
-      }
-      .stream
-      .compile
-      .toList
+            tp.timeout(timeout) >> go(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
       .map(it => assertEquals(it, l))
-      .ticked
   }
 
   test("pulls elements with timeouts, timeouts trigger after reset") {
@@ -129,22 +134,25 @@ class TimedPullsSuite extends Fs2Suite {
     val s = Stream.constant(1).covary[IO].metered(t).take(n)
     val expected = Stream("timeout", "elem").repeat.take(n * 2).compile.toList
 
-    s.pull
-      .timed { tp =>
-        def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
-          tp.uncons.flatMap {
-            case None                   => Pull.done
-            case Some((Right(_), next)) => Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
-            case Some((Left(_), next))  => Pull.output1("timeout") >> go(next)
-          }
+    TestControl
+      .executeEmbed(
+        s.pull
+          .timed { tp =>
+            def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
+              tp.uncons.flatMap {
+                case None => Pull.done
+                case Some((Right(_), next)) =>
+                  Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
+                case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
+              }
 
-        tp.timeout(timeout) >> go(tp)
-      }
-      .stream
-      .compile
-      .toList
+            tp.timeout(timeout) >> go(tp)
+          }
+          .stream
+          .compile
+          .toList
+      )
       .map(it => assertEquals(it, expected))
-      .ticked
   }
 
   test("timeout can be reset before triggering") {
@@ -155,26 +163,27 @@ class TimedPullsSuite extends Fs2Suite {
         // use `never` to test logic without worrying about termination
         Stream.never[IO]
 
-    s.pull
-      .timed { one =>
-        one.timeout(900.millis) >> one.uncons.flatMap {
-          case Some((Right(_), two)) =>
-            two.timeout(1100.millis) >> two.uncons.flatMap {
-              case Some((Right(_), three)) =>
-                three.uncons.flatMap {
-                  case Some((Left(_), _)) => Pull.done
-                  case _                  => fail(s"Expected timeout third, received element")
-                }
-              case _ => fail(s"Expected element second, received timeout")
-            }
-          case _ => fail(s"Expected element first, received timeout")
-        }
+    TestControl.executeEmbed(
+      s.pull
+        .timed { one =>
+          one.timeout(900.millis) >> one.uncons.flatMap {
+            case Some((Right(_), two)) =>
+              two.timeout(1100.millis) >> two.uncons.flatMap {
+                case Some((Right(_), three)) =>
+                  three.uncons.flatMap {
+                    case Some((Left(_), _)) => Pull.done
+                    case _                  => fail(s"Expected timeout third, received element")
+                  }
+                case _ => fail(s"Expected element second, received timeout")
+              }
+            case _ => fail(s"Expected element first, received timeout")
+          }
 
-      }
-      .stream
-      .compile
-      .drain
-      .ticked
+        }
+        .stream
+        .compile
+        .drain
+    )
   }
 
   test("timeout can be reset to a shorter one") {
@@ -183,47 +192,49 @@ class TimedPullsSuite extends Fs2Suite {
         Stream.sleep[IO](1.second) ++
         Stream.never[IO]
 
-    s.pull
-      .timed { one =>
-        one.timeout(2.seconds) >> one.uncons.flatMap {
-          case Some((Right(_), two)) =>
-            two.timeout(900.millis) >> two.uncons.flatMap {
-              case Some((Left(_), _)) => Pull.done
-              case _                  => fail(s"Expected timeout second, received element")
-            }
-          case _ => fail(s"Expected element first, received timeout")
+    TestControl.executeEmbed(
+      s.pull
+        .timed { one =>
+          one.timeout(2.seconds) >> one.uncons.flatMap {
+            case Some((Right(_), two)) =>
+              two.timeout(900.millis) >> two.uncons.flatMap {
+                case Some((Left(_), _)) => Pull.done
+                case _                  => fail(s"Expected timeout second, received element")
+              }
+            case _ => fail(s"Expected element first, received timeout")
+          }
         }
-      }
-      .stream
-      .compile
-      .drain
-      .ticked
+        .stream
+        .compile
+        .drain
+    )
   }
 
   test("timeout can be reset without starting a new one") {
     val s = Stream.sleep[IO](2.seconds) ++ Stream.sleep[IO](2.seconds)
     val t = 3.seconds
 
-    s.pull
-      .timed { one =>
-        one.timeout(t) >> one.uncons.flatMap {
-          case Some((Right(_), two)) =>
-            two.timeout(0.millis) >>
-              two.uncons.flatMap {
-                case Some((Right(_), three)) =>
-                  three.uncons.flatMap {
-                    case None => Pull.done
-                    case v    => fail(s"Expected end of stream, received $v")
-                  }
-                case _ => fail("Expected element second, received timeout")
-              }
-          case _ => fail("Expected element first, received timeout")
+    TestControl.executeEmbed(
+      s.pull
+        .timed { one =>
+          one.timeout(t) >> one.uncons.flatMap {
+            case Some((Right(_), two)) =>
+              two.timeout(0.millis) >>
+                two.uncons.flatMap {
+                  case Some((Right(_), three)) =>
+                    three.uncons.flatMap {
+                      case None => Pull.done
+                      case v    => fail(s"Expected end of stream, received $v")
+                    }
+                  case _ => fail("Expected element second, received timeout")
+                }
+            case _ => fail("Expected element first, received timeout")
+          }
         }
-      }
-      .stream
-      .compile
-      .drain
-      .ticked
+        .stream
+        .compile
+        .drain
+    )
   }
 
   test("never emits stale timeouts") {
@@ -266,9 +277,10 @@ class TimedPullsSuite extends Fs2Suite {
         IO.raiseError(new Exception("Unexpected error"))
     }
 
-    prog
-      .flatMap(check)
-      .replicateA(10) // number of iterations to stress the race
-      .ticked
+    TestControl.executeEmbed(
+      prog
+        .flatMap(check)
+        .replicateA(10) // number of iterations to stress the race
+    )
   }
 }

@@ -986,6 +986,18 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
+
+  group("Stream[F, Either[Throwable, O]]") {
+    test(".evalMap(_.pure.rethrow).mask <-> .rethrow.mask") {
+      forAllF { (stream: Stream[Pure, Int]) =>
+        val s = stream.map(i => if (i > 0) i.asRight else (new RuntimeException).asLeft)
+        s.evalMap(_.pure[IO].rethrow).mask.compile.toList.flatMap { expected =>
+          s.covary[IO].rethrow.mask.compile.toList.assertEquals(expected)
+        }
+      }
+    }
+  }
+
   private implicit class verifyOps[T](val action: IO[T]) {
     def assertNotCompletes(): IO[Unit] = IO.race(IO.sleep(1.second), action).assertEquals(Left(()))
   }

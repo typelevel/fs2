@@ -115,19 +115,19 @@ object TransportStreamEvent {
         .andThen(
           sectionsToTables(group, tableBuilder).semipass[PidStamped[
             Either[DemultiplexerError, Demultiplexer.Result]
-          ], TransportStreamEvent]({
+          ], TransportStreamEvent] {
             case PidStamped(pid, Right(Demultiplexer.SectionResult(section))) =>
               Right(PidStamped(pid, Right(section)))
             case PidStamped(pid, Right(Demultiplexer.PesPacketResult(p))) => Left(pes(pid, p))
-            case PidStamped(pid, Left(e))                                 => Right(PidStamped(pid, Left(e.toMpegError)))
-          })
+            case PidStamped(pid, Left(e)) => Right(PidStamped(pid, Left(e.toMpegError)))
+          }
         )
-    demuxed.semipass[Packet, TransportStreamEvent]({
+    demuxed.semipass[Packet, TransportStreamEvent] {
       case Packet(header, _, _, Some(payload)) if header.scramblingControl != 0 =>
         Left(scrambledPayload(header.pid, payload))
       case p @ Packet(_, _, _, _) =>
         Right(p)
-    })
+    }
   }
 
   def fromSectionStream[S](

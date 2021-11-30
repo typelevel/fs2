@@ -21,18 +21,19 @@
 
 package fs2
 
-import scala.concurrent.duration._
-import scala.concurrent.TimeoutException
-import cats.effect.{IO, SyncIO}
+import cats.effect.kernel.Deferred
 import cats.effect.kernel.Ref
 import cats.effect.std.Semaphore
+import cats.effect.testkit.TestControl
+import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
+import fs2.concurrent.SignallingRef
+import org.scalacheck.effect.PropF.forAllF
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import org.scalacheck.effect.PropF.forAllF
 
-import fs2.concurrent.SignallingRef
-import cats.effect.kernel.Deferred
+import scala.concurrent.duration._
+import scala.concurrent.TimeoutException
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -386,7 +387,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
               ensureAcquired
                 .bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  sig.update(_ + 1).bracket(_ => IO.sleep(100.millis))(_ => sig.update(_ - 1))
                 )(_ => sem.release)
                 .as(true)
             }
@@ -474,7 +475,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
               ensureAcquired
                 .bracket(_ =>
-                  sig.update(_ + 1).bracket(_ => IO.sleep(10.millis))(_ => sig.update(_ - 1))
+                  sig.update(_ + 1).bracket(_ => IO.sleep(100.millis))(_ => sig.update(_ - 1))
                 )(_ => sem.release)
                 .as(false)
             }
@@ -852,59 +853,63 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("does not reset timeout if nothing is emitted") {
-      Ref[IO]
-        .of(0.millis)
-        .flatMap { ref =>
-          val timeout = 5.seconds
+      TestControl
+        .executeEmbed(
+          Ref[IO]
+            .of(0.millis)
+            .flatMap { ref =>
+              val timeout = 5.seconds
 
-          def measureEmission[A]: Pipe[IO, A, A] =
-            _.chunks
-              .evalTap(_ => IO.monotonic.flatMap(ref.set))
-              .unchunks
+              def measureEmission[A]: Pipe[IO, A, A] =
+                _.chunks
+                  .evalTap(_ => IO.monotonic.flatMap(ref.set))
+                  .unchunks
 
-          // emits elements after the timeout has expired
-          val source =
-            Stream.sleep_[IO](timeout + 200.millis) ++
-              Stream(4, 5) ++
-              Stream.never[IO] // avoids emission due to source termination
+              // emits elements after the timeout has expired
+              val source =
+                Stream.sleep_[IO](timeout + 200.millis) ++
+                  Stream(4, 5) ++
+                  Stream.never[IO] // avoids emission due to source termination
 
-          source
-            .through(measureEmission)
-            .groupWithin(5, timeout)
-            .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
-            .interruptAfter(timeout * 3)
-            .compile
-            .lastOrError
-        }
+              source
+                .through(measureEmission)
+                .groupWithin(5, timeout)
+                .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
+                .interruptAfter(timeout * 3)
+                .compile
+                .lastOrError
+            }
+        )
         .assertEquals(0.millis) // The stream emits after the timeout
-        // so groupWithin should re-emit with zero delay
-        .ticked
+      // so groupWithin should re-emit with zero delay
     }
 
     test("Edge case: should not introduce unnecessary delays when groupSize == chunkSize") {
-      Ref[IO]
-        .of(0.millis)
-        .flatMap { ref =>
-          val timeout = 5.seconds
+      TestControl
+        .executeEmbed(
+          Ref[IO]
+            .of(0.millis)
+            .flatMap { ref =>
+              val timeout = 5.seconds
 
-          def measureEmission[A]: Pipe[IO, A, A] =
-            _.chunks
-              .evalTap(_ => IO.monotonic.flatMap(ref.set))
-              .unchunks
+              def measureEmission[A]: Pipe[IO, A, A] =
+                _.chunks
+                  .evalTap(_ => IO.monotonic.flatMap(ref.set))
+                  .unchunks
 
-          val source =
-            Stream(1, 2, 3) ++
-              Stream.sleep_[IO](timeout + 200.millis)
+              val source =
+                Stream(1, 2, 3) ++
+                  Stream.sleep_[IO](timeout + 200.millis)
 
-          source
-            .through(measureEmission)
-            .groupWithin(3, timeout)
-            .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
-            .compile
-            .lastOrError
-        }
+              source
+                .through(measureEmission)
+                .groupWithin(3, timeout)
+                .evalMap(_ => (IO.monotonic, ref.get).mapN(_ - _))
+                .compile
+                .lastOrError
+            }
+        )
         .assertEquals(0.millis)
-        .ticked
     }
   }
 
@@ -1174,14 +1179,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("timing") {
-      IO.monotonic.flatMap { start =>
-        Stream(1, 2, 3)
-          .evalMap(_ => IO.sleep(1.second))
-          .prefetch
-          .evalMap(_ => IO.sleep(1.second))
-          .compile
-          .drain >> IO.monotonic.map(_ - start).assertEquals(4.seconds)
-      }.ticked
+      TestControl
+        .executeEmbed(
+          IO.monotonic.flatMap { start =>
+            Stream(1, 2, 3)
+              .evalMap(_ => IO.sleep(1.second))
+              .prefetch
+              .evalMap(_ => IO.sleep(1.second))
+              .compile
+              .drain >> IO.monotonic.map(_ - start)
+          }
+        )
+        .assertEquals(4.seconds)
     }
   }
 

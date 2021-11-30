@@ -23,7 +23,7 @@ package fs2
 
 import scala.annotation.tailrec
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{mutable, IndexedSeq => GIndexedSeq, Seq => GSeq}
+import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
@@ -32,7 +32,8 @@ import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, Traver
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
-/** Strict, finite sequence of values that allows index-based random access of elements.
+/** Immutable, strict, finite sequence of values that supports efficient index-based random access of elements,
+  * is memory efficient for all sizes, and avoids unnecessary copying.
   *
   * `Chunk`s can be created from a variety of collection types using methods on the `Chunk` companion
   * (e.g., `Chunk.array`, `Chunk.seq`, `Chunk.vector`).
@@ -107,12 +108,14 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
   def dropRight(n: Int): Chunk[O] = if (n <= 0) this else take(size - n)
 
+  protected def thisClassTag: ClassTag[Any] = implicitly[ClassTag[Any]]
+
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
-    val b = collection.mutable.Buffer.newBuilder[O]
+    val b = Chunk.makeArrayBuilder(thisClassTag)
     b.sizeHint(size)
     foreach(e => if (p(e)) b += e)
-    Chunk.buffer(b.result())
+    Chunk.array(b.result()).asInstanceOf[Chunk[O]]
   }
 
   /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
@@ -206,13 +209,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
+    val b = Chunk.makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
       if (o2.isDefined) b += o2.get
     }
-    Chunk.buffer(b.result())
+    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
   /** False if size is zero, true otherwise. */
@@ -321,10 +324,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def toIndexedChunk: Chunk[O] = this match {
     case _: Chunk.Queue[_] =>
-      val b = collection.mutable.Buffer.newBuilder[O]
+      val b = Chunk.makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
-      Chunk.buffer(b.result())
+      Chunk.array(b.result()).asInstanceOf[Chunk[O]]
     case other => other
   }
 
@@ -596,17 +599,21 @@ object Chunk
       case ix: GIndexedSeq[O] => indexedSeq(ix)
       case _ =>
         if (i.isEmpty) empty
-        else {
-          val itr = i.iterator
-          val head = itr.next()
-          if (itr.hasNext) {
-            val bldr = collection.mutable.Buffer.newBuilder[O]
-            bldr += head
-            bldr ++= itr
-            buffer(bldr.result())
-          } else singleton(head)
-        }
+        else iterator(i.iterator)
     })
+
+  /** Creates a chunk from a `scala.collection.Iterator`. */
+  def iterator[O](itr: collection.Iterator[O]): Chunk[O] =
+    if (itr.isEmpty) empty
+    else {
+      val head = itr.next()
+      if (itr.hasNext) {
+        val bldr = Chunk.makeArrayBuilder[Any]
+        bldr += head
+        bldr ++= itr
+        array(bldr.result()).asInstanceOf[Chunk[O]]
+      } else singleton(head)
+    }
 
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
@@ -618,16 +625,7 @@ object Chunk
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
     if (c.isEmpty) empty
-    else {
-      val itr = c.iterator
-      val head = itr.next()
-      if (itr.hasNext) {
-        val bldr = collection.mutable.Buffer.newBuilder[O]
-        bldr += head
-        bldr ++= itr
-        buffer(bldr.result())
-      } else singleton(head)
-    }
+    else iterator(c.iterator)
 
   /** Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
     * it is passed to this function.
@@ -683,9 +681,12 @@ object Chunk
 
   case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
       extends Chunk[O] {
+
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
+
+    override protected def thisClassTag: ClassTag[Any] = ct.asInstanceOf[ClassTag[Any]]
 
     def size = length
     def apply(i: Int) = values(offset + i)

@@ -106,11 +106,10 @@ class IoPlatformSuite extends Fs2Suite {
 
     test("different chunk sizes function correctly") {
 
-      def test(chunkSize: Int): Pipe[IO, Byte, Byte] = source => {
+      def test(chunkSize: Int): Pipe[IO, Byte, Byte] = source =>
         readOutputStream(chunkSize) { os =>
           source.through(writeOutputStream(IO.delay(os), true)).compile.drain
         }
-      }
 
       def source(chunkSize: Int, bufferSize: Int): Stream[Pure, Byte] =
         Stream.range(65, 75).map(_.toByte).repeat.take(chunkSize.toLong * 2).buffer(bufferSize)

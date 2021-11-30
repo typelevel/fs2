@@ -201,22 +201,36 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, Either[Throwable, O]] =
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
-  /** Broadcasts every value of the stream through the pipes provided
-    * as arguments.
+  /** Feeds the values from this stream (source) to all the given pipes,
+    * which process them in parallel, and coordinates their progress.
     *
-    * Each pipe can have a different implementation if required, and
-    * they are all guaranteed to see every `O` pulled from the source
-    * stream.
+    * The new stream has one instance of `this` stream (the source), from
+    * which it pulls its outputs. To balance the progress amongst pipes and
+    * source, outputs are passed chunk-by-chunk, via a Topic.
+    * This creates a one-chunk buffer in front of each pipe. A pipe starts
+    * processing a chunk after pulling it from its buffer.
+    * The topic enforces some temporal constraints:
+    * - No chunk is pushed to the buffer of any pipe until after the
+    *   previous chunk has been published to all pipes.
+    * - No chunk is pushed to a pipe until the pipe pulls the previous chunk.
+    * - A chunk may be pushed to some pipes, and pulled by them, before other
+    *   pipes have pulled the previous chunk.
     *
-    * The pipes are all run concurrently with each other, but note
-    * that elements are pulled from the source as chunks, and the next
-    * chunk is pulled only when all pipes are done with processing the
-    * current chunk, which prevents faster pipes from getting too far ahead.
+    * Thus, in processing source values, a fast pipe may be up to two chunks
+    * ahead of a slower one. This keeps a balance of progress, and
+    * prevents any pipe from getting too far ahead. On the other hand, this
+    * slows down fast pipes until slower ones catch up. To ameliorate this,
+    * consider using a `prefetch` combinators on the slow pipes.
     *
-    * In other words, this behaviour slows down processing of incoming
-    * chunks by faster pipes until the slower ones have caught up. If
-    * this is not desired, consider using the `prefetch` and
-    * `prefetchN` combinators on the slow pipes.
+    * **Error** Any error raised from the input stream, or from any pipe,
+    * will stop the pulling from `this` stream and from any pipe,
+    * and the error will be raised by the resulting stream.
+    *
+    * **Output**: the result stream collects and emits the outputs emitted
+    * from each pipe, mixed in an unknown way, with these guarantees:
+    * 1. each output chunk was emitted by one pipe exactly once.
+    * 2. chunks from each pipe come out of the resulting stream in the same
+    *    order as they came out of the pipe, and without skipping any chunk.
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
       pipes: Pipe[F2, O, O2]*
@@ -2338,7 +2352,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @example {{{
     * scala> import cats.effect.SyncIO
     * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[SyncIO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync()
-    * res0: List[Int] = List(-1)
+    * res0: List[Int] = List(1, 2, -1)
     * }}}
     */
   def rethrow[F2[x] >: F[x], O2](implicit
@@ -2346,11 +2360,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       rt: RaiseThrowable[F2]
   ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
-      val firstError = c.collectFirst { case Left(err) => err }
-      firstError match {
-        case None    => Stream.chunk(c.collect { case Right(i) => i })
-        case Some(h) => Stream.raiseError[F2](h)
-      }
+      val size = c.size
+      val builder = Chunk.makeArrayBuilder[Any]
+      builder.sizeHint(size)
+      var i = 0
+      var exOpt: Option[Throwable] = None
+      while (i < size && exOpt.isEmpty)
+        c(i) match {
+          case Left(ex) =>
+            exOpt = ex.some
+          case Right(o) =>
+            builder += o
+            i += 1
+        }
+      val chunk = Chunk.array(builder.result()).asInstanceOf[Chunk[O2]]
+      Stream.chunk(chunk) ++ exOpt.map(Stream.raiseError[F2]).getOrElse(Stream.empty)
     }
 
   /** Left fold which outputs all intermediate results.
