@@ -213,4 +213,11 @@ class IoPlatformSuite extends Fs2Suite {
         .timeout(5.seconds)
     }
   }
+
+  group("readResource") {
+    test("keystore.jks") {
+      val size = readResource[IO]("keystore.jks", 8192).as(1L).compile.foldMonoid
+      size.assertEquals(2591L)
+    }
+  }
 }

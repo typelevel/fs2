@@ -32,6 +32,7 @@ import fs2.io.internal.PipedStreamBuffer
 import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import java.io.IOException
 
 private[fs2] trait ioplatform {
   type InterruptedIOException = java.io.InterruptedIOException
@@ -136,5 +137,17 @@ private[fs2] trait ioplatform {
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
   def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
     stdin(bufSize).through(text.utf8.decode)
+
+  /** Stream of bytes read asynchronously from the specified classloader resource. */
+  def readResource[F[_]](
+      name: String,
+      chunkSize: Int,
+      classLoader: ClassLoader = getClass().getClassLoader()
+  )(implicit
+      F: Sync[F]
+  ): Stream[F, Byte] = Stream.eval(F.delay(Option(classLoader.getResourceAsStream(name)))).flatMap {
+    case Some(resource) => io.readInputStream(resource.pure, chunkSize)
+    case None           => Stream.raiseError(new IOException(s"Resource $name not found"))
+  }
 
 }
