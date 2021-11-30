@@ -2384,7 +2384,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @example {{{
     * scala> import cats.effect.SyncIO
     * scala> Stream(Right(1), Right(2), Left(new RuntimeException), Right(3)).rethrow[SyncIO, Int].handleErrorWith(_ => Stream(-1)).compile.toList.unsafeRunSync()
-    * res0: List[Int] = List(-1)
+    * res0: List[Int] = List(1, 2, -1)
     * }}}
     */
   def rethrow[F2[x] >: F[x], O2](implicit
