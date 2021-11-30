@@ -143,7 +143,7 @@ private[fs2] trait ioplatform {
       chunkSize: Int,
       classLoader: ClassLoader = getClass().getClassLoader()
   )(implicit F: Sync[F]): Stream[F, Byte] =
-    Stream.eval(F.delay(Option(classLoader.getResourceAsStream(name)))).flatMap {
+    Stream.eval(F.blocking(Option(classLoader.getResourceAsStream(name)))).flatMap {
       case Some(resource) => io.readInputStream(resource.pure, chunkSize)
       case None           => Stream.raiseError(new IOException(s"Resource $name not found"))
     }
