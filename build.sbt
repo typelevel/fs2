@@ -272,7 +272,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.1"
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2"
   )
   .jvmSettings(
     Test / fork := true,
