@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -541,6 +541,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .use(Files[IO].isDirectory(_))
         .assertEquals(true)
     }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isDirectory(_))
+        .assertEquals(false)
+    }
   }
 
   group("isFile") {
@@ -553,6 +560,150 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     test("returns false if the path is for a directory") {
       tempDirectory
         .use(Files[IO].isRegularFile(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isRegularFile(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isReadable") {
+    test("returns true if the path is for a readable file") {
+      tempFile
+        .use(Files[IO].isReadable(_))
+        .assertEquals(true)
+    }
+
+    test("returns true if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isReadable(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isReadable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isWritable") {
+    test("returns true if the path is for a readable file") {
+      tempFile
+        .use(Files[IO].isWritable(_))
+        .assertEquals(true)
+    }
+
+    test("returns true if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isWritable(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isWritable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isHidden") {
+
+    test("returns false if the path is for a non-hidden file") {
+      tempFile
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path is for a non-hidden directory") {
+      tempDirectory
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns true if the path is for a hidden file") {
+      val hiddenFile = for {
+        dir <- tempDirectory
+        hiddenFilePath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createFile(hiddenFilePath)) { _ =>
+          Files[IO].deleteIfExists(hiddenFilePath).void
+        }
+      } yield hiddenFilePath
+      hiddenFile
+        .use(Files[IO].isHidden(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path is for a non-hidden file in a hidden directory") {
+      val fileInHiddenDir = for {
+        dir <- tempDirectory
+        hiddenDirPath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createDirectory(hiddenDirPath)) { _ =>
+          Files[IO].deleteIfExists(hiddenDirPath).void
+        }
+        filePath = hiddenDirPath.resolve("not-hidden")
+        _ <- Resource.make(Files[IO].createFile(filePath)) { _ =>
+          Files[IO].deleteIfExists(filePath).void
+        }
+      } yield filePath
+      fileInHiddenDir
+        .use(Files[IO].isHidden(_))
+        .assertEquals(false)
+    }
+
+    test("returns true if the path is for a hidden directory") {
+      val hiddenDir = for {
+        dir <- tempDirectory
+        hiddenDirPath = dir.resolve(".should-be-hidden")
+        _ <- Resource.make(Files[IO].createDirectory(hiddenDirPath)) { _ =>
+          Files[IO].deleteIfExists(hiddenDirPath).void
+        }
+      } yield hiddenDirPath
+      hiddenDir
+        .use(Files[IO].isHidden(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isWritable(_))
+        .assertEquals(false)
+    }
+  }
+
+  group("isSymbolicLink") {
+
+    test("returns true if the path is for a symbolic link") {
+      val symLink = for {
+        dir <- tempDirectory
+        file <- tempFile
+        symLinkPath = dir.resolve("temp-sym-link")
+        _ <- Resource.make(Files[IO].createSymbolicLink(symLinkPath, file)) { _ =>
+          Files[IO].deleteIfExists(symLinkPath).void
+        }
+      } yield symLinkPath
+      symLink
+        .use(Files[IO].isSymbolicLink(_))
+        .assertEquals(true)
+    }
+
+    test("returns false if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].isSymbolicLink(_))
+        .assertEquals(false)
+    }
+
+    test("returns false if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].isSymbolicLink(_))
         .assertEquals(false)
     }
   }
