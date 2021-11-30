@@ -202,7 +202,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     attempt ++ delays.flatMap(delay => Stream.sleep_(delay) ++ attempt)
 
   /** Feeds the values from this stream (source) to all the given pipes,
-    * which process them in parallel. and coordinates its progress.
+    * which process them in parallel, and coordinates their progress.
     *
     * The new stream has one instance of `this` stream (the source), from
     * which it pulls its outputs. To balance the progress amongst pipes and
