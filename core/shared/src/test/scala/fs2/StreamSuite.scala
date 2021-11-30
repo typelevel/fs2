@@ -986,7 +986,6 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
-
   group("Stream[F, Either[Throwable, O]]") {
     test(".evalMap(_.pure.rethrow).mask <-> .rethrow.mask") {
       forAllF { (stream: Stream[Pure, Int]) =>
@@ -1156,10 +1155,10 @@ class StreamSuite extends Fs2Suite {
         .mapN { (latch, d) =>
           val w = latch.release *> latch.await
           val s = Stream(w *> ex, w *> IO.never.onCancel(d.complete(()).void)).covary[IO]
-          IO.race(pipe(s).compile.drain, d.get)
+          pipe(s).compile.drain !> d.get
         }
         .flatten
-        .assertEquals(Right(()))
+        .assertEquals(())
   }
 
   group("cancels unneeded") {
@@ -1208,6 +1207,23 @@ class StreamSuite extends Fs2Suite {
           }
         }
         .assertEquals(Vector(uncancellableMsg, onFinalizeMsg))
+    }
+  }
+
+  group("issue-2726, Stream shouldn't hang after exceptions in") {
+    test("parEvalMapUnordered") {
+      check(_.parEvalMapUnordered(Int.MaxValue)(identity))
+    }
+
+    test("parEvalMap") {
+      check(_.parEvalMap(Int.MaxValue)(identity))
+    }
+
+    def check(pipe: Pipe[IO, IO[Unit], Unit]): IO[Unit] = {
+      val iterations = 100
+      val stream = Stream(IO.raiseError(new RuntimeException), IO.delay(())).covary[IO]
+      val action = stream.through(pipe).compile.drain.attempt.timeout(2.seconds)
+      (1 to iterations).toList.as(action).sequence_
     }
   }
 }
