@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -637,7 +637,20 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
   }
 
   group("isSymbolicLink") {
-    // TODO test the true-case with an actual symlink
+
+    test("returns true if the path is for a symbolic link") {
+      val symLink = for {
+        dir <- tempDirectory
+        file <- tempFile
+        symLinkPath = dir.resolve("temp-sym-link")
+        _ <- Resource.make(Files[IO].createSymbolicLink(symLinkPath, file)) { _ =>
+          Files[IO].deleteIfExists(symLinkPath).void
+        }
+      } yield symLinkPath
+      symLink
+        .use(Files[IO].isSymbolicLink(_))
+        .assertEquals(true)
+    }
 
     test("returns false if the path is for a directory") {
       tempDirectory
