@@ -24,7 +24,7 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, Poll, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
@@ -50,10 +50,12 @@ private[net] trait SocketCompanionPlatform {
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
     private def withReadPermit[A](f: F[A]): F[A] =
-      Resource.makeCase(readSemaphore.acquire) {
-        case (_, Resource.ExitCase.Canceled) => F.unit
-        case (_, _) => readSemaphore.release
-      }.use(_ => f)
+      Resource
+        .makeCaseFull((poll: Poll[F]) => poll(readSemaphore.acquire)) {
+          case (_, Resource.ExitCase.Canceled) => F.unit
+          case (_, _)                          => readSemaphore.release
+        }
+        .use(_ => f)
 
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
       withReadPermit {

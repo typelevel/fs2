@@ -218,11 +218,38 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
 
+    test("read after timed out read hangs") {
+      val setup = for {
+        serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (bindAddress, server) = serverSetup
+        client <- Network[IO].client(bindAddress)
+      } yield (server, client)
+      Stream
+        .resource(setup)
+        .flatMap { case (server, client) =>
+          val echoServer = server.flatMap(c => c.reads.through(c.writes))
+          val msg = Chunk.array("Hello!".getBytes)
+          val prg =
+            client.write(msg) *>
+              client.readN(msg.size) *>
+              client.read(1024).timeout(100.millis).recover { case _: TimeoutException => None } *>
+              client.write(msg) *>
+              client
+                .read(1024)
+                .timeout(100.millis)
+                .flatMap(_ => IO.raiseError(new Exception("should not have read")))
+                .recover { case _: TimeoutException => () }
+          Stream.eval(prg).concurrently(echoServer)
+        }
+        .compile
+        .drain
+    }
+
     test("can shutdown a socket that's pending a read") {
       Network[IO].serverResource().use { case (bindAddress, clients) =>
         Network[IO].client(bindAddress).use { _ =>
-          clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).handleErrorWith {
-            case _: TimeoutException => IO.unit
+          clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).recover {
+            case _: TimeoutException => ()
           }
         }
       }
