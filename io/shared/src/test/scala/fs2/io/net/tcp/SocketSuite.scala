@@ -218,7 +218,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
 
-    test("read after timed out read hangs") {
+    test("read after timed out read not allowed on JVM") {
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (bindAddress, server) = serverSetup
@@ -232,13 +232,18 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           val prg =
             client.write(msg) *>
               client.readN(msg.size) *>
-              client.read(1024).timeout(100.millis).recover { case _: TimeoutException => None } *>
+              client.readN(msg.size).timeout(100.millis).recover { case _: TimeoutException =>
+                Chunk.empty
+              } *>
               client.write(msg) *>
               client
-                .read(1024)
+                .readN(msg.size)
                 .timeout(100.millis)
-                .flatMap(_ => IO.raiseError(new Exception("should not have read")))
-                .recover { case _: TimeoutException => () }
+                .attempt
+                .map { res =>
+                  if (isJVM) assert(res.merge.isInstanceOf[IllegalStateException])
+                  else assertEquals(res.merge, msg)
+                }
           Stream.eval(prg).concurrently(echoServer)
         }
         .compile

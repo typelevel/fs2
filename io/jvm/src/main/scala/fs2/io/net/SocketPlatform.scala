@@ -24,7 +24,7 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
-import cats.effect.{Async, Poll, Resource}
+import cats.effect.{Async, Resource}
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
@@ -49,16 +49,8 @@ private[net] trait SocketCompanionPlatform {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
-    private def withReadPermit[A](f: F[A]): F[A] =
-      Resource
-        .makeCaseFull((poll: Poll[F]) => poll(readSemaphore.acquire)) {
-          case (_, Resource.ExitCase.Canceled) => F.unit
-          case (_, _)                          => readSemaphore.release
-        }
-        .use(_ => f)
-
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      withReadPermit {
+      readSemaphore.permit.use { _ =>
         F.delay {
           if (readBuffer.capacity() < size)
             readBuffer = ByteBuffer.allocateDirect(size)
@@ -66,6 +58,17 @@ private[net] trait SocketCompanionPlatform {
             (readBuffer: Buffer).limit(size)
           f(readBuffer)
         }.flatten
+          .adaptError { case _: java.nio.channels.ReadPendingException =>
+            new IllegalStateException(
+              """|Illegal socket read.
+                                         |
+                                         |A previous read on this socket was cancelled. This is typically due to using
+                                         |timeout or another operation which cancels the fiber performing the read.
+                                         |Once a socket read has been cancelled, the underlying socket is left in an
+                                         |indeterminate state and no further reads may be performed. Consider opening
+                                         |a new socket or otherwise avoiding the cancellation.""".stripMargin
+            )
+          }
       }
 
     /** Performs a single channel read operation in to the supplied buffer. */
