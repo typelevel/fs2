@@ -29,6 +29,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
+import scala.concurrent.TimeoutException
 
 class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
@@ -215,6 +216,16 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .map { msgs =>
           assertEquals(msgs, Vector(msg))
         }
+    }
+
+    test("can shutdown a socket that's pending a read") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        Network[IO].client(bindAddress).use { _ =>
+          clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).handleErrorWith {
+            case _: TimeoutException => IO.unit
+          }
+        }
+      }
     }
   }
 }

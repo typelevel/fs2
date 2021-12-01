@@ -49,8 +49,14 @@ private[net] trait SocketCompanionPlatform {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
+    private def withReadPermit[A](f: F[A]): F[A] =
+      Resource.makeCase(readSemaphore.acquire) {
+        case (_, Resource.ExitCase.Canceled) => F.unit
+        case (_, _) => readSemaphore.release
+      }.use(_ => f)
+
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      readSemaphore.permit.use { _ =>
+      withReadPermit {
         F.delay {
           if (readBuffer.capacity() < size)
             readBuffer = ByteBuffer.allocateDirect(size)
