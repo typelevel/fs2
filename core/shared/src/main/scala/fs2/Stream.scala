@@ -4455,17 +4455,17 @@ object Stream extends StreamLowPriority {
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
-      * within 150 milliseconds:
+      * within 450 milliseconds:
       *
       * @example {{{
       * scala> import cats.effect.IO
       * scala> import cats.effect.unsafe.implicits.global
       * scala> import scala.concurrent.duration._
-      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](200.millis)).repeat.take(3)
+      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](600.millis)).repeat.take(3)
       * scala> s.pull
       *      |  .timed { timedPull =>
       *      |     def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
-      *      |       timedPull.timeout(150.millis) >> // starts new timeout and stops the previous one
+      *      |       timedPull.timeout(450.millis) >> // starts new timeout and stops the previous one
       *      |       timedPull.uncons.flatMap {
       *      |         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
       *      |         case Some((Left(_), next)) => Pull.output1("late!") >> go(next)
