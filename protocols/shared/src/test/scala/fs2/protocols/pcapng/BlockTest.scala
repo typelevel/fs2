@@ -22,7 +22,6 @@
 package fs2.protocols
 package pcapng
 
-import fs2.protocols.pcapng.Block.{EnhancedPacketBlock, InterfaceDescriptionBlock, SectionHeaderBlock}
 import scodec.Attempt.Successful
 import scodec.DecodeResult
 import scodec.bits.ByteOrdering.LittleEndian
@@ -33,32 +32,32 @@ class BlockTest extends munit.FunSuite {
   import BlockTest._
 
   test("shb") {
-    val actual = Block.sectionHeaderCodec.decode(SHB.bytes.bits)
+    val actual = SectionHeaderBlock.codec.decode(SHB.bytes.bits)
     assertEquals(actual, fullyDecoded(SHB.expected))
   }
 
   test("interface") {
-    val actual = Block.interfaceDescriptionBlock(LittleEndian).decode(Interface.bytes.bits)
+    val actual = InterfaceDescriptionBlock.codec(LittleEndian).decode(Interface.bytes.bits)
     assertEquals(actual, fullyDecoded(Interface.expected))
   }
 
   test("enhanced1") {
-    val actual = Block.enhancedPacketBlock(LittleEndian).decode(Enhanced1.bytes.bits)
+    val actual = EnhancedPacketBlock.codec(LittleEndian).decode(Enhanced1.bytes.bits)
     assertEquals(actual, fullyDecoded(Enhanced1.expected))
   }
 
   test("enhanced2") {
-    val actual = Block.enhancedPacketBlock(LittleEndian).decode(Enhanced2.bytes.bits)
+    val actual = EnhancedPacketBlock.codec(LittleEndian).decode(Enhanced2.bytes.bits)
     assertEquals(actual, fullyDecoded(Enhanced2.expected))
   }
 
   test("enhanced3") {
-    val actual = Block.enhancedPacketBlock(LittleEndian).decode(Enhanced3.bytes.bits)
+    val actual = EnhancedPacketBlock.codec(LittleEndian).decode(Enhanced3.bytes.bits)
     assertEquals(actual, fullyDecoded(Enhanced3.expected))
   }
 
   test("enhanced4") {
-    val actual = Block.enhancedPacketBlock(LittleEndian).decode(Enhanced4.bytes.bits)
+    val actual = EnhancedPacketBlock.codec(LittleEndian).decode(Enhanced4.bytes.bits)
     assertEquals(actual, fullyDecoded(Enhanced4.expected))
   }
 

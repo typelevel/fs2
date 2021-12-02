@@ -19,28 +19,37 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package protocols
+package fs2.protocols
+package pcapng
 
-import cats.effect.{IO, IOApp}
-import fs2.interop.scodec.StreamDecoder
-import fs2.io.file.{Files, Path}
-import fs2.protocols.pcapng.{BodyBlock, SectionHeaderBlock}
+import pcap._
+import scodec.Codec
+import scodec.bits._
+import scodec.codecs._
+import scodec.codecs.fixedSizeBytes
 
-object PcapNgExample extends IOApp.Simple {
+case class SectionHeaderBlock(
+  length: ByteVector,
+  ordering: ByteOrdering,
+  majorVersion: Int,
+  minorVersion: Int,
+  bytes: ByteVector
+) extends Block
 
-  def run: IO[Unit] =
-    Files[IO]
-      .readAll(Path("/Users/anikiforov/Downloads/dhcp.pcapng"))
-      .through(streamDecoder.toPipeByte)
-      .debug()
-      .compile
-      .drain
+object SectionHeaderBlock {
 
-  private val streamDecoder: StreamDecoder[(SectionHeaderBlock, BodyBlock)] =
-    for {
-      header <- StreamDecoder.once(SectionHeaderBlock.codec)
-      decoder = BodyBlock.decoder(header.ordering)
-      block <- StreamDecoder.many(decoder)
-    } yield (header, block)
+  private val hexConstant = hex"0A0D0D0A"
+
+  // format: off
+  private def sectionHeader(implicit ord: ByteOrdering) = {
+    ("version_major"    | guint16 ) ::
+    ("version_minor"    | guint16 ) ::
+    ("remaining"        | bytes   )
+  }
+
+  val codec: Codec[SectionHeaderBlock] = "SHB" | Block.block(hexConstant) { length =>
+    ("magic_number"     | ByteOrderMagic).flatPrepend { implicit ord =>
+    ("body_bytes"       | fixedSizeBytes(length.toInt(signed = false, ord) - 16, sectionHeader))
+    }}.dropUnits.as[SectionHeaderBlock]
+  // format: on
 }

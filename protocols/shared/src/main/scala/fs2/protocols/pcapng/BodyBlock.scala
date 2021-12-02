@@ -19,28 +19,16 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package protocols
+package fs2.protocols
+package pcapng
 
-import cats.effect.{IO, IOApp}
-import fs2.interop.scodec.StreamDecoder
-import fs2.io.file.{Files, Path}
-import fs2.protocols.pcapng.{BodyBlock, SectionHeaderBlock}
+import scodec.Decoder
+import scodec.bits.ByteOrdering
 
-object PcapNgExample extends IOApp.Simple {
+trait BodyBlock extends Block
 
-  def run: IO[Unit] =
-    Files[IO]
-      .readAll(Path("/Users/anikiforov/Downloads/dhcp.pcapng"))
-      .through(streamDecoder.toPipeByte)
-      .debug()
-      .compile
-      .drain
+object BodyBlock {
 
-  private val streamDecoder: StreamDecoder[(SectionHeaderBlock, BodyBlock)] =
-    for {
-      header <- StreamDecoder.once(SectionHeaderBlock.codec)
-      decoder = BodyBlock.decoder(header.ordering)
-      block <- StreamDecoder.many(decoder)
-    } yield (header, block)
+  def decoder(implicit ord: ByteOrdering): Decoder[BodyBlock] =
+    Decoder.choiceDecoder(InterfaceDescriptionBlock.codec, EnhancedPacketBlock.codec)
 }

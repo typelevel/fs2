@@ -19,7 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.protocols.pcapng
+package fs2.protocols
+package pcapng
 
 import scodec._
 import scodec.bits._
