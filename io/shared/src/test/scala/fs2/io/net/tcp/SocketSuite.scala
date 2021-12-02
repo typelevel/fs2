@@ -238,7 +238,6 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               client.write(msg) *>
               client
                 .readN(msg.size)
-                .timeout(1000.millis)
                 .attempt
                 .map { res =>
                   if (isJVM) assert(res.merge.isInstanceOf[IllegalStateException])
