@@ -1129,8 +1129,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * current elements.
     *
     * @example {{{
-    * scala> Stream(1, -1, 2, -2, 3, -3, 4, -4).filterWithPrevious((previous, current) => previous < current).toList
-    * res0: List[Int] = List(1, 2, 3, 4)
+    * scala> Stream(1, 9, 5, 6, 7, 8, 9, 10).filterWithPrevious((previous, current) => previous < current).toList
+    * res0: List[Int] = List(1, 9, 10)
     * }}}
     */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F, O] = {
