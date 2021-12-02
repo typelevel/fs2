@@ -68,32 +68,30 @@ class BlockTest extends munit.FunSuite {
 private object BlockTest {
 
   object SHB {
+    val header = hex"0a0d0d0a"
     val length = hex"1c000000"
-    val other = hex"ffffffffffffffff"
-    val expected = SectionHeaderBlock(length, LittleEndian, 1, 0, other)
-    val bytes = {
-      val header = hex"0a0d0d0a"
-      val magic = hex"4d3c2b1a"
-      val major = hex"0100"
-      val minor = hex"0000"
+    val parsed = hex"4d3c2b1a01000000"
+    val nonParsed = hex"ffffffffffffffff"
+    val bytes = header ++ length ++ parsed ++ nonParsed ++ length
 
-      header ++ length ++ magic ++ major ++ minor ++ other ++ length
-    }
+    val expected = SectionHeaderBlock(length, LittleEndian, 1, 0, nonParsed)
   }
 
   object Interface {
     val header = hex"01000000"
     val length = hex"20000000"
-    val other = hex"01000000ffff0000090001000600000000000000"
-    val expected = InterfaceDescriptionBlock(length, other)
-    val bytes = header ++ length ++ other ++ length
+    val nonParsed = hex"01000000ffff0000090001000600000000000000"
+    val bytes = header ++ length ++ nonParsed ++ length
+
+    val expected = InterfaceDescriptionBlock(length, nonParsed)
   }
 
   val enhancedHeader = hex"06000000"
+
   object Enhanced1 {
     val length = hex"5c010000"
-    val body = hex"0000000083ea03000d8a33353a0100003a010000"
-    val other =
+    val parsed = hex"0000000083ea03000d8a33353a0100003a010000"
+    val nonParsed =
       hex"""ffffffffffff000b
             8201fc4208004500012ca8360000fa11178b00000000ffffffff004400430118
             591f0101060000003d1d0000000000000000000000000000000000000000000b
@@ -105,14 +103,15 @@ private object BlockTest {
             0000000000000000000000000000000000000000000000000000000000000000
             0000000000000000000000000000638253633501013d0701000b8201fc423204
             0000000037040103062aff000000000000000000"""
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, other)
-    val bytes = enhancedHeader ++ length ++ body ++ other ++ length
+    val bytes = enhancedHeader ++ length ++ parsed ++ nonParsed ++ length
+
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, nonParsed)
   }
 
   object Enhanced2 {
     val length = hex"78010000"
-    val body = hex"0000000083ea0300348b33355601000056010000"
-    val other =
+    val parsed = hex"0000000083ea0300348b33355601000056010000"
+    val nonParsed =
       hex"""000b8201fc42000874adf19b
             0800450001480445000080110000c0a80001c0a8000a00430044013422330201
             060000003d1d0000000000000000c0a8000ac0a8000100000000000b8201fc42
@@ -125,14 +124,15 @@ private object BlockTest {
             00000000000000000000638253633501020104ffffff003a04000007083b0400
             000c4e330400000e103604c0a80001ff00000000000000000000000000000000
             000000000000000000000000"""
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, other)
-    val bytes = enhancedHeader ++ length ++ body ++ other ++ length
+    val bytes = enhancedHeader ++ length ++ parsed ++ nonParsed ++ length
+
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, nonParsed)
   }
 
   object Enhanced3 {
     val length = hex"5c010000"
-    val body = hex"0000000083ea03009c9b34353a0100003a010000"
-    val other =
+    val pared = hex"0000000083ea03009c9b34353a0100003a010000"
+    val nonParsed =
       hex"""ffffffff
             ffff000b8201fc4208004500012ca8370000fa11178a00000000ffffffff0044
             004301189fbd0101060000003d1e000000000000000000000000000000000000
@@ -144,14 +144,15 @@ private object BlockTest {
             0000000000000000000000000000000000000000000000000000000000000000
             000000000000000000000000000000000000638253633501033d0701000b8201
             fc423204c0a8000a3604c0a8000137040103062aff000000"""
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, other)
-    val bytes = enhancedHeader ++ length ++ body ++ other ++ length
+    val bytes = enhancedHeader ++ length ++ pared ++ nonParsed ++ length
+
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, nonParsed)
   }
 
   object Enhanced4 {
     val length = hex"78010000"
-    val body = hex"0000000083ea0300d69c34355601000056010000"
-    val other =
+    val parsed = hex"0000000083ea0300d69c34355601000056010000"
+    val nonParsed =
       hex"""000b8201fc420008
             74adf19b0800450001480446000080110000c0a80001c0a8000a004300440134
             dfdb0201060000003d1e0000000000000000c0a8000a0000000000000000000b
@@ -164,7 +165,8 @@ private object BlockTest {
             0000000000000000000000000000638253633501053a04000007083b0400000c
             4e330400000e103604c0a800010104ffffff00ff000000000000000000000000
             00000000000000000000000000000000"""
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, other)
-    val bytes = enhancedHeader ++ length ++ body ++ other ++ length
+    val bytes = enhancedHeader ++ length ++ parsed ++ nonParsed ++ length
+
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, nonParsed)
   }
 }
