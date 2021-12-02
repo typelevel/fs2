@@ -35,13 +35,16 @@ object Block {
   type Length = ByteVector
 
   def orderDependent[T](
-    big: ByteVector,
-    little: ByteVector
+      big: ByteVector,
+      little: ByteVector
   )(implicit ord: ByteOrdering): ByteVector =
     ord match {
       case ByteOrdering.BigEndian    => big
       case ByteOrdering.LittleEndian => little
     }
+
+  def getLength(length: Length)(implicit ord: ByteOrdering): Long =
+    length.toLong(signed = false, ord)
 
   // format: off
   def block[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
@@ -50,14 +53,14 @@ object Block {
     init: Init.Aux[LB, L],
     last: Last.Aux[LB, Unit]
   ): Codec[Unit :: ByteVector :: LB] =
-    ("block_type"       | constant(hexConstant)) ::
-    ("block_length"     | bytes(4)).flatPrepend { length =>
+    ("Block Type"       | constant(hexConstant)) ::
+    ("Block Total Length"     | bytes(4)).flatPrepend { length =>
       f(length) :+ constant(length)
     }
 
   def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
     block(hexConstant) { length =>
-      ("block_bytes"    | fixedSizeBytes(length.toInt(signed = false, ord) - 12, bytes)) ::
+      ("Block Bytes"    | fixedSizeBytes(getLength(length) - 12, bytes)) ::
       Codec.deriveHNil
     }.dropUnits
   // format: on

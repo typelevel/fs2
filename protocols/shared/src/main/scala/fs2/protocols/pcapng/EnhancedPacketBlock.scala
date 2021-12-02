@@ -22,17 +22,35 @@
 package fs2.protocols
 package pcapng
 
+import pcap._
 import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
 
-case class EnhancedPacketBlock(length: ByteVector, bytes: ByteVector) extends BodyBlock
+case class EnhancedPacketBlock(
+    length: ByteVector,
+    interfaceId: Long,
+    timestampHigh: Long,
+    timestampLow: Long,
+    capturedPacketLength: Long,
+    originalPacketLength: Long,
+    bytes: ByteVector
+) extends BodyBlock
 
 object EnhancedPacketBlock {
 
-  def hexConstant(implicit ord: ByteOrdering) =
+  def hexConstant(implicit ord: ByteOrdering): ByteVector =
     Block.orderDependent(hex"00000006", hex"06000000")
 
+  // format: off
   def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
-    "EPB" | Block.ignoredBlock(hexConstant).as[EnhancedPacketBlock]
+    "EPB" | Block.block(hexConstant) { length =>
+      ("Interface ID" | guint32) ::
+      ("Timestamp (High)" | guint32) ::
+      ("Timestamp (Low)" | guint32) ::
+      ("Captured Packet Length" | guint32) ::
+      ("Original Packet Length" | guint32) ::
+      fixedSizeBytes(Block.getLength(length) - 32, bytes)
+    }.dropUnits.as[EnhancedPacketBlock]
+  // format: on
 }
