@@ -32,6 +32,7 @@ import cats.syntax.all._
 import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
+import java.io.IOException
 
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
@@ -54,21 +55,18 @@ private[net] trait SocketCompanionPlatform {
       F.uncancelable { p =>
         p(readSemaphore.acquire) *>
           p(fa)
-            .onCancel(F.delay(this.readBuffer = null) *> endOfInput)
+            .onCancel(endOfInput)
             .guarantee(readSemaphore.release)
       }
 
-    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A])(ifCanceled: F[A]): F[A] =
+    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
       withReadPermit {
         F.delay {
-          if (readBuffer eq null) ifCanceled
-          else {
-            if (readBuffer.capacity() < size)
-              readBuffer = ByteBuffer.allocateDirect(size)
-            else
-              (readBuffer: Buffer).limit(size)
-            f(readBuffer)
-          }
+          if (readBuffer.capacity() < size)
+            readBuffer = ByteBuffer.allocateDirect(size)
+          else
+            (readBuffer: Buffer).limit(size)
+          f(readBuffer)
         }.flatten
       }
 
@@ -98,7 +96,7 @@ private[net] trait SocketCompanionPlatform {
           if (read < 0) F.pure(None)
           else releaseBuffer(buffer).map(Some(_))
         }
-      }(F.pure(None))
+      }
 
     def readN(max: Int): F[Chunk[Byte]] =
       withReadBuffer(max) { buffer =>
@@ -109,7 +107,7 @@ private[net] trait SocketCompanionPlatform {
             else go
           }
         go
-      }(F.pure(Chunk.empty))
+      }
 
     def reads: Stream[F, Byte] =
       Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.unchunks
@@ -130,7 +128,7 @@ private[net] trait SocketCompanionPlatform {
         ch.read(
           buffer,
           null,
-          new IntCallbackHandler(cb)
+          new ChannelBytesHandler(cb)
         )
       }
 
@@ -140,7 +138,7 @@ private[net] trait SocketCompanionPlatform {
           ch.write(
             buff,
             null,
-            new IntCallbackHandler(cb)
+            new ChannelBytesHandler(cb)
           )
         }.flatMap { written =>
           if (written >= 0 && buff.remaining() > 0)
@@ -179,11 +177,17 @@ private[net] trait SocketCompanionPlatform {
       }
   }
 
-  private final class IntCallbackHandler[A](cb: Either[Throwable, Int] => Unit)
+  private final class ChannelBytesHandler[A](cb: Either[Throwable, Int] => Unit)
       extends CompletionHandler[Integer, AnyRef] {
     def completed(result: Integer, attachment: AnyRef): Unit =
       cb(Right(result))
     def failed(err: Throwable, attachment: AnyRef): Unit =
-      cb(Left(err))
+      err match {
+        case _: IOException =>
+          // Connection may be reset while reading/writing; if so, indicate failure via negative bytes instead of propagating exception
+          cb(Right(-1))
+        case _ =>
+          cb(Left(err))
+      }
   }
 }
