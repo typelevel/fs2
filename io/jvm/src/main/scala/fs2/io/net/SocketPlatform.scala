@@ -54,7 +54,7 @@ private[net] trait SocketCompanionPlatform {
       F.uncancelable { p =>
         p(readSemaphore.acquire) *>
           p(fa)
-            .onCancel(F.delay(this.readBuffer = null))
+            .onCancel(F.delay(this.readBuffer = null) *> endOfInput)
             .guarantee(readSemaphore.release)
       }
 
