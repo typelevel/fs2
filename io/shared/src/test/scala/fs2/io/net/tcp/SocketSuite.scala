@@ -238,10 +238,15 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               client.write(msg) *>
               client
                 .readN(msg.size)
-                .attempt
-                .map { res =>
-                  if (isJVM) assert(res.merge.isInstanceOf[IllegalStateException])
-                  else assertEquals(res, Right(msg))
+                .flatMap { c =>
+                  if (isJVM) {
+                    assertEquals(c.size, 0)
+                    // Read again now that the pending read is no longer pending
+                    client.readN(msg.size).map(c => assertEquals(c.size, 0))
+                  } else {
+                    assertEquals(c, msg)
+                    IO.unit
+                  }
                 }
           Stream.eval(prg).concurrently(echoServer)
         }

@@ -25,6 +25,7 @@ package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import cats.effect.{Async, Resource}
+import cats.effect.implicits._
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
@@ -49,26 +50,26 @@ private[net] trait SocketCompanionPlatform {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
-    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      readSemaphore.permit.use { _ =>
+    private def withReadPermit[A](fa: F[A]): F[A] =
+      F.uncancelable { p =>
+        p(readSemaphore.acquire) *>
+          p(fa)
+            .onCancel(F.delay(this.readBuffer = null))
+            .guarantee(readSemaphore.release)
+      }
+
+    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A])(ifCanceled: F[A]): F[A] =
+      withReadPermit {
         F.delay {
-          if (readBuffer.capacity() < size)
-            readBuffer = ByteBuffer.allocateDirect(size)
-          else
-            (readBuffer: Buffer).limit(size)
-          f(readBuffer)
-        }.flatten
-          .adaptError { case _: java.nio.channels.ReadPendingException =>
-            new IllegalStateException(
-              """|Illegal socket read.
-                                         |
-                                         |A previous read on this socket was cancelled. This is typically due to using
-                                         |timeout or another operation which cancels the fiber performing the read.
-                                         |Once a socket read has been cancelled, the underlying socket is left in an
-                                         |indeterminate state and no further reads may be performed. Consider opening
-                                         |a new socket or otherwise avoiding the cancellation.""".stripMargin
-            )
+          if (readBuffer eq null) ifCanceled
+          else {
+            if (readBuffer.capacity() < size)
+              readBuffer = ByteBuffer.allocateDirect(size)
+            else
+              (readBuffer: Buffer).limit(size)
+            f(readBuffer)
           }
+        }.flatten
       }
 
     /** Performs a single channel read operation in to the supplied buffer. */
@@ -93,11 +94,11 @@ private[net] trait SocketCompanionPlatform {
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
       withReadBuffer(max) { buffer =>
-        readChunk(buffer).flatMap { read =>
+        readChunk(buffer).flatMap[Option[Chunk[Byte]]] { read =>
           if (read < 0) F.pure(None)
           else releaseBuffer(buffer).map(Some(_))
         }
-      }
+      }(F.pure(None))
 
     def readN(max: Int): F[Chunk[Byte]] =
       withReadBuffer(max) { buffer =>
@@ -108,7 +109,7 @@ private[net] trait SocketCompanionPlatform {
             else go
           }
         go
-      }
+      }(F.pure(Chunk.empty))
 
     def reads: Stream[F, Byte] =
       Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.unchunks
@@ -123,6 +124,7 @@ private[net] trait SocketCompanionPlatform {
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
       extends BufferedReads[F](readSemaphore) {
+
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async_[Int] { cb =>
         ch.read(
