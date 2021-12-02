@@ -113,23 +113,14 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F])
       extends BufferedReads[F](readSemaphore) {
 
-    @volatile private[this] var inputOpen = true
-    @volatile private[this] var outputOpen = true
-
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
         ch.read(
           buffer,
           null,
-          new CompletionHandler[Integer, AnyRef] {
-            def completed(bytesRead: Integer, attachment: AnyRef) =
-              cb(Right(bytesRead))
-            def failed(err: Throwable, attachment: AnyRef) =
-              if (inputOpen) cb(Left(err))
-          }
+          new IntCompletionHandler(cb)
         )
         F.delay(Some(F.delay {
-          inputOpen = false
           ch.shutdownInput()
           ()
         }))
@@ -141,15 +132,9 @@ private[net] trait SocketCompanionPlatform {
           ch.write(
             buff,
             null,
-            new CompletionHandler[Integer, AnyRef] {
-              def completed(bytesWritten: Integer, attachment: AnyRef) =
-                cb(Right(bytesWritten))
-              def failed(err: Throwable, attachment: AnyRef) =
-                if (outputOpen) cb(Left(err))
-            }
+            new IntCompletionHandler(cb)
           )
           F.delay(Some(F.delay {
-            outputOpen = false
             ch.shutdownOutput()
             ()
           }))
@@ -188,5 +173,13 @@ private[net] trait SocketCompanionPlatform {
       F.delay {
         ch.shutdownInput(); ()
       }
+  }
+
+  private final class IntCompletionHandler(cb: Either[Throwable, Int] => Unit)
+      extends CompletionHandler[Integer, AnyRef] {
+    def completed(i: Integer, attachment: AnyRef) =
+      cb(Right(i))
+    def failed(err: Throwable, attachment: AnyRef) =
+      cb(Left(err))
   }
 }
