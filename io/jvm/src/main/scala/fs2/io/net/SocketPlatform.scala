@@ -92,7 +92,7 @@ private[net] trait SocketCompanionPlatform {
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
       withReadBuffer(max) { buffer =>
-        readChunk(buffer).flatMap[Option[Chunk[Byte]]] { read =>
+        readChunk(buffer).flatMap { read =>
           if (read < 0) F.pure(None)
           else releaseBuffer(buffer).map(Some(_))
         }
