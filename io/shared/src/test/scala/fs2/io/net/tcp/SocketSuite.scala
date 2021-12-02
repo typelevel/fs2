@@ -238,11 +238,11 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               client.write(msg) *>
               client
                 .readN(msg.size)
-                .timeout(100.millis)
+                .timeout(1000.millis)
                 .attempt
                 .map { res =>
                   if (isJVM) assert(res.merge.isInstanceOf[IllegalStateException])
-                  else assertEquals(res.merge, msg)
+                  else assertEquals(res, Right(msg))
                 }
           Stream.eval(prg).concurrently(echoServer)
         }
