@@ -33,7 +33,7 @@ object ByteOrderMagic extends Codec[ByteOrdering] {
   def sizeBound = SizeBound.exact(32)
 
   def encode(bo: ByteOrdering) = bo match {
-    case ByteOrdering.BigEndian => Attempt.successful(BigEndian.bits)
+    case ByteOrdering.BigEndian    => Attempt.successful(BigEndian.bits)
     case ByteOrdering.LittleEndian => Attempt.successful(LittleEndian.bits)
   }
 

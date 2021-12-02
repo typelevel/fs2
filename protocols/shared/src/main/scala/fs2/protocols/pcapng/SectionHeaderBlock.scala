@@ -29,11 +29,11 @@ import scodec.codecs._
 import scodec.codecs.fixedSizeBytes
 
 case class SectionHeaderBlock(
-  length: ByteVector,
-  ordering: ByteOrdering,
-  majorVersion: Int,
-  minorVersion: Int,
-  bytes: ByteVector
+    length: ByteVector,
+    ordering: ByteOrdering,
+    majorVersion: Int,
+    minorVersion: Int,
+    bytes: ByteVector
 ) extends Block
 
 object SectionHeaderBlock {
@@ -50,6 +50,6 @@ object SectionHeaderBlock {
   val codec: Codec[SectionHeaderBlock] = "SHB" | Block.block(hexConstant) { length =>
     ("magic_number"     | ByteOrderMagic).flatPrepend { implicit ord =>
     ("body_bytes"       | fixedSizeBytes(length.toInt(signed = false, ord) - 16, sectionHeader))
-    }}.dropUnits.as[SectionHeaderBlock]
+  }}.dropUnits.as[SectionHeaderBlock]
   // format: on
 }

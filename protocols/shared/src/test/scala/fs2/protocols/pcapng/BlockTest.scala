@@ -70,7 +70,7 @@ private object BlockTest {
   object SHB {
     val length = hex"1c000000"
     val other = hex"ffffffffffffffff"
-    val expected = SectionHeaderBlock(length,LittleEndian,1,0,other)
+    val expected = SectionHeaderBlock(length, LittleEndian, 1, 0, other)
     val bytes = {
       val header = hex"0a0d0d0a"
       val magic = hex"4d3c2b1a"

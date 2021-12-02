@@ -34,9 +34,12 @@ object Block {
 
   type Length = ByteVector
 
-  def orderDependent[T](big: ByteVector, little: ByteVector)(implicit ord: ByteOrdering): ByteVector =
+  def orderDependent[T](
+    big: ByteVector,
+    little: ByteVector
+  )(implicit ord: ByteOrdering): ByteVector =
     ord match {
-      case ByteOrdering.BigEndian => big
+      case ByteOrdering.BigEndian    => big
       case ByteOrdering.LittleEndian => little
     }
 
