@@ -213,4 +213,18 @@ class IoPlatformSuite extends Fs2Suite {
         .timeout(5.seconds)
     }
   }
+
+  group("readResource") {
+    test("class") {
+      val bar = readClassResource[IO, IoPlatformSuite]("foo", 8192)
+        .through(text.utf8.decode)
+        .compile
+        .foldMonoid
+      bar.assertEquals("bar")
+    }
+    test("classloader") {
+      val size = readClassLoaderResource[IO]("keystore.jks", 8192).as(1L).compile.foldMonoid
+      size.assertEquals(2591L)
+    }
+  }
 }
