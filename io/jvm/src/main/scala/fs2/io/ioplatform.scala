@@ -143,7 +143,7 @@ private[fs2] trait ioplatform {
     */
   def readClassResource[F[_], C](
       name: String,
-      chunkSize: Int
+      chunkSize: Int = 64 * 1024
   )(implicit F: Sync[F], ct: ClassTag[C]): Stream[F, Byte] =
     Stream.eval(F.blocking(Option(ct.runtimeClass.getResourceAsStream(name)))).flatMap {
       case Some(resource) => io.readInputStream(resource.pure, chunkSize)
@@ -155,7 +155,7 @@ private[fs2] trait ioplatform {
     */
   def readClassLoaderResource[F[_]](
       name: String,
-      chunkSize: Int,
+      chunkSize: Int = 64 * 1024,
       classLoader: ClassLoader = getClass().getClassLoader()
   )(implicit F: Sync[F]): Stream[F, Byte] =
     Stream.eval(F.blocking(Option(classLoader.getResourceAsStream(name)))).flatMap {
