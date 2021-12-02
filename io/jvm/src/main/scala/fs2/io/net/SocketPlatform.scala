@@ -25,14 +25,12 @@ package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import cats.effect.{Async, Resource}
-import cats.effect.implicits._
 import cats.effect.std.Semaphore
 import cats.syntax.all._
 
 import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
-import java.io.IOException
 
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
@@ -51,16 +49,8 @@ private[net] trait SocketCompanionPlatform {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
-    private def withReadPermit[A](fa: F[A]): F[A] =
-      F.uncancelable { p =>
-        p(readSemaphore.acquire) *>
-          p(fa)
-            .onCancel(endOfInput)
-            .guarantee(readSemaphore.release)
-      }
-
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      withReadPermit {
+      readSemaphore.permit.use { _ =>
         F.delay {
           if (readBuffer.capacity() < size)
             readBuffer = ByteBuffer.allocateDirect(size)
@@ -123,23 +113,46 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F])
       extends BufferedReads[F](readSemaphore) {
 
+    @volatile private[this] var inputOpen = true
+    @volatile private[this] var outputOpen = true
+
     protected def readChunk(buffer: ByteBuffer): F[Int] =
-      F.async_[Int] { cb =>
+      F.async[Int] { cb =>
         ch.read(
           buffer,
           null,
-          new ChannelBytesHandler(cb)
+          new CompletionHandler[Integer, AnyRef] {
+            def completed(bytesRead: Integer, attachment: AnyRef) =
+              cb(Right(bytesRead))
+            def failed(err: Throwable, attachment: AnyRef) =
+              if (inputOpen) cb(Left(err))
+          }
         )
+        F.delay(Some(F.delay {
+          inputOpen = false
+          ch.shutdownInput()
+          ()
+        }))
       }
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        F.async_[Int] { cb =>
+        F.async[Int] { cb =>
           ch.write(
             buff,
             null,
-            new ChannelBytesHandler(cb)
+            new CompletionHandler[Integer, AnyRef] {
+              def completed(bytesWritten: Integer, attachment: AnyRef) =
+                cb(Right(bytesWritten))
+              def failed(err: Throwable, attachment: AnyRef) =
+                if (outputOpen) cb(Left(err))
+            }
           )
+          F.delay(Some(F.delay {
+            outputOpen = false
+            ch.shutdownOutput()
+            ()
+          }))
         }.flatMap { written =>
           if (written >= 0 && buff.remaining() > 0)
             go(buff)
@@ -174,20 +187,6 @@ private[net] trait SocketCompanionPlatform {
     def endOfInput: F[Unit] =
       F.delay {
         ch.shutdownInput(); ()
-      }
-  }
-
-  private final class ChannelBytesHandler[A](cb: Either[Throwable, Int] => Unit)
-      extends CompletionHandler[Integer, AnyRef] {
-    def completed(result: Integer, attachment: AnyRef): Unit =
-      cb(Right(result))
-    def failed(err: Throwable, attachment: AnyRef): Unit =
-      err match {
-        case _: IOException =>
-          // Connection may be reset while reading/writing; if so, indicate failure via negative bytes instead of propagating exception
-          cb(Right(-1))
-        case _ =>
-          cb(Left(err))
       }
   }
 }

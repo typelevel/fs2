@@ -227,7 +227,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       Stream
         .resource(setup)
         .flatMap { case (server, client) =>
-          val echoServer = server.flatMap(c => c.reads.through(c.writes))
+          val echoServer = server.flatMap(c => c.writes(c.reads).attempt)
           val msg = Chunk.array("Hello!".getBytes)
           val prg =
             client.write(msg) *>
