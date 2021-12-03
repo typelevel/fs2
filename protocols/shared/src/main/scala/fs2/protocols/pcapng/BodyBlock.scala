@@ -30,5 +30,10 @@ trait BodyBlock extends Block
 object BodyBlock {
 
   def decoder(implicit ord: ByteOrdering): Decoder[BodyBlock] =
-    Decoder.choiceDecoder(InterfaceDescriptionBlock.codec, EnhancedPacketBlock.codec)
+    Decoder.choiceDecoder(
+      InterfaceDescriptionBlock.codec,
+      EnhancedPacketBlock.codec,
+      NameResolutionBlock.codec,
+      InterfaceStatisticsBlock.codec
+    )
 }

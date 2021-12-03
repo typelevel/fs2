@@ -49,7 +49,7 @@ object EnhancedPacketBlock {
 
   private def padTo32Bits(length: Int) = {
     val rem = length % 4
-    if(rem == 0) 0
+    if (rem == 0) 0
     else 4 - rem
   }
 

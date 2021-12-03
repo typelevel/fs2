@@ -88,6 +88,8 @@ private object BlockTest {
 
   val enhancedHeader = hex"06000000"
 
+  val opts = ByteVector.empty
+
   object Enhanced1 {
     val length = hex"5c010000"
     val parsed = hex"0000000083ea03000d8a33353a0100003a010000"
@@ -106,7 +108,7 @@ private object BlockTest {
     val padding = hex"0000"
     val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, data, ByteVector.empty)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, data, opts)
   }
 
   object Enhanced2 {
@@ -128,7 +130,7 @@ private object BlockTest {
     val padding = hex"0000"
     val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, data, ByteVector.empty)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, data, opts)
   }
 
   object Enhanced3 {
@@ -149,7 +151,7 @@ private object BlockTest {
     val padding = hex"0000"
     val bytes = enhancedHeader ++ length ++ pared ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, data, ByteVector.empty)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, data, opts)
   }
 
   object Enhanced4 {
@@ -171,6 +173,6 @@ private object BlockTest {
     val padding = hex"0000"
     val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, data, ByteVector.empty)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, data, opts)
   }
 }

@@ -19,28 +19,20 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package protocols
+package fs2.protocols
+package pcapng
 
-import cats.effect.{IO, IOApp}
-import fs2.interop.scodec.StreamDecoder
-import fs2.io.file.{Files, Path}
-import fs2.protocols.pcapng.{BodyBlock, SectionHeaderBlock}
+import scodec.bits._
+import scodec.codecs._
+import scodec.Codec
 
-object PcapNgExample extends IOApp.Simple {
+case class InterfaceStatisticsBlock(length: ByteVector, bytes: ByteVector) extends BodyBlock
 
-  def run: IO[Unit] =
-    Files[IO]
-      .readAll(Path("/Users/anikiforov/Downloads/many_interfaces.pcapng"))
-      .through(streamDecoder.toPipeByte)
-      .debug()
-      .compile
-      .drain
+object InterfaceStatisticsBlock {
 
-  private val streamDecoder: StreamDecoder[(SectionHeaderBlock, BodyBlock)] =
-    for {
-      header <- StreamDecoder.once(SectionHeaderBlock.codec)
-      decoder = BodyBlock.decoder(header.ordering)
-      block <- StreamDecoder.many(decoder)
-    } yield (header, block)
+  private def hexConstant(implicit ord: ByteOrdering) =
+    Block.orderDependent(hex"00000005", hex"05000000")
+
+  def codec(implicit ord: ByteOrdering): Codec[InterfaceStatisticsBlock] =
+    "ISB" | Block.ignoredBlock(hexConstant).as[InterfaceStatisticsBlock]
 }
