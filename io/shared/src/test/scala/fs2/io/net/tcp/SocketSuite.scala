@@ -29,6 +29,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
+import scala.concurrent.TimeoutException
 
 class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
@@ -215,6 +216,52 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .map { msgs =>
           assertEquals(msgs, Vector(msg))
         }
+    }
+
+    test("read after timed out read not allowed on JVM") {
+      val setup = for {
+        serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (bindAddress, server) = serverSetup
+        client <- Network[IO].client(bindAddress)
+      } yield (server, client)
+      Stream
+        .resource(setup)
+        .flatMap { case (server, client) =>
+          val echoServer = server.flatMap(c => c.writes(c.reads).attempt)
+          val msg = Chunk.array("Hello!".getBytes)
+          val prg =
+            client.write(msg) *>
+              client.readN(msg.size) *>
+              client.readN(msg.size).timeout(100.millis).recover { case _: TimeoutException =>
+                Chunk.empty
+              } *>
+              client.write(msg) *>
+              client
+                .readN(msg.size)
+                .flatMap { c =>
+                  if (isJVM) {
+                    assertEquals(c.size, 0)
+                    // Read again now that the pending read is no longer pending
+                    client.readN(msg.size).map(c => assertEquals(c.size, 0))
+                  } else {
+                    assertEquals(c, msg)
+                    IO.unit
+                  }
+                }
+          Stream.eval(prg).concurrently(echoServer)
+        }
+        .compile
+        .drain
+    }
+
+    test("can shutdown a socket that's pending a read") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        Network[IO].client(bindAddress).use { _ =>
+          clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).recover {
+            case _: TimeoutException => ()
+          }
+        }
+      }
     }
   }
 }

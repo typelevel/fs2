@@ -66,8 +66,8 @@ class TLSSocketSuite extends TLSSuite {
               Stream(googleDotCom)
                 .covary[IO]
                 .through(text.utf8.encode)
-                .through(tlsSocket.writes) ++
-                Stream.exec(tlsSocket.endOfOutput) ++
+                .through(tlsSocket.writes)
+                .onFinalize(tlsSocket.endOfOutput) ++
                 tlsSocket.reads
                   .through(text.utf8.decode)
                   .through(text.lines)
@@ -141,7 +141,7 @@ class TLSSocketSuite extends TLSSuite {
           }.parJoinUnbounded
 
           val client =
-            Stream.exec(clientSocket.write(msg)) ++
+            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
 
           client.concurrently(echoServer)
@@ -169,7 +169,7 @@ class TLSSocketSuite extends TLSSuite {
           }.parJoinUnbounded
 
           val client =
-            Stream.exec(clientSocket.write(msg)) ++
+            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
 
           client.concurrently(echoServer)
@@ -207,7 +207,7 @@ class TLSSocketSuite extends TLSSuite {
           }.parJoinUnbounded
 
           val client =
-            Stream.exec(clientSocket.write(msg)) ++
+            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
 
           client.concurrently(echoServer)

@@ -166,6 +166,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.compression.DeflateParams$DeflateParamsImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.compression.DeflateParams#DeflateParamsImpl.apply"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.SocketCompanionPlatform$IntCallbackHandler"
   )
 )
 

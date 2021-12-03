@@ -112,23 +112,32 @@ private[net] trait SocketCompanionPlatform {
       writeSemaphore: Semaphore[F]
   )(implicit F: Async[F])
       extends BufferedReads[F](readSemaphore) {
+
     protected def readChunk(buffer: ByteBuffer): F[Int] =
-      F.async_[Int] { cb =>
+      F.async[Int] { cb =>
         ch.read(
           buffer,
           null,
-          new IntCallbackHandler(cb)
+          new IntCompletionHandler(cb)
         )
+        F.delay(Some(F.delay {
+          ch.shutdownInput()
+          ()
+        }))
       }
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        F.async_[Int] { cb =>
+        F.async[Int] { cb =>
           ch.write(
             buff,
             null,
-            new IntCallbackHandler(cb)
+            new IntCompletionHandler(cb)
           )
+          F.delay(Some(F.delay {
+            ch.shutdownOutput()
+            ()
+          }))
         }.flatMap { written =>
           if (written >= 0 && buff.remaining() > 0)
             go(buff)
@@ -166,11 +175,11 @@ private[net] trait SocketCompanionPlatform {
       }
   }
 
-  private final class IntCallbackHandler[A](cb: Either[Throwable, Int] => Unit)
+  private final class IntCompletionHandler(cb: Either[Throwable, Int] => Unit)
       extends CompletionHandler[Integer, AnyRef] {
-    def completed(result: Integer, attachment: AnyRef): Unit =
-      cb(Right(result))
-    def failed(err: Throwable, attachment: AnyRef): Unit =
+    def completed(i: Integer, attachment: AnyRef) =
+      cb(Right(i))
+    def failed(err: Throwable, attachment: AnyRef) =
       cb(Left(err))
   }
 }
