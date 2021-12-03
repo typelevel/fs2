@@ -53,15 +53,13 @@ object Block {
     init: Init.Aux[LB, L],
     last: Last.Aux[LB, Unit]
   ): Codec[Unit :: ByteVector :: LB] =
-    ("Block Type"       | constant(hexConstant)) ::
-    ("Block Total Length"     | bytes(4)).flatPrepend { length =>
-      f(length) :+ constant(length)
-    }
+    ("Block Type"             | constant(hexConstant)         ) ::
+    ("Block Total Length"     | bytes(4)                ).flatPrepend { length =>
+    ("Block dependendent"     | f(length) :+ constant(length) )}
 
   def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
     block(hexConstant) { length =>
-      ("Block Bytes"    | fixedSizeBytes(getLength(length) - 12, bytes)) ::
-      Codec.deriveHNil
+      ("Block Bytes"    | fixedSizeBytes(getLength(length) - 12, bytes)) :: Codec.deriveHNil
     }.dropUnits
   // format: on
 }

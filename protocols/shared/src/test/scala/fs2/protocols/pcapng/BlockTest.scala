@@ -27,7 +27,7 @@ import scodec.DecodeResult
 import scodec.bits.ByteOrdering.LittleEndian
 import scodec.bits._
 
-// https://wiki.wireshark.org/Development/PcapNg dhcp.pcapng
+// https://gitlab.com/wireshark/wireshark/-/wikis/Development/PcapNg dhcp.pcapng
 class BlockTest extends munit.FunSuite {
   import BlockTest._
 
@@ -103,10 +103,10 @@ private object BlockTest {
             0000000000000000000000000000000000000000000000000000000000000000
             0000000000000000000000000000638253633501013d0701000b8201fc423204
             0000000037040103062aff00000000000000"""
-    val options = hex"0000"
-    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ options ++ length
+    val padding = hex"0000"
+    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, data, options)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570125, 314, 314, data, ByteVector.empty)
   }
 
   object Enhanced2 {
@@ -125,10 +125,10 @@ private object BlockTest {
             00000000000000000000638253633501020104ffffff003a04000007083b0400
             000c4e330400000e103604c0a80001ff00000000000000000000000000000000
             00000000000000000000"""
-    val options = hex"0000"
-    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ options ++ length
+    val padding = hex"0000"
+    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, data, options)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892570420, 342, 342, data, ByteVector.empty)
   }
 
   object Enhanced3 {
@@ -146,10 +146,10 @@ private object BlockTest {
             0000000000000000000000000000000000000000000000000000000000000000
             000000000000000000000000000000000000638253633501033d0701000b8201
             fc423204c0a8000a3604c0a8000137040103062aff00"""
-    val options = hex"0000"
-    val bytes = enhancedHeader ++ length ++ pared ++ data ++ options ++ length
+    val padding = hex"0000"
+    val bytes = enhancedHeader ++ length ++ pared ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, data, options)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640156, 314, 314, data, ByteVector.empty)
   }
 
   object Enhanced4 {
@@ -168,9 +168,9 @@ private object BlockTest {
             0000000000000000000000000000638253633501053a04000007083b0400000c
             4e330400000e103604c0a800010104ffffff00ff000000000000000000000000
             0000000000000000000000000000"""
-    val options = hex"0000"
-    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ options ++ length
+    val padding = hex"0000"
+    val bytes = enhancedHeader ++ length ++ parsed ++ data ++ padding ++ length
 
-    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, data, options)
+    val expected = EnhancedPacketBlock(length, 0, 256643, 892640470, 342, 342, data, ByteVector.empty)
   }
 }
