@@ -31,7 +31,7 @@ object PcapNgExample extends IOApp.Simple {
 
   def run: IO[Unit] =
     Files[IO]
-      .readAll(Path("/Users/anikiforov/Downloads/dhcp.pcapng"))
+      .readAll(Path("/Users/anikiforov/http-ex.pcap"))
       .through(streamDecoder.toPipeByte)
       .debug()
       .compile
