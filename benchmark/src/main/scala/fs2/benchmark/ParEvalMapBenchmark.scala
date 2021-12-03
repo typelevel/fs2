@@ -41,6 +41,10 @@ class ParEvalMapBenchmark {
     execute(getStream.evalMap(_ => dummyLoad))
 
   @Benchmark
+  def parEvalMap10(): Unit =
+    execute(getStream.parEvalMap(10)(_ => dummyLoad))
+
+  @Benchmark
   def parEvalMapUnordered10(): Unit =
     execute(getStream.parEvalMapUnordered(10)(_ => dummyLoad))
 
