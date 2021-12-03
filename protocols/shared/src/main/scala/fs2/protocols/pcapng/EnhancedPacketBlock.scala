@@ -55,7 +55,7 @@ object EnhancedPacketBlock {
 
   // format: off
   def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
-    "EPB" | Block.block(hexConstant) { length =>
+    "EPB" | Block.codec(hexConstant) { length =>
       ("Interface ID"           | guint32                                            ) ::
       ("Timestamp (High)"       | guint32                                            ) ::
       ("Timestamp (Low)"        | guint32                                            ) ::

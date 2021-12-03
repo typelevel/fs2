@@ -47,7 +47,7 @@ object SectionHeaderBlock {
     ("Remaining"        | bytes   )
   }
 
-  val codec: Codec[SectionHeaderBlock] = "SHB" | Block.block(hexConstant) { length =>
+  val codec: Codec[SectionHeaderBlock] = "SHB" | Block.codec(hexConstant) { length =>
     ("Byte-Order Magic"     | ByteOrderMagic).flatPrepend { implicit ord =>
     ("Block Bytes"          | fixedSizeBytes(length.toInt(signed = false, ord) - 16, sectionHeader))
   }}.dropUnits.as[SectionHeaderBlock]

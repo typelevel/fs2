@@ -25,22 +25,34 @@ package protocols
 import cats.effect.{IO, IOApp}
 import fs2.interop.scodec.StreamDecoder
 import fs2.io.file.{Files, Path}
-import fs2.protocols.pcapng.{BodyBlock, SectionHeaderBlock}
+import fs2.protocols.pcapng.{BodyBlock, DummyBlock, SectionHeaderBlock}
+import scodec.Decoder
+import scodec.bits._
 
 object PcapNgExample extends IOApp.Simple {
 
+  private val EpbHex = hex"06000000"
+
   def run: IO[Unit] =
-    Files[IO]
-      .readAll(Path("/Users/anikiforov/Downloads/many_interfaces.pcapng"))
+    byteStream
       .through(streamDecoder.toPipeByte)
+      .flatMap {
+        case epb @ DummyBlock(EpbHex, _, _) => Stream.emit(epb)
+        case _                              => Stream.empty
+      }
       .debug()
       .compile
-      .drain
+      .count
+      .flatMap(IO.println)
 
-  private val streamDecoder: StreamDecoder[(SectionHeaderBlock, BodyBlock)] =
+  private def byteStream: Stream[IO, Byte] =
+    Files[IO].readAll(Path("/Users/anikiforov/pcapng/http.pcap"))
+
+  private val streamDecoder: StreamDecoder[BodyBlock] =
     for {
-      header <- StreamDecoder.once(SectionHeaderBlock.codec)
-      decoder = BodyBlock.decoder(header.ordering)
+      hdr <- StreamDecoder.once(SectionHeaderBlock.codec)
+      fallback = DummyBlock.codec(hdr.ordering)
+      decoder = Decoder.choiceDecoder(BodyBlock.decoder(hdr.ordering), fallback)
       block <- StreamDecoder.many(decoder)
-    } yield (header, block)
+    } yield block
 }

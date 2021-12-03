@@ -47,7 +47,7 @@ object Block {
     length.toLong(signed = false, ord)
 
   // format: off
-  def block[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
+  def codec[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
     implicit
     prepend: Prepend.Aux[L, Unit :: HNil, LB],
     init: Init.Aux[LB, L],
@@ -55,11 +55,7 @@ object Block {
   ): Codec[Unit :: ByteVector :: LB] =
     ("Block Type"             | constant(hexConstant)         ) ::
     ("Block Total Length"     | bytes(4)                ).flatPrepend { length =>
-    ("Block dependendent"     | f(length) :+ constant(length) )}
-
-  def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
-    block(hexConstant) { length =>
-      ("Block Bytes"    | fixedSizeBytes(getLength(length) - 12, bytes)) :: Codec.deriveHNil
-    }.dropUnits
+    ("Block Bytes"            | f(length)                     ) :+
+    ("Block Total Length"     | constant(length)              )}
   // format: on
 }

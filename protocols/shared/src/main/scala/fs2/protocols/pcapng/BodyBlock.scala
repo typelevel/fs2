@@ -22,12 +22,21 @@
 package fs2.protocols
 package pcapng
 
-import scodec.Decoder
-import scodec.bits.ByteOrdering
+import scodec.bits._
+import scodec.codecs._
+import scodec.{Codec, Decoder}
+import shapeless.{::, HNil}
 
 trait BodyBlock extends Block
 
 object BodyBlock {
+
+  // format: off
+  def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Block.Length :: ByteVector :: HNil] =
+    Block.codec(hexConstant) { length =>
+      ("Block Bytes"    | fixedSizeBytes(Block.getLength(length) - 12, bytes)) :: Codec.deriveHNil
+    }.dropUnits
+  // format: on
 
   def decoder(implicit ord: ByteOrdering): Decoder[BodyBlock] =
     Decoder.choiceDecoder(

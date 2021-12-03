@@ -34,5 +34,5 @@ object NameResolutionBlock {
     Block.orderDependent(hex"00000004", hex"04000000")
 
   def codec(implicit ord: ByteOrdering): Codec[NameResolutionBlock] =
-    "NRB" | Block.ignoredBlock(hexConstant).as[NameResolutionBlock]
+    "NRB" | BodyBlock.ignoredBlock(hexConstant).as[NameResolutionBlock]
 }

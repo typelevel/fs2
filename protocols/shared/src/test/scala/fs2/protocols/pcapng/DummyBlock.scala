@@ -22,17 +22,24 @@
 package fs2.protocols
 package pcapng
 
+import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
-import scodec.Codec
 
-case class InterfaceStatisticsBlock(length: ByteVector, bytes: ByteVector) extends BodyBlock
+case class DummyBlock(
+    blockType: ByteVector,
+    totalLength: Block.Length,
+    body: ByteVector
+) extends BodyBlock
 
-object InterfaceStatisticsBlock {
+object DummyBlock {
 
-  private def hexConstant(implicit ord: ByteOrdering) =
-    Block.orderDependent(hex"00000005", hex"05000000")
-
-  def codec(implicit ord: ByteOrdering): Codec[InterfaceStatisticsBlock] =
-    "ISB" | BodyBlock.ignoredBlock(hexConstant).as[InterfaceStatisticsBlock]
+  // format: off
+  def codec(implicit ord: ByteOrdering): Codec[DummyBlock] = "Dummy" | {
+    ("Block Type"          | bytes(4)                            ) ::
+    ("Block Total Length"  | bytes(4)                            ).flatPrepend { length =>
+    ("Block Body"          | bytes(Block.getLength(length).toInt - 12) ) ::
+    ("Block Total Length"  | constant(length)                          )}
+  }.dropUnits.as[DummyBlock]
+  // format: on
 }
