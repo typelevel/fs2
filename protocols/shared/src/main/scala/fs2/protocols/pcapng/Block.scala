@@ -40,7 +40,7 @@ object Block {
     last: Last.Aux[LB, Unit]
   ): Codec[Unit :: Length :: LB] =
     ("Block Type"             | constant(hexConstant)               ) ::
-    ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)  ).flatPrepend { length =>
+    ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+
     ("Block Total Length"     | constant(length.bv)                 )}
   // format: on

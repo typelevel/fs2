@@ -36,8 +36,8 @@ object DummyBlock {
 
   // format: off
   def codec(implicit ord: ByteOrdering): Codec[DummyBlock] = "Dummy" | {
-    ("Block Type"          | bytes(4)                            ) ::
-    ("Block Total Length"  | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
+    ("Block Type"          | bytes(4)                                  ) ::
+    ("Block Total Length"  | bytes(4).xmapc(Length)(_.bv)              ).flatPrepend { length =>
     ("Block Body"          | bytes(length.toLong.toInt - 12)           ) ::
     ("Block Total Length"  | constant(length.bv)                       )}
   }.dropUnits.as[DummyBlock]

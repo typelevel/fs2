@@ -41,15 +41,11 @@ object SectionHeaderBlock {
   private val hexConstant = hex"0A0D0D0A"
 
   // format: off
-  private def sectionHeader(implicit ord: ByteOrdering) = {
-    ("Major Version"    | guint16 ) ::
-    ("Minor Version"    | guint16 ) ::
-    ("Remaining"        | bytes   )
-  }
-
   val codec: Codec[SectionHeaderBlock] = "SHB" | Block.codec(hexConstant) { length =>
-    ("Byte-Order Magic"     | ByteOrderMagic).flatPrepend { implicit ord =>
-    ("Block Bytes"          | fixedSizeBytes(length.toLong - 16, sectionHeader))
+    ("Byte-Order Magic"     | ByteOrderMagic                    ).flatPrepend { implicit ord =>
+    ("Major Version"        | guint16                           ) ::
+    ("Minor Version"        | guint16                           ) ::
+    ("Block Bytes"          | bytes(length.toLong.toInt - 20)   )
   }}.dropUnits.as[SectionHeaderBlock]
   // format: on
 }
