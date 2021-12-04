@@ -101,13 +101,19 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       sessionRef.discrete.unNone.head
         .concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
         .compile
-        .lastOrError
+        .lastOrError,
+      F.delay(tlsSock.asInstanceOf[tlsMod.TLSSocket].alpnProtocol.merge[Any]).flatMap {
+        case false            => "".pure // mimicking JVM
+        case protocol: String => protocol.pure
+        case _                => F.raiseError(new NoSuchElementException)
+      }
     )
 
   private[tls] final class AsyncTLSSocket[F[_]: Async](
       sock: tlsMod.TLSSocket,
       readStream: SuspendedStream[F, Byte],
-      val session: F[SSLSession]
+      val session: F[SSLSession],
+      val applicationProtocol: F[String]
   ) extends Socket.AsyncSocket[F](sock.asInstanceOf[netMod.Socket], readStream)
       with UnsealedTLSSocket[F]
 }
