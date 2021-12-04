@@ -102,7 +102,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         .concurrently(Stream.eval(errorDef.get.flatMap(F.raiseError[Unit])))
         .compile
         .lastOrError,
-      F.delay(tlsSock.asInstanceOf[tlsMod.TLSSocket].alpnProtocol.merge[Any]).flatMap {
+      F.delay[Any](tlsSock.asInstanceOf[tlsMod.TLSSocket].alpnProtocol).flatMap {
         case false            => "".pure // mimicking JVM
         case protocol: String => protocol.pure
         case _                => F.raiseError(new NoSuchElementException)
