@@ -32,9 +32,9 @@ trait BodyBlock extends Block
 object BodyBlock {
 
   // format: off
-  def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Block.Length :: ByteVector :: HNil] =
+  def ignoredBlock(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
     Block.codec(hexConstant) { length =>
-      ("Block Bytes"    | fixedSizeBytes(Block.getLength(length) - 12, bytes)) :: Codec.deriveHNil
+      ("Block Bytes"    | fixedSizeBytes(length.toLong - 12, bytes)) :: Codec.deriveHNil
     }.dropUnits
   // format: on
 

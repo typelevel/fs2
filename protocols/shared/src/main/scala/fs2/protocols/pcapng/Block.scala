@@ -32,30 +32,16 @@ trait Block
 
 object Block {
 
-  type Length = ByteVector
-
-  def orderDependent[T](
-      big: ByteVector,
-      little: ByteVector
-  )(implicit ord: ByteOrdering): ByteVector =
-    ord match {
-      case ByteOrdering.BigEndian    => big
-      case ByteOrdering.LittleEndian => little
-    }
-
-  def getLength(length: Length)(implicit ord: ByteOrdering): Long =
-    length.toLong(signed = false, ord)
-
   // format: off
   def codec[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
     implicit
     prepend: Prepend.Aux[L, Unit :: HNil, LB],
     init: Init.Aux[LB, L],
     last: Last.Aux[LB, Unit]
-  ): Codec[Unit :: ByteVector :: LB] =
-    ("Block Type"             | constant(hexConstant)         ) ::
-    ("Block Total Length"     | bytes(4)                ).flatPrepend { length =>
-    ("Block Bytes"            | f(length)                     ) :+
-    ("Block Total Length"     | constant(length)              )}
+  ): Codec[Unit :: Length :: LB] =
+    ("Block Type"             | constant(hexConstant)               ) ::
+    ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)  ).flatPrepend { length =>
+    ("Block Bytes"            | f(length)                           ) :+
+    ("Block Total Length"     | constant(length.bv)                 )}
   // format: on
 }

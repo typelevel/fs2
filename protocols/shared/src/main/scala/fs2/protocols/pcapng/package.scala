@@ -20,26 +20,21 @@
  */
 
 package fs2.protocols
-package pcapng
 
-import scodec.Codec
-import scodec.bits._
-import scodec.codecs._
+import scodec.bits.{ByteOrdering, ByteVector}
 
-case class DummyBlock(
-    blockType: ByteVector,
-    totalLength: Length,
-    body: ByteVector
-) extends BodyBlock
+package object pcapng {
 
-object DummyBlock {
+  case class Length(bv: ByteVector) extends AnyVal {
+    def toLong(implicit ord: ByteOrdering): Long = bv.toLong(signed = false, ord)
+  }
 
-  // format: off
-  def codec(implicit ord: ByteOrdering): Codec[DummyBlock] = "Dummy" | {
-    ("Block Type"          | bytes(4)                            ) ::
-    ("Block Total Length"  | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
-    ("Block Body"          | bytes(length.toLong.toInt - 12)           ) ::
-    ("Block Total Length"  | constant(length.bv)                       )}
-  }.dropUnits.as[DummyBlock]
-  // format: on
+  def orderDependent[T](
+      big: ByteVector,
+      little: ByteVector
+  )(implicit ord: ByteOrdering): ByteVector =
+    ord match {
+      case ByteOrdering.BigEndian    => big
+      case ByteOrdering.LittleEndian => little
+    }
 }

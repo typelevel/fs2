@@ -26,12 +26,12 @@ import scodec.bits._
 import scodec.Codec
 import scodec.codecs._
 
-case class InterfaceDescriptionBlock(length: ByteVector, bytes: ByteVector) extends BodyBlock
+case class InterfaceDescriptionBlock(length: Length, bytes: ByteVector) extends BodyBlock
 
 object InterfaceDescriptionBlock {
 
   private def hexConstant(implicit ord: ByteOrdering) =
-    Block.orderDependent(hex"00000001", hex"01000000")
+    orderDependent(hex"00000001", hex"01000000")
 
   def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
     "IDB" | BodyBlock.ignoredBlock(hexConstant).as[InterfaceDescriptionBlock]

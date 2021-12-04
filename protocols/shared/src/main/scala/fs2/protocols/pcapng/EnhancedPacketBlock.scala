@@ -22,14 +22,13 @@
 package fs2.protocols
 package pcapng
 
-import fs2.protocols.pcapng.Block.Length
 import pcap._
 import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
 
 case class EnhancedPacketBlock(
-    length: ByteVector,
+    length: Length,
     interfaceId: Long,
     timestampHigh: Long,
     timestampLow: Long,
@@ -42,10 +41,10 @@ case class EnhancedPacketBlock(
 object EnhancedPacketBlock {
 
   def hexConstant(implicit ord: ByteOrdering): ByteVector =
-    Block.orderDependent(hex"00000006", hex"06000000")
+    orderDependent(hex"00000006", hex"06000000")
 
   private def optionLength(length: Length, packetLength: Int)(implicit ord: ByteOrdering): Int =
-    Block.getLength(length).toInt - 32 - packetLength - padTo32Bits(packetLength) * 8
+    length.toLong.toInt - 32 - packetLength - padTo32Bits(packetLength) * 8
 
   private def padTo32Bits(length: Int) = {
     val rem = length % 4

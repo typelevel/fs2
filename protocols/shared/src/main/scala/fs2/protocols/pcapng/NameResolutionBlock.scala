@@ -26,12 +26,12 @@ import scodec.bits._
 import scodec.codecs._
 import scodec.Codec
 
-case class NameResolutionBlock(length: ByteVector, bytes: ByteVector) extends BodyBlock
+case class NameResolutionBlock(length: Length, bytes: ByteVector) extends BodyBlock
 
 object NameResolutionBlock {
 
   private def hexConstant(implicit ord: ByteOrdering) =
-    Block.orderDependent(hex"00000004", hex"04000000")
+    orderDependent(hex"00000004", hex"04000000")
 
   def codec(implicit ord: ByteOrdering): Codec[NameResolutionBlock] =
     "NRB" | BodyBlock.ignoredBlock(hexConstant).as[NameResolutionBlock]
