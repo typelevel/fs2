@@ -19,43 +19,20 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package protocols
+package fs2.protocols
+package pcapng
 
-import cats.effect.{IO, IOApp}
-import fs2.interop.scodec.StreamDecoder
-import fs2.io.file.{Files, Path}
-import fs2.protocols.pcapng.{BodyBlock, DummyBlock, SectionHeaderBlock}
-import scodec.Decoder
+import scodec.Codec
+import scodec.bits._
+import scodec.codecs._
 
-object PcapNgExample extends IOApp.Simple {
+case class ProcessInformationBlock(length: Length, bytes: ByteVector) extends BodyBlock
 
-  def run: IO[Unit] =
-    revealFailed
-      .compile
-      .count
-      .flatMap(IO.println)
+object ProcessInformationBlock {
 
-  private def byteStream: Stream[IO, Byte] =
-    Files[IO].readAll(Path("/Users/anikiforov/pcapng/http-ex.pcap"))
+  private def hexConstant(implicit ord: ByteOrdering) =
+    orderDependent(hex"80000001", hex"01000080")
 
-  private def revealFailed =
-    byteStream
-      .through(streamDecoder.toPipeByte)
-      .flatMap {
-        case dummy: DummyBlock => Stream.emit(dummy)
-        case _                 => Stream.empty
-      }
-      .debug()
-
-  private def decode =
-    byteStream.through(streamDecoder.toPipeByte)
-
-  private val streamDecoder: StreamDecoder[BodyBlock] =
-    for {
-      hdr <- StreamDecoder.once(SectionHeaderBlock.codec)
-      fallback = DummyBlock.codec(hdr.ordering)
-      decoder = Decoder.choiceDecoder(BodyBlock.decoder(hdr.ordering), fallback)
-      block <- StreamDecoder.many(decoder)
-    } yield block
+  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
+    "PIB" | BodyBlock.ignoredBlock(hexConstant).as[ProcessInformationBlock]
 }

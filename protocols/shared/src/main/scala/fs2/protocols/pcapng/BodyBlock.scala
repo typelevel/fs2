@@ -43,6 +43,7 @@ object BodyBlock {
       InterfaceDescriptionBlock.codec,
       EnhancedPacketBlock.codec,
       NameResolutionBlock.codec,
-      InterfaceStatisticsBlock.codec
+      InterfaceStatisticsBlock.codec,
+      ProcessInformationBlock.codec
     )
 }
