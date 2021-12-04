@@ -44,7 +44,7 @@ object EnhancedPacketBlock {
     orderDependent(hex"00000006", hex"06000000")
 
   private def optionLength(length: Length, packetLength: Int)(implicit ord: ByteOrdering): Int =
-    length.toLong.toInt - 32 - packetLength - padTo32Bits(packetLength) * 8
+    length.toLong.toInt - 32 - packetLength - padTo32Bits(packetLength)
 
   private def padTo32Bits(length: Int) = {
     val rem = length % 4

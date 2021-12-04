@@ -66,6 +66,11 @@ class BlockTest extends munit.FunSuite {
     assertEquals(actual, fullyDecoded(RD.expectedDummy))
   }
 
+  test("real-data epb") {
+    val actual = EnhancedPacketBlock.codec(LittleEndian).decode(RD.bytes.bits)
+    assertEquals(actual, fullyDecoded(RD.expectedEPB))
+  }
+
   private def fullyDecoded[V](v: V) =
     Successful(DecodeResult(v, BitVector.empty))
 }
@@ -186,17 +191,17 @@ private object BlockTest {
 
   object RealData {
     val header = hex"06000000"
-    val length = hex"88000000"
+    val length = Length(hex"88000000")
+    val props = hex"0000000003d205008418cd174200000042000000"
     val data =
-      hex"""0000000003d205008418cd174200000042000000
-
-            a483e7e0b1ad0200c9690a01080045000034ead7400022067cb336f4a8700a01
+      hex"""a483e7e0b1ad0200c9690a01080045000034ead7400022067cb336f4a8700a01
             07d40050cc0c19b4409fe64f4fb1801000953a4800000101080a2ff46c4b386d
-            1949 0000
+            1949"""
+    val padding = hex"0000"
+    val opts = hex"018004000400000002000400010000000280040000000000048004000800000000000000"
+    val bytes = header ++ length.bv ++ props ++ data ++ padding ++ opts ++ length.bv
 
-            018004000400000002000400010000000280040000000000048004000800000000000000"""
-    val bytes = header ++ length ++ data ++ length
-
-    val expectedDummy = DummyBlock(header, Length(length), data)
+    val expectedEPB = EnhancedPacketBlock(length, 0, 381443, 399317124, 66, 66, data, opts)
+    val expectedDummy = DummyBlock(header, length, props ++ data ++ padding ++ opts)
   }
 }
