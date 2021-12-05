@@ -38,9 +38,6 @@ private[tls] trait TLSSocketPlatform[F[_]] {
   /** Initiates handshaking -- either the initial or a renegotiation. */
   def beginHandshake: F[Unit]
 
-  /** Provides access to the current application protocol that has been negotiated.
-    */
-  def applicationProtocol: F[String]
 }
 
 private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>

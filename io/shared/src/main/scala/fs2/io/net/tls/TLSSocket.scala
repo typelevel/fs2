@@ -37,6 +37,10 @@ sealed trait TLSSocket[F[_]] extends Socket[F] with TLSSocketPlatform[F] {
     */
   def session: F[SSLSession]
 
+  /** Provides access to the current application protocol that has been negotiated.
+    */
+  def applicationProtocol: F[String]
+
 }
 
 object TLSSocket extends TLSSocketCompanionPlatform {

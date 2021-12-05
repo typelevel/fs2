@@ -80,7 +80,7 @@ private[tls] object TLSEngine {
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
-      def applicationProtocol = Sync[F].delay(engine.getApplicationProtocol())
+      def applicationProtocol = Sync[F].delay(Option(engine.getApplicationProtocol()).get)
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
