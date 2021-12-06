@@ -208,7 +208,8 @@ class ParEvalMapSuite extends Fs2Suite {
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]) =
-      (CountDownLatch[IO](2), IO.deferred[Unit]).mapN { case (latch, d) =>
+      (CountDownLatch[IO](2), IO.deferred[Unit])
+        .mapN { case (latch, d) =>
           val w = latch.release *> latch.await
           val cancelled = IO.uncancelable(poll => w *> poll(IO.never).onCancel(d.complete(()).void))
           val stream = Stream(w *> u, cancelled).covary[IO]
