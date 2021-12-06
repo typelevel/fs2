@@ -416,5 +416,15 @@ class StreamZipSuite extends Fs2Suite {
         .compile
         .drain
     }
+
+    test("#2717 - unexpected behavior of Pull") {
+      val stream = Stream(1).as(1).scope ++ Stream(2)
+      val zippedPull =
+        stream.pull.uncons1.flatMap { case Some((_, s)) =>
+          s.zipWith(Stream(3))((_, _)).pull.echo
+        }
+      val actual = zippedPull.stream.map(identity).covary[IO].compile.toList
+      actual.assertEquals(List((2, 3)))
+    }
   }
 }
