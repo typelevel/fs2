@@ -81,7 +81,7 @@ import fs2.internal.InterruptContext.InterruptionOutcome
 private[fs2] final class Scope[F[_]] private (
     val id: Unique.Token,
     private val parent: Option[Scope[F]],
-    interruptible: Option[InterruptContext[F]],
+    private val interruptible: Option[InterruptContext[F]],
     private val state: Ref[F, Scope.State[F]]
 )(implicit val F: Compiler.Target[F]) { self =>
 
@@ -276,6 +276,13 @@ private[fs2] final class Scope[F[_]] private (
       case _: Scope.State.Closed[F] => F.pure(Right(()))
     }
 
+  /** Like `openAncestor` but returns self if open. */
+  private def openScope: F[Scope[F]] =
+    state.get.flatMap {
+      case _: Scope.State.Open[F]   => F.pure(self)
+      case _: Scope.State.Closed[F] => openAncestor
+    }
+
   /** Returns closest open parent scope or root. */
   def openAncestor: F[Scope[F]] =
     self.parent.fold(F.pure(self)) { parent =>
@@ -412,13 +419,13 @@ private[fs2] final class Scope[F[_]] private (
         iCtx.completeWhen(outcome)
     }
 
-  /** Checks if current scope is interrupted.
+  /** Checks if the nearest open scope is interrupted.
     * If yields to None, scope is not interrupted and evaluation may normally proceed.
-    * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next`  stream
+    * If yields to Some(Right(scope,next)) that yields to next `scope`, that has to be run and `next` stream
     * to evaluate
     */
   def isInterrupted: F[Option[InterruptionOutcome]] =
-    interruptible match {
+    openScope.map(_.interruptible).flatMap {
       case None       => F.pure(None)
       case Some(iCtx) => iCtx.ref.get
     }
