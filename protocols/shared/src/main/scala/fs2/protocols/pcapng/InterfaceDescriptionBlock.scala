@@ -34,5 +34,5 @@ object InterfaceDescriptionBlock {
     orderDependent(hex"00000001", hex"01000000")
 
   def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
-    "IDB" | BodyBlock.ignoredBlock(hexConstant).as[InterfaceDescriptionBlock]
+    "IDB" | Block.ignoredCodec(hexConstant).as[InterfaceDescriptionBlock]
 }

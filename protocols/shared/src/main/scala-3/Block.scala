@@ -25,23 +25,23 @@ package pcapng
 import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
-import shapeless.ops.hlist.{Init, Last, Prepend}
-import shapeless.{::, HList, HNil}
 
 trait Block
 
 object Block {
 
   // format: off
-  def codec[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
-    implicit
-    prepend: Prepend.Aux[L, Unit :: HNil, LB],
-    init: Init.Aux[LB, L],
-    last: Last.Aux[LB, Unit]
-  ): Codec[Unit :: Length :: LB] =
+  inline def codec[L <: Tuple](
+    hexConstant: ByteVector
+  )(f: Length => Codec[L]): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
     ("Block Type"             | constant(hexConstant)               ) ::
-    ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
+    ("Block Total Length"     | bytes(4).xmapc(Length(_))(_.bv)     ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+
     ("Block Total Length"     | constant(length.bv)                 )}
+
+  def ignoredCodec(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length *: ByteVector *: EmptyTuple]  =
+    codec(hexConstant) { length =>
+      ("Block Bytes"    | (fixedSizeBytes(length.toLong - 12, bytes))).tuple
+    }.dropUnits
   // format: on
 }

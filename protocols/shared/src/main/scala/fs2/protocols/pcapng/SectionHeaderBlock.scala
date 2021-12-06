@@ -26,7 +26,6 @@ import pcap._
 import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
-import scodec.codecs.fixedSizeBytes
 
 case class SectionHeaderBlock(
     length: Length,

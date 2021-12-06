@@ -34,5 +34,5 @@ object ProcessInformationBlock {
     orderDependent(hex"80000001", hex"01000080")
 
   def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
-    "PIB" | BodyBlock.ignoredBlock(hexConstant).as[ProcessInformationBlock]
+    "PIB" | Block.ignoredCodec(hexConstant).as[ProcessInformationBlock]
 }

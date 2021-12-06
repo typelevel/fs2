@@ -22,17 +22,31 @@
 package fs2.protocols
 package pcapng
 
+import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
-import scodec.Codec
+import shapeless.ops.hlist.{Init, Last, Prepend}
+import shapeless.{::, HList, HNil}
 
-case class InterfaceStatisticsBlock(length: Length, bytes: ByteVector) extends BodyBlock
+trait Block
 
-object InterfaceStatisticsBlock {
+object Block {
 
-  private def hexConstant(implicit ord: ByteOrdering) =
-    orderDependent(hex"00000005", hex"05000000")
+  // format: off
+  def codec[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
+    implicit
+    prepend: Prepend.Aux[L, Unit :: HNil, LB],
+    init: Init.Aux[LB, L],
+    last: Last.Aux[LB, Unit]
+  ): Codec[Unit :: Length :: LB] =
+    ("Block Type"             | constant(hexConstant)               ) ::
+    ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
+    ("Block Bytes"            | f(length)                           ) :+
+    ("Block Total Length"     | constant(length.bv)                 )}
 
-  def codec(implicit ord: ByteOrdering): Codec[InterfaceStatisticsBlock] =
-    "ISB" | Block.ignoredCodec(hexConstant).as[InterfaceStatisticsBlock]
+  def ignoredCodec(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
+    Block.codec(hexConstant) { length =>
+      ("Block Bytes"    | fixedSizeBytes(length.toLong - 12, bytes)) :: Codec.deriveHNil
+    }.dropUnits
+  // format: on
 }
