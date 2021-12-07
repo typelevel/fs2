@@ -31,13 +31,10 @@ import scodec.Decoder
 object PcapNgExample extends IOApp.Simple {
 
   def run: IO[Unit] =
-    revealFailed
-      .compile
-      .count
-      .flatMap(IO.println)
+    decode.compile.count.flatMap(IO.println)
 
   private def byteStream: Stream[IO, Byte] =
-    Files[IO].readAll(Path("/Users/anikiforov/pcapng/http-ex.pcap"))
+    Files[IO].readAll(Path("/Users/anikiforov/pcapng/many_interfaces.pcapng"))
 
   private def revealFailed =
     byteStream
