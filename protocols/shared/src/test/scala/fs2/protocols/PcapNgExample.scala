@@ -27,11 +27,12 @@ import fs2.interop.scodec.StreamDecoder
 import fs2.io.file.{Files, Path}
 import fs2.protocols.pcapng.{BodyBlock, DummyBlock, SectionHeaderBlock}
 import scodec.Decoder
+import cats.syntax.all._
 
 object PcapNgExample extends IOApp.Simple {
 
   def run: IO[Unit] =
-    decode.compile.count.flatMap(IO.println)
+    decode.compile.toList.flatMap(_.traverse_(IO.println))
 
   private def byteStream: Stream[IO, Byte] =
     Files[IO].readAll(Path("/Users/anikiforov/pcapng/many_interfaces.pcapng"))

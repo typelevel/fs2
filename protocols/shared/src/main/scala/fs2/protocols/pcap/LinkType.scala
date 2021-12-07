@@ -41,14 +41,17 @@ object LinkType {
   case object MPEG2TS extends LinkType
   case class Unknown(value: Long) extends LinkType
 
-  def toLong(lt: LinkType): Long = lt match {
+  def fromInt(l: Int): LinkType =
+    fromLong(l)
+
+  def toInt(lt: LinkType): Int = lt match {
     case Null           => 0
     case Ethernet       => 1
     case Raw            => 101
     case IPv4           => 228
     case IPv6           => 229
     case MPEG2TS        => 243
-    case Unknown(value) => value
+    case Unknown(value) => value.toInt // discuss?
   }
 
   def fromLong(l: Long): LinkType = l match {
@@ -60,6 +63,8 @@ object LinkType {
     case 243   => MPEG2TS
     case other => Unknown(other)
   }
+
+  def toLong(lt: LinkType): Long = toInt(lt)
 
   implicit def codec(implicit bo: ByteOrdering): Codec[LinkType] =
     guint32.xmap[LinkType](fromLong, toLong)

@@ -22,17 +22,30 @@
 package fs2.protocols
 package pcapng
 
-import scodec.bits._
+import pcap._
 import scodec.Codec
+import scodec.bits._
 import scodec.codecs._
 
-case class InterfaceDescriptionBlock(length: Length, bytes: ByteVector) extends BodyBlock
+case class InterfaceDescriptionBlock(
+    length: Length,
+    linkType: LinkType,
+    snapLen: Long,
+    bytes: ByteVector
+) extends BodyBlock
 
 object InterfaceDescriptionBlock {
 
   private def hexConstant(implicit ord: ByteOrdering) =
     orderDependent(hex"00000001", hex"01000000")
 
+  // format: off
   def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
-    "IDB" | Block.ignoredCodec(hexConstant).as[InterfaceDescriptionBlock]
+    "IDB" | Block.codec(hexConstant) { length =>
+      ("LinkType" | guint16.xmap[LinkType](LinkType.fromInt, LinkType.toInt)) ::
+      ("Reserved" | ignore(16)) ::
+      ("SnapLen" | guint32) ::
+      ("Block Bytes" | bytes(length.toLong.toInt - 20))
+    }.dropUnits.as[InterfaceDescriptionBlock]
+  // format: on
 }

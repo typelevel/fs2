@@ -22,6 +22,7 @@
 package fs2.protocols
 package pcapng
 
+import fs2.protocols.pcap.LinkType.Ethernet
 import scodec.Attempt.Successful
 import scodec.DecodeResult
 import scodec.bits.ByteOrdering.LittleEndian
@@ -92,10 +93,10 @@ private object BlockTest {
     object Interface {
       val header = hex"01000000"
       val length = hex"20000000"
-      val nonParsed = hex"01000000ffff0000090001000600000000000000"
-      val bytes = header ++ length ++ nonParsed ++ length
-
-      val expected = InterfaceDescriptionBlock(Length(length), nonParsed)
+      val parsed = hex"01000000ffff0000"
+      val nonParsed = hex"090001000600000000000000"
+      val bytes = header ++ length ++ parsed ++ nonParsed ++ length
+      val expected = InterfaceDescriptionBlock(Length(length), Ethernet, 65535, nonParsed)
     }
 
     val enhancedHeader = hex"06000000"
