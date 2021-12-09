@@ -22,17 +22,24 @@
 package fs2.protocols
 package pcapng
 
-import pcap._
+import fs2.protocols.pcap._
 import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
+
+import scala.concurrent.duration._
 
 case class InterfaceDescriptionBlock(
     length: Length,
     linkType: LinkType,
     snapLen: Long,
     bytes: ByteVector
-) extends BodyBlock
+) extends BodyBlock {
+
+  // Should be extracted from options. Instead, we currently assume
+  // that required option wasn't found and fallback to a default value.
+  def if_tsresol: FiniteDuration = 1.microsecond
+}
 
 object InterfaceDescriptionBlock {
 
@@ -42,10 +49,10 @@ object InterfaceDescriptionBlock {
   // format: off
   def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
     "IDB" | Block.codec(hexConstant) { length =>
-      ("LinkType" | guint16.xmap[LinkType](LinkType.fromInt, LinkType.toInt)) ::
-      ("Reserved" | ignore(16)) ::
-      ("SnapLen" | guint32) ::
-      ("Block Bytes" | bytes(length.toLong.toInt - 20))
+      ("LinkType"    | guint16.xmap[LinkType](LinkType.fromInt, LinkType.toInt) ) ::
+      ("Reserved"    | ignore(16)                                               ) ::
+      ("SnapLen"     | guint32                                                  ) ::
+      ("Block Bytes" | bytes(length.toLong.toInt - 20)                          )
     }.dropUnits.as[InterfaceDescriptionBlock]
   // format: on
 }

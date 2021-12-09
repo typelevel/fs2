@@ -22,5 +22,4 @@ project/metals.sbt
 project/project
 .vscode
 .bsp
-.java-version
 node_modules

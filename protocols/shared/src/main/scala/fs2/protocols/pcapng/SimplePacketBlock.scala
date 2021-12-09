@@ -19,40 +19,19 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package protocols
+package fs2.protocols.pcapng
 
-import cats.effect.{IO, IOApp}
-import cats.syntax.all._
-import fs2.io.file.{Files, Path}
-import fs2.protocols.pcap.LinkType
-import fs2.protocols.pcapng.{CaptureFile, DummyBlock}
+import scodec.Codec
+import scodec.bits._
+import scodec.codecs._
 
-object PcapNgExample extends IOApp.Simple {
+case class SimplePacketBlock(length: Length, bytes: ByteVector) extends BodyBlock
 
-  def run: IO[Unit] =
-    output.compile.toList.flatMap(x => IO.println(x.length)) // _.traverse_(IO.println)
+object SimplePacketBlock {
 
-  private def byteStream: Stream[IO, Byte] =
-    Files[IO].readAll(Path("/Users/anikiforov/pcapng/many_interfaces.pcapng"))
+  private def hexConstant(implicit ord: ByteOrdering) =
+    orderDependent(hex"00000003", hex"03000000")
 
-  private def revealFailed =
-    byteStream
-      .through(CaptureFile.streamDecoder.toPipeByte)
-      .flatMap {
-        case dummy: DummyBlock => Stream.emit(dummy)
-        case _                 => Stream.empty
-      }
-      .debug()
-
-  private def decode =
-    byteStream.through(CaptureFile.streamDecoder.toPipeByte)
-
-  private def output =
-    byteStream.through(
-      CaptureFile.parse {
-        case (LinkType.Ethernet, bv) => bv.some
-        case _                       => none
-      }
-    )
+  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
+    "SPB" | Block.ignoredCodec(hexConstant).as[ProcessInformationBlock]
 }

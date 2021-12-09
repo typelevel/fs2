@@ -51,7 +51,7 @@ object LinkType {
     case IPv4           => 228
     case IPv6           => 229
     case MPEG2TS        => 243
-    case Unknown(value) => value.toInt // discuss?
+    case Unknown(value) => value.toInt
   }
 
   def fromLong(l: Long): LinkType = l match {
