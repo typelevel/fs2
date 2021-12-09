@@ -80,10 +80,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** More efficient version of `filter(pf.isDefinedAt).map(pf)`. */
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
-    val b = collection.mutable.Buffer.newBuilder[O2]
+    val b = Chunk.makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach(o => if (pf.isDefinedAt(o)) b += pf(o))
-    Chunk.buffer(b.result())
+    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
@@ -161,7 +161,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   }
 
   /** Gets the first element of this chunk. */
-  def head: Option[O] = if (isEmpty) None else Some(iterator.next())
+  def head: Option[O] = if (isEmpty) None else Some(apply(0))
 
   /** True if size is zero, false otherwise. */
   final def isEmpty: Boolean = size == 0
@@ -219,7 +219,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   }
 
   /** False if size is zero, true otherwise. */
-  final def nonEmpty: Boolean = size > 0
+  final def nonEmpty: Boolean = !isEmpty
 
   /** Creates an iterator that iterates the elements of this chunk in reverse order. The returned iterator is not thread safe. */
   def reverseIterator: Iterator[O] =
@@ -263,9 +263,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
 
-  /** Check to see if this starts with the items in the given seq
-    * should be the same as take(seq.size).toChunk == Chunk.seq(seq).
-    */
+  /** Check to see if this starts with the items in the given seq. */
   def startsWith[O2 >: O](seq: Seq[O2]): Boolean =
     take(seq.size) == Chunk.seq(seq)
 
@@ -274,6 +272,17 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Takes the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
   def takeRight(n: Int): Chunk[O] = if (n <= 0) Chunk.empty else drop(size - n)
+
+  /** Converts this chunk to a new collection using the supplied collector.
+    * @example {{{
+    * scala> Chunk(1, 2, 3).to(Set)
+    * }}}
+    */
+  def to(collector: Collector[O]): collector.Out = {
+    val bldr = collector.newBuilder
+    bldr += this
+    bldr.result
+  }
 
   /** Copies the elements of this chunk to an array. */
   def toArray[O2 >: O: ClassTag]: Array[O2] = {
@@ -517,7 +526,7 @@ object Chunk
     def copyToArray[O2 >: Nothing](xs: Array[O2], start: Int): Unit = ()
     protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) =
       sys.error("impossible")
-    override def map[O2](f: Nothing => O2): Chunk[O2] = empty
+    override def map[O2](f: Nothing => O2): Chunk[O2] = this
     override def toString = "empty"
   }
 
@@ -540,11 +549,7 @@ object Chunk
   }
 
   /** Creates a chunk backed by a vector. */
-  def vector[O](v: Vector[O]): Chunk[O] =
-    if (v.isEmpty) empty
-    else if (v.size == 1) // Use size instead of tail.isEmpty as vectors know their size
-      singleton(v.head)
-    else new IndexedSeqChunk(v)
+  def vector[O](v: Vector[O]): Chunk[O] = indexedSeq(v)
 
   /** Creates a chunk backed by an `IndexedSeq`. */
   def indexedSeq[O](s: GIndexedSeq[O]): Chunk[O] =
@@ -585,16 +590,15 @@ object Chunk
   /** Creates a chunk from a `scala.collection.Iterable`. */
   def iterable[O](i: collection.Iterable[O]): Chunk[O] =
     platformIterable(i).getOrElse(i match {
-      case a: mutable.ArraySeq[o]          => arraySeq[o](a).asInstanceOf[Chunk[O]]
-      case v: Vector[O]                    => vector(v)
-      case b: collection.mutable.Buffer[o] => buffer[o](b).asInstanceOf[Chunk[O]]
+      case a: mutable.ArraySeq[o] => arraySeq[o](a).asInstanceOf[Chunk[O]]
+      case v: Vector[O]           => vector(v)
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)
         else {
-          val bldr = collection.mutable.Buffer.newBuilder[O]
+          val bldr = makeArrayBuilder[Any]
           bldr ++= l
-          buffer(bldr.result())
+          array(bldr.result()).asInstanceOf[Chunk[O]]
         }
       case ix: GIndexedSeq[O] => indexedSeq(ix)
       case _ =>
@@ -630,39 +634,18 @@ object Chunk
   /** Creates a chunk backed by a mutable buffer. The underlying buffer must not be modified after
     * it is passed to this function.
     */
+  @deprecated(
+    "Chunk is no longer specialized for collection.mutable.Buffer - use array or indexedSeq instead",
+    "3.2.4"
+  )
   def buffer[O](b: collection.mutable.Buffer[O]): Chunk[O] =
     if (b.isEmpty) empty
     else if (b.size == 1) singleton(b.head)
-    else new BufferChunk(b)
-
-  private final class BufferChunk[O](b: collection.mutable.Buffer[O]) extends Chunk[O] {
-    def size = b.length
-    def apply(i: Int) = b(i)
-    def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
-      b.copyToArray(xs, start)
-      ()
+    else {
+      val bldr = makeArrayBuilder[Any]
+      bldr ++= b
+      Chunk.array(bldr.result()).asInstanceOf[Chunk[O]]
     }
-    override def toVector = b.toVector
-
-    override def drop(n: Int): Chunk[O] =
-      if (n <= 0) this
-      else if (n >= size) Chunk.empty
-      else buffer(b.drop(n))
-
-    override def iterator: Iterator[O] =
-      b.iterator
-
-    override def take(n: Int): Chunk[O] =
-      if (n <= 0) Chunk.empty
-      else if (n >= size) this
-      else buffer(b.take(n))
-
-    protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-      val (fst, snd) = b.splitAt(n)
-      buffer(fst) -> buffer(snd)
-    }
-    override def map[O2](f: O => O2): Chunk[O2] = buffer(b.map(f))
-  }
 
   /** Creates a chunk with the specified values. */
   def apply[O](os: O*): Chunk[O] = seq(os)
@@ -679,8 +662,9 @@ object Chunk
       case _ => ArraySlice(values, offset, length)
     }
 
-  case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
-      extends Chunk[O] {
+  case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit
+      ct: ClassTag[O]
+  ) extends Chunk[O] {
 
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
@@ -920,7 +904,7 @@ object Chunk
       val (hd, tl) = queue.dequeue
       (Chunk.singleton(hd), tl)
     } else {
-      val bldr = collection.mutable.Buffer.newBuilder[A]
+      val bldr = makeArrayBuilder[Any]
       // Note: can't use sizeHint here as `n` might be huge (e.g. Int.MaxValue)
       // and calling n.min(queue.size) has linear time complexity in queue size
       var cur = queue
@@ -931,7 +915,7 @@ object Chunk
         cur = tl
         rem -= 1
       }
-      (Chunk.buffer(bldr.result()), cur)
+      (Chunk.array(bldr.result()).asInstanceOf[Chunk[A]], cur)
     }
 
   /** A FIFO queue of chunks that provides an O(1) size method and provides the ability to
@@ -1147,7 +1131,7 @@ object Chunk
       override def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
         // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
-        val buf = collection.mutable.Buffer.newBuilder[B]
+        val buf = makeArrayBuilder[Any]
         var state = List(f(a).iterator)
         @tailrec
         def go(): Unit =
@@ -1167,7 +1151,7 @@ object Chunk
               }
           }
         go()
-        Chunk.buffer(buf.result())
+        Chunk.array(buf.result()).asInstanceOf[Chunk[B]]
       }
       override def combineK[A](x: Chunk[A], y: Chunk[A]): Chunk[A] =
         x ++ y
