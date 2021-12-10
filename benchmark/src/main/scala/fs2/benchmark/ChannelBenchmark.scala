@@ -30,43 +30,50 @@ import fs2.concurrent.Channel
 
 @State(Scope.Thread)
 class ChannelBenchmark {
-  @Param(Array("16", "256", "4096"))
+  @Param(Array("64", "1024", "16384"))
   var size: Int = _
 
   var list: List[Unit] = _
+  var lists: List[List[Unit]] = _
 
   @Setup
   def setup() {
     list = List.fill(size)(())
+    val subList = List.fill(size / 8)(())
+    lists = List.fill(8)(subList)
   }
 
   @Benchmark
   def sendPull(): Unit =
     Channel
-      .unbounded[IO, Unit]
+      .bounded[IO, Unit](size / 4)
       .flatMap { channel =>
-        val action = channel.send(())
-        list.traverse(_ => action) *> channel.close *> channel.stream.compile.drain
+        val action = sendAll(list, channel.send(()).void) *> channel.close
+        action.start *> channel.stream.compile.drain
       }
       .unsafeRunSync()
 
   @Benchmark
-  def sendPullPar2(): Unit =
+  def sendPullPar8(): Unit =
     Channel
-      .unbounded[IO, Unit]
+      .bounded[IO, Unit](size / 4)
       .flatMap { channel =>
-        val action = (channel.send(()), channel.send(())).parTupled
-        list.traverse_(_ => action) *> channel.close *> channel.stream.compile.drain
+        val action = lists.parTraverse_(sendAll(_, channel.send(()).void)) *> channel.close
+        action.start *> channel.stream.compile.drain
       }
       .unsafeRunSync()
 
   @Benchmark
-  def sendPullPar3(): Unit =
+  def sendPullParUnlimited(): Unit =
     Channel
-      .unbounded[IO, Unit]
+      .bounded[IO, Unit](size / 4)
       .flatMap { channel =>
-        val action = (channel.send(()), channel.send(()), channel.send(())).parTupled
-        list.traverse_(_ => action) *> channel.close *> channel.stream.compile.drain
+        val action = sendAll(list, channel.send(()).start.void)
+        action *> channel.stream.take(size).compile.drain
       }
       .unsafeRunSync()
+
+  @inline
+  private def sendAll(list: List[Unit], action: IO[Unit]) =
+    list.foldLeft(IO.unit)((acc, _) => acc *> action)
 }

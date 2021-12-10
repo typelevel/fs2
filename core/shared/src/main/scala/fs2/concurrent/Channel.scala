@@ -146,7 +146,7 @@ object Channel {
                 case State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity)
                     (
-                      State(a ::  values, size + 1, None, producers, false),
+                      State(a :: values, size + 1, None, producers, false),
                       notifyStream(waiting)
                     )
                   else
@@ -183,38 +183,38 @@ object Channel {
           Pull.eval {
             F.deferred[Unit].flatMap { waiting =>
               state
-                .modify { case State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
-                  if (values.nonEmpty || producers.nonEmpty) {
-                    var unblock_ = F.unit
-                    var allValues_ = values
+                .modify {
+                  case prev @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                    if (shouldEmit(prev)) (State(List.empty, 0, None, List.empty, closed), prev)
+                    else (State(values, size, waiting.some, producers, closed), prev)
+                }
+                .flatMap {
+                  case s @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                    if (shouldEmit(s)) {
+                      var unblock_ = F.unit
+                      var allValues_ = values
+                      var size_ = size
 
-                    producers.foreach { case (value, producer) =>
-                      allValues_ = value :: allValues_
-                      unblock_ = unblock_ >> producer.complete(()).void
-                    }
+                      producers.foreach { case (value, producer) =>
+                        size_ += 1
+                        allValues_ = value :: allValues_
+                        unblock_ = unblock_ >> producer.complete(()).void
+                      }
 
-                    val unblock = unblock_
+                      val unblock = unblock_
 
-                    val toEmit = makeChunk(allValues_, size)
+                      val toEmit = makeChunk(allValues_, size_)
 
-                    (
-                      State(List.empty, 0, None, List.empty, closed),
-                      // unblock needs to execute in F, so we can make it uncancelable
                       unblock.as(
                         Pull.output(toEmit) >> consumeLoop
                       )
-                    )
-                  } else {
-                    (
-                      State(values, size, waiting.some, producers, closed),
+                    } else {
                       F.pure(
                         if (closed) Pull.done
-                        else (Pull.eval(waiting.get) >> consumeLoop)
+                        else Pull.eval(waiting.get) >> consumeLoop
                       )
-                    )
-                  }
+                    }
                 }
-                .flatten
                 .uncancelable
             }
           }.flatten
@@ -231,11 +231,13 @@ object Channel {
 
         def signalClosure = closedGate.complete(())
 
-        private def makeChunk(allValues : List[A], size: Int): Chunk[A] = {
+        @inline private def shouldEmit(s: State) = s.values.nonEmpty || s.producers.nonEmpty
+
+        private def makeChunk(allValues: List[A], size: Int): Chunk[A] = {
           val arr = new Array[Any](size)
           var i = size - 1
           var values = allValues
-          while(i >= 0) {
+          while (i >= 0) {
             arr(i) = values.head
             values = values.tail
             i -= 1
