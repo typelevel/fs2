@@ -691,7 +691,7 @@ object Chunk
     override protected def thisClassTag: ClassTag[Any] = ct.asInstanceOf[ClassTag[Any]]
 
     def size = length
-    def apply(i: Int) = 
+    def apply(i: Int) =
       if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
       else values(offset + i)
 
