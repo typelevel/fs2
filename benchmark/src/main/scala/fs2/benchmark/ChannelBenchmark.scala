@@ -27,6 +27,7 @@ import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 import cats.syntax.all._
 import fs2.concurrent.Channel
+import org.openjdk.jmh.infra.Blackhole
 
 @State(Scope.Thread)
 class ChannelBenchmark {
@@ -46,34 +47,42 @@ class ChannelBenchmark {
   @Benchmark
   def sendPull(): Unit =
     Channel
-      .bounded[IO, Unit](size / 4)
+      .bounded[IO, Unit](size / 8)
       .flatMap { channel =>
         val action = sendAll(list, channel.send(()).void) *> channel.close
-        action.start *> channel.stream.compile.drain
+        action.start *> channel.stream.through(blackHole).compile.drain
       }
       .unsafeRunSync()
 
   @Benchmark
   def sendPullPar8(): Unit =
     Channel
-      .bounded[IO, Unit](size / 4)
+      .bounded[IO, Unit](size / 8)
       .flatMap { channel =>
         val action = lists.parTraverse_(sendAll(_, channel.send(()).void)) *> channel.close
-        action.start *> channel.stream.compile.drain
+        action.start *> channel.stream.through(blackHole).compile.drain
       }
       .unsafeRunSync()
 
   @Benchmark
   def sendPullParUnlimited(): Unit =
     Channel
-      .bounded[IO, Unit](size / 4)
+      .bounded[IO, Unit](size / 8)
       .flatMap { channel =>
         val action = sendAll(list, channel.send(()).start.void)
-        action *> channel.stream.take(size).compile.drain
+        action *> channel.stream.take(size).through(blackHole).compile.drain
       }
       .unsafeRunSync()
 
   @inline
   private def sendAll(list: List[Unit], action: IO[Unit]) =
     list.foldLeft(IO.unit)((acc, _) => acc *> action)
+
+  private def blackHole(s: Stream[IO, Unit]) =
+    s.repeatPull(_.uncons.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        val action = IO.delay(0.until(hd.size).foreach(_ => Blackhole.consumeCPU(100)))
+        Pull.eval(action).as(Some(tl))
+    })
 }

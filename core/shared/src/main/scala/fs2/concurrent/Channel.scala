@@ -124,9 +124,13 @@ object Channel {
         closed: Boolean
     )
 
-    val initial = State(List.empty, 0, None, List.empty, false)
+    val open = State(List.empty, 0, None, List.empty, closed = false)
 
-    (F.ref(initial), F.deferred[Unit]).mapN { (state, closedGate) =>
+    def empty(isClosed: Boolean): State =
+      if (isClosed) State(List.empty, 0, None, List.empty, closed = true)
+      else open
+
+    (F.ref(open), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] = { in =>
@@ -183,31 +187,26 @@ object Channel {
           Pull.eval {
             F.deferred[Unit].flatMap { waiting =>
               state
-                .modify {
-                  case prev @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
-                    if (shouldEmit(prev)) (State(List.empty, 0, None, List.empty, closed), prev)
-                    else (State(values, size, waiting.some, producers, closed), prev)
+                .modify { state =>
+                  if (shouldEmit(state)) (empty(state.closed), state)
+                  else (state.copy(waiting = waiting.some), state)
                 }
                 .flatMap {
-                  case s @ State(values, size, ignorePreviousWaiting @ _, producers, closed) =>
+                  case s @ State(values, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
                     if (shouldEmit(s)) {
-                      var unblock_ = F.unit
-                      var allValues_ = values
-                      var size_ = size
+                      var size = stateSize
+                      var allValues = values
+                      var unblock = F.unit
 
                       producers.foreach { case (value, producer) =>
-                        size_ += 1
-                        allValues_ = value :: allValues_
-                        unblock_ = unblock_ >> producer.complete(()).void
+                        size += 1
+                        allValues = value :: allValues
+                        unblock = unblock >> producer.complete(()).void
                       }
 
-                      val unblock = unblock_
+                      val toEmit = makeChunk(allValues, size)
 
-                      val toEmit = makeChunk(allValues_, size_)
-
-                      unblock.as(
-                        Pull.output(toEmit) >> consumeLoop
-                      )
+                      unblock.as(Pull.output(toEmit) >> consumeLoop)
                     } else {
                       F.pure(
                         if (closed) Pull.done
