@@ -681,6 +681,8 @@ object Chunk
 
   case class ArraySlice[O](values: Array[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
       extends Chunk[O] {
+    // note: we don't really need the ct implicit here as we can compute it on demand via
+    // ClassTag(values.getClass.getComponentType) -- we only keep it for bincompat
 
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
@@ -689,7 +691,9 @@ object Chunk
     override protected def thisClassTag: ClassTag[Any] = ct.asInstanceOf[ClassTag[Any]]
 
     def size = length
-    def apply(i: Int) = values(offset + i)
+    def apply(i: Int) =
+      if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
+      else values(offset + i)
 
     override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] =
       if ((ct.wrap.runtimeClass eq values.getClass) && offset == 0 && length == values.length)
