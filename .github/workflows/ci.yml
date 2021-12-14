@@ -15,11 +15,10 @@ on:
     tags: [v*]
 
 env:
-  SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-  JABBA_INDEX: 'https://github.com/typelevel/jdk-index/raw/main/index.json'
-  SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-  PGP_SECRET: ${{ secrets.PGP_SECRET }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+  SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+  PGP_SECRET: ${{ secrets.PGP_SECRET }}
 
 jobs:
   build:

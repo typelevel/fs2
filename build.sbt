@@ -24,7 +24,6 @@ val NewScala = "2.13.7"
 
 ThisBuild / crossScalaVersions := Seq("3.1.0", "2.12.15", NewScala)
 
-ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 
 ThisBuild / spiewakCiReleaseSnapshots := true
@@ -281,7 +280,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.14" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.15" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
