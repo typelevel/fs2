@@ -168,7 +168,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[MissingClassProblem](
     "fs2.io.net.SocketCompanionPlatform$IntCallbackHandler"
-  )
+  ),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk")
 )
 
 lazy val root = project
