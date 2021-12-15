@@ -201,7 +201,7 @@ object Channel {
                       producers.foreach { case (value, producer) =>
                         size += 1
                         allValues = value :: allValues
-                        unblock = unblock >> producer.complete(()).void
+                        unblock = unblock <* producer.complete(())
                       }
 
                       val toEmit = makeChunk(allValues, size)
