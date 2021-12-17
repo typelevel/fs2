@@ -256,9 +256,16 @@ class TextSuite extends Fs2Suite {
         val lines = lines0.map(escapeCrLf)
         assertEquals(lines.intersperse("\n").through(text.lines).toList, lines.toList)
         assertEquals(lines.intersperse("\r\n").through(text.lines).toList, lines.toList)
-        assertEquals(lines.intersperse("\r").covary[Fallible].through(
-          text.linesFor[Fallible](crsOnly = true)
-        ).toList, Right(lines.toList))
+        assertEquals(
+          lines
+            .intersperse("\r")
+            .covary[Fallible]
+            .through(
+              text.linesFor[Fallible](crsOnly = true)
+            )
+            .toList,
+          Right(lines.toList)
+        )
       }
     }
 
