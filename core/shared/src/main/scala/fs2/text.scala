@@ -317,16 +317,22 @@ object text {
     utf8.encodeC
 
 
-  def linesFor[F[_]: RaiseThrowable](sizeLimit: Option[Int] = None, crsOnly: Boolean = false):Pipe[F, String, String] =
+  /**
+    * Transforms a stream of `String` such that each emitted `String` is a line from the input
+    * @param maxLineLength maximum size to accumulate a line to; throw an error if a line is larger
+    * @param crsOnly separate lines that are delimited only by '\r'
+    * @tparam F
+    */
+  def linesFor[F[_]: RaiseThrowable](maxLineLength: Option[Int] = None, crsOnly: Boolean = false):Pipe[F, String, String] =
     linesImpl[F](
-      maxLineSize = sizeLimit.map((_, implicitly[RaiseThrowable[F]])),
+      maxLineLength = maxLineLength.map((_, implicitly[RaiseThrowable[F]])),
       crsOnly = crsOnly
     )
 
+  /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]:Pipe[F, String, String] = linesImpl[F]()
 
-  /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
-  private def linesImpl[F[_]](maxLineSize: Option[(Int, RaiseThrowable[F])] = None, crsOnly: Boolean = false): Pipe[F, String, String] = {
+  private def linesImpl[F[_]](maxLineLength: Option[(Int, RaiseThrowable[F])] = None, crsOnly: Boolean = false): Pipe[F, String, String] = {
     def fillBuffers(
         stringBuilder: StringBuilder,
         linesBuffer: ArrayBuffer[String],
@@ -374,7 +380,7 @@ object text {
             fillBuffers(stringBuilder, linesBuffer, string)
           }
 
-          maxLineSize match {
+          maxLineLength match {
             case Some((max, raiseThrowable)) if stringBuilder.length() > max =>
               Pull.raiseError[F](new IllegalStateException(
                 s"Max line size is $max but ${stringBuilder.length()} chars have been accumulated"
