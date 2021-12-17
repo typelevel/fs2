@@ -227,7 +227,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .assertEquals(true)
     }
 
-    test("recursive copy in a streaming fashion".only) {
+    test("recursive copy in a streaming fashion") {
       (tempFilesHierarchy, tempDirectory)
         .tupled
         .use { case (from, to) =>

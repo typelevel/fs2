@@ -443,43 +443,44 @@ object Files extends FilesCompanionPlatform {
     def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
 
       def go(start: Path, maxDepth: Int, ancestry: List[Either[Path, FileKey]]): Stream[F, Path] =
-        if (maxDepth == 0)
-          Stream.eval(exists(start, followLinks)).as(start)
-        else
-          Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
-            (if (attr.isDirectory)
-               list(start)
-                 .flatMap { path =>
-                   go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                 }
-                 .recoverWith { case _ =>
-                   Stream.empty
-                 }
-             else if (attr.isSymbolicLink && followLinks)
-               Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
-                 val fileKey = attr.fileKey
-                 val isCycle = Traverse[List].existsM(ancestry) {
-                   case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
-                   case Left(ancestorPath) => isSameFile(start, ancestorPath)
-                 }
+        Stream.emit(start) ++ {
+          if (maxDepth == 0) Stream.empty
+          else
+            Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
+              if (attr.isDirectory)
+                list(start)
+                  .flatMap { path =>
+                    go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                  }
+                  .recoverWith { case _ =>
+                    Stream.empty
+                  }
+                  else if (attr.isSymbolicLink && followLinks)
+                    Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
+                      val fileKey = attr.fileKey
+                      val isCycle = Traverse[List].existsM(ancestry) {
+                        case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                        case Left(ancestorPath) => isSameFile(start, ancestorPath)
+                      }
 
-                 Stream.eval(isCycle).flatMap { isCycle =>
-                   if (!isCycle)
-                     list(start)
-                       .flatMap { path =>
-                         go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                       }
-                       .recoverWith { case _ =>
-                         Stream.empty
-                       }
-                   else
-                     Stream.raiseError(new FileSystemLoopException(start.toString))
-                 }
+                      Stream.eval(isCycle).flatMap { isCycle =>
+                        if (!isCycle)
+                          list(start)
+                            .flatMap { path =>
+                              go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                            }
+                            .recoverWith { case _ =>
+                              Stream.empty
+                            }
+                            else
+                              Stream.raiseError(new FileSystemLoopException(start.toString))
+                      }
 
-               }
-             else
-               Stream.empty) ++ Stream.emit(start)
-          }
+                    }
+                    else
+                      Stream.empty
+            }
+        }
 
       Stream.eval(getBasicFileAttributes(start, followLinks)) >> go(start, maxDepth, Nil)
     }
