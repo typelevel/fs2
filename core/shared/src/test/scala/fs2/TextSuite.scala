@@ -247,7 +247,7 @@ class TextSuite extends Fs2Suite {
     }
   }
 
-  group("lines") {
+  group("lines / linesFor") {
     def escapeCrLf(s: String): String =
       s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
 
@@ -256,6 +256,9 @@ class TextSuite extends Fs2Suite {
         val lines = lines0.map(escapeCrLf)
         assertEquals(lines.intersperse("\n").through(text.lines).toList, lines.toList)
         assertEquals(lines.intersperse("\r\n").through(text.lines).toList, lines.toList)
+        assertEquals(lines.intersperse("\r").covary[Fallible].through(
+          text.linesFor[Fallible](crsOnly = true)
+        ).toList, Right(lines.toList))
       }
     }
 
@@ -269,7 +272,7 @@ class TextSuite extends Fs2Suite {
       }
     }
 
-    property("grouped in 3 characater chunks") {
+    property("grouped in 3 character chunks") {
       forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
@@ -283,6 +286,29 @@ class TextSuite extends Fs2Suite {
           )
         }
       }
+    }
+
+    property("linesFor with sizeLimit") {
+      val line = "foo" * 100
+
+      (1 to line.length).foreach { i =>
+        val stream = Stream
+          .emits(line.toCharArray)
+          .chunkN(i)
+          .map(c => new String(c.toArray))
+          .covary[Fallible]
+
+        assert(stream.through(text.linesFor(sizeLimit = Some(10))).toList.isLeft)
+
+        assertEquals(
+          stream.through(text.linesFor(sizeLimit = Some(line.length))).toList,
+          Right(List(line))
+        )
+
+      }
+
+
+
     }
   }
 

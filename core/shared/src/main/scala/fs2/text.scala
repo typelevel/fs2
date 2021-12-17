@@ -316,14 +316,24 @@ object text {
   def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
     utf8.encodeC
 
+
+  def linesFor[F[_]: RaiseThrowable](sizeLimit: Option[Int] = None, crsOnly: Boolean = false):Pipe[F, String, String] =
+    linesImpl[F](
+      maxLineSize = sizeLimit.map((_, implicitly[RaiseThrowable[F]])),
+      crsOnly = crsOnly
+    )
+
+  def lines[F[_]]:Pipe[F, String, String] = linesImpl[F]()
+
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
-  def lines[F[_]]: Pipe[F, String, String] = {
+  private def linesImpl[F[_]](maxLineSize: Option[(Int, RaiseThrowable[F])] = None, crsOnly: Boolean = false): Pipe[F, String, String] = {
     def fillBuffers(
         stringBuilder: StringBuilder,
         linesBuffer: ArrayBuffer[String],
         string: String
     ): Unit = {
       val l = stringBuilder.length
+
       var i =
         if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
           stringBuilder.deleteCharAt(l - 1)
@@ -341,6 +351,9 @@ object text {
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
             i += 1
+          case '\r' if crsOnly =>
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
           case other =>
             stringBuilder.append(other)
         }
@@ -360,7 +373,14 @@ object text {
           chunk.foreach { string =>
             fillBuffers(stringBuilder, linesBuffer, string)
           }
-          Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
+
+          maxLineSize match {
+            case Some((max, raiseThrowable)) if stringBuilder.length() > max =>
+              Pull.raiseError[F](new IllegalStateException(
+                s"Max line size is $max but ${stringBuilder.length()} chars have been accumulated"
+              ))(raiseThrowable)
+            case _ => Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
+          }
       }
 
     s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
