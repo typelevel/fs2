@@ -316,23 +316,27 @@ object text {
   def utf8EncodeC[F[_]]: Pipe[F, String, Chunk[Byte]] =
     utf8.encodeC
 
-
-  /**
-    * Transforms a stream of `String` such that each emitted `String` is a line from the input
+  /** Transforms a stream of `String` such that each emitted `String` is a line from the input
     * @param maxLineLength maximum size to accumulate a line to; throw an error if a line is larger
     * @param crsOnly separate lines that are delimited only by '\r'
     * @tparam F
     */
-  def linesFor[F[_]: RaiseThrowable](maxLineLength: Option[Int] = None, crsOnly: Boolean = false):Pipe[F, String, String] =
+  def linesFor[F[_]: RaiseThrowable](
+      maxLineLength: Option[Int] = None,
+      crsOnly: Boolean = false
+  ): Pipe[F, String, String] =
     linesImpl[F](
       maxLineLength = maxLineLength.map((_, implicitly[RaiseThrowable[F]])),
       crsOnly = crsOnly
     )
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
-  def lines[F[_]]:Pipe[F, String, String] = linesImpl[F]()
+  def lines[F[_]]: Pipe[F, String, String] = linesImpl[F]()
 
-  private def linesImpl[F[_]](maxLineLength: Option[(Int, RaiseThrowable[F])] = None, crsOnly: Boolean = false): Pipe[F, String, String] = {
+  private def linesImpl[F[_]](
+      maxLineLength: Option[(Int, RaiseThrowable[F])] = None,
+      crsOnly: Boolean = false
+  ): Pipe[F, String, String] = {
     def fillBuffers(
         stringBuilder: StringBuilder,
         linesBuffer: ArrayBuffer[String],
@@ -382,10 +386,13 @@ object text {
 
           maxLineLength match {
             case Some((max, raiseThrowable)) if stringBuilder.length() > max =>
-              Pull.raiseError[F](new IllegalStateException(
-                s"Max line size is $max but ${stringBuilder.length()} chars have been accumulated"
-              ))(raiseThrowable)
-            case _ => Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
+              Pull.raiseError[F](
+                new IllegalStateException(
+                  s"Max line size is $max but ${stringBuilder.length()} chars have been accumulated"
+                )
+              )(raiseThrowable)
+            case _ =>
+              Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
           }
       }
 
