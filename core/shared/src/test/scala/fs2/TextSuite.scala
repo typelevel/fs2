@@ -290,7 +290,6 @@ class TextSuite extends Fs2Suite {
 
     property("linesFor with maxLineLength") {
       val line = "foo" * 100
-
       (1 to line.length).foreach { i =>
         val stream = Stream
           .emits(line.toCharArray)
@@ -299,16 +298,11 @@ class TextSuite extends Fs2Suite {
           .covary[Fallible]
 
         assert(stream.through(text.linesFor(maxLineLength = Some(10))).toList.isLeft)
-
         assertEquals(
           stream.through(text.linesFor(maxLineLength = Some(line.length))).toList,
           Right(List(line))
         )
-
       }
-
-
-
     }
   }
 
