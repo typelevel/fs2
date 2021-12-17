@@ -510,6 +510,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .foldMonoid
         .assertEquals(31) // the root + 5 children + 5 files per child directory
     }
+
+
   }
 
   test("writeRotate") {

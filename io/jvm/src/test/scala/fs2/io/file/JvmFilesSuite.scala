@@ -25,6 +25,7 @@ package file
 
 import cats.effect.IO
 import cats.syntax.all._
+import java.nio.file.{Files => JFiles}
 
 class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
   group("support non-default filesystems") {
@@ -40,4 +41,25 @@ class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
       }
     }
   }
+
+  test("traversal order in walk is compatible with NIO") {
+
+      import scala.jdk.CollectionConverters._
+      def nioWalk(dir: Path): IO[List[Path]] =
+        IO {
+          JFiles
+            .walk(dir.toNioPath)
+            .iterator
+            .asScala
+            .toList
+            .map(Path.fromNioPath)
+        }
+
+    tempFilesHierarchy.use { topDir =>
+      (Files[IO].walk(topDir).compile.toList, nioWalk(topDir)).mapN( (p1, p2) =>
+        assertEquals(p1, p2)
+      )
+    }
+  }
+
 }
