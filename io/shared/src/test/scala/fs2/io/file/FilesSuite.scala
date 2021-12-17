@@ -228,8 +228,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
     }
 
     test("recursive copy in a streaming fashion") {
-      (tempFilesHierarchy, tempDirectory)
-        .tupled
+      (tempFilesHierarchy, tempDirectory).tupled
         .use { case (from, to) =>
           Files[IO]
             .walk(from)
@@ -242,7 +241,9 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
                   Files[IO].createDirectory(dest),
                   Files[IO].copy(source, dest)
                 ) >> Files[IO].exists(dest).assertEquals(true)
-            }.compile.drain
+            }
+            .compile
+            .drain
         }
     }
   }

@@ -455,30 +455,30 @@ object Files extends FilesCompanionPlatform {
                   .recoverWith { case _ =>
                     Stream.empty
                   }
-                  else if (attr.isSymbolicLink && followLinks)
-                    Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
-                      val fileKey = attr.fileKey
-                      val isCycle = Traverse[List].existsM(ancestry) {
-                        case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
-                        case Left(ancestorPath) => isSameFile(start, ancestorPath)
-                      }
+              else if (attr.isSymbolicLink && followLinks)
+                Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
+                  val fileKey = attr.fileKey
+                  val isCycle = Traverse[List].existsM(ancestry) {
+                    case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                    case Left(ancestorPath) => isSameFile(start, ancestorPath)
+                  }
 
-                      Stream.eval(isCycle).flatMap { isCycle =>
-                        if (!isCycle)
-                          list(start)
-                            .flatMap { path =>
-                              go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                            }
-                            .recoverWith { case _ =>
-                              Stream.empty
-                            }
-                            else
-                              Stream.raiseError(new FileSystemLoopException(start.toString))
-                      }
-
-                    }
+                  Stream.eval(isCycle).flatMap { isCycle =>
+                    if (!isCycle)
+                      list(start)
+                        .flatMap { path =>
+                          go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                        }
+                        .recoverWith { case _ =>
+                          Stream.empty
+                        }
                     else
-                      Stream.empty
+                      Stream.raiseError(new FileSystemLoopException(start.toString))
+                  }
+
+                }
+              else
+                Stream.empty
             }
         }
 
