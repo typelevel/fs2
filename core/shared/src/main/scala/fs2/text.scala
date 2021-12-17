@@ -385,10 +385,10 @@ object text {
           }
 
           maxLineLength match {
-            case Some((max, raiseThrowable)) if stringBuilder.length() > max =>
+            case Some((max, raiseThrowable)) if stringBuilder.length > max =>
               Pull.raiseError[F](
                 new IllegalStateException(
-                  s"Max line size is $max but ${stringBuilder.length()} chars have been accumulated"
+                  s"Max line size is $max but ${stringBuilder.length} chars have been accumulated"
                 )
               )(raiseThrowable)
             case _ =>
