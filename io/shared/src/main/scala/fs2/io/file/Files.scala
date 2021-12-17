@@ -448,13 +448,9 @@ object Files extends FilesCompanionPlatform {
           else
             Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
               if (attr.isDirectory)
-                list(start)
-                  .flatMap { path =>
-                    go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                  }
-                  .recoverWith { case _ =>
-                    Stream.empty
-                  }
+                list(start).flatMap { path =>
+                  go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                }.mask
               else if (attr.isSymbolicLink && followLinks)
                 Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
                   val fileKey = attr.fileKey
@@ -465,13 +461,9 @@ object Files extends FilesCompanionPlatform {
 
                   Stream.eval(isCycle).flatMap { isCycle =>
                     if (!isCycle)
-                      list(start)
-                        .flatMap { path =>
-                          go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                        }
-                        .recoverWith { case _ =>
-                          Stream.empty
-                        }
+                      list(start).flatMap { path =>
+                        go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                      }.mask
                     else
                       Stream.raiseError(new FileSystemLoopException(start.toString))
                   }
