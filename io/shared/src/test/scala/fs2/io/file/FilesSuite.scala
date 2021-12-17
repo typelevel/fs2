@@ -26,7 +26,6 @@ package file
 import cats.effect.{IO, Resource}
 import cats.kernel.Order
 import cats.syntax.all._
-import cats.kernel.instances.order._
 
 import scala.concurrent.duration._
 
@@ -490,17 +489,6 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals(31) // the root + 5 children + 5 files per child directory
-    }
-
-    test("returns files in order of traversal") {
-      Stream
-        .resource(tempFilesHierarchy)
-        .flatMap(topDir => Files[IO].walk(topDir))
-        .compile
-        .toList
-        .map { paths =>
-          assertEquals(paths, paths.sorted)
-        }
     }
   }
 
