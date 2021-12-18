@@ -226,6 +226,26 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         }
         .assertEquals(true)
     }
+
+    test("recursive copy in a streaming fashion") {
+      (tempFilesHierarchy, tempDirectory).tupled
+        .use { case (from, to) =>
+          Files[IO]
+            .walk(from)
+            .tail
+            .evalMap { source =>
+              val dest = to / from.relativize(source)
+              Files[IO]
+                .isDirectory(source)
+                .ifM(
+                  Files[IO].createDirectory(dest),
+                  Files[IO].copy(source, dest)
+                ) >> Files[IO].exists(dest).assertEquals(true)
+            }
+            .compile
+            .drain
+        }
+    }
   }
 
   group("delete") {
@@ -490,6 +510,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .foldMonoid
         .assertEquals(31) // the root + 5 children + 5 files per child directory
     }
+
   }
 
   test("writeRotate") {
