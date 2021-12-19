@@ -387,9 +387,7 @@ object text {
           maxLineLength match {
             case Some((max, raiseThrowable)) if stringBuilder.length > max =>
               Pull.raiseError[F](
-                new IllegalStateException(
-                  s"Max line size is $max but ${stringBuilder.length} chars have been accumulated"
-                )
+                new LineTooLongException(stringBuilder.length(), max)
               )(raiseThrowable)
             case _ =>
               Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
@@ -398,6 +396,11 @@ object text {
 
     s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
   }
+
+  class LineTooLongException(val length: Int, val max: Int)
+      extends RuntimeException(
+        s"Max line size is $max but $length chars have been accumulated"
+      )
 
   /** Functions for working with base 64. */
   object base64 {
