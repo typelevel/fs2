@@ -728,4 +728,29 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .assertEquals(false)
     }
   }
+
+  group("realPath") {
+
+    test("doesn't fail if the path is for a file") {
+      tempFile
+        .use(Files[IO].realPath(_))
+        .void
+        .assert
+    }
+
+    test("doesn't fail if the path is for a directory") {
+      tempDirectory
+        .use(Files[IO].realPath(_))
+        .void
+        .assert
+    }
+
+    test("fails with NoSuchFileException if the path does not exist") {
+      tempDirectory
+        .map(_.resolve("non-existent-file"))
+        .use(Files[IO].realPath(_))
+        .intercept[NoSuchFileException]
+    }
+  }
+
 }
