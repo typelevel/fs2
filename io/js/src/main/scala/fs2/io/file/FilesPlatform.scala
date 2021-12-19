@@ -321,7 +321,10 @@ private[fs2] trait FilesCompanionPlatform {
       readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
 
     def realPath(path: Path): F[Path] =
-      F.fromPromise(F.delay(fsPromisesMod.realpath(path.toString))).map(Path(_))
+      F.fromPromise(F.delay(fsPromisesMod.realpath(path.toString))).map(Path(_)).handleErrorWith {
+        case NoSuchFileException(e) =>
+          F.raiseError(e)
+      }
 
     override def setFileTimes(
         path: Path,
