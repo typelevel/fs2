@@ -390,7 +390,7 @@ object text {
                 new LineTooLongException(stringBuilder.length(), max)
               )(raiseThrowable)
             case _ =>
-              Pull.output(Chunk.buffer(linesBuffer)) >> go(stream, stringBuilder, first = false)
+              Pull.output(Chunk.indexedSeq(linesBuffer)) >> go(stream, stringBuilder, first = false)
           }
       }
 
