@@ -387,7 +387,7 @@ object text {
           maxLineLength match {
             case Some((max, raiseThrowable)) if stringBuilder.length > max =>
               Pull.raiseError[F](
-                new LineTooLongException(stringBuilder.length(), max)
+                new LineTooLongException(stringBuilder.length, max)
               )(raiseThrowable)
             case _ =>
               Pull.output(Chunk.indexedSeq(linesBuffer)) >> go(stream, stringBuilder, first = false)
