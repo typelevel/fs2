@@ -22,6 +22,7 @@
 package fs2
 
 import cats.syntax.all._
+
 import java.nio.charset.Charset
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
@@ -275,6 +276,10 @@ class TextSuite extends Fs2Suite {
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
           assertEquals(Stream.emit(s).through(text.lines).toList, lines.toList)
+          assertEquals(
+            Stream.emit(s).covary[fs2.Fallible].through(text.linesFor(crsOnly = true)).toList,
+            Right(lines.toList)
+          )
         }
       }
     }
@@ -288,9 +293,24 @@ class TextSuite extends Fs2Suite {
         else {
           assertEquals(Stream.emits(s).through(text.lines).toList, lines.toList)
           assertEquals(
+            Stream.emits(s).covary[Fallible].through(text.linesFor(crsOnly = true)).toList,
+            Right(lines.toList)
+          )
+          assertEquals(
             Stream.emits(s).chunkLimit(1).unchunks.through(text.lines).toList,
             lines.toList
           )
+          assertEquals(
+            Stream
+              .emits(s)
+              .chunkLimit(1)
+              .unchunks
+              .covary[Fallible]
+              .through(text.linesFor(crsOnly = true))
+              .toList,
+            Right(lines.toList)
+          )
+
         }
       }
     }

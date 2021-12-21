@@ -345,11 +345,18 @@ object text {
       val l = stringBuilder.length
 
       var i =
-        if (l > 0 && stringBuilder(l - 1) == '\r' && string.nonEmpty && string(0) == '\n') {
-          stringBuilder.deleteCharAt(l - 1)
-          linesBuffer += stringBuilder.result()
-          stringBuilder.clear()
-          1
+        if (l > 0 && stringBuilder(l - 1) == '\r') {
+          if (string.nonEmpty && string(0) == '\n') {
+            stringBuilder.deleteCharAt(l - 1)
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+            1
+          } else if (crsOnly && stringBuilder(l - 1) == '\r') {
+            stringBuilder.deleteCharAt(l - 1)
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+            0
+          } else 0
         } else 0
 
       while (i < string.size) {
@@ -361,7 +368,7 @@ object text {
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
             i += 1
-          case '\r' if crsOnly =>
+          case '\r' if crsOnly && i + 1 < string.size =>
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
           case other =>
