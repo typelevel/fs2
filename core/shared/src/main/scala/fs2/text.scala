@@ -318,24 +318,15 @@ object text {
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input
     * @param maxLineLength maximum size to accumulate a line to; throw an error if a line is larger
-    * @param crsOnly separate lines that are delimited only by '\r'
-    * @tparam F
     */
-  def linesFor[F[_]: RaiseThrowable](
-      maxLineLength: Option[Int] = None,
-      crsOnly: Boolean = false
-  ): Pipe[F, String, String] =
-    linesImpl[F](
-      maxLineLength = maxLineLength.map((_, implicitly[RaiseThrowable[F]])),
-      crsOnly = crsOnly
-    )
+  def linesLimited[F[_]: RaiseThrowable](maxLineLength: Int): Pipe[F, String, String] =
+    linesImpl[F](maxLineLength = Some(maxLineLength, implicitly[RaiseThrowable[F]]))
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
-  def lines[F[_]]: Pipe[F, String, String] = linesImpl[F]()
+  def lines[F[_]]: Pipe[F, String, String] = linesImpl[F](None)
 
   private def linesImpl[F[_]](
-      maxLineLength: Option[(Int, RaiseThrowable[F])] = None,
-      crsOnly: Boolean = false
+      maxLineLength: Option[(Int, RaiseThrowable[F])]
   ): Pipe[F, String, String] = {
     def fillBuffers(
         stringBuilder: StringBuilder,
@@ -351,7 +342,7 @@ object text {
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
             1
-          } else if (crsOnly && stringBuilder(l - 1) == '\r') {
+          } else if (stringBuilder(l - 1) == '\r') {
             stringBuilder.deleteCharAt(l - 1)
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
@@ -368,7 +359,7 @@ object text {
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
             i += 1
-          case '\r' if crsOnly && i + 1 < string.size =>
+          case '\r' if i + 1 < string.size =>
             linesBuffer += stringBuilder.result()
             stringBuilder.clear()
           case other =>

@@ -248,7 +248,7 @@ class TextSuite extends Fs2Suite {
     }
   }
 
-  group("lines / linesFor") {
+  group("lines / linesLimited") {
     def escapeCrLf(s: String): String =
       s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
 
@@ -257,16 +257,7 @@ class TextSuite extends Fs2Suite {
         val lines = lines0.map(escapeCrLf)
         assertEquals(lines.intersperse("\n").through(text.lines).toList, lines.toList)
         assertEquals(lines.intersperse("\r\n").through(text.lines).toList, lines.toList)
-        assertEquals(
-          lines
-            .intersperse("\r")
-            .covary[Fallible]
-            .through(
-              text.linesFor[Fallible](crsOnly = true)
-            )
-            .toList,
-          Right(lines.toList)
-        )
+        assertEquals(lines.intersperse("\r").through(text.lines).toList, lines.toList)
       }
     }
 
@@ -276,10 +267,6 @@ class TextSuite extends Fs2Suite {
         if (lines.toList.nonEmpty) {
           val s = lines.intersperse("\r\n").toList.mkString
           assertEquals(Stream.emit(s).through(text.lines).toList, lines.toList)
-          assertEquals(
-            Stream.emit(s).covary[fs2.Fallible].through(text.linesFor(crsOnly = true)).toList,
-            Right(lines.toList)
-          )
         }
       }
     }
@@ -293,29 +280,14 @@ class TextSuite extends Fs2Suite {
         else {
           assertEquals(Stream.emits(s).through(text.lines).toList, lines.toList)
           assertEquals(
-            Stream.emits(s).covary[Fallible].through(text.linesFor(crsOnly = true)).toList,
-            Right(lines.toList)
-          )
-          assertEquals(
             Stream.emits(s).chunkLimit(1).unchunks.through(text.lines).toList,
             lines.toList
           )
-          assertEquals(
-            Stream
-              .emits(s)
-              .chunkLimit(1)
-              .unchunks
-              .covary[Fallible]
-              .through(text.linesFor(crsOnly = true))
-              .toList,
-            Right(lines.toList)
-          )
-
         }
       }
     }
 
-    property("linesFor with maxLineLength") {
+    property("linesLimited") {
       val line = "foo" * 100
       (1 to line.length).foreach { i =>
         val stream = Stream
@@ -324,9 +296,9 @@ class TextSuite extends Fs2Suite {
           .map(c => new String(c.toArray))
           .covary[Fallible]
 
-        assert(stream.through(text.linesFor(maxLineLength = Some(10))).toList.isLeft)
+        assert(stream.through(text.linesLimited(10)).toList.isLeft)
         assertEquals(
-          stream.through(text.linesFor(maxLineLength = Some(line.length))).toList,
+          stream.through(text.linesLimited(line.length)).toList,
           Right(List(line))
         )
       }
