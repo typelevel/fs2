@@ -376,11 +376,17 @@ object text {
     ): Pull[F, String, Unit] =
       stream.pull.uncons.flatMap {
         case None =>
-          if (first) Pull.done else {
+          if (first) Pull.done
+          else {
             val result = stringBuilder.result()
-            if (result.nonEmpty && result.last == '\r') Pull.output(Chunk(
-              result.dropRight(1), ""
-            )) else Pull.output1(result)
+            if (result.nonEmpty && result.last == '\r')
+              Pull.output(
+                Chunk(
+                  result.dropRight(1),
+                  ""
+                )
+              )
+            else Pull.output1(result)
           }
         case Some((chunk, stream)) =>
           val linesBuffer = ArrayBuffer.empty[String]
