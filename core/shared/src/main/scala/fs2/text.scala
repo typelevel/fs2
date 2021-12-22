@@ -320,7 +320,7 @@ object text {
     * @param maxLineLength maximum size to accumulate a line to; throw an error if a line is larger
     */
   def linesLimited[F[_]: RaiseThrowable](maxLineLength: Int): Pipe[F, String, String] =
-    linesImpl[F](maxLineLength = Some(maxLineLength, implicitly[RaiseThrowable[F]]))
+    linesImpl[F](maxLineLength = Some((maxLineLength, implicitly[RaiseThrowable[F]])))
 
   /** Transforms a stream of `String` such that each emitted `String` is a line from the input. */
   def lines[F[_]]: Pipe[F, String, String] = linesImpl[F](None)
