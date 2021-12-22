@@ -22,6 +22,7 @@
 package fs2
 
 import cats.syntax.all._
+
 import java.nio.charset.Charset
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
@@ -247,7 +248,7 @@ class TextSuite extends Fs2Suite {
     }
   }
 
-  group("lines") {
+  group("lines / linesLimited") {
     def escapeCrLf(s: String): String =
       s.replaceAll("\r\n", "<CRLF>").replaceAll("\n", "<LF>").replaceAll("\r", "<CR>")
 
@@ -256,6 +257,7 @@ class TextSuite extends Fs2Suite {
         val lines = lines0.map(escapeCrLf)
         assertEquals(lines.intersperse("\n").through(text.lines).toList, lines.toList)
         assertEquals(lines.intersperse("\r\n").through(text.lines).toList, lines.toList)
+        assertEquals(lines.intersperse("\r").through(text.lines).toList, lines.toList)
       }
     }
 
@@ -269,7 +271,7 @@ class TextSuite extends Fs2Suite {
       }
     }
 
-    property("grouped in 3 characater chunks") {
+    property("grouped in 3 character chunks") {
       forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)
         val s = lines.intersperse("\r\n").toList.mkString.grouped(3).toList
@@ -282,6 +284,23 @@ class TextSuite extends Fs2Suite {
             lines.toList
           )
         }
+      }
+    }
+
+    property("linesLimited") {
+      val line = "foo" * 100
+      (1 to line.length).foreach { i =>
+        val stream = Stream
+          .emits(line.toCharArray)
+          .chunkN(i)
+          .map(c => new String(c.toArray))
+          .covary[Fallible]
+
+        assert(stream.through(text.linesLimited(10)).toList.isLeft)
+        assertEquals(
+          stream.through(text.linesLimited(line.length)).toList,
+          Right(List(line))
+        )
       }
     }
   }
