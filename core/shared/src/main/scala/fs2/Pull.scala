@@ -997,12 +997,14 @@ object Pull extends PullLowPriority {
               if (idx == chunk.size)
                 flatMapOutput[G, G, Y, X](tail, fun)
               else {
-                try transformWith(fun(chunk(idx))) {
-                  case Succeeded(_) => go(idx + 1)
-                  case Fail(err)    => Fail(err)
-                  case interruption @ Interrupted(_, _) =>
-                    flatMapOutput[G, G, Y, X](interruptBoundary(tail, interruption), fun)
-                } catch { case NonFatal(e) => Fail(e) }
+                try
+                  transformWith(fun(chunk(idx))) {
+                    case Succeeded(_) => go(idx + 1)
+                    case Fail(err)    => Fail(err)
+                    case interruption @ Interrupted(_, _) =>
+                      flatMapOutput[G, G, Y, X](interruptBoundary(tail, interruption), fun)
+                  }
+                catch { case NonFatal(e) => Fail(e) }
               }
 
             go(0)
