@@ -3824,8 +3824,7 @@ object Stream extends StreamLowPriority {
         val sinkOut: Stream[F, O] = {
           def go(s: Stream[F, Chunk[O]]): Pull[F, O, Unit] =
             s.pull.uncons1.flatMap {
-              case None =>
-                Pull.eval(outChan.close.void)
+              case None => Pull.done
               case Some((ch, rest)) =>
                 Pull.output(ch) >> Pull.eval(outChan.send(ch)) >> go(rest)
             }
