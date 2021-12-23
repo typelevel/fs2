@@ -442,7 +442,7 @@ private[fs2] final class Scope[F[_]] private (
     * that caused the interruption is returned so that it can be handled.
     */
   private[fs2] def interruptibleEval[A](f: F[A]): F[Either[InterruptionOutcome, A]] =
-    interruptible match {
+    openScope.map(_.interruptible).flatMap {
       case None =>
         f.attempt.map(_.leftMap(t => Outcome.Errored(t)))
       case Some(iCtx) =>
