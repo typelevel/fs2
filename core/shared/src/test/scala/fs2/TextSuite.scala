@@ -271,6 +271,13 @@ class TextSuite extends Fs2Suite {
       }
     }
 
+    property("EOF") {
+      List("\n", "\r\n", "\r").foreach { delimiter =>
+        val s = s"a$delimiter"
+        assertEquals(Stream.emit(s).through(lines).toList, List("a", ""))
+      }
+    }
+
     property("grouped in 3 character chunks") {
       forAll { (lines0: Stream[Pure, String]) =>
         val lines = lines0.map(escapeCrLf)

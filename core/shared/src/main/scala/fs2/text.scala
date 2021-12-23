@@ -375,7 +375,19 @@ object text {
         first: Boolean
     ): Pull[F, String, Unit] =
       stream.pull.uncons.flatMap {
-        case None => if (first) Pull.done else Pull.output1(stringBuilder.result())
+        case None =>
+          if (first) Pull.done
+          else {
+            val result = stringBuilder.result()
+            if (result.nonEmpty && result.last == '\r')
+              Pull.output(
+                Chunk(
+                  result.dropRight(1),
+                  ""
+                )
+              )
+            else Pull.output1(result)
+          }
         case Some((chunk, stream)) =>
           val linesBuffer = ArrayBuffer.empty[String]
           chunk.foreach { string =>
