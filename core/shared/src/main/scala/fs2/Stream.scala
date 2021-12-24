@@ -1181,7 +1181,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
-  @nowarn // ("cat=unused-params") - unsupported category on scala 3
+  @nowarn("msg=never used")
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
   )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
@@ -3369,7 +3369,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  @nowarn // ("cat=unused-params") - unsupported category on scala 3
+  @nowarn("msg=never used")
   def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue

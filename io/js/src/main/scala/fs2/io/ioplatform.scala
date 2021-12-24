@@ -305,7 +305,7 @@ private[fs2] trait ioplatform {
   /** Stream of bytes read asynchronously from standard input.
     * Takes a dummy `Int` parameter for source-compatibility with JVM.
     */
-  @nowarn // ("cat=unused") - unsupported category on scala 3
+  @nowarn("msg=never used")
   def stdin[F[_]: Async](ignored: Int): Stream[F, Byte] = stdin
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
@@ -333,7 +333,7 @@ private[fs2] trait ioplatform {
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
     * Takes a dummy `Int` parameter for source-compatibility with JVM.
     */
-  @nowarn // ("cat=unused") - unsupported category on scala 3
+  @nowarn("msg=never used")
   def stdinUtf8[F[_]: Async](ignored: Int): Stream[F, String] =
     stdinAsync.through(text.utf8.decode)
 

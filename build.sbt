@@ -67,13 +67,9 @@ ThisBuild / developers ++= List(
 
 ThisBuild / fatalWarningsInCI := false
 
-ThisBuild / Test / javaOptions ++= Seq(
-  "-Dscala.concurrent.context.minThreads=8",
-  "-Dscala.concurrent.context.numThreads=8",
-  "-Dscala.concurrent.context.maxThreads=8"
-)
-
-ThisBuild / Test / parallelExecution := false
+// If debugging tests, it's sometimes useful to disable parallel execution and test result buffering:
+// ThisBuild / Test / parallelExecution := false
+// ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "-b")
 
 ThisBuild / initialCommands := s"""
     import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.syntax.all._, scala.concurrent.duration._
