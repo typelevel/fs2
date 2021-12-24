@@ -233,6 +233,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
 
 lazy val coreJVM = core.jvm
   .settings(
+    Test / fork := true,
     doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
@@ -271,6 +272,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2"
   )
   .jvmSettings(
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "com.github.jnr" % "jnr-unixsocket" % "0.38.15" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
