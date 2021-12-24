@@ -203,7 +203,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
+    inConfig(IntegrationTest)(
+      org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings ++ List(
+        Test / javaOptions += "-Dcats.effect.tracing.mode=none"
+      )
+    )
   )
   .settings(
     name := "fs2-core",
