@@ -6,8 +6,6 @@ addCommandAlias(
   "fmtCheck",
   "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
 )
-addCommandAlias("testJVM", ";rootJVM/test")
-addCommandAlias("testJS", "rootJS/test")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
@@ -200,11 +198,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    inConfig(IntegrationTest)(
-      org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings ++ List(
-        Test / javaOptions += "-Dcats.effect.tracing.mode=none"
-      )
-    )
+    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings),
+    IntegrationTest / fork := true,
+    IntegrationTest / javaOptions += "-Dcats.effect.tracing.mode=none"
   )
   .settings(
     name := "fs2-core",
@@ -237,7 +233,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
 
 lazy val coreJVM = core.jvm
   .settings(
-    Test / fork := true,
     doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
@@ -276,7 +271,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2"
   )
   .jvmSettings(
-    Test / fork := true,
     libraryDependencies ++= Seq(
       "com.github.jnr" % "jnr-unixsocket" % "0.38.15" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
@@ -326,12 +320,12 @@ lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .settings(
     name := "fs2-reactive-streams",
-    Test / fork := true,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
       ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
-    )
+    ),
+    Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
