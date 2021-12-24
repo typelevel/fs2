@@ -118,7 +118,8 @@ sealed trait Channel[F[_], A] {
   def closed: F[Unit]
 
   /** Provides an interface to the channel as a [[QueueSink]].
-    * Offering elements to a closed queue will raise a [[Channel.ClosedException]].
+    * Offering elements to a queue backed by a closed channel will
+    * raise a [[Channel.ClosedException]].
     */
   def asQueueSink: QueueSink[F, A]
 }
