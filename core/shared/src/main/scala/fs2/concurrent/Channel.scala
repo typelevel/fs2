@@ -45,6 +45,17 @@ sealed trait Channel[F[_], A] {
     */
   def send(a: A): F[Either[Channel.Closed, Unit]]
 
+  /** Attempts to send an element through this channel, and indicates if
+    * it succeeded (`true`) or not (`false`).
+    *
+    * It can be called concurrently by multiple producers, and it may
+    * not succeed if the channel is bounded or synchronous. It will
+    * never semantically block.
+    *
+    * No-op if the channel is closed, see [[close]] for further info.
+    */
+  def trySend(a: A): F[Either[Channel.Closed, Boolean]]
+
   /** The stream of elements sent through this channel.
     * It terminates if [[close]] is called and all elements in the channel
     * have been emitted (see [[close]] for futher info).
@@ -145,7 +156,7 @@ object Channel {
             F.uncancelable { poll =>
               state.modify {
                 case s @ State(_, _, _, _, closed @ true) =>
-                  (s, Channel.closed.pure[F])
+                  (s, Channel.closed[Unit].pure[F])
 
                 case State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity)
@@ -162,11 +173,26 @@ object Channel {
             }
           }
 
+        def trySend(a: A) =
+          state.modify {
+            case s @ State(_, _, _, _, closed @ true) =>
+              (s, Channel.closed[Boolean].pure[F])
+
+            case s @ State(values, size, waiting, producers, closed @ false) =>
+              if (size < capacity)
+                (
+                  State(a :: values, size + 1, None, producers, false),
+                  notifyStream(waiting).as(rightTrue)
+                )
+              else
+                (s, rightFalse.pure[F])
+          }.flatten
+
         def close =
           state
             .modify {
               case s @ State(_, _, _, _, closed @ true) =>
-                (s, Channel.closed.pure[F])
+                (s, Channel.closed[Unit].pure[F])
 
               case State(values, size, waiting, producers, closed @ false) =>
                 (
@@ -248,6 +274,9 @@ object Channel {
   }
 
   // allocate once
-  private final val closed: Either[Closed, Unit] = Left(Closed)
+  @inline private final def closed[A]: Either[Closed, A] = _closed
+  private[this] final val _closed: Either[Closed, Nothing] = Left(Closed)
   private final val rightUnit: Either[Closed, Unit] = Right(())
+  private final val rightTrue: Either[Closed, Boolean] = Right(true)
+  private final val rightFalse: Either[Closed, Boolean] = Right(false)
 }
