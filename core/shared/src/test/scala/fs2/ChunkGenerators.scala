@@ -29,8 +29,6 @@ import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCh
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import Arbitrary.arbitrary
 
-import fs2.internal.makeArrayBuilder
-
 trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
 
   implicit def unspecializedChunkArbitrary[A](implicit A: Arbitrary[A]): Arbitrary[Chunk[A]] =
@@ -42,13 +40,6 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
       5 -> genA.map(Chunk.singleton),
       10 -> Gen.listOf(genA).map(Chunk.seq),
       10 -> Gen.listOf(genA).map(_.toVector).map(Chunk.vector),
-      10 -> Gen
-        .listOf(genA)
-        .map { as =>
-          val builder = makeArrayBuilder[Any]
-          builder ++= as
-          Chunk.array(builder.result()).asInstanceOf[Chunk[A]]
-        },
       10 -> Gen
         .listOf(genA)
         .map(_.toVector)
