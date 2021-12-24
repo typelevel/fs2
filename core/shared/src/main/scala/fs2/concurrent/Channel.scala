@@ -24,6 +24,7 @@ package concurrent
 
 import cats.effect._
 import cats.effect.implicits._
+import cats.effect.std.QueueSink
 import cats.syntax.all._
 
 /** Stream aware, multiple producer, single consumer closeable channel.
@@ -115,10 +116,16 @@ sealed trait Channel[F[_], A] {
 
   /** Semantically blocks until the channel gets closed. */
   def closed: F[Unit]
+
+  /** Provides an interface to the channel as a [[QueueSink]].
+    * Offering elements to a closed queue will raise a [[Channel.ClosedException]].
+    */
+  def asQueueSink: QueueSink[F, A]
 }
 object Channel {
   type Closed = Closed.type
   object Closed
+  final class ClosedException private[Channel] extends RuntimeException
 
   def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
     bounded(Int.MaxValue)
@@ -208,6 +215,18 @@ object Channel {
         def closed = closedGate.get
 
         def stream = consumeLoop.stream
+
+        def asQueueSink = new QueueSink[F, A] {
+
+          def offer(a: A): F[Unit] = send(a).flatMap(raiseClosed)
+
+          def tryOffer(a: A): F[Boolean] = trySend(a).flatMap(raiseClosed)
+
+          private def raiseClosed[A](ca: Either[Closed, A]): F[A] = ca match {
+            case Left(Closed) => F.raiseError(new ClosedException)
+            case Right(a)     => a.pure[F]
+          }
+        }
 
         def consumeLoop: Pull[F, A, Unit] =
           Pull.eval {
