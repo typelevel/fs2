@@ -170,12 +170,12 @@ object Channel {
                   if (size < capacity)
                     (
                       State(a :: values, size + 1, None, producers, false),
-                      notifyStream(waiting)
+                      notifyStream(waiting).as(rightUnit)
                     )
                   else
                     (
                       State(values, size, None, (a, producer) :: producers, false),
-                      notifyStream(waiting) <* waitOnBound(producer, poll)
+                      notifyStream(waiting).as(rightUnit) <* waitOnBound(producer, poll)
                     )
               }.flatten
             }
@@ -205,7 +205,7 @@ object Channel {
               case State(values, size, waiting, producers, closed @ false) =>
                 (
                   State(values, size, None, producers, true),
-                  notifyStream(waiting) <* signalClosure
+                  notifyStream(waiting).as(rightUnit) <* signalClosure
                 )
             }
             .flatten
@@ -265,7 +265,7 @@ object Channel {
           }.flatten
 
         def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
-          waitForChanges.traverse(_.complete(())).as(rightUnit)
+          waitForChanges.traverse(_.complete(()))
 
         def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
           poll(producer.get).onCancel {
