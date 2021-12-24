@@ -178,7 +178,7 @@ class StreamSuite extends Fs2Suite {
 
       test("4 - error in eval") {
         Stream
-          .eval(SyncIO(throw new Err))
+          .eval(SyncIO[Int](throw new Err))
           .map(Right(_): Either[Throwable, Int])
           .handleErrorWith(t => Stream.emit(Left(t)).covary[SyncIO])
           .take(1)

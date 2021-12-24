@@ -61,7 +61,9 @@ class StreamObserveSuite extends Fs2Suite {
 
       test("propagate error from source") {
         forAllF { (s: Stream[Pure, Int]) =>
-          observer(s.drain ++ Stream.raiseError[IO](new Err))(_.drain).attempt.compile.toList
+          observer(s.drain.covaryOutput[Int] ++ Stream.raiseError[IO](new Err))(
+            _.drain
+          ).attempt.compile.toList
             .map { result =>
               assertEquals(result.size, 1)
               assert(

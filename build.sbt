@@ -67,12 +67,6 @@ ThisBuild / developers ++= List(
 
 ThisBuild / fatalWarningsInCI := false
 
-ThisBuild / Test / javaOptions ++= Seq(
-  "-Dscala.concurrent.context.minThreads=8",
-  "-Dscala.concurrent.context.numThreads=8",
-  "-Dscala.concurrent.context.maxThreads=8"
-)
-ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
 ThisBuild / Test / parallelExecution := false
 
 ThisBuild / initialCommands := s"""
