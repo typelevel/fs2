@@ -21,11 +21,11 @@
 
 package fs2
 
-import scala.annotation.{nowarn, tailrec}
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 import cats.data.Chain
 import cats.effect.{Deferred, IO, Outcome, Ref, Resource, SyncIO}
-import cats.effect.std.{CountDownLatch, Queue}
+import cats.effect.std.Queue
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.Arbitrary.arbitrary
@@ -33,7 +33,6 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 import fs2.concurrent.SignallingRef
 
-@nowarn("cat=w-flag-dead-code")
 class StreamSuite extends Fs2Suite {
 
   group("basics") {

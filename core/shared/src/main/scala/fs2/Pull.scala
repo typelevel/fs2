@@ -327,7 +327,7 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
     * or `raiseError[Fallible]`).
     */
-  @nowarn("cat=unused-params")
+  @nowarn // ("cat=unused-params") - unsupported category on scala 3
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
@@ -649,7 +649,7 @@ object Pull extends PullLowPriority {
   ): Pull[F, O, Unit] =
     view match {
       case IdContP => fmoc
-      case bv: Bind[F, O, Unit, Unit] =>
+      case bv: Bind[F, O, Unit, Unit] @unchecked =>
         fmoc match {
           case r: Terminal[Unit] =>
             try bv(r)
@@ -696,7 +696,7 @@ object Pull extends PullLowPriority {
    * Each operation also generates an output of type `R` that is used
    * as control information for the rest of the interpretation or compilation.
    */
-  private abstract class Action[+F[_], +O, +R] extends Pull[F, O, R] with ViewL[F, O]
+  private sealed abstract class Action[+F[_], +O, +R] extends Pull[F, O, R] with ViewL[F, O]
 
   /* An action that emits a non-empty chunk of outputs. */
   private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
@@ -1165,8 +1165,8 @@ object Pull extends PullLowPriority {
         }
       }
 
-      viewL(stream) match {
-        case tst: Translate[h, G, _] @nowarn => // y = Unit
+      (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
+        case tst: Translate[h, G, _] @unchecked => // y = Unit
           val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont[Unit, G, X])
           val composed: h ~> F = translation.compose[h](tst.fk)
           go[h, X, End](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
@@ -1181,14 +1181,14 @@ object Pull extends PullLowPriority {
           val fmrunr = new FlatMapR(getCont[Unit, G, X], fmout.fun)
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
-        case u: Uncons[G, y] @nowarn =>
+        case u: Uncons[G, y] @unchecked =>
           val v = getCont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]
           // a Uncons is run on the same scope, without shifting.
           val runr = new BuildR[G, y, End]
           F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
             .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
-        case s: StepLeg[G, y] @nowarn =>
+        case s: StepLeg[G, y] @unchecked =>
           val v = getCont[Option[Stream.StepLeg[G, y]], G, X]
           val runr = new BuildR[G, y, End]
           scope

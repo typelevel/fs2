@@ -21,7 +21,6 @@
 
 package fs2
 
-import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 import cats.effect.IO
@@ -30,7 +29,6 @@ import cats.effect.kernel.Resource
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-@nowarn("cat=w-flag-dead-code")
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
     def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O]

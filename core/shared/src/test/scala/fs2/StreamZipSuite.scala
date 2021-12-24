@@ -26,12 +26,10 @@ import cats.effect.testkit.TestControl
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 
-import scala.annotation.nowarn
 import scala.concurrent.duration._
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
-@nowarn("cat=w-flag-dead-code")
 class StreamZipSuite extends Fs2Suite {
 
   group("zip") {

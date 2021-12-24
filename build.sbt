@@ -235,16 +235,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       )
     },
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
-                                       else Nil),
-    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala")),
-    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala"))
+                                       else Nil)
   )
 
 lazy val coreJVM = core.jvm
   .settings(
-    Test / fork := true
+    Test / fork := true,
+    doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
 lazy val coreJS = core.js

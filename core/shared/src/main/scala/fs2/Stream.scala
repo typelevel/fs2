@@ -26,7 +26,7 @@ import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.{Eval => _, _}
 import cats.data.Ior
-import cats.effect.{Concurrent, IO, SyncIO}
+import cats.effect.{Concurrent, SyncIO}
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
 import cats.effect.std.{Console, Queue, QueueSink, QueueSource, Semaphore}
@@ -35,8 +35,6 @@ import cats.syntax.all._
 import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
-
-import scala.collection.mutable.ArrayBuffer
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -1183,7 +1181,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
-  @nowarn("cat=unused-params")
+  @nowarn // ("cat=unused-params") - unsupported category on scala 3
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
   )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
@@ -2361,7 +2359,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
       val size = c.size
-      val builder = Chunk.makeArrayBuilder[Any]
+      val builder = makeArrayBuilder[Any]
       builder.sizeHint(size)
       var i = 0
       var exOpt: Option[Throwable] = None
@@ -2507,14 +2505,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if (prev.isEmpty) Pull.done
             else Pull.output1(prev.take(size))
           case Some((hd, tl)) =>
-            val buffer = ArrayBuffer.empty[Chunk[O]]
+            val builder = makeArrayBuilder[Chunk[O]]
             var current = prev ++ hd
             while (current.size >= step) {
               val (nHeads, nTails) = current.splitAt(step)
-              buffer += nHeads.take(size)
+              builder += nHeads.take(size)
               current = nTails
             }
-            Pull.output(Chunk.buffer(buffer)) >> stepNotSmallerThanSize(tl, current)
+            Pull.output(Chunk.array(builder.result())) >> stepNotSmallerThanSize(tl, current)
         }
 
     def stepSmallerThanSize(
@@ -2528,18 +2526,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if (prev.isEmpty) Pull.done
             else Pull.output1((window ++ prev).take(size))
           case Some((hd, tl)) =>
-            val buffer = ArrayBuffer.empty[Chunk[O]]
+            val builder = makeArrayBuilder[Chunk[O]]
             var w = window
             var current = prev ++ hd
             while (current.size >= step) {
               val (head, tail) = current.splitAt(step)
               val wind = w ++ head
-              buffer += wind
+              builder += wind
               w = wind.drop(step)
               current = tail
             }
 
-            Pull.output(Chunk.buffer(buffer)) >> stepSmallerThanSize(tl, w, current)
+            Pull.output(Chunk.array(builder.result())) >> stepSmallerThanSize(tl, w, current)
         }
 
     val resultPull =
@@ -3371,7 +3369,7 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  @nowarn("cat=unused-params")
+  @nowarn // ("cat=unused-params") - unsupported category on scala 3
   def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue

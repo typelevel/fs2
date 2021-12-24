@@ -30,7 +30,6 @@ import org.scalacheck.Arbitrary
 import org.scalacheck.Cogen
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import org.scalacheck.Prop.propBoolean
 
 class PathSuite extends Fs2Suite {
 
@@ -101,7 +100,7 @@ class PathSuite extends Fs2Suite {
 
   test("startsWith/endsWith") {
     forAll { (start: Path, end: Path) =>
-      (start.toString.nonEmpty && end.toString.nonEmpty) ==> {
+      if (start.toString.nonEmpty && end.toString.nonEmpty) {
         val path = start.resolve(end)
         // TODO
         // assert(path.startsWith(start), s"$path doesn't start with $start")
