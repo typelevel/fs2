@@ -20,42 +20,89 @@
  */
 
 package fs2
+package io
 
 import cats.effect._
 import fs2.compression._
+import fs2.internal.jsdeps.node.bufferMod.global.Buffer
+import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.NodeCompression._
 import org.scalacheck.effect.PropF.forAllF
-
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
-import java.nio.charset.StandardCharsets
-import java.time.Instant
-import java.util.zip._
-import scala.collection.mutable
-import scodec.bits.crc
-import scodec.bits.ByteVector
+import scodec.bits.{ByteVector, crc}
 
 import java.util.concurrent.TimeUnit
+import java.util.zip._
+import scala.collection.mutable
 import scala.concurrent.duration.FiniteDuration
+import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
+import scala.scalajs.js.typedarray._
+import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.effect.PropF.forAllF
 
-class JvmCompressionSuite extends CompressionSuite {
+class NodeCompressionSuite extends Fs2Suite {
 
-  def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] = {
-    val byteArrayStream = new ByteArrayOutputStream()
-    val deflater = new Deflater(level, nowrap)
-    deflater.setStrategy(strategy)
-    val deflaterStream = new DeflaterOutputStream(byteArrayStream, deflater)
-    deflaterStream.write(b)
-    deflaterStream.close()
-    byteArrayStream.toByteArray
-  }
+  implicit val zlibHeaders: Arbitrary[ZLibParams.Header] = Arbitrary(
+    Gen.oneOf(
+      ZLibParams.Header.ZLIB,
+      ZLibParams.Header.GZIP
+    )
+  )
 
-  def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
-    val byteArrayStream = new ByteArrayOutputStream()
-    val inflaterStream =
-      new InflaterOutputStream(byteArrayStream, new Inflater(nowrap))
-    inflaterStream.write(b)
-    inflaterStream.close()
-    byteArrayStream.toByteArray
-  }
+  implicit val juzDeflaterLevels: Arbitrary[DeflateParams.Level] = Arbitrary(
+    Gen.oneOf(
+      DeflateParams.Level.DEFAULT,
+      DeflateParams.Level.BEST_SPEED,
+      DeflateParams.Level.BEST_COMPRESSION,
+      DeflateParams.Level.NO_COMPRESSION,
+      DeflateParams.Level.ZERO,
+      DeflateParams.Level.ONE,
+      DeflateParams.Level.TWO,
+      DeflateParams.Level.THREE,
+      DeflateParams.Level.FOUR,
+      DeflateParams.Level.FIVE,
+      DeflateParams.Level.SIX,
+      DeflateParams.Level.SEVEN,
+      DeflateParams.Level.EIGHT,
+      DeflateParams.Level.NINE
+    )
+  )
+
+  implicit val juzDeflaterStrategies: Arbitrary[DeflateParams.Strategy] = Arbitrary(
+    Gen.oneOf(
+      DeflateParams.Strategy.DEFAULT,
+      DeflateParams.Strategy.BEST_SPEED,
+      DeflateParams.Strategy.BEST_COMPRESSION,
+      DeflateParams.Strategy.FILTERED,
+      DeflateParams.Strategy.HUFFMAN_ONLY
+    )
+  )
+
+  implicit val juzDeflaterFlushModes: Arbitrary[DeflateParams.FlushMode] = Arbitrary(
+    Gen.oneOf(
+      DeflateParams.FlushMode.DEFAULT,
+      DeflateParams.FlushMode.BEST_SPEED,
+      DeflateParams.FlushMode.BEST_COMPRESSION,
+      DeflateParams.FlushMode.NO_FLUSH,
+      DeflateParams.FlushMode.SYNC_FLUSH,
+      DeflateParams.FlushMode.FULL_FLUSH
+    )
+  )
+
+  def getBytes(s: String): Array[Byte] =
+    s.getBytes
+
+  def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] =
+    zlibMod
+      .deflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
+      .asInstanceOf[Int8Array]
+      .toArray
+
+  def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] =
+    zlibMod
+      .inflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
+      .asInstanceOf[Int8Array]
+      .toArray
 
   test("gzip |> gunzip ~= id") {
     forAllF {
@@ -68,7 +115,7 @@ class JvmCompressionSuite extends CompressionSuite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
+        val expectedMTime = Option(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS))
         Stream
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -93,7 +140,7 @@ class JvmCompressionSuite extends CompressionSuite {
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -113,7 +160,7 @@ class JvmCompressionSuite extends CompressionSuite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
+        val expectedMTime = Option(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS))
         Stream
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -138,7 +185,7 @@ class JvmCompressionSuite extends CompressionSuite {
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -158,7 +205,7 @@ class JvmCompressionSuite extends CompressionSuite {
       ) =>
         val expectedFileName = Option(toEncodableFileName(s))
         val expectedComment = Option(toEncodableComment(s))
-        val expectedMTime = Option(Instant.ofEpochSecond(epochSeconds.toLong))
+        val expectedMTime = Option(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS))
         Stream
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -183,56 +230,12 @@ class JvmCompressionSuite extends CompressionSuite {
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
             gunzipResult.content
           }
           .compile
           .toVector
           .assertEquals(s.getBytes.toVector)
-    }
-  }
-
-  test("gzip |> GZIPInputStream ~= id") {
-    forAllF {
-      (
-          s: String,
-          level: DeflateParams.Level,
-          strategy: DeflateParams.Strategy,
-          flushMode: DeflateParams.FlushMode,
-          epochSeconds: Int
-      ) =>
-        Stream
-          .chunk[IO, Byte](Chunk.array(s.getBytes))
-          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
-          .through(
-            Compression[IO].gzip2(
-              fileName = Some(s),
-              modificationTime = Some(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS)),
-              comment = Some(s),
-              DeflateParams(
-                bufferSize = 1024,
-                header = ZLibParams.Header.GZIP,
-                level = level,
-                strategy = strategy,
-                flushMode = flushMode
-              )
-            )
-          )
-          .compile
-          .to(Array)
-          .map { bytes =>
-            val bis = new ByteArrayInputStream(bytes)
-            val gzis = new GZIPInputStream(bis)
-
-            val buffer = mutable.ArrayBuffer[Byte]()
-            var read = gzis.read()
-            while (read >= 0) {
-              buffer += read.toByte
-              read = gzis.read()
-            }
-
-            assertEquals(buffer.toVector, s.getBytes.toVector)
-          }
     }
   }
 
@@ -317,7 +320,7 @@ class JvmCompressionSuite extends CompressionSuite {
     val expectedContent = "fs2.compress implementing RFC 1952\n"
     val expectedFileName = Option(toEncodableFileName("fs2.compress"))
     val expectedComment = Option.empty[String]
-    val expectedMTime = Option(Instant.parse("2020-02-04T22:00:02Z"))
+    val expectedMTime = Option(FiniteDuration(6312408098402L, TimeUnit.SECONDS))
     val compressed = Array(0x1f, 0x8b, 0x08, 0x08, 0x62, 0xe9, 0x39, 0x5e, 0x00, 0x03, 0x66, 0x73,
       0x32, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x00, 0x4b, 0x2b, 0x36, 0xd2,
       0x4b, 0xce, 0xcf, 0x2d, 0x28, 0x4a, 0x2d, 0x2e, 0x56, 0xc8, 0xcc, 0x2d, 0xc8, 0x49, 0xcd,
@@ -331,12 +334,12 @@ class JvmCompressionSuite extends CompressionSuite {
       .flatMap { gunzipResult =>
         assertEquals(gunzipResult.fileName, expectedFileName)
         assertEquals(gunzipResult.comment, expectedComment)
-        assertEquals(gunzipResult.modificationTime, expectedMTime)
+        assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
         gunzipResult.content
       }
       .compile
       .toVector
-      .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
+      .map(vector => new String(vector.toArray /*, StandardCharsets.US_ASCII*/ ))
       .assertEquals(expectedContent)
   }
 
@@ -366,14 +369,16 @@ class JvmCompressionSuite extends CompressionSuite {
 
   def toEncodableFileName(fileName: String): String =
     new String(
-      fileName.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1),
-      StandardCharsets.ISO_8859_1
+      fileName
+        .replaceAll("\u0000", "_")
+        .getBytes( /*StandardCharsets.ISO_8859_1*/ )
+      /*StandardCharsets.ISO_8859_1*/
     )
 
   def toEncodableComment(comment: String): String =
     new String(
-      comment.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1),
-      StandardCharsets.ISO_8859_1
+      comment.replaceAll("\u0000", " ").getBytes( /*StandardCharsets.ISO_8859_1*/ )
+      /*StandardCharsets.ISO_8859_1*/
     )
 
 }

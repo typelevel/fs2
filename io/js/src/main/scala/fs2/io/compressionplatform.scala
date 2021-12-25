@@ -22,18 +22,20 @@
 package fs2
 package io
 
+import cats.effect.Concurrent
 import cats.effect.kernel.Async
 import cats.syntax.all._
-import fs2.compression.Compression
-import fs2.compression.DeflateParams
-import fs2.compression.InflateParams
-import fs2.compression.ZLibParams
+import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
 
-private[io] trait compressionplatform {
+import scala.concurrent.duration.FiniteDuration
 
-  implicit def fs2ioCompressionForAsync[F[_]](implicit F: Async[F]): Compression[F] =
+private[fs2] trait compressionplatform {
+
+  implicit def fs2ioCompressionForAsync[F[_]: Concurrent](implicit F: Async[F]): Compression[F] =
     new Compression.UnsealedCompression[F] {
+
+      private val gzip = new Gzip[F]
 
       override def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte] = in => {
         val options = zlibMod
@@ -78,6 +80,17 @@ private[io] trait compressionplatform {
               )
           }
       }
+
+      def gzip2(
+          fileName: Option[String],
+          modificationTime: Option[FiniteDuration],
+          comment: Option[String],
+          deflateParams: DeflateParams
+      ): Pipe[F, Byte, Byte] =
+        gzip.gzip(fileName, modificationTime, comment, deflate(deflateParams), deflateParams)
+
+      def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
+        gzip.gunzip(inflate(inflateParams), inflateParams)
 
     }
 }

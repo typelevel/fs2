@@ -27,7 +27,9 @@ import cats.effect.kernel.Sync
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-import java.util.zip._
+import java.util.concurrent.TimeUnit
+import java.util.zip.{CRC32, DataFormatException, Deflater, Inflater, ZipException}
+import scala.concurrent.duration.FiniteDuration
 import scala.reflect.ClassTag
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
@@ -113,46 +115,13 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
       modificationTime: Option[Instant],
       comment: Option[String],
       deflateParams: DeflateParams
-  ): Pipe[F, Byte, Byte]
+  ): Pipe[F, Byte, Byte] = gzip2(
+    fileName,
+    modificationTime.map(i => FiniteDuration(i.getEpochSecond, TimeUnit.SECONDS)),
+    comment,
+    deflateParams
+  )
 
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
-    *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
-    *
-    * @param bufferSize The bounding size of the input buffer. This should roughly
-    *                   match the size of the largest chunk in the input stream.
-    *                   This will also be the chunk size in the output stream.
-    *                    Default size is 32 KB.
-    * @return See [[compression.GunzipResult]]
-    */
-  def gunzip(bufferSize: Int = 1024 * 32): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
-    gunzip(
-      InflateParams(
-        bufferSize = bufferSize,
-        header = ZLibParams.Header.GZIP
-      )
-    )
-
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
-    *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
-    *
-    * @param inflateParams See [[compression.InflateParams]]
-    * @return See [[compression.GunzipResult]]
-    */
-  def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]]
 }
 
 private[compression] trait CompressionCompanionPlatform {
@@ -382,9 +351,9 @@ private[compression] trait CompressionCompanionPlatform {
               Pull.done
         }
 
-      def gzip(
+      def gzip2(
           fileName: Option[String],
-          modificationTime: Option[Instant],
+          modificationTime: Option[FiniteDuration],
           comment: Option[String],
           deflateParams: DeflateParams
       ): Pipe[F, Byte, Byte] =
@@ -424,14 +393,14 @@ private[compression] trait CompressionCompanionPlatform {
 
       private def _gzip_header(
           fileName: Option[String],
-          modificationTime: Option[Instant],
+          modificationTime: Option[FiniteDuration],
           comment: Option[String],
           deflateLevel: Int,
           fhCrcEnabled: Boolean
       ): Stream[F, Byte] = {
         // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
         val secondsSince197001010000: Long =
-          modificationTime.map(_.getEpochSecond).getOrElse(0)
+          modificationTime.map(_.toSeconds).getOrElse(0)
         val header = Array[Byte](
           gzipMagicFirstByte, // ID1: Identification 1
           gzipMagicSecondByte, // ID2: Identification 2
