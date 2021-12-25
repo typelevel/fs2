@@ -6,8 +6,6 @@ addCommandAlias(
   "fmtCheck",
   "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
 )
-addCommandAlias("testJVM", ";rootJVM/test")
-addCommandAlias("testJS", "rootJS/test")
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
@@ -65,15 +63,9 @@ ThisBuild / developers ++= List(
   Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
 
-ThisBuild / fatalWarningsInCI := false
-
-ThisBuild / Test / javaOptions ++= Seq(
-  "-Dscala.concurrent.context.minThreads=8",
-  "-Dscala.concurrent.context.numThreads=8",
-  "-Dscala.concurrent.context.maxThreads=8"
-)
-ThisBuild / Test / run / javaOptions ++= Seq("-Xms64m", "-Xmx64m")
-ThisBuild / Test / parallelExecution := false
+// If debugging tests, it's sometimes useful to disable parallel execution and test result buffering:
+// ThisBuild / Test / parallelExecution := false
+// ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "-b")
 
 ThisBuild / initialCommands := s"""
     import fs2._, cats.effect._, cats.effect.implicits._, cats.effect.unsafe.implicits.global, cats.syntax.all._, scala.concurrent.duration._
@@ -169,7 +161,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem](
     "fs2.io.net.SocketCompanionPlatform$IntCallbackHandler"
   ),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder")
 )
 
 lazy val root = project
@@ -203,11 +196,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
   .settings(
-    inConfig(IntegrationTest)(
-      org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings ++ List(
-        Test / javaOptions += "-Dcats.effect.tracing.mode=none"
-      )
-    )
+    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings),
+    IntegrationTest / fork := true,
+    IntegrationTest / javaOptions += "-Dcats.effect.tracing.mode=none"
   )
   .settings(
     name := "fs2-core",
@@ -235,16 +226,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       )
     },
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
-                                       else Nil),
-    Compile / scalafmt / unmanagedSources := (Compile / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala")),
-    Test / scalafmt / unmanagedSources := (Test / scalafmt / unmanagedSources).value
-      .filterNot(_.toString.endsWith("NotGiven.scala"))
+                                       else Nil)
   )
 
 lazy val coreJVM = core.jvm
   .settings(
-    Test / fork := true
+    Test / fork := true,
+    doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
 lazy val coreJS = core.js
@@ -332,12 +320,12 @@ lazy val reactiveStreams = project
   .in(file("reactive-streams"))
   .settings(
     name := "fs2-reactive-streams",
-    Test / fork := true,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
       ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
-    )
+    ),
+    Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 

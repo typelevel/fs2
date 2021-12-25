@@ -29,7 +29,7 @@ import cats.effect.kernel.Deferred
 import cats.syntax.all._
 import fs2.io.internal.PipedStreamBuffer
 
-import java.io.{IOException, InputStream, OutputStream}
+import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag

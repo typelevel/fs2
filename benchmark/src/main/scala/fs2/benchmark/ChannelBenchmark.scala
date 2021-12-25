@@ -38,7 +38,7 @@ class ChannelBenchmark {
   var lists: List[List[Unit]] = _
 
   @Setup
-  def setup() {
+  def setup() = {
     list = List.fill(size)(())
     val subList = List.fill(size / 8)(())
     lists = List.fill(8)(subList)
@@ -70,7 +70,7 @@ class ChannelBenchmark {
       .bounded[IO, Unit](size / 8)
       .flatMap { channel =>
         val action = sendAll(list, channel.send(()).start.void)
-        action *> channel.stream.take(size).through(blackHole).compile.drain
+        action *> channel.stream.take(size.toLong).through(blackHole).compile.drain
       }
       .unsafeRunSync()
 

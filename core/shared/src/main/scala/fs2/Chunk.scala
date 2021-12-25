@@ -32,6 +32,8 @@ import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, Traver
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
+import fs2.internal._
+
 /** Immutable, strict, finite sequence of values that supports efficient index-based random access of elements,
   * is memory efficient for all sizes, and avoids unnecessary copying.
   *
@@ -80,7 +82,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** More efficient version of `filter(pf.isDefinedAt).map(pf)`. */
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
-    val b = Chunk.makeArrayBuilder[Any]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach(o => if (pf.isDefinedAt(o)) b += pf(o))
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
@@ -112,7 +114,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Returns a chunk that has only the elements that satisfy the supplied predicate. */
   def filter(p: O => Boolean): Chunk[O] = {
-    val b = Chunk.makeArrayBuilder(thisClassTag)
+    val b = makeArrayBuilder(thisClassTag)
     b.sizeHint(size)
     foreach(e => if (p(e)) b += e)
     Chunk.array(b.result()).asInstanceOf[Chunk[O]]
@@ -209,7 +211,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Maps the supplied function over each element and returns a chunk of just the defined results. */
   def mapFilter[O2](f: O => Option[O2]): Chunk[O2] = {
-    val b = Chunk.makeArrayBuilder[Any]
+    val b = makeArrayBuilder[Any]
     b.sizeHint(size)
     foreach { o =>
       val o2 = f(o)
@@ -333,7 +335,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def toIndexedChunk: Chunk[O] = this match {
     case _: Chunk.Queue[_] =>
-      val b = Chunk.makeArrayBuilder[Any]
+      val b = makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
       Chunk.array(b.result()).asInstanceOf[Chunk[O]]
@@ -612,7 +614,7 @@ object Chunk
     else {
       val head = itr.next()
       if (itr.hasNext) {
-        val bldr = Chunk.makeArrayBuilder[Any]
+        val bldr = makeArrayBuilder[Any]
         bldr += head
         bldr ++= itr
         array(bldr.result()).asInstanceOf[Chunk[O]]

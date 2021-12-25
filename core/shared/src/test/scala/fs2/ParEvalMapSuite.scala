@@ -59,7 +59,7 @@ class ParEvalMapSuite extends Fs2Suite {
   group("order") {
 
     test("should be preserved in parEvalMap") {
-      forAllF { s: Stream[Pure, Int] =>
+      forAllF { (s: Stream[Pure, Int]) =>
         val s2 = s.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(math.abs(i % 3).millis).as(i))
         s2.compile.toList.assertEquals(s.toList)
       }
@@ -72,7 +72,7 @@ class ParEvalMapSuite extends Fs2Suite {
     def run(pipe: Pipe[IO, IO[Int], Int]) =
       Stream
         .emits(List(3, 2, 1))
-        .map(i => IO.sleep(50.millis * i).as(i))
+        .map(i => IO.sleep(50.millis * i.toLong).as(i))
         .covary[IO]
         .through(pipe)
         .compile
@@ -123,7 +123,7 @@ class ParEvalMapSuite extends Fs2Suite {
 
     def runWithLatch(length: Int, parallel: Int, pipe: Pipe[IO, IO[Unit], Unit]) =
       CountDownLatch[IO](parallel).flatMap { latch =>
-        Stream(latch.release *> latch.await).repeatN(length).through(pipe).compile.drain
+        Stream(latch.release *> latch.await).repeatN(length.toLong).through(pipe).compile.drain
       }
   }
 
@@ -134,7 +134,8 @@ class ParEvalMapSuite extends Fs2Suite {
         val amount = math.abs(i % 10) + 1
         CountDownLatch[IO](amount)
           .flatMap { latch =>
-            val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+            val stream =
+              Stream(latch.release *> latch.await *> ex).repeatN(amount.toLong).covary[IO]
             stream.parEvalMapUnordered(amount)(identity).compile.drain
           }
           .intercept[RuntimeException]
@@ -147,7 +148,8 @@ class ParEvalMapSuite extends Fs2Suite {
         val amount = math.abs(i % 10) + 1
         CountDownLatch[IO](amount)
           .flatMap { latch =>
-            val stream = Stream(latch.release *> latch.await *> ex).repeatN(amount).covary[IO]
+            val stream =
+              Stream(latch.release *> latch.await *> ex).repeatN(amount.toLong).covary[IO]
             stream.parEvalMap(amount)(identity).compile.drain
           }
           .intercept[RuntimeException]

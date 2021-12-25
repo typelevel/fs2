@@ -23,8 +23,6 @@ package fs2
 
 import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
 
-import scala.concurrent.ExecutionContext
-
 abstract class Fs2Suite
     extends CatsEffectSuite
     with DisciplineSuite
@@ -38,8 +36,6 @@ abstract class Fs2Suite
       .withWorkers(1)
 
   override def munitFlakyOK = true
-
-  override val munitExecutionContext: ExecutionContext = ExecutionContext.global
 
   /** Returns a stream that has a 10% chance of failing with an error on each output value. */
   protected def spuriousFail[F[_]: RaiseThrowable, O](s: Stream[F, O]): Stream[F, O] =

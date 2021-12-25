@@ -23,7 +23,6 @@ package fs2
 
 import scala.collection.immutable.ArraySeq
 import scala.collection.immutable
-import scala.collection.mutable.ArrayBuilder
 import scala.reflect.ClassTag
 
 private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] =>
@@ -63,9 +62,6 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
       case _                        => None
     }
 
-  private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
-    ArrayBuilder.make(ct)
-
   /** Creates a chunk backed by an immutable `ArraySeq`.
     */
   def arraySeq[O](arraySeq: immutable.ArraySeq[O]): Chunk[O] = {
@@ -92,8 +88,7 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
     def apply(i: Int) = values(offset + i)
 
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit =
-      if (xs.getClass eq ct.wrap.runtimeClass)
-        System.arraycopy(values, offset, xs, start, length)
+      if (xs.getClass eq ct.wrap.runtimeClass) System.arraycopy(values, offset, xs, start, length)
       else {
         values.iterator.slice(offset, offset + length).copyToArray(xs, start)
         ()
