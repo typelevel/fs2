@@ -60,7 +60,7 @@ private[fs2] trait ioplatform {
   ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 
-  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
+  /** Take a function that emits to a `java.io.OutputStream` effectfully,
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the OutputStream as an fs2.Stream
     *
