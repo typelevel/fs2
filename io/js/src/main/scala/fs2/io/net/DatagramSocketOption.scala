@@ -29,7 +29,7 @@ import cats.effect.kernel.Sync
 /** Specifies a socket option on a TCP/UDP socket.
   *
   * The companion provides methods for creating a socket option from each of the
-  * JDK [[java.net.StandardSocketOptions]] as well as the ability to construct arbitrary
+  * JDK `java.net.StandardSocketOptions` as well as the ability to construct arbitrary
   * additional options. See the docs on `StandardSocketOptions` for details on each.
   */
 sealed trait DatagramSocketOption {
