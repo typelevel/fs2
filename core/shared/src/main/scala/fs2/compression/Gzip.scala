@@ -59,6 +59,39 @@ object CrcPipe {
 
 }
 
+object FinalBytesPipe {
+
+  def apply[F[_]](count: Int, deferredCrc: Deferred[F, Chunk[Byte]])(implicit
+      F: Sync[F]
+  ): Pipe[F, Byte, Byte] = {
+    def pull(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Chunk[Byte]] =
+      _.pull.uncons.flatMap {
+        case None => Pull.eval(F.delay(last.takeRight(count)))
+        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
+          val toKeep = if (c.size == count) {
+            c
+          } else if (c.size > count) {
+            c.takeRight(count)
+          } else {
+            (last ++ c).takeRight(count)
+          }
+          for {
+            _ <- Pull.output(c)
+            hexString <- pull(toKeep)(rest)
+          } yield hexString
+      }
+
+    def keepLastBytesOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
+      for {
+        crc <- pull(Chunk.empty)(input)
+        _ <- Pull.eval(deferredCrc.complete(crc))
+      } yield ()
+
+    keepLastBytesOf(_).stream
+  }
+
+}
+
 object CountPipe {
 
   def apply[F[_]](deferredCount: Deferred[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
