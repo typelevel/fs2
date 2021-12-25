@@ -61,19 +61,17 @@ object CrcPipe {
 
 object FinalBytesPipe {
 
-  def apply[F[_]](count: Int, deferredCrc: Deferred[F, Chunk[Byte]])(implicit
+  def apply[F[_]](count: Int, deferredFinalBytes: Deferred[F, Chunk[Byte]])(implicit
       F: Sync[F]
   ): Pipe[F, Byte, Byte] = {
     def pull(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Chunk[Byte]] =
       _.pull.uncons.flatMap {
         case None => Pull.eval(F.delay(last.takeRight(count)))
         case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          val toKeep = if (c.size == count) {
+          val toKeep = if (c.size >= count) {
             c
-          } else if (c.size > count) {
-            c.takeRight(count)
           } else {
-            (last ++ c).takeRight(count)
+            last.takeRight(count - c.size) ++ c
           }
           for {
             _ <- Pull.output(c)
@@ -83,8 +81,8 @@ object FinalBytesPipe {
 
     def keepLastBytesOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
       for {
-        crc <- pull(Chunk.empty)(input)
-        _ <- Pull.eval(deferredCrc.complete(crc))
+        finalBytes <- pull(Chunk.empty)(input)
+        _ <- Pull.eval(deferredFinalBytes.complete(finalBytes))
       } yield ()
 
     keepLastBytesOf(_).stream
@@ -457,17 +455,23 @@ class Gzip[F[_]](implicit F: Async[F]) {
                 comment = comment,
                 content = Stream.eval(F.deferred[BitVector]).flatMap { contentCrc32 =>
                   Stream.eval(F.deferred[Long]).flatMap { count =>
-                    streamAfterComment
-                      .through(
-                        _gunzip_validateHeader(
-                          (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
-                          headerCrc32
+                    Stream.eval(F.deferred[Chunk[Byte]]).flatMap { finalBytes =>
+                      (streamAfterComment
+                        .through(
+                          _gunzip_validateHeader(
+                            (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
+                            headerCrc32
+                          )
                         )
-                      )
-                      .through(inflate)
-                      .through(CrcPipe(contentCrc32))
-                      .through(CountPipe(count))
-                      .through(_gunzip_validateTrailer(contentCrc32, count))
+                        .through(FinalBytesPipe(gzipTrailerBytes, finalBytes))
+                        .through(inflate)
+                        .through(CrcPipe(contentCrc32))
+                        .through(CountPipe(count)) ++ Stream.eval(finalBytes.get).flatMap {
+                        finalBytes =>
+                          Stream.chunk(finalBytes)
+                      })
+                        .through(_gunzip_validateTrailer(contentCrc32, count))
+                    }
                   }
                 }
               )
@@ -633,19 +637,47 @@ class Gzip[F[_]](implicit F: Async[F]) {
 
         def validateTrailer(trailerChunk: Chunk[Byte]): Pull[F, Byte, Unit] =
           if (trailerChunk.size == gzipTrailerBytes) {
-            Pull.eval(crc32.get.map(_.toLong())).flatMap { crc32 =>
+            Pull.eval(crc32.get).flatMap { crc32 =>
               Pull.eval(actualInputSize.get).flatMap { actualInputSize =>
                 val expectedInputCrc32 =
-                  unsignedToLong(trailerChunk(0), trailerChunk(1), trailerChunk(2), trailerChunk(3))
-                val actualInputCrc32 = crc32
-                val expectedInputSize =
-                  unsignedToLong(trailerChunk(4), trailerChunk(5), trailerChunk(6), trailerChunk(7))
-                if (expectedInputCrc32 != actualInputCrc32)
-                  Pull.raiseError(new ZipException("Content failed CRC validation"))
-                else if (expectedInputSize != actualInputSize)
-                  Pull.raiseError(new ZipException("Content failed size validation"))
-                else
-                  Pull.done
+                  unsignedToLong(
+                    trailerChunk(0),
+                    trailerChunk(1),
+                    trailerChunk(2),
+                    trailerChunk(3)
+                  ) & 0xffffffff
+
+                val inputCrc32Array = crc32.toByteArray
+                if (inputCrc32Array.length != 4) {
+                  Pull.raiseError(
+                    new ZipException(
+                      s"Content failed CRC validation: invalid calculated crc length: ${inputCrc32Array.length}"
+                    )
+                  )
+                } else {
+                  val actualInputCrc32 =
+                    unsignedToLong(
+                      inputCrc32Array(3),
+                      inputCrc32Array(2),
+                      inputCrc32Array(1),
+                      inputCrc32Array(0)
+                    )
+
+                  val expectedInputSize =
+                    unsignedToLong(
+                      trailerChunk(4),
+                      trailerChunk(5),
+                      trailerChunk(6),
+                      trailerChunk(7)
+                    )
+                  if (expectedInputCrc32 != actualInputCrc32) {
+                    Pull.raiseError(new ZipException("Content failed CRC validation"))
+                  } else if (expectedInputSize != actualInputSize) {
+                    Pull.raiseError(new ZipException("Content failed size validation"))
+                  } else {
+                    Pull.done
+                  }
+                }
               }
             }
           } else Pull.raiseError(new ZipException("Failed to read trailer (1)"))

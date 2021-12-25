@@ -31,14 +31,13 @@ import org.scalacheck.effect.PropF.forAllF
 import scodec.bits.{ByteVector, crc}
 
 import java.util.concurrent.TimeUnit
-import java.util.zip._
-import scala.collection.mutable
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters._
 import scala.scalajs.js.typedarray._
 import org.scalacheck.{Arbitrary, Gen}
-import org.scalacheck.effect.PropF.forAllF
+
+import java.nio.charset.StandardCharsets
 
 class NodeCompressionSuite extends Fs2Suite {
 
@@ -103,6 +102,99 @@ class NodeCompressionSuite extends Fs2Suite {
       .inflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
       .asInstanceOf[Int8Array]
       .toArray
+
+  test("deflate |> inflate ~= id") {
+    forAllF {
+      (
+          s: String,
+          level: DeflateParams.Level,
+          strategy: DeflateParams.Strategy,
+          flushMode: DeflateParams.FlushMode
+      ) =>
+        Stream
+          .chunk(Chunk.array(s.getBytes))
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(
+            Compression[IO].deflate(
+              DeflateParams(
+                bufferSize = 8192,
+                header = ZLibParams.Header.GZIP,
+                level = level,
+                strategy = strategy,
+                flushMode = flushMode
+              )
+            )
+          )
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(
+            Compression[IO].inflate(
+              InflateParams(
+                bufferSize = 8192,
+                header = ZLibParams.Header.GZIP
+              )
+            )
+          )
+          .compile
+          .toVector
+          .map { result =>
+            assertEquals(result, s.getBytes.toVector)
+            ()
+          }
+    }
+  }
+
+  test("empty.gz |> gunzip") {
+
+    val bytes = Array(
+      0x1f, 0x8b, 0x08, 0x08, 0x0f, 0x85, 0xc7, 0x61, 0x00, 0x03, 0x65, 0x6d, 0x70, 0x74, 0x79,
+      0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ).map(_.toByte)
+    val expectedBytes = Array.empty[Byte]
+
+    val expectedFileName = Option(toEncodableFileName("empty"))
+    Stream
+      .chunk(Chunk.array(bytes))
+      .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+      .through(
+        Compression[IO].gunzip(8192)
+      )
+      .flatMap { gunzipResult =>
+        assertEquals(gunzipResult.fileName, expectedFileName)
+        gunzipResult.content
+      }
+      .compile
+      .toVector
+      .assertEquals(expectedBytes.toVector)
+  }
+
+  test("hello-compression.gz |> gunzip") {
+
+    val bytes = Array(
+      0x1f, 0x8b, 0x08, 0x08, 0x99, 0x8a, 0xc7, 0x61, 0x00, 0x03, 0x68, 0x65, 0x6c, 0x6c, 0x6f,
+      0x2d, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x2e, 0x6a, 0x73,
+      0x6f, 0x6e, 0x00, 0xab, 0x56, 0xca, 0x48, 0xcd, 0xc9, 0xc9, 0x57, 0xb2, 0x52, 0x4a, 0xce,
+      0xcf, 0x2d, 0x28, 0x4a, 0x2d, 0x2e, 0xce, 0xcc, 0xcf, 0x53, 0xaa, 0xe5, 0x02, 0x00, 0x47,
+      0x6f, 0xf6, 0xe9, 0x18, 0x00, 0x00, 0x00
+    ).map(_.toByte)
+    val expectedBytes =
+      """{"hello":"compression"}
+        |""".stripMargin.getBytes
+
+    val expectedFileName = Option(toEncodableFileName("hello-compression.json"))
+    Stream
+      .chunk(Chunk.array(bytes))
+      .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+      .through(
+        Compression[IO].gunzip(8192)
+      )
+      .flatMap { gunzipResult =>
+        assertEquals(gunzipResult.fileName, expectedFileName)
+        gunzipResult.content
+      }
+      .compile
+      .toVector
+      .assertEquals(expectedBytes.toVector)
+  }
 
   test("gzip |> gunzip ~= id") {
     forAllF {
@@ -286,7 +378,7 @@ class NodeCompressionSuite extends Fs2Suite {
   test("gunzip limit fileName and comment length") {
     val longString: String =
       Array
-        .fill(1024 * 1024 + 1)("x")
+        .fill(10 * 1024 + 1)("x")
         .mkString(
           ""
         ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
@@ -320,7 +412,7 @@ class NodeCompressionSuite extends Fs2Suite {
     val expectedContent = "fs2.compress implementing RFC 1952\n"
     val expectedFileName = Option(toEncodableFileName("fs2.compress"))
     val expectedComment = Option.empty[String]
-    val expectedMTime = Option(FiniteDuration(6312408098402L, TimeUnit.SECONDS))
+    val expectedMTime = Option(FiniteDuration(1580853602, TimeUnit.SECONDS)) // 2020-02-04T22:00:02Z
     val compressed = Array(0x1f, 0x8b, 0x08, 0x08, 0x62, 0xe9, 0x39, 0x5e, 0x00, 0x03, 0x66, 0x73,
       0x32, 0x2e, 0x63, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73, 0x73, 0x00, 0x4b, 0x2b, 0x36, 0xd2,
       0x4b, 0xce, 0xcf, 0x2d, 0x28, 0x4a, 0x2d, 0x2e, 0x56, 0xc8, 0xcc, 0x2d, 0xc8, 0x49, 0xcd,
@@ -339,7 +431,7 @@ class NodeCompressionSuite extends Fs2Suite {
       }
       .compile
       .toVector
-      .map(vector => new String(vector.toArray /*, StandardCharsets.US_ASCII*/ ))
+      .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
       .assertEquals(expectedContent)
   }
 
@@ -371,14 +463,14 @@ class NodeCompressionSuite extends Fs2Suite {
     new String(
       fileName
         .replaceAll("\u0000", "_")
-        .getBytes( /*StandardCharsets.ISO_8859_1*/ )
-      /*StandardCharsets.ISO_8859_1*/
+        .getBytes(StandardCharsets.ISO_8859_1),
+      StandardCharsets.ISO_8859_1
     )
 
   def toEncodableComment(comment: String): String =
     new String(
-      comment.replaceAll("\u0000", " ").getBytes( /*StandardCharsets.ISO_8859_1*/ )
-      /*StandardCharsets.ISO_8859_1*/
+      comment.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1),
+      StandardCharsets.ISO_8859_1
     )
 
 }
