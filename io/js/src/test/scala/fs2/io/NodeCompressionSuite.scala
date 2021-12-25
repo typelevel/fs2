@@ -378,12 +378,18 @@ class NodeCompressionSuite extends Fs2Suite {
   test("gunzip limit fileName and comment length") {
     val longString: String =
       Array
-        .fill(10 * 1024 + 1)("x")
+        .fill(48 * 1024 + 1)("x")
+        .mkString(
+          ""
+        ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
+    val commentString: String =
+      Array
+        .fill(48 * 1024 + 1)("x")
         .mkString(
           ""
         ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
     val expectedFileName = Option(toEncodableFileName(longString))
-    val expectedComment = Option(toEncodableComment(longString))
+    val expectedComment = Option(toEncodableComment(commentString))
     Stream
       .chunk(Chunk.empty[Byte])
       .through(Compression[IO].gzip2(8192, fileName = Some(longString), comment = Some(longString)))

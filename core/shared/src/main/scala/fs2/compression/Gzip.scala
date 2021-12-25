@@ -24,8 +24,6 @@ package compression
 
 import cats.effect.{Async, Deferred, Ref, Sync}
 import cats.syntax.all._
-import scodec.bits.crc.CrcBuilder
-import scodec.bits.{BitVector, crc}
 
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
@@ -35,13 +33,14 @@ import scala.reflect.ClassTag
 
 object CrcPipe {
 
-  def apply[F[_]](deferredCrc: Deferred[F, BitVector])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
-    def pull(crcBuilder: CrcBuilder[BitVector]): Stream[F, Byte] => Pull[F, Byte, BitVector] =
+  def apply[F[_]](deferredCrc: Deferred[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
+    def pull(crcBuilder: CRC32): Stream[F, Byte] => Pull[F, Byte, Long] =
       _.pull.uncons.flatMap {
-        case None => Pull.eval(F.delay(crcBuilder.result))
+        case None => Pull.pure(crcBuilder.getValue())
         case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
+          val slice = c.toArraySlice
+          crcBuilder.update(slice.values, slice.offset, slice.length)
           for {
-            crcBuilder <- Pull.eval(F.delay(crcBuilder.updated(c.toBitVector)))
             _ <- Pull.output(c)
             hexString <- pull(crcBuilder)(rest)
           } yield hexString
@@ -49,7 +48,7 @@ object CrcPipe {
 
     def calculateCrcOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
       for {
-        crcBuilder <- Pull.eval(F.delay(crc.crc32Builder))
+        crcBuilder <- Pull.pure(new CRC32)
         crc <- pull(crcBuilder)(input)
         _ <- Pull.eval(deferredCrc.complete(crc))
       } yield ()
@@ -127,7 +126,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       deflateParams match {
         case params: DeflateParams if params.header == ZLibParams.Header.GZIP =>
           for {
-            crc <- Stream.eval(F.deferred[BitVector])
+            crc <- Stream.eval(F.deferred[Long])
             count <- Stream.eval(F.deferred[Long])
             result <- _gzip_header(
               fileName,
@@ -181,65 +180,44 @@ class Gzip[F[_]](implicit F: Async[F]) {
       },
       gzipOperatingSystem.THIS
     ) // OS: Operating System
-    Stream.eval(F.ref(crc.crc32Builder)).flatMap { crc32Builder =>
-      Stream.eval(crc32Builder.update(_.updated(BitVector.view(header)))).flatMap { _ =>
-        val fileNameEncoded = fileName match {
-          case Some(string) =>
-            val bytes = string.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1)
-
-            Stream
-              .eval(
-                crc32Builder.update(
-                  _.updated(BitVector.view(bytes))
-                    .updated(BitVector.fromInt(zeroByte.toInt))
-                )
-              )
-              .as(bytes.some)
-          case None => Stream.eval(F.pure(Option.empty[Array[Byte]]))
-        }
-        fileNameEncoded.flatMap { fileNameEncoded =>
-          val commentEncoded = comment match {
-            case Some(string) =>
-              val bytes = string.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1)
-              Stream
-                .eval(
-                  crc32Builder.update(
-                    _.updated(BitVector.view(bytes))
-                      .updated(BitVector.fromInt(zeroByte.toInt))
-                  )
-                )
-                .as(bytes.some)
-            case None => Stream.eval(F.pure(Option.empty[Array[Byte]]))
-          }
-          commentEncoded.flatMap { commentEncoded =>
-            Stream.eval(crc32Builder.get.map(_.result.toLong())).flatMap { crc32Value =>
-              val crc16 =
-                if (fhCrcEnabled)
-                  Array[Byte](
-                    (crc32Value & 0xff).toByte,
-                    ((crc32Value >> 8) & 0xff).toByte
-                  )
-                else
-                  Array.emptyByteArray
-
-              Stream.chunk(moveAsChunkBytes(header)) ++
-                fileNameEncoded
-                  .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
-                  .getOrElse(Stream.empty) ++
-                commentEncoded
-                  .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
-                  .getOrElse(Stream.empty) ++
-                Stream.chunk(moveAsChunkBytes(crc16))
-            }
-          }
-        }
-      }
+    val crc32 = new CRC32
+    crc32.update(header)
+    val fileNameEncoded = fileName.map { string =>
+      val bytes = string.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1)
+      crc32.update(bytes)
+      crc32.update(zeroByte.toInt)
+      bytes
     }
+    val commentEncoded = comment.map { string =>
+      val bytes = string.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1)
+      crc32.update(bytes)
+      crc32.update(zeroByte.toInt)
+      bytes
+    }
+    val crc32Value = crc32.getValue
+
+    val crc16 =
+      if (fhCrcEnabled)
+        Array[Byte](
+          (crc32Value & 0xff).toByte,
+          ((crc32Value >> 8) & 0xff).toByte
+        )
+      else
+        Array.emptyByteArray
+
+    Stream.chunk(moveAsChunkBytes(header)) ++
+      fileNameEncoded
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .getOrElse(Stream.empty) ++
+      commentEncoded
+        .map(bytes => Stream.chunk(moveAsChunkBytes(bytes)) ++ Stream.emit(zeroByte))
+        .getOrElse(Stream.empty) ++
+      Stream.chunk(moveAsChunkBytes(crc16))
   }
 
-  private def _gzip_trailer(bytesIn: Long, crc: BitVector): Stream[F, Byte] = {
+  private def _gzip_trailer(bytesIn: Long, crc: Long): Stream[F, Byte] = {
     // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
-    val crc32Value = crc.toLong()
+    val crc32Value = crc
     val trailer = Array[Byte](
       (crc32Value & 0xff).toByte, // CRC-32: Cyclic Redundancy Check
       ((crc32Value >> 8) & 0xff).toByte,
@@ -260,22 +238,20 @@ class Gzip[F[_]](implicit F: Async[F]) {
     stream =>
       inflateParams match {
         case params: InflateParams if params.header == ZLibParams.Header.GZIP =>
-          Stream.eval(F.ref(crc.crc32Builder)).flatMap { headerCrc32 =>
-            stream.pull
-              .unconsN(gzipHeaderBytes)
-              .flatMap {
-                case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
-                  _gunzip_matchMandatoryHeader(
-                    mandatoryHeaderChunk,
-                    streamAfterMandatoryHeader,
-                    headerCrc32,
-                    inflate
-                  )
-                case None =>
-                  Pull.output1(GunzipResult.create(Stream.raiseError(new EOFException())))
-              }
-              .stream
-          }
+          stream.pull
+            .unconsN(gzipHeaderBytes)
+            .flatMap {
+              case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
+                _gunzip_matchMandatoryHeader(
+                  mandatoryHeaderChunk,
+                  streamAfterMandatoryHeader,
+                  new CRC32,
+                  inflate
+                )
+              case None =>
+                Pull.output1(GunzipResult.create(Stream.raiseError(new EOFException())))
+            }
+            .stream
 
         case params: InflateParams =>
           Stream.raiseError(
@@ -288,7 +264,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   private def _gunzip_matchMandatoryHeader(
       mandatoryHeaderChunk: Chunk[Byte],
       streamAfterMandatoryHeader: Stream[F, Byte],
-      headerCrc32: Ref[F, CrcBuilder[BitVector]],
+      headerCrc32: CRC32,
       inflate: Pipe[F, Byte, Byte]
   ) =
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
@@ -370,23 +346,22 @@ class Gzip[F[_]](implicit F: Async[F]) {
               _
             )
           ) =>
-        Pull.eval(headerCrc32.update(_.updated(BitVector.view(header)))).flatMap { _ =>
-          val secondsSince197001010000 =
-            unsignedToLong(header(4), header(5), header(6), header(7))
-          _gunzip_readOptionalHeader(
-            streamAfterMandatoryHeader,
-            flags,
-            headerCrc32,
-            secondsSince197001010000,
-            inflate
-          ).pull.uncons1
-            .flatMap {
-              case Some((gunzipResult, _)) =>
-                Pull.output1(gunzipResult)
-              case None =>
-                Pull.output1(GunzipResult.create(Stream.raiseError(new EOFException())))
-            }
-        }
+        headerCrc32.update(header)
+        val secondsSince197001010000 =
+          unsignedToLong(header(4), header(5), header(6), header(7))
+        _gunzip_readOptionalHeader(
+          streamAfterMandatoryHeader,
+          flags,
+          headerCrc32,
+          secondsSince197001010000,
+          inflate
+        ).pull.uncons1
+          .flatMap {
+            case Some((gunzipResult, _)) =>
+              Pull.output1(gunzipResult)
+            case None =>
+              Pull.output1(GunzipResult.create(Stream.raiseError(new EOFException())))
+          }
       case (
             `gzipHeaderBytes`,
             Array(
@@ -420,7 +395,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   private def _gunzip_readOptionalHeader(
       streamAfterMandatoryHeader: Stream[F, Byte],
       flags: Byte,
-      headerCrc32: Ref[F, CrcBuilder[BitVector]],
+      headerCrc32: CRC32,
       secondsSince197001010000: Long,
       inflate: Pipe[F, Byte, Byte]
   ): Stream[F, GunzipResult[F]] =
@@ -453,7 +428,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
                   else None,
                 fileName = fileName,
                 comment = comment,
-                content = Stream.eval(F.deferred[BitVector]).flatMap { contentCrc32 =>
+                content = Stream.eval(F.deferred[Long]).flatMap { contentCrc32 =>
                   Stream.eval(F.deferred[Long]).flatMap { count =>
                     Stream.eval(F.deferred[Chunk[Byte]]).flatMap { finalBytes =>
                       (streamAfterComment
@@ -481,7 +456,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
 
   private def _gunzip_skipOptionalExtraField(
       isPresent: Boolean,
-      crc32Builder: Ref[F, CrcBuilder[BitVector]]
+      crc32Builder: CRC32
   ): Pipe[F, Byte, Byte] =
     stream =>
       if (isPresent) {
@@ -497,28 +472,19 @@ class Gzip[F[_]](implicit F: Async[F]) {
                       `gzipOptionalExtraFieldLengthBytes`,
                       lengthBytes @ Array(firstByte, secondByte)
                     ) =>
-                  Pull
-                    .eval(crc32Builder.update(_.updated(BitVector.view(lengthBytes))))
-                    .flatMap { _ =>
-                      val optionalExtraFieldLength = unsignedToInt(firstByte, secondByte)
-                      streamAfterOptionalExtraFieldLength.pull
-                        .unconsN(optionalExtraFieldLength)
-                        .flatMap {
-                          case Some((optionalExtraFieldChunk, streamAfterOptionalExtraField)) =>
-                            val fieldBytes = optionalExtraFieldChunk.toArraySlice
-                            Pull
-                              .eval(
-                                crc32Builder
-                                  .update(_.updated(BitVector.view(fieldBytes.toByteBuffer)))
-                              )
-                              .flatMap { _ =>
-                                Pull.output1(streamAfterOptionalExtraField)
-                              }
-                          case None =>
-                            Pull.raiseError(
-                              new ZipException("Failed to read optional extra field header")
-                            )
-                        }
+                  crc32Builder.update(lengthBytes)
+                  val optionalExtraFieldLength = unsignedToInt(firstByte, secondByte)
+                  streamAfterOptionalExtraFieldLength.pull
+                    .unconsN(optionalExtraFieldLength)
+                    .flatMap {
+                      case Some((optionalExtraFieldChunk, streamAfterOptionalExtraField)) =>
+                        val fieldBytes = optionalExtraFieldChunk.toArraySlice
+                        crc32Builder.update(fieldBytes.values, fieldBytes.offset, fieldBytes.length)
+                        Pull.output1(streamAfterOptionalExtraField)
+                      case None =>
+                        Pull.raiseError(
+                          new ZipException("Failed to read optional extra field header")
+                        )
                     }
 
                 case _ =>
@@ -535,7 +501,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
 
   private def _gunzip_readOptionalStringField(
       isPresent: Boolean,
-      crc32Builder: Ref[F, CrcBuilder[BitVector]],
+      crc32: CRC32,
       fieldName: String,
       fieldBytesSoftLimit: Int
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
@@ -545,49 +511,31 @@ class Gzip[F[_]](implicit F: Async[F]) {
           .apply(stream)
           .flatMap {
             case Some((chunk, rest)) =>
-              Pull
-                .eval {
-                  if (chunk.isEmpty) {
-                    F.unit
-                  } else {
-                    crc32Builder.update(_.updated(BitVector.view(chunk.toByteBuffer)))
-                  }
-                }
-                .flatMap { _ =>
-                  Pull.output1(
-                    (
-                      if (chunk.isEmpty)
-                        Some("")
-                      else {
-                        val bytesChunk = chunk.toArraySlice
-                        Some(
-                          new String(
-                            bytesChunk.values,
-                            bytesChunk.offset,
-                            bytesChunk.length,
-                            StandardCharsets.ISO_8859_1
-                          )
-                        )
-                      },
-                      Stream
-                        .eval {
-                          rest
-                            .takeThrough(
-                              _ != zeroByte
-                            ) // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
-                            .chunks
-                            .flatTap { c =>
-                              Stream.eval(crc32Builder.update(_.updated(c.toBitVector)))
-                            }
-                            .compile
-                            .last
-                        }
-                        .flatMap { _ =>
-                          rest.dropThrough(_ != zeroByte)
-                        }
+              Pull.output1(
+                (
+                  if (chunk.isEmpty)
+                    Some("")
+                  else {
+                    val bytesChunk = chunk.toArraySlice
+                    crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
+                    Some(
+                      new String(
+                        bytesChunk.values,
+                        bytesChunk.offset,
+                        bytesChunk.length,
+                        StandardCharsets.ISO_8859_1
+                      )
                     )
-                  )
-                }
+                  },
+                  rest
+                    .dropWhile { byte =>
+                      // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
+                      crc32.update(byte.toInt)
+                      byte != zeroByte
+                    }
+                    .drop(1)
+                )
+              )
             case None =>
               Pull.output1(
                 (
@@ -601,7 +549,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
 
   private def _gunzip_validateHeader(
       isPresent: Boolean,
-      crc32Builder: Ref[F, CrcBuilder[BitVector]]
+      crc32Builder: CRC32
   ): Pipe[F, Byte, Byte] =
     stream =>
       if (isPresent)
@@ -609,18 +557,12 @@ class Gzip[F[_]](implicit F: Async[F]) {
           .unconsN(gzipHeaderCrcBytes)
           .flatMap {
             case Some((headerCrcChunk, streamAfterHeaderCrc)) =>
-              Pull
-                .eval {
-                  crc32Builder.get.map(_.result.toLong())
-                }
-                .flatMap { crc32 =>
-                  val expectedHeaderCrc16 = unsignedToInt(headerCrcChunk(0), headerCrcChunk(1))
-                  val actualHeaderCrc16 = crc32 & 0xffff
-                  if (expectedHeaderCrc16 != actualHeaderCrc16)
-                    Pull.raiseError(new ZipException("Header failed CRC validation"))
-                  else
-                    Pull.output1(streamAfterHeaderCrc)
-                }
+              val expectedHeaderCrc16 = unsignedToInt(headerCrcChunk(0), headerCrcChunk(1))
+              val actualHeaderCrc16 = crc32Builder.getValue() & 0xffff
+              if (expectedHeaderCrc16 != actualHeaderCrc16)
+                Pull.raiseError(new ZipException("Header failed CRC validation"))
+              else
+                Pull.output1(streamAfterHeaderCrc)
             case None =>
               Pull.raiseError(new ZipException("Failed to read header CRC"))
           }
@@ -629,7 +571,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       else stream
 
   private def _gunzip_validateTrailer(
-      crc32: Deferred[F, BitVector],
+      crc32: Deferred[F, Long],
       actualInputSize: Deferred[F, Long]
   ): Pipe[F, Byte, Byte] =
     stream =>
@@ -647,36 +589,17 @@ class Gzip[F[_]](implicit F: Async[F]) {
                     trailerChunk(3)
                   ) & 0xffffffff
 
-                val inputCrc32Array = crc32.toByteArray
-                if (inputCrc32Array.length != 4) {
-                  Pull.raiseError(
-                    new ZipException(
-                      s"Content failed CRC validation: invalid calculated crc length: ${inputCrc32Array.length}"
-                    )
-                  )
-                } else {
-                  val actualInputCrc32 =
-                    unsignedToLong(
-                      inputCrc32Array(3),
-                      inputCrc32Array(2),
-                      inputCrc32Array(1),
-                      inputCrc32Array(0)
-                    )
+                val actualInputCrc32 = crc32
 
-                  val expectedInputSize =
-                    unsignedToLong(
-                      trailerChunk(4),
-                      trailerChunk(5),
-                      trailerChunk(6),
-                      trailerChunk(7)
-                    )
-                  if (expectedInputCrc32 != actualInputCrc32) {
-                    Pull.raiseError(new ZipException("Content failed CRC validation"))
-                  } else if (expectedInputSize != actualInputSize) {
-                    Pull.raiseError(new ZipException("Content failed size validation"))
-                  } else {
-                    Pull.done
-                  }
+                val expectedInputSize =
+                  unsignedToLong(trailerChunk(4), trailerChunk(5), trailerChunk(6), trailerChunk(7))
+
+                if (expectedInputCrc32 != actualInputCrc32) {
+                  Pull.raiseError(new ZipException("Content failed CRC validation"))
+                } else if (expectedInputSize != actualInputSize) {
+                  Pull.raiseError(new ZipException("Content failed size validation"))
+                } else {
+                  Pull.done
                 }
               }
             }
