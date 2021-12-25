@@ -63,8 +63,6 @@ ThisBuild / developers ++= List(
   Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
 
-ThisBuild / fatalWarningsInCI := false
-
 // If debugging tests, it's sometimes useful to disable parallel execution and test result buffering:
 // ThisBuild / Test / parallelExecution := false
 // ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "-b")
