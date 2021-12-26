@@ -703,7 +703,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   private val fileNameBytesSoftLimit =
     1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). Typical maximum file size is 255 characters.
   private val fileCommentBytesSoftLimit =
-    100 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
+    1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 
   private def moveAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
     moveAsChunkBytes(values, values.length)
