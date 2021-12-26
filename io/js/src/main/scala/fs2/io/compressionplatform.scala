@@ -74,14 +74,12 @@ private[fs2] trait compressionplatform {
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
 
         Stream
-          .resource {
-            suspendReadableAndRead() {
-              (inflateParams.header match {
-                case ZLibParams.Header.GZIP => zlibMod.createInflateRaw(options)
-                case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
-              }).asInstanceOf[Duplex]
-            }
-          }
+          .resource(suspendReadableAndRead() {
+            (inflateParams.header match {
+              case ZLibParams.Header.GZIP => zlibMod.createInflateRaw(options)
+              case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
+            }).asInstanceOf[Duplex]
+          })
           .flatMap { case (inflate, out) =>
             Stream.resource(SuspendedStream(in)).flatMap { suspendedIn =>
               Stream.eval(F.ref(Chunk.empty[Byte])).flatMap { lastChunk =>
