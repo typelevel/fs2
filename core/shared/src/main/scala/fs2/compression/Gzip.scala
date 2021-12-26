@@ -475,7 +475,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       fieldBytesSoftLimit: Int
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
     stream =>
-      if (isPresent) {
+      if (isPresent)
         unconsUntil[Byte](_ == zeroByte, fieldBytesSoftLimit)
           .apply(stream)
           .flatMap {
@@ -513,7 +513,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
               )
           }
           .stream
-      } else Stream.emit((Option.empty[String], stream))
+      else Stream.emit((Option.empty[String], stream))
 
   private def _gunzip_validateHeader(
       isPresent: Boolean,
@@ -611,19 +611,13 @@ class Gzip[F[_]](implicit F: Async[F]) {
             Pull.pure(None)
           case Some((hd, tl)) =>
             hd.indexWhere(predicate) match {
-              case Some(i) if i > 0 =>
+              case Some(i) =>
                 val (pfx, sfx) = hd.splitAt(i)
                 Pull.pure(Some((acc ++ pfx) -> (Stream.chunk(sfx) ++ tl)))
-              case Some(_) =>
-                Pull.pure(
-                  Some(acc -> tl.cons(hd))
-                )
               case None =>
                 val newSize = size + hd.size
                 if (newSize < softLimit) go(acc ++ hd, tl, newSize)
-                else {
-                  Pull.pure(Some((acc ++ hd) -> tl))
-                }
+                else Pull.pure(Some((acc ++ hd) -> tl))
             }
         }
 
