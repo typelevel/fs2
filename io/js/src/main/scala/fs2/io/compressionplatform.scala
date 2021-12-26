@@ -73,73 +73,68 @@ private[fs2] trait compressionplatform {
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
 
-        Stream
-          .resource(suspendReadableAndRead() {
+        (
+          Stream.resource(suspendReadableAndRead() {
             (inflateParams.header match {
               case ZLibParams.Header.GZIP => zlibMod.createInflateRaw(options)
               case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
             }).asInstanceOf[Duplex]
-          })
-          .flatMap { case (inflate, out) =>
-            Stream.resource(SuspendedStream(in)).flatMap { suspendedIn =>
-              Stream.eval(F.ref(Chunk.empty[Byte])).flatMap { lastChunk =>
-                Stream.eval(F.ref(0)).flatMap { bytesPiped =>
-                  Stream.eval(F.deferred[Int]).flatMap { bytesWritten =>
-                    Stream.eval(F.deferred[Chunk[Byte]]).flatMap { trailerChunk =>
-                      val trackedStream =
-                        suspendedIn.stream.chunks.evalTap { chunk =>
-                          bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
-                        }.unchunks
-                      val inflated = out
-                        .concurrently(
-                          trackedStream
-                            .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
-                        )
-                        .onFinalize {
-                          F.delay(
-                            inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt
-                          ).flatMap(bytesWritten.complete) >>
-                            F.async_[Unit] { cb =>
-                              inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
-                            }
-                        }
-
-                      Stream
-                        .resource {
-                          F.background {
-                            (bytesWritten.get, bytesPiped.get, lastChunk.get).mapN {
-                              (bytesWritten, bytesPiped, lastChunk) =>
-                                val bytesAvailable = bytesPiped - bytesWritten
-                                val headTrailerBytes = lastChunk.takeRight(bytesAvailable)
-                                val bytesToPull = trailerSize - headTrailerBytes.size
-                                if (bytesToPull > 0) {
-                                  suspendedIn.stream
-                                    .take(bytesToPull.toLong)
-                                    .chunkAll
-                                    .compile
-                                    .lastOrError
-                                    .flatMap { remainingBytes =>
-                                      trailerChunk.complete(
-                                        headTrailerBytes ++ remainingBytes
-                                      )
-                                    }
-                                } else {
-                                  trailerChunk.complete(
-                                    headTrailerBytes.take(trailerSize)
-                                  )
-                                }
-                            }.flatten
-                          }
-                        }
-                        .as(
-                          (inflated, trailerChunk)
-                        )
-                    }
+          }),
+          Stream.resource(SuspendedStream(in)),
+          Stream.eval(F.ref(Chunk.empty[Byte])),
+          Stream.eval(F.ref(0)),
+          Stream.eval(F.deferred[Int]),
+          Stream.eval(F.deferred[Chunk[Byte]])
+        ).tupled.flatMap {
+          case ((inflate, out), suspendedIn, lastChunk, bytesPiped, bytesWritten, trailerChunk) =>
+            val trackedStream =
+              suspendedIn.stream.chunks.evalTap { chunk =>
+                bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
+              }.unchunks
+            val inflated = out
+              .concurrently(
+                trackedStream
+                  .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
+              )
+              .onFinalize {
+                F.delay(
+                  inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt
+                ).flatMap(bytesWritten.complete) >>
+                  F.async_[Unit] { cb =>
+                    inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
                   }
+              }
+
+            Stream
+              .resource {
+                F.background {
+                  (bytesWritten.get, bytesPiped.get, lastChunk.get).mapN {
+                    (bytesWritten, bytesPiped, lastChunk) =>
+                      val bytesAvailable = bytesPiped - bytesWritten
+                      val headTrailerBytes = lastChunk.takeRight(bytesAvailable)
+                      val bytesToPull = trailerSize - headTrailerBytes.size
+                      if (bytesToPull > 0) {
+                        suspendedIn.stream
+                          .take(bytesToPull.toLong)
+                          .chunkAll
+                          .compile
+                          .lastOrError
+                          .flatMap { remainingBytes =>
+                            trailerChunk.complete(
+                              headTrailerBytes ++ remainingBytes
+                            )
+                          }
+                      } else {
+                        trailerChunk.complete(
+                          headTrailerBytes.take(trailerSize)
+                        )
+                      }
+                  }.flatten
                 }
               }
-            }
-          }
+              .as((inflated, trailerChunk))
+
+        }
       }
 
       def gzip2(
