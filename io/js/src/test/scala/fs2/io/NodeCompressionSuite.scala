@@ -38,6 +38,7 @@ import scala.scalajs.js.typedarray._
 import org.scalacheck.{Arbitrary, Gen}
 
 import java.nio.charset.StandardCharsets
+import scala.annotation.unused
 
 class NodeCompressionSuite extends Fs2Suite {
 
@@ -91,13 +92,18 @@ class NodeCompressionSuite extends Fs2Suite {
   def getBytes(s: String): Array[Byte] =
     s.getBytes
 
-  def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] =
+  def deflateStream(
+      b: Array[Byte],
+      @unused level: Int,
+      @unused strategy: Int,
+      @unused nowrap: Boolean
+  ): Array[Byte] =
     zlibMod
       .deflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
       .asInstanceOf[Int8Array]
       .toArray
 
-  def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] =
+  def inflateStream(b: Array[Byte], @unused nowrap: Boolean): Array[Byte] =
     zlibMod
       .inflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
       .asInstanceOf[Int8Array]

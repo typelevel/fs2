@@ -22,21 +22,17 @@
 package fs2
 package io
 
-import cats.effect.{Concurrent, Deferred, Resource}
 import cats.effect.kernel.Async
-import cats.effect.std.Queue
+import cats.effect.{Deferred, Resource}
 import cats.syntax.all._
-import cats.effect.syntax.all._
 import fs2.compression._
-import fs2.internal.jsdeps.node.anon.BytesWritten
 import fs2.internal.jsdeps.node.zlibMod
-import fs2.internal.jsdeps.node.zlibMod.Zlib
 
 import scala.concurrent.duration.FiniteDuration
 
 private[fs2] trait compressionplatform {
 
-  implicit def fs2ioCompressionForAsync[F[_]: Concurrent](implicit F: Async[F]): Compression[F] =
+  implicit def fs2ioCompressionForAsync[F[_]](implicit F: Async[F]): Compression[F] =
     new Compression.UnsealedCompression[F] {
 
       private val gzip = new Gzip[F]
@@ -76,27 +72,34 @@ private[fs2] trait compressionplatform {
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
 
-        for {
-          suspended <- Stream
-            .resource(suspendReadableAndReadZlib() {
+        Stream
+          .resource {
+            suspendReadableAndRead() {
               (inflateParams.header match {
                 case ZLibParams.Header.GZIP => zlibMod.createInflateRaw(options)
                 case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
-              })
-            })
-          (inflate, out, bytesWritten) = suspended
-          w <- Stream.resource(weird(bytesWritten, trailerSize)(in))
-          (main, trailer) = w
-          inflated = out
-            .concurrently(
-              main.through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
-            )
-            .onFinalize(
-              F.async_[Unit] { cb =>
-                inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
+              }).asInstanceOf[Duplex]
+            }
+          }
+          .flatMap { case (inflate, out) =>
+            Stream.eval(F.deferred[Int]).flatMap { bytesWritten =>
+              Stream.resource(weird(bytesWritten, trailerSize)(in)).map { case (main, trailer) =>
+                val inflated = out
+                  .concurrently(
+                    main.through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
+                  )
+                  .onFinalize {
+                    F.delay(inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt)
+                      .flatMap(bytesWritten.complete) >>
+                      F.async_[Unit] { cb =>
+                        inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
+                      }
+                  }
+                (inflated, trailer)
               }
-            )
-        } yield (inflated, trailer)
+
+            }
+          }
       }
 
       private def weird(
