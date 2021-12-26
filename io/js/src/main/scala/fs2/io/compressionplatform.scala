@@ -27,6 +27,7 @@ import cats.effect.{Deferred, Resource}
 import cats.syntax.all._
 import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.internal.SuspendedStream
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -82,145 +83,66 @@ private[fs2] trait compressionplatform {
             }
           }
           .flatMap { case (inflate, out) =>
-            Stream.eval(F.deferred[Int]).flatMap { bytesWritten =>
-              Stream.resource(weird(bytesWritten, trailerSize)(in)).map { case (main, trailer) =>
-                val inflated = out
-                  .concurrently(
-                    main.through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
-                  )
-                  .onFinalize {
-                    F.delay(inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt)
-                      .flatMap(bytesWritten.complete) >>
-                      F.async_[Unit] { cb =>
-                        inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
-                      }
-                  }
-                (inflated, trailer)
-              }
-
-            }
-          }
-      }
-
-      private def weird(
-          bytesWritten: Deferred[F, Int], // completed when the downstream (inflate) is done
-          trailerSize: Int
-      ): Stream[F, Byte] => Resource[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])] = in =>
-        (
-          Resource.eval(F.deferred[Chunk[Byte]]),
-          Resource.eval(F.ref(Chunk.empty[Byte])),
-          Resource.eval(F.ref(0)),
-          Resource.eval(F.ref(false))
-        ).mapN { (trailerChunkDeferred, lastChunkRef, bytesPipedRef, streamDone) =>
-          F.background {
-            // total bytes consumed by the inflate (might be less than bytesPiped below)
-            bytesWritten.get.flatMap { bytesWritten =>
-              // total bytes piped from the upstream into the downstream (inflate); some might not be consumed; if we have to
-              // pull more bytes after the downstream is completed, those are counted here as well
-              bytesPipedRef.get.flatMap { bytesPiped =>
-                // last chunk piped from the upstream into inflate (might have been consumed partially)
-                lastChunkRef.get.flatMap { lastChunk =>
-                  // whether the upstream has completed (uncons received None)
-                  streamDone.get.flatMap { streamDone =>
-                    if (streamDone || bytesPiped - bytesWritten >= trailerSize) {
-                      // if we have enough bytes or if the upstream has completed thus no more bytes to expect
-                      trailerChunkDeferred
-                        .complete(
-                          lastChunk.takeRight(bytesPiped - bytesWritten).take(trailerSize)
+            Stream.resource(SuspendedStream(in)).flatMap { suspendedIn =>
+              Stream.eval(F.ref(Chunk.empty[Byte])).flatMap { lastChunk =>
+                Stream.eval(F.ref(0)).flatMap { bytesPiped =>
+                  Stream.eval(F.deferred[Int]).flatMap { bytesWritten =>
+                    Stream.eval(F.deferred[Chunk[Byte]]).flatMap { trailerChunk =>
+                      val trackedStream =
+                        suspendedIn.stream.chunks.evalTap { chunk =>
+                          bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
+                        }.unchunks
+                      val inflated = out
+                        .concurrently(
+                          trackedStream
+                            .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
                         )
-                        .void
-                    } else {
-                      // not enough bytes yet and expecting more bytes (upstream not completed yet)
-                      F.unit
+                        .onFinalize {
+                          F.delay(inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt)
+                            .flatMap(bytesWritten.complete) >>
+                            F.async_[Unit] { cb =>
+                              inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
+                            }
+                        }
+
+                      Stream
+                        .resource {
+                          F.background {
+                            (bytesWritten.get, bytesPiped.get, lastChunk.get).mapN {
+                              (bytesWritten, bytesPiped, lastChunk) =>
+                                val bytesAvailable = bytesPiped - bytesWritten
+                                val headTrailerBytes = lastChunk.takeRight(bytesAvailable)
+                                val bytesToPull = trailerSize - headTrailerBytes.size
+                                if (bytesToPull > 0) {
+                                  suspendedIn.stream
+                                    .take(bytesToPull)
+                                    .chunkAll
+                                    .compile
+                                    .lastOrError
+                                    .flatMap { remainingBytes =>
+                                      trailerChunk.complete(
+                                        headTrailerBytes ++ remainingBytes
+                                      )
+                                    }
+                                } else {
+                                  trailerChunk.complete(
+                                    headTrailerBytes.take(trailerSize)
+                                  )
+                                }
+                            }.flatten
+                          }
+                        }
+                        .as(
+                          (inflated, trailerChunk)
+                        )
+
                     }
                   }
                 }
               }
             }
-          }.as {
-
-            def go: Stream[F, Byte] => Pull[F, Byte, Unit] =
-              _.pull.uncons.flatMap {
-                case None =>
-                  Pull.eval {
-                    // in case bytesWritten will gets completed *after* this [race]
-                    streamDone.set(true) >>
-                      trailerChunkDeferred.tryGet.flatMap {
-                        case Some(_) =>
-                          // bytesWritten completion might have completed trailerChunkDeferred already
-                          F.unit
-                        case None =>
-                          bytesWritten.tryGet.flatMap {
-                            case None =>
-                              // bytesWritten has not been completed yet
-                              F.unit
-                            case Some(bytesWritten) =>
-                              lastChunkRef.get.flatMap { lastChunk =>
-                                bytesPipedRef.get.flatMap { bytesPiped =>
-                                  // complete with whatever we have, no more bytes to come
-                                  trailerChunkDeferred
-                                    .complete(
-                                      lastChunk
-                                        .takeRight(bytesPiped - bytesWritten)
-                                        .take(trailerSize)
-                                    )
-                                    .void
-                                }
-                              }
-                          }
-                      }
-                  }
-                case Some((chunk, rest)) =>
-                  Pull.eval(trailerChunkDeferred.tryGet).flatMap {
-                    case Some(_) =>
-                      // we're done already
-                      Pull.done
-                    case None =>
-                      Pull.eval(bytesWritten.tryGet).flatMap {
-                        case None =>
-                          // downstream is still consuming, keep the current chunk and
-                          // increase bytesPiped
-                          Pull.eval {
-                            lastChunkRef.set(chunk) >> bytesPipedRef.update(_ + chunk.size)
-                          } >> Pull.output(chunk) >> go(rest)
-                        case Some(bytesWritten) =>
-                          Pull.eval(bytesPipedRef.get).flatMap { bytesPiped =>
-                            Pull.eval(lastChunkRef.get).flatMap { last =>
-                              if (bytesPiped - bytesWritten >= trailerSize) {
-                                // have enough bytes to complete
-                                Pull
-                                  .eval(
-                                    trailerChunkDeferred.complete(
-                                      (last ++ chunk)
-                                        .takeRight(bytesPiped - bytesWritten)
-                                        .take(trailerSize)
-                                    ) >> lastChunkRef.set(Chunk.empty)
-                                  )
-                                  .void
-                              } else {
-                                // downstream is done consuming, but we need more bytes
-                                Pull.eval {
-                                  lastChunkRef.set(
-                                    // keep what we have (discarding what has been consumed by the downstream, just to save mem)
-                                    // plus the new chunk
-                                    last.takeRight(bytesPiped - bytesWritten) ++ chunk
-                                  ) >>
-                                    // keep track of bytesPiped
-                                    bytesPipedRef.update(_ + chunk.size)
-                                } >> go(rest) // keep pulling
-                              }
-                            }
-                          }
-                      }
-                  }
-              }
-
-            (
-              go(in).stream,
-              trailerChunkDeferred
-            )
           }
-        }.flatten
+      }
 
       def gzip2(
           fileName: Option[String],
