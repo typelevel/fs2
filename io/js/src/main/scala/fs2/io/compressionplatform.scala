@@ -108,19 +108,25 @@ private[fs2] trait compressionplatform {
           Resource.eval(F.ref(Chunk.empty[Byte])),
           Resource.eval(F.ref(0)),
           Resource.eval(F.ref(false))
-        ).mapN { (trailerChunkDeferred, lastChunkRef, bytesThroughRef, streamDone) =>
+        ).mapN { (trailerChunkDeferred, lastChunkRef, bytesPipedRef, streamDone) =>
           F.background {
+            // total bytes consumed by the inflate (might be less than bytesPiped below)
             bytesWritten.get.flatMap { bytesWritten =>
-              bytesThroughRef.get.flatMap { bytesThrough =>
+              // total bytes piped from the upstream into inflate (some might not be consumed)
+              bytesPipedRef.get.flatMap { bytesPiped =>
+                // last chunk piped from the upstream into inflate (might have been consumed partially)
                 lastChunkRef.get.flatMap { lastChunk =>
+                  // whether the upstream has completed (uncons received None)
                   streamDone.get.flatMap { streamDone =>
-                    if (streamDone || bytesThrough - bytesWritten >= trailerSize) {
+                    if (streamDone || bytesPiped - bytesWritten >= trailerSize) {
+                      // if we have enough bytes or if the upstream has completed thus no more bytes to expect
                       trailerChunkDeferred
                         .complete(
-                          lastChunk.takeRight(bytesThrough - bytesWritten).take(trailerSize)
+                          lastChunk.takeRight(bytesPiped - bytesWritten).take(trailerSize)
                         )
                         .void
                     } else {
+                      // not enough bytes yet and expecting more bytes (upstream not completed yet)
                       F.unit
                     }
                   }
@@ -133,20 +139,25 @@ private[fs2] trait compressionplatform {
               _.pull.uncons.flatMap {
                 case None =>
                   Pull.eval {
+                    // in case bytesWritten will gets completed *after* this [race]
                     streamDone.set(true) >>
                       trailerChunkDeferred.tryGet.flatMap {
-                        case Some(_) => F.unit
+                        case Some(_) =>
+                          // bytesWritten completion might have completed trailerChunkDeferred already
+                          F.unit
                         case None =>
                           bytesWritten.tryGet.flatMap {
                             case None =>
+                              // bytesWritten has not been completed yet
                               F.unit
                             case Some(bytesWritten) =>
                               lastChunkRef.get.flatMap { lastChunk =>
-                                bytesThroughRef.get.flatMap { bytesThrough =>
+                                bytesPipedRef.get.flatMap { bytesPiped =>
+                                  // complete with whatever we have, no more bytes to come
                                   trailerChunkDeferred
                                     .complete(
                                       lastChunk
-                                        .takeRight(bytesThrough - bytesWritten)
+                                        .takeRight(bytesPiped - bytesWritten)
                                         .take(trailerSize)
                                     )
                                     .void
@@ -157,32 +168,42 @@ private[fs2] trait compressionplatform {
                   }
                 case Some((chunk, rest)) =>
                   Pull.eval(trailerChunkDeferred.tryGet).flatMap {
-                    case Some(_) => Pull.done
+                    case Some(_) =>
+                      // we're done already
+                      Pull.done
                     case None =>
                       Pull.eval(bytesWritten.tryGet).flatMap {
                         case None =>
+                          // downstream is still consuming, keep the current chunk and
+                          // increase bytesPiped
                           Pull.eval {
-                            lastChunkRef.set(chunk) >> bytesThroughRef.update(_ + chunk.size)
+                            lastChunkRef.set(chunk) >> bytesPipedRef.update(_ + chunk.size)
                           } >> Pull.output(chunk) >> go(rest)
                         case Some(bytesWritten) =>
-                          Pull.eval(bytesThroughRef.get).flatMap { bytesThrough =>
+                          Pull.eval(bytesPipedRef.get).flatMap { bytesPiped =>
                             Pull.eval(lastChunkRef.get).flatMap { last =>
-                              if (bytesThrough - bytesWritten >= trailerSize) {
+                              if (bytesPiped - bytesWritten >= trailerSize) {
+                                // have enough bytes to complete
                                 Pull
                                   .eval(
                                     trailerChunkDeferred.complete(
                                       (last ++ chunk)
-                                        .takeRight(bytesThrough - bytesWritten)
+                                        .takeRight(bytesPiped - bytesWritten)
                                         .take(trailerSize)
                                     ) >> lastChunkRef.set(Chunk.empty)
                                   )
                                   .void
                               } else {
+                                // downstream is done consuming, but we need more bytes
                                 Pull.eval {
                                   lastChunkRef.set(
-                                    last.takeRight(bytesThrough - bytesWritten) ++ chunk
-                                  ) >> bytesThroughRef.update(_ + chunk.size)
-                                } >> go(rest)
+                                    // keep what we have (discarding what has been consumed by the downstream, just to save mem)
+                                    // plus the new chunk
+                                    last.takeRight(bytesPiped - bytesWritten) ++ chunk
+                                  ) >>
+                                    // keep track of bytesPiped
+                                    bytesPipedRef.update(_ + chunk.size)
+                                } >> go(rest) // keep pulling
                               }
                             }
                           }
