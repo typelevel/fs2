@@ -200,7 +200,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   }
 
   def gunzip(
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])],
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])],
       inflateParams: InflateParams
   ): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     stream =>
@@ -233,7 +233,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       mandatoryHeaderChunk: Chunk[Byte],
       streamAfterMandatoryHeader: Stream[F, Byte],
       headerCrc32: CRC32,
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])]
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])]
   ) =
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
       case (
@@ -365,7 +365,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       flags: Byte,
       headerCrc32: CRC32,
       secondsSince197001010000: Long,
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])]
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])]
   ): Stream[F, GunzipResult[F]] =
     streamAfterMandatoryHeader
       .through(_gunzip_skipOptionalExtraField(gzipFlag.fextra(flags), headerCrc32))
@@ -539,55 +539,47 @@ class Gzip[F[_]](implicit F: Async[F]) {
       else stream
 
   private def _gunzip_validateTrailer(
-      trailerStream: Stream[F, Byte],
+      trailerStream: Deferred[F, Chunk[Byte]],
       crc32: Deferred[F, Long],
       actualInputSize: Deferred[F, Long]
   ): Stream[F, Byte] =
     Stream
       .eval {
-        trailerStream
-          .take(gzipTrailerBytes.toLong)
-          .chunkAll
-          .compile
-          .last
-          .flatMap[Unit] {
-            case None =>
-              F.raiseError(new ZipException(s"Failed to read trailer (2)"))
-            case Some(trailerChunk) =>
-              if (trailerChunk.size != gzipTrailerBytes) {
-                F.raiseError(new ZipException(s"Failed to read trailer (1): ${trailerChunk}"))
-              } else {
-                crc32.get.flatMap { crc32 =>
-                  actualInputSize.get.flatMap { actualInputSize =>
-                    val expectedInputCrc32 =
-                      unsignedToLong(
-                        trailerChunk(0),
-                        trailerChunk(1),
-                        trailerChunk(2),
-                        trailerChunk(3)
-                      ) & 0xffffffff
+        trailerStream.get.flatMap[Unit] { trailerChunk =>
+          if (trailerChunk.size != gzipTrailerBytes) {
+            F.raiseError(new ZipException(s"Failed to read trailer (1): ${trailerChunk}"))
+          } else {
+            crc32.get.flatMap { crc32 =>
+              actualInputSize.get.flatMap { actualInputSize =>
+                val expectedInputCrc32 =
+                  unsignedToLong(
+                    trailerChunk(0),
+                    trailerChunk(1),
+                    trailerChunk(2),
+                    trailerChunk(3)
+                  ) & 0xffffffff
 
-                    val actualInputCrc32 = crc32
+                val actualInputCrc32 = crc32
 
-                    val expectedInputSize =
-                      unsignedToLong(
-                        trailerChunk(4),
-                        trailerChunk(5),
-                        trailerChunk(6),
-                        trailerChunk(7)
-                      )
+                val expectedInputSize =
+                  unsignedToLong(
+                    trailerChunk(4),
+                    trailerChunk(5),
+                    trailerChunk(6),
+                    trailerChunk(7)
+                  )
 
-                    if (expectedInputCrc32 != actualInputCrc32) {
-                      F.raiseError[Unit](new ZipException("Content failed CRC validation"))
-                    } else if (expectedInputSize != actualInputSize) {
-                      F.raiseError[Unit](new ZipException("Content failed size validation"))
-                    } else {
-                      F.unit
-                    }
-                  }
+                if (expectedInputCrc32 != actualInputCrc32) {
+                  F.raiseError[Unit](new ZipException("Content failed CRC validation"))
+                } else if (expectedInputSize != actualInputSize) {
+                  F.raiseError[Unit](new ZipException("Content failed size validation"))
+                } else {
+                  F.unit
                 }
               }
+            }
           }
+        }
       }
       .flatMap(_ => Stream.empty)
 
@@ -690,7 +682,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   }
   private val gzipInputCrcBytes = 4
   private val gzipInputSizeBytes = 4
-  private val gzipTrailerBytes = gzipInputCrcBytes + gzipInputSizeBytes
+  val gzipTrailerBytes: Int = gzipInputCrcBytes + gzipInputSizeBytes
 
   private val zeroByte: Byte = 0
 

@@ -26,6 +26,7 @@ import cats.effect.{Concurrent, Deferred, Resource}
 import cats.effect.kernel.Async
 import cats.effect.std.Queue
 import cats.syntax.all._
+import cats.effect.syntax.all._
 import fs2.compression._
 import fs2.internal.jsdeps.node.anon.BytesWritten
 import fs2.internal.jsdeps.node.zlibMod
@@ -64,22 +65,13 @@ private[fs2] trait compressionplatform {
           }
       }
 
-      override def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] = in => {
-        val options = zlibMod
-          .ZlibOptions()
-          .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
+      override def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] = in =>
+        inflateAndTrailer(inflateParams, 0)(in).flatMap(_._1)
 
-        inflateAndRest(inflateParams)(in).flatMap { case (inflated, rest) =>
-          inflated.onFinalizeCase {
-            case Resource.ExitCase.Succeeded => rest.compile.drain
-            case _                           => F.unit
-          }
-        }
-      }
-
-      private def inflateAndRest(
-          inflateParams: InflateParams
-      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])] = in => {
+      private def inflateAndTrailer(
+          inflateParams: InflateParams,
+          trailerSize: Int
+      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])] = in => {
         val options = zlibMod
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
@@ -93,8 +85,8 @@ private[fs2] trait compressionplatform {
               })
             })
           (inflate, out, bytesWritten) = suspended
-          w <- Stream.resource(weird(bytesWritten, 10 * 1024)(in))
-          (main, rest) = w
+          w <- Stream.resource(weird(bytesWritten, trailerSize)(in))
+          (main, trailer) = w
           inflated = out
             .concurrently(
               main.through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
@@ -104,66 +96,103 @@ private[fs2] trait compressionplatform {
                 inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
               }
             )
-        } yield (inflated, rest)
+        } yield (inflated, trailer)
       }
 
       private def weird(
-          bytesWrittenDeferred: Deferred[F, Int],
-          bufferLimitSoft: Int
-      ): Stream[F, Byte] => Resource[F, (Stream[F, Byte], Stream[F, Byte])] = in =>
+          bytesWritten: Deferred[F, Int], // completed when the downstream (inflate) is done
+          trailerSize: Int
+      ): Stream[F, Byte] => Resource[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])] = in =>
         (
-          Resource.eval(Queue.unbounded[F, Option[Chunk[Byte]]]),
+          Resource.eval(F.deferred[Chunk[Byte]]),
           Resource.eval(F.ref(Chunk.empty[Byte])),
           Resource.eval(F.ref(0)),
-          Resource.eval(F.ref(false)),
-          Resource.eval(F.ref(false)),
           Resource.eval(F.ref(false))
-        ).mapN { (tailQueue, keptChunk, bytesThrough, writingToTail, offeredKeptChunk, done) =>
-          F.background(
-            bytesWrittenDeferred.get.flatMap { bytesWritten =>
-              writingToTail.set(true) >>
-                bytesThrough.get.flatMap { bytesThrough =>
-                  keptChunk.get.flatMap { keep =>
-                    done.get.flatMap { done =>
-                      val toRest = keep.takeRight(bytesThrough - bytesWritten)
-                      tailQueue.offer(Some(toRest)) >> F.whenA(done)(tailQueue.offer(none))
+        ).mapN { (trailerChunkDeferred, lastChunkRef, bytesThroughRef, streamDone) =>
+          F.background {
+            bytesWritten.get.flatMap { bytesWritten =>
+              bytesThroughRef.get.flatMap { bytesThrough =>
+                lastChunkRef.get.flatMap { lastChunk =>
+                  streamDone.get.flatMap { streamDone =>
+                    if (streamDone || bytesThrough - bytesWritten >= trailerSize) {
+                      trailerChunkDeferred
+                        .complete(
+                          lastChunk.takeRight(bytesThrough - bytesWritten).take(trailerSize)
+                        )
+                        .void
+                    } else {
+                      F.unit
                     }
-                  } >> keptChunk.set(Chunk.empty) >> offeredKeptChunk.set(true)
+                  }
                 }
+              }
             }
-          ).as {
+          }.as {
+
             def go: Stream[F, Byte] => Pull[F, Byte, Unit] =
               _.pull.uncons.flatMap {
                 case None =>
                   Pull.eval {
-                    offeredKeptChunk.get.flatMap {
-                      case true  => tailQueue.offer(none)
-                      case false => done.set(true)
-                    }
+                    streamDone.set(true) >>
+                      trailerChunkDeferred.tryGet.flatMap {
+                        case Some(_) => F.unit
+                        case None =>
+                          bytesWritten.tryGet.flatMap {
+                            case None =>
+                              F.unit
+                            case Some(bytesWritten) =>
+                              lastChunkRef.get.flatMap { lastChunk =>
+                                bytesThroughRef.get.flatMap { bytesThrough =>
+                                  trailerChunkDeferred
+                                    .complete(
+                                      lastChunk
+                                        .takeRight(bytesThrough - bytesWritten)
+                                        .take(trailerSize)
+                                    )
+                                    .void
+                                }
+                              }
+                          }
+                      }
                   }
                 case Some((chunk, rest)) =>
-                  Pull.eval(keptChunk.get).flatMap { keep =>
-                    Pull.eval(writingToTail.get).flatMap {
-                      case false =>
-                        val newKeep =
-                          if (keep.size + chunk.size > bufferLimitSoft / 2) {
-                            keep.takeRight(keep.size / 2) ++ chunk
-                          } else {
-                            keep ++ chunk
+                  Pull.eval(trailerChunkDeferred.tryGet).flatMap {
+                    case Some(_) => Pull.done
+                    case None =>
+                      Pull.eval(bytesWritten.tryGet).flatMap {
+                        case None =>
+                          Pull.eval {
+                            lastChunkRef.set(chunk) >> bytesThroughRef.update(_ + chunk.size)
+                          } >> Pull.output(chunk) >> go(rest)
+                        case Some(bytesWritten) =>
+                          Pull.eval(bytesThroughRef.get).flatMap { bytesThrough =>
+                            Pull.eval(lastChunkRef.get).flatMap { last =>
+                              if (bytesThrough - bytesWritten >= trailerSize) {
+                                Pull
+                                  .eval(
+                                    trailerChunkDeferred.complete(
+                                      (last ++ chunk)
+                                        .takeRight(bytesThrough - bytesWritten)
+                                        .take(trailerSize)
+                                    ) >> lastChunkRef.set(Chunk.empty)
+                                  )
+                                  .void
+                              } else {
+                                Pull.eval {
+                                  lastChunkRef.set(
+                                    last.takeRight(bytesThrough - bytesWritten) ++ chunk
+                                  ) >> bytesThroughRef.update(_ + chunk.size)
+                                } >> go(rest)
+                              }
+                            }
                           }
-                        Pull.eval {
-                          keptChunk.set(newKeep) >>
-                            bytesThrough.update(_ + chunk.size)
-                        } >> Pull.output(chunk) >> go(rest)
-                      case true =>
-                        Pull.eval(tailQueue.offer(Some(chunk))) >> go(rest)
-                    }
+                      }
                   }
               }
 
             (
               go(in).stream,
-              Stream.fromQueueNoneTerminatedChunk(tailQueue)
+              trailerChunkDeferred
             )
           }
         }.flatten
@@ -177,7 +206,7 @@ private[fs2] trait compressionplatform {
         gzip.gzip(fileName, modificationTime, comment, deflate(deflateParams), deflateParams)
 
       def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
-        gzip.gunzip(inflateAndRest(inflateParams), inflateParams)
+        gzip.gunzip(inflateAndTrailer(inflateParams, gzip.gzipTrailerBytes), inflateParams)
 
     }
 }
