@@ -135,7 +135,6 @@ private[fs2] trait compressionplatform {
                         .as(
                           (inflated, trailerChunk)
                         )
-
                     }
                   }
                 }
