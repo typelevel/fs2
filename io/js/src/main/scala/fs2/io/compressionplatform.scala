@@ -23,7 +23,7 @@ package fs2
 package io
 
 import cats.effect.kernel.Async
-import cats.effect.{Deferred, Resource}
+import cats.effect.Deferred
 import cats.syntax.all._
 import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
@@ -115,7 +115,7 @@ private[fs2] trait compressionplatform {
                                 val bytesToPull = trailerSize - headTrailerBytes.size
                                 if (bytesToPull > 0) {
                                   suspendedIn.stream
-                                    .take(bytesToPull)
+                                    .take(bytesToPull.toLong)
                                     .chunkAll
                                     .compile
                                     .lastOrError
