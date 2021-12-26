@@ -147,7 +147,7 @@ private[fs2] trait compressionplatform {
                       case false =>
                         val newKeep =
                           if (keep.size + chunk.size > bufferLimitSoft / 2) {
-                            keep.take(keep.size / 2) ++ chunk
+                            keep.takeRight(keep.size / 2) ++ chunk
                           } else {
                             keep ++ chunk
                           }
