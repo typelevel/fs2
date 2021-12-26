@@ -98,8 +98,9 @@ private[fs2] trait compressionplatform {
                             .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
                         )
                         .onFinalize {
-                          F.delay(inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt)
-                            .flatMap(bytesWritten.complete) >>
+                          F.delay(
+                            inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt
+                          ).flatMap(bytesWritten.complete) >>
                             F.async_[Unit] { cb =>
                               inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
                             }
