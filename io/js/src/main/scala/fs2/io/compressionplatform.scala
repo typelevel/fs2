@@ -112,7 +112,8 @@ private[fs2] trait compressionplatform {
           F.background {
             // total bytes consumed by the inflate (might be less than bytesPiped below)
             bytesWritten.get.flatMap { bytesWritten =>
-              // total bytes piped from the upstream into inflate (some might not be consumed)
+              // total bytes piped from the upstream into the downstream (inflate); some might not be consumed; if we have to
+              // pull more bytes after the downstream is completed, those are counted here as well
               bytesPipedRef.get.flatMap { bytesPiped =>
                 // last chunk piped from the upstream into inflate (might have been consumed partially)
                 lastChunkRef.get.flatMap { lastChunk =>
