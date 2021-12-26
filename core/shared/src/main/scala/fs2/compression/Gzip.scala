@@ -22,18 +22,17 @@
 package fs2
 package compression
 
-import cats.effect.{Async, Deferred, Ref, Sync}
+import cats.effect.{Async, Deferred, Sync}
 import cats.syntax.all._
 
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.FiniteDuration
-import scala.reflect.ClassTag
 
 object CrcPipe {
 
-  def apply[F[_]](deferredCrc: Deferred[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
+  def apply[F[_]](deferredCrc: Deferred[F, Long]): Pipe[F, Byte, Byte] = {
     def pull(crcBuilder: CRC32): Stream[F, Byte] => Pull[F, Byte, Long] =
       _.pull.uncons.flatMap {
         case None => Pull.pure(crcBuilder.getValue())
@@ -54,37 +53,6 @@ object CrcPipe {
       } yield ()
 
     calculateCrcOf(_).stream
-  }
-
-}
-
-object FinalBytesPipe {
-
-  def apply[F[_]](count: Int, deferredFinalBytes: Deferred[F, Chunk[Byte]])(implicit
-      F: Sync[F]
-  ): Pipe[F, Byte, Byte] = {
-    def pull(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Chunk[Byte]] =
-      _.pull.uncons.flatMap {
-        case None => Pull.eval(F.delay(last.takeRight(count)))
-        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          val toKeep = if (c.size >= count) {
-            c
-          } else {
-            last.takeRight(count - c.size) ++ c
-          }
-          for {
-            _ <- Pull.output(c)
-            hexString <- pull(toKeep)(rest)
-          } yield hexString
-      }
-
-    def keepLastBytesOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
-      for {
-        finalBytes <- pull(Chunk.empty)(input)
-        _ <- Pull.eval(deferredFinalBytes.complete(finalBytes))
-      } yield ()
-
-    keepLastBytesOf(_).stream
   }
 
 }
@@ -194,7 +162,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       crc32.update(zeroByte.toInt)
       bytes
     }
-    val crc32Value = crc32.getValue
+    val crc32Value = crc32.getValue()
 
     val crc16 =
       if (fhCrcEnabled)
@@ -232,7 +200,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   }
 
   def gunzip(
-      inflate: Pipe[F, Byte, Byte],
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])],
       inflateParams: InflateParams
   ): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     stream =>
@@ -265,7 +233,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       mandatoryHeaderChunk: Chunk[Byte],
       streamAfterMandatoryHeader: Stream[F, Byte],
       headerCrc32: CRC32,
-      inflate: Pipe[F, Byte, Byte]
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])]
   ) =
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
       case (
@@ -397,7 +365,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       flags: Byte,
       headerCrc32: CRC32,
       secondsSince197001010000: Long,
-      inflate: Pipe[F, Byte, Byte]
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Stream[F, Byte])]
   ): Stream[F, GunzipResult[F]] =
     streamAfterMandatoryHeader
       .through(_gunzip_skipOptionalExtraField(gzipFlag.fextra(flags), headerCrc32))
@@ -430,22 +398,23 @@ class Gzip[F[_]](implicit F: Async[F]) {
                 comment = comment,
                 content = Stream.eval(F.deferred[Long]).flatMap { contentCrc32 =>
                   Stream.eval(F.deferred[Long]).flatMap { count =>
-                    Stream.eval(F.deferred[Chunk[Byte]]).flatMap { finalBytes =>
-                      (streamAfterComment
+                    inflate(
+                      streamAfterComment
                         .through(
                           _gunzip_validateHeader(
                             (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
                             headerCrc32
                           )
                         )
-                        .through(FinalBytesPipe(gzipTrailerBytes, finalBytes))
-                        .through(inflate)
+                    ).flatMap { case (inflated, after) =>
+                      inflated
                         .through(CrcPipe(contentCrc32))
-                        .through(CountPipe(count)) ++ Stream.eval(finalBytes.get).flatMap {
-                        finalBytes =>
-                          Stream.chunk(finalBytes)
-                      })
-                        .through(_gunzip_validateTrailer(contentCrc32, count))
+                        .through(CountPipe(count)) ++
+                        _gunzip_validateTrailer(
+                          after,
+                          contentCrc32,
+                          count
+                        )
                     }
                   }
                 }
@@ -506,7 +475,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       fieldBytesSoftLimit: Int
   ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
     stream =>
-      if (isPresent)
+      if (isPresent) {
         unconsUntil[Byte](_ == zeroByte, fieldBytesSoftLimit)
           .apply(stream)
           .flatMap {
@@ -528,12 +497,11 @@ class Gzip[F[_]](implicit F: Async[F]) {
                     )
                   },
                   rest
-                    .dropWhile { byte =>
+                    .dropThrough { byte =>
                       // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
                       crc32.update(byte.toInt)
                       byte != zeroByte
                     }
-                    .drop(1)
                 )
               )
             case None =>
@@ -545,7 +513,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
               )
           }
           .stream
-      else Stream.emit((Option.empty[String], stream))
+      } else Stream.emit((Option.empty[String], stream))
 
   private def _gunzip_validateHeader(
       isPresent: Boolean,
@@ -571,73 +539,70 @@ class Gzip[F[_]](implicit F: Async[F]) {
       else stream
 
   private def _gunzip_validateTrailer(
+      trailerStream: Stream[F, Byte],
       crc32: Deferred[F, Long],
       actualInputSize: Deferred[F, Long]
-  ): Pipe[F, Byte, Byte] =
-    stream =>
-      {
+  ): Stream[F, Byte] =
+    Stream
+      .eval {
+        trailerStream
+          .take(gzipTrailerBytes.toLong)
+          .chunkAll
+          .compile
+          .last
+          .flatMap[Unit] {
+            case None =>
+              F.raiseError(new ZipException(s"Failed to read trailer (2)"))
+            case Some(trailerChunk) =>
+              if (trailerChunk.size != gzipTrailerBytes) {
+                F.raiseError(new ZipException(s"Failed to read trailer (1): ${trailerChunk}"))
+              } else {
+                crc32.get.flatMap { crc32 =>
+                  actualInputSize.get.flatMap { actualInputSize =>
+                    val expectedInputCrc32 =
+                      unsignedToLong(
+                        trailerChunk(0),
+                        trailerChunk(1),
+                        trailerChunk(2),
+                        trailerChunk(3)
+                      ) & 0xffffffff
 
-        def validateTrailer(trailerChunk: Chunk[Byte]): Pull[F, Byte, Unit] =
-          if (trailerChunk.size == gzipTrailerBytes) {
-            Pull.eval(crc32.get).flatMap { crc32 =>
-              Pull.eval(actualInputSize.get).flatMap { actualInputSize =>
-                val expectedInputCrc32 =
-                  unsignedToLong(
-                    trailerChunk(0),
-                    trailerChunk(1),
-                    trailerChunk(2),
-                    trailerChunk(3)
-                  ) & 0xffffffff
+                    val actualInputCrc32 = crc32
 
-                val actualInputCrc32 = crc32
+                    val expectedInputSize =
+                      unsignedToLong(
+                        trailerChunk(4),
+                        trailerChunk(5),
+                        trailerChunk(6),
+                        trailerChunk(7)
+                      )
 
-                val expectedInputSize =
-                  unsignedToLong(trailerChunk(4), trailerChunk(5), trailerChunk(6), trailerChunk(7))
-
-                if (expectedInputCrc32 != actualInputCrc32) {
-                  Pull.raiseError(new ZipException("Content failed CRC validation"))
-                } else if (expectedInputSize != actualInputSize) {
-                  Pull.raiseError(new ZipException("Content failed size validation"))
-                } else {
-                  Pull.done
+                    if (expectedInputCrc32 != actualInputCrc32) {
+                      F.raiseError[Unit](new ZipException("Content failed CRC validation"))
+                    } else if (expectedInputSize != actualInputSize) {
+                      F.raiseError[Unit](new ZipException("Content failed size validation"))
+                    } else {
+                      F.unit
+                    }
+                  }
                 }
               }
-            }
-          } else Pull.raiseError(new ZipException("Failed to read trailer (1)"))
-
-        def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
-          _.pull.uncons
-            .flatMap {
-              case Some((next, rest)) =>
-                if (next.size >= gzipTrailerBytes)
-                  if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
-                  else streamUntilTrailer(next)(rest)
-                else
-                  streamUntilTrailer(last ++ next)(rest)
-              case None =>
-                val preTrailerBytes = last.size - gzipTrailerBytes
-                if (preTrailerBytes > 0)
-                  Pull.output(last.take(preTrailerBytes)) >>
-                    validateTrailer(last.drop(preTrailerBytes))
-                else
-                  validateTrailer(last)
-            }
-
-        streamUntilTrailer(Chunk.empty[Byte])(stream)
-      }.stream
+          }
+      }
+      .flatMap(_ => Stream.empty)
 
   /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
     * Elements will not be dropped after the soft limit is breached.
     *
     * `Pull.pure(None)` is returned if the end of the source stream is reached.
     */
-  private def unconsUntil[O: ClassTag](
+  private def unconsUntil[O](
       predicate: O => Boolean,
       softLimit: Int
   ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
     stream => {
       def go(
-          acc: List[Chunk[O]],
+          acc: Chunk[O],
           rest: Stream[F, O],
           size: Int = 0
       ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
@@ -646,17 +611,23 @@ class Gzip[F[_]](implicit F: Async[F]) {
             Pull.pure(None)
           case Some((hd, tl)) =>
             hd.indexWhere(predicate) match {
-              case Some(i) =>
+              case Some(i) if i > 0 =>
                 val (pfx, sfx) = hd.splitAt(i)
-                Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+                Pull.pure(Some((acc ++ pfx) -> (Stream.chunk(sfx) ++ tl)))
+              case Some(_) =>
+                Pull.pure(
+                  Some(acc -> tl.cons(hd))
+                )
               case None =>
                 val newSize = size + hd.size
-                if (newSize < softLimit) go(hd :: acc, tl, newSize)
-                else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+                if (newSize < softLimit) go(acc ++ hd, tl, newSize)
+                else {
+                  Pull.pure(Some((acc ++ hd) -> tl))
+                }
             }
         }
 
-      go(Nil, stream)
+      go(Chunk.empty, stream)
     }
 
   private val gzipHeaderBytes = 10
@@ -732,7 +703,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
   private val fileNameBytesSoftLimit =
     1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). Typical maximum file size is 255 characters.
   private val fileCommentBytesSoftLimit =
-    1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
+    100 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 
   private def moveAsChunkBytes(values: Array[Byte]): Chunk[Byte] =
     moveAsChunkBytes(values, values.length)

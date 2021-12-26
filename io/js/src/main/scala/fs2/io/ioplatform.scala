@@ -23,7 +23,7 @@ package fs2
 package io
 
 import cats.Show
-import cats.effect.SyncIO
+import cats.effect.{Deferred, SyncIO}
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
@@ -35,6 +35,7 @@ import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.processMod
 import fs2.internal.jsdeps.node.streamMod
+import fs2.internal.jsdeps.node.zlibMod.Zlib
 import fs2.internal.jsdeps.std
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
@@ -67,6 +68,32 @@ private[fs2] trait ioplatform {
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
   )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
+    suspendReadableAndReadWithOnEnd[F, R](destroyIfNotEnded, destroyIfCanceled, None)(thunk)(F)
+
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
+    */
+  def suspendReadableAndReadZlib[F[_], R <: Zlib](
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte], Deferred[F, Int])] =
+    for {
+      bytesWritten <- Resource.eval(F.deferred[Int])
+      onEnd = (d: Dispatcher[F], r: R) =>
+        d.unsafeRunAndForget(bytesWritten.complete(r.asInstanceOf[Zlib].bytesWritten.toLong.toInt))
+      r <- suspendReadableAndReadWithOnEnd(
+        destroyIfNotEnded,
+        destroyIfCanceled,
+        Some(onEnd)
+      )(thunk.asInstanceOf[R with Readable])
+    } yield (r._1, r._2, bytesWritten)
+
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
+    */
+  def suspendReadableAndReadWithOnEnd[F[_], R <: Readable](
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true,
+      onEnd: Option[(Dispatcher[F], R) => Unit]
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
     (for {
       dispatcher <- Dispatcher[F]
       queue <- Queue.synchronous[F, Option[Unit]].toResource
@@ -96,6 +123,7 @@ private[fs2] trait ioplatform {
           dispatcher.unsafeRunAndForget(queue.offer(Some(())))
         }(SyncIO.syncForSyncIO)
         _ <- registerListener0(readable, nodeStrings.end)(_.on_end(_, _)) { () =>
+          onEnd.foreach(_(dispatcher, readable.asInstanceOf[R]))
           dispatcher.unsafeRunAndForget(queue.offer(None))
         }(SyncIO.syncForSyncIO)
         _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>

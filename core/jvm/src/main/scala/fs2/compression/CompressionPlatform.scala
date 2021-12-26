@@ -873,7 +873,7 @@ private[compression] trait CompressionCompanionPlatform {
       ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
         stream => {
           def go(
-              acc: List[Chunk[O]],
+              acc: Chunk[O],
               rest: Stream[F, O],
               size: Int = 0
           ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
@@ -884,15 +884,15 @@ private[compression] trait CompressionCompanionPlatform {
                 hd.indexWhere(predicate) match {
                   case Some(i) =>
                     val (pfx, sfx) = hd.splitAt(i)
-                    Pull.pure(Some(Chunk.concat((pfx :: acc).reverse) -> tl.cons(sfx)))
+                    Pull.pure(Some((acc ++ pfx) -> tl.cons(sfx)))
                   case None =>
                     val newSize = size + hd.size
-                    if (newSize < softLimit) go(hd :: acc, tl, newSize)
-                    else Pull.pure(Some(Chunk.concat((hd :: acc).reverse) -> tl))
+                    if (newSize < softLimit) go(acc ++ hd, tl, newSize)
+                    else Pull.pure(Some((acc ++ hd) -> tl))
                 }
             }
 
-          go(Nil, stream)
+          go(Chunk.empty, stream)
         }
 
       private val gzipHeaderBytes = 10
