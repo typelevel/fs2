@@ -83,57 +83,46 @@ private[fs2] trait compressionplatform {
           Stream.resource(SuspendedStream(in)),
           Stream.eval(F.ref(Chunk.empty[Byte])),
           Stream.eval(F.ref(0)),
-          Stream.eval(F.deferred[Int]),
           Stream.eval(F.deferred[Chunk[Byte]])
-        ).tupled.flatMap {
-          case ((inflate, out), suspendedIn, lastChunk, bytesPiped, bytesWritten, trailerChunk) =>
-            val trackedStream =
-              suspendedIn.stream.chunks.evalTap { chunk =>
-                bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
-              }.unchunks
-            val inflated = out
-              .concurrently(
-                trackedStream
-                  .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
-              )
-              .onFinalize {
-                F.delay(
-                  inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong.toInt
-                ).flatMap(bytesWritten.complete) >>
-                  F.async_[Unit] { cb =>
-                    inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
-                  }
-              }
+        ).tupled.map { case ((inflate, out), suspendedIn, lastChunk, bytesPiped, trailerChunk) =>
+          val trackedStream =
+            suspendedIn.stream.chunks.evalTap { chunk =>
+              bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
+            }.unchunks
 
-            Stream
-              .resource {
-                F.background {
-                  (bytesWritten.get, bytesPiped.get, lastChunk.get).mapN {
-                    (bytesWritten, bytesPiped, lastChunk) =>
-                      val bytesAvailable = bytesPiped - bytesWritten
-                      val headTrailerBytes = lastChunk.takeRight(bytesAvailable)
-                      val bytesToPull = trailerSize - headTrailerBytes.size
-                      if (bytesToPull > 0) {
-                        suspendedIn.stream
-                          .take(bytesToPull.toLong)
-                          .chunkAll
-                          .compile
-                          .lastOrError
-                          .flatMap { remainingBytes =>
-                            trailerChunk.complete(
-                              headTrailerBytes ++ remainingBytes
-                            )
-                          }
-                      } else {
-                        trailerChunk.complete(
-                          headTrailerBytes.take(trailerSize)
-                        )
-                      }
-                  }.flatten
+          def onBytesWritten(bytesWritten: Long): F[Unit] =
+            (bytesPiped.get, lastChunk.get).tupled.flatMap { case (bytesPiped, lastChunk) =>
+              val bytesAvailable = bytesPiped - bytesWritten
+              val headTrailerBytes = lastChunk.takeRight(bytesAvailable.toInt)
+              val bytesToPull = trailerSize - headTrailerBytes.size
+              val wholeTrailer = if (bytesToPull > 0) {
+                suspendedIn.stream
+                  .take(bytesToPull.toLong)
+                  .chunkAll
+                  .compile
+                  .lastOrError
+                  .map(remainingBytes => headTrailerBytes ++ remainingBytes)
+              } else {
+                headTrailerBytes.take(trailerSize).pure[F]
+              }
+              (wholeTrailer >>= trailerChunk.complete).void
+            }
+
+          val inflated = out
+            .concurrently(
+              trackedStream
+                .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
+            )
+            .onFinalize {
+              F.delay(
+                inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong
+              ).flatMap(onBytesWritten) >>
+                F.async_[Unit] { cb =>
+                  inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
                 }
-              }
-              .as((inflated, trailerChunk))
+            }
 
+          (inflated, trailerChunk)
         }
       }
 
