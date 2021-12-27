@@ -21,12 +21,12 @@
 
 package fs2.io.internal
 
-import fs2.internal.jsdeps.std
+import scala.scalajs.js
 
 private[fs2] object ThrowableOps {
   implicit def toThrowableOps(t: Throwable): ThrowableOps = new ThrowableOps(t)
 
   private[fs2] final class ThrowableOps(t: Throwable) {
-    def toJSError: std.Error = std.Error(t.getMessage(), t.getClass.getSimpleName)
+    def toJSError: js.Error = js.Error(t.getMessage())
   }
 }

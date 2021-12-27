@@ -32,7 +32,6 @@ import com.comcast.ip4s.Port
 import fs2.internal.jsdeps.node.dgramMod
 import fs2.internal.jsdeps.node.eventsMod
 import fs2.internal.jsdeps.node.nodeStrings
-import fs2.internal.jsdeps.std
 
 import scala.scalajs.js
 
@@ -63,7 +62,7 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
       socket <- DatagramSocket.forAsync[F](sock)
       _ <- F
         .async_[Unit] { cb =>
-          val errorListener: js.Function1[std.Error, Unit] = { error =>
+          val errorListener: js.Function1[js.Error, Unit] = { error =>
             cb(Left(js.JavaScriptException(error)))
           }
           sock.once_error(nodeStrings.error, errorListener)

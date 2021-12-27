@@ -35,7 +35,7 @@ import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.processMod
 import fs2.internal.jsdeps.node.streamMod
-import fs2.internal.jsdeps.std
+import fs2.internal.jsdeps.node.NodeJS.WritableStream
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.EventEmitterOps._
 import fs2.io.internal.ThrowableOps._
@@ -101,7 +101,7 @@ private[fs2] trait ioplatform {
         _ <- registerListener0(readable, nodeStrings.close)(_.on_close(_, _)) { () =>
           dispatcher.unsafeRunAndForget(queue.offer(None))
         }(SyncIO.syncForSyncIO)
-        _ <- registerListener[std.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
+        _ <- registerListener[js.Error](readable, nodeStrings.error)(_.on_error(_, _)) { e =>
           dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
         }(SyncIO.syncForSyncIO)
       } yield readable
@@ -137,7 +137,7 @@ private[fs2] trait ioplatform {
             .concurrently(
               Stream.eval(
                 F.async_[Unit](cb =>
-                  duplex.asInstanceOf[streamMod.Writable].end(() => cb(Right(())))
+                  duplex.asInstanceOf[streamMod.Duplex].end(() => cb(Right(())))
                 )
               )
             )
@@ -173,7 +173,7 @@ private[fs2] trait ioplatform {
               } >> go(tail)
             case None =>
               if (endAfterUse)
-                Pull.eval(F.async_[Unit](cb => writable.end(() => cb(Right(())))))
+                Pull.eval(F.async_[Unit](cb => (writable: WritableStream).end(() => cb(Right(())))))
               else
                 Pull.done
           }
@@ -235,7 +235,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[std.Error | Null](null)(_.toJSError)
+                            .fold[js.Error | Null](null)(_.toJSError)
                         )
                       )
                     )
@@ -250,7 +250,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[std.Error | Null](null)(_.toJSError)
+                            .fold[js.Error | Null](null)(_.toJSError)
                         )
                       )
                     )
@@ -268,7 +268,7 @@ private[fs2] trait ioplatform {
                       F.delay(
                         cb(
                           e.left.toOption
-                            .fold[std.Error | Null](null)(_.toJSError)
+                            .fold[js.Error | Null](null)(_.toJSError)
                         )
                       )
                     )
