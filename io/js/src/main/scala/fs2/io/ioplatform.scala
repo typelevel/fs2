@@ -136,9 +136,7 @@ private[fs2] trait ioplatform {
             .merge(out.drain)
             .concurrently(
               Stream.eval(
-                F.async_[Unit](cb =>
-                  duplex.asInstanceOf[streamMod.Duplex].end(() => cb(Right(())))
-                )
+                F.async_[Unit](cb => duplex.asInstanceOf[streamMod.Duplex].end(() => cb(Right(()))))
               )
             )
         }
