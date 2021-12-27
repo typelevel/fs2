@@ -61,12 +61,18 @@ object DatagramSocketOption {
 
   private object MulticastLoopback extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Boolean): F[Unit] =
-      Sync[F].delay(sock.setMulticastLoopback(value))
+      Sync[F].delay {
+        sock.setMulticastLoopback(value)
+        ()
+      }
   }
 
   private object MulticastTtl extends Key[Int] {
     override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
-      Sync[F].delay(sock.setMulticastTTL(value.toDouble))
+      Sync[F].delay {
+        sock.setMulticastTTL(value.toDouble)
+        ()
+      }
   }
 
   private object ReceiveBufferSize extends Key[Int] {
@@ -81,7 +87,10 @@ object DatagramSocketOption {
 
   private object Ttl extends Key[Int] {
     override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
-      Sync[F].delay(sock.setTTL(value.toDouble))
+      Sync[F].delay {
+        sock.setTTL(value.toDouble)
+        ()
+      }
   }
 
   def broadcast(value: Boolean): DatagramSocketOption = apply(Broadcast, value)
