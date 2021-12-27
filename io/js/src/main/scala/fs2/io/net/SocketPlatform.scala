@@ -96,8 +96,8 @@ private[net] trait SocketCompanionPlatform {
 
     override def localAddress: F[SocketAddress[IpAddress]] =
       for {
-        ip <- F.delay(IpAddress.fromString(sock.localAddress).get)
-        port <- F.delay(Port.fromInt(sock.localPort.toInt).get)
+        ip <- F.delay(sock.localAddress.toOption.flatMap(IpAddress.fromString).get)
+        port <- F.delay(sock.localPort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
       } yield SocketAddress(ip, port)
 
     override def write(bytes: Chunk[Byte]): F[Unit] =
