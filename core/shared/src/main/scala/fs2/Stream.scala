@@ -3799,7 +3799,26 @@ object Stream extends StreamLowPriority {
     def observe(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(p)
 
-    /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    /** Attaches to this stream an observer pipe, that pre-inspects the outputs
+      * from `this` stream (the source) before the result stream emits them.
+      *
+      * Outputs from the source are fed to the observer pipe, to build a stream
+      * that is run in the background. However, unlike the `background` method,
+      * the `observe` method binds the mainstream: if the observation stream
+      * reaches a stream end, the resulting stream is cut short.
+      *
+      * The resulting stream emits the same outputs as the source (`this`) stream,
+      * in the same order and chunk structure. However, no chunk is emitted by the
+      * resulting stream until _after_ the observer pipe is done processing it.
+      *
+      * Any errors raised either from the evaluation of the source stream (this)
+      * or from the observer pipe (when applied to source chunks) will cause the
+      * termination of the resulting stream, and will be raised from this.
+      *
+      * @returns A stream that may emit the same outputs as this stream (source),
+      *          in the same order and chunks, and performs the same effects as
+      *          the source; but in which every chunk is processed by the pipe.
+      */
     def observeAsync(
         maxQueued: Int
     )(pipe: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
