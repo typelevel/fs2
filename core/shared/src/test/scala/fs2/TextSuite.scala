@@ -271,7 +271,7 @@ class TextSuite extends Fs2Suite {
       }
     }
 
-    property("EOF") {
+    test("EOF") {
       List("\n", "\r\n", "\r").foreach { delimiter =>
         val s = s"a$delimiter"
         assertEquals(Stream.emit(s).through(lines).toList, List("a", ""))
@@ -294,7 +294,7 @@ class TextSuite extends Fs2Suite {
       }
     }
 
-    property("linesLimited") {
+    test("linesLimited") {
       val line = "foo" * 100
       (1 to line.length).foreach { i =>
         val stream = Stream

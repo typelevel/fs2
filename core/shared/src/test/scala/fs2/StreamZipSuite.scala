@@ -26,12 +26,10 @@ import cats.effect.testkit.TestControl
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 
-import scala.annotation.nowarn
 import scala.concurrent.duration._
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
-@nowarn("cat=w-flag-dead-code")
 class StreamZipSuite extends Fs2Suite {
 
   group("zip") {
@@ -372,7 +370,7 @@ class StreamZipSuite extends Fs2Suite {
         .toList,
       List("uno" -> 0, "dos" -> 3, "tres" -> 6, "cuatro" -> 10)
     )
-    assertEquals(Stream().zipWithScan(())((_, _) => ???).toList, Nil)
+    assertEquals(Stream[Pure, Int]().zipWithScan(())((_, _) => ???).toList, Nil)
   }
 
   test("zipWithScan1") {
@@ -382,7 +380,7 @@ class StreamZipSuite extends Fs2Suite {
         .toList,
       List("uno" -> 3, "dos" -> 6, "tres" -> 10, "cuatro" -> 16)
     )
-    assertEquals(Stream().zipWithScan1(())((_, _) => ???).toList, Nil)
+    assertEquals(Stream[Pure, Int]().zipWithScan1(())((_, _) => ???).toList, Nil)
   }
 
   group("regressions") {

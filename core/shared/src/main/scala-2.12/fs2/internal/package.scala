@@ -22,7 +22,8 @@
 package fs2
 
 import scala.collection.generic.CanBuildFrom
-import scala.collection.mutable.Builder
+import scala.collection.mutable.{ArrayBuilder, Builder}
+import scala.reflect.ClassTag
 
 package object internal {
   private[fs2] type Factory[-A, +C] = CanBuildFrom[Nothing, A, C]
@@ -30,4 +31,7 @@ package object internal {
   private[fs2] implicit class FactoryOps[-A, +C](private val factory: Factory[A, C]) {
     def newBuilder: Builder[A, C] = factory()
   }
+
+  private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make()(ct)
 }

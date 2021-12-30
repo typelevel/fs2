@@ -42,7 +42,6 @@ import fs2.io.internal.EventEmitterOps._
 import fs2.internal.jsdeps.node.bufferMod
 import fs2.internal.jsdeps.node.dgramMod
 import fs2.internal.jsdeps.node.nodeStrings
-import fs2.internal.jsdeps.std
 
 import scala.scalajs.js
 
@@ -78,7 +77,7 @@ private[net] trait DatagramSocketCompanionPlatform {
           )
         )
       }
-      _ <- registerListener[std.Error](sock, nodeStrings.error)(_.on_error(_, _)) { e =>
+      _ <- registerListener[js.Error](sock, nodeStrings.error)(_.on_error(_, _)) { e =>
         dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
       }
       socket <- Resource.make(F.pure(new AsyncDatagramSocket(sock, queue, error)))(_ =>
@@ -108,7 +107,7 @@ private[net] trait DatagramSocketCompanionPlatform {
         datagram.remote.port.value.toDouble,
         datagram.remote.host.toString,
         (err, _) =>
-          Option(err.asInstanceOf[std.Error]).fold(cb(Right(())))(err =>
+          Option(err.asInstanceOf[js.Error]).fold(cb(Right(())))(err =>
             cb(Left(js.JavaScriptException(err)))
           )
       )

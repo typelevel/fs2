@@ -43,10 +43,6 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
       10 -> Gen
         .listOf(genA)
         .map(_.toVector)
-        .map(as => Chunk.buffer(collection.mutable.Buffer.empty ++= as)),
-      10 -> Gen
-        .listOf(genA)
-        .map(_.toVector)
         .map(as => Chunk.chain(Chain.fromSeq(as))) // TODO Add variety in Chain
     )
 

@@ -174,7 +174,7 @@ object PcapCodec {
   implicit def pcapRecord(implicit ordering: ByteOrdering): Codec[PcapRecord] =
     ("record_header" | pcapRecordHeader)
       .flatPrepend { hdr =>
-        ("record_data" | bits(hdr.includedLength * 8)).hlist
+        ("record_data" | bits(hdr.includedLength * 8)).tuple
       }
       .as[PcapRecord]
 
@@ -183,7 +183,7 @@ object PcapCodec {
   implicit val pcapFile: Codec[PcapFile] =
     pcapHeader
       .flatPrepend { hdr =>
-        vector(pcapRecord(hdr.ordering)).hlist
+        vector(pcapRecord(hdr.ordering)).tuple
       }
       .as[PcapFile]
 }

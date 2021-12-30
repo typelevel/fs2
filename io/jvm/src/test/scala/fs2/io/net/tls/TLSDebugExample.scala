@@ -63,7 +63,8 @@ class TLSDebugTest extends Fs2Suite {
     Network[IO].tlsContext.system.flatMap { ctx =>
       TLSDebug
         .debug[IO](ctx, address)
-        .flatMap(l => IO(println(l)))
+        // .flatMap(IO.println)
+        .void
     }
 
   test("google")(run(SocketAddress(host"google.com", port"443")))

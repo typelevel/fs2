@@ -21,6 +21,12 @@
 
 package fs2
 
+import scala.reflect.ClassTag
+import scala.collection.mutable.ArrayBuilder
+
 package object internal {
   private[fs2] type Factory[-A, +C] = scala.collection.Factory[A, C]
+
+  private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
+    ArrayBuilder.make(ct)
 }

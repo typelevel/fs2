@@ -29,7 +29,7 @@ import cats.effect.kernel.Deferred
 import cats.syntax.all._
 import fs2.io.internal.PipedStreamBuffer
 
-import java.io.{IOException, InputStream, OutputStream}
+import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
@@ -60,7 +60,7 @@ private[fs2] trait ioplatform {
   ): Resource[F, InputStream] =
     JavaInputOutputStream.toInputStream(source)
 
-  /** Take a function that emits to an [[java.io.OutputStream OutputStream]] effectfully,
+  /** Take a function that emits to a `java.io.OutputStream` effectfully,
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the OutputStream as an fs2.Stream
     *

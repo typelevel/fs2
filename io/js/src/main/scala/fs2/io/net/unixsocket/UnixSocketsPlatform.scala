@@ -26,7 +26,6 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import fs2.io.net.Socket
 import fs2.internal.jsdeps.node.netMod
-import fs2.internal.jsdeps.std
 import cats.syntax.all._
 import scala.scalajs.js
 import cats.effect.std.Dispatcher
@@ -79,7 +78,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           )
           _ <- Stream
             .resource(
-              registerListener[std.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
+              registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
                 dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
               }
             )

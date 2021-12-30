@@ -25,7 +25,6 @@ package net
 package tls
 
 import java.net.NetworkInterface
-import javax.net.ssl.SSLSession
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource, Sync}

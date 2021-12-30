@@ -27,8 +27,8 @@ package tls
 import fs2.io.internal.ByteChunkOps._
 import fs2.io.internal.ThrowableOps._
 import fs2.internal.jsdeps.node.tlsMod
-import fs2.internal.jsdeps.std
 import scala.scalajs.js.JSConverters._
+import scala.scalajs.js.typedarray.Uint8Array
 import scala.scalajs.js
 import scala.scalajs.js.|
 import cats.syntax.all._
@@ -82,7 +82,7 @@ sealed trait TLSParameters {
     requestCert.foreach(options.setRequestCert(_))
     rejectUnauthorized.foreach(options.setRejectUnauthorized(_))
     alpnProtocols
-      .map(_.map(x => x: String | std.Uint8Array).toJSArray)
+      .map(_.map(x => x: String | Uint8Array).toJSArray)
       .foreach(options.setALPNProtocols(_))
     sniCallback.map(_.toJS(dispatcher)).foreach(options.setSNICallback(_))
   }
@@ -132,7 +132,7 @@ object TLSParameters {
     def apply[F[_]: Async](servername: String): F[Either[Throwable, Option[SecureContext]]]
     private[TLSParameters] def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
         F: Async[F]
-    ): js.Function2[String, js.Function2[std.Error | Null, js.UndefOr[
+    ): js.Function2[String, js.Function2[js.Error | Null, js.UndefOr[
       tlsMod.SecureContext
     ], Unit], Unit] = { (servername, cb) =>
       dispatcher.unsafeRunAndForget {
@@ -163,7 +163,7 @@ object TLSParameters {
     def apply(servername: String, cert: Chunk[Byte]): Either[Throwable, Unit]
 
     private[TLSParameters] def toJS
-        : js.Function2[String, tlsMod.PeerCertificate, js.UndefOr[std.Error]] = {
+        : js.Function2[String, tlsMod.PeerCertificate, js.UndefOr[js.Error]] = {
       (servername, cert) =>
         apply(servername, cert.raw.toChunk) match {
           case Left(ex) => ex.toJSError
