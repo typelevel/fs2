@@ -22,64 +22,13 @@
 package fs2
 package compression
 
-import cats.effect.{Async, Deferred, Sync}
+import cats.effect.{Async, Deferred}
 import cats.syntax.all._
 
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.FiniteDuration
-
-object CrcPipe {
-
-  def apply[F[_]](deferredCrc: Deferred[F, Long]): Pipe[F, Byte, Byte] = {
-    def pull(crcBuilder: CRC32): Stream[F, Byte] => Pull[F, Byte, Long] =
-      _.pull.uncons.flatMap {
-        case None => Pull.pure(crcBuilder.getValue())
-        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          val slice = c.toArraySlice
-          crcBuilder.update(slice.values, slice.offset, slice.length)
-          for {
-            _ <- Pull.output(c)
-            hexString <- pull(crcBuilder)(rest)
-          } yield hexString
-      }
-
-    def calculateCrcOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
-      for {
-        crcBuilder <- Pull.pure(new CRC32)
-        crc <- pull(crcBuilder)(input)
-        _ <- Pull.eval(deferredCrc.complete(crc))
-      } yield ()
-
-    calculateCrcOf(_).stream
-  }
-
-}
-
-object CountPipe {
-
-  def apply[F[_]](deferredCount: Deferred[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
-    def pull(count: Long): Stream[F, Byte] => Pull[F, Byte, Long] =
-      _.pull.uncons.flatMap {
-        case None => Pull.eval(F.delay(count))
-        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          for {
-            _ <- Pull.output(c)
-            hexString <- pull(count + c.size)(rest)
-          } yield hexString
-      }
-
-    def calculateSizeOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
-      for {
-        count <- pull(0)(input)
-        _ <- Pull.eval(deferredCount.complete(count))
-      } yield ()
-
-    calculateSizeOf(_).stream
-  }
-
-}
 
 class Gzip[F[_]](implicit F: Async[F]) {
 
