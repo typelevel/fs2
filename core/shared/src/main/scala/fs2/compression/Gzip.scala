@@ -93,24 +93,20 @@ class Gzip[F[_]](implicit F: Async[F]) {
     stream =>
       deflateParams match {
         case params: DeflateParams if params.header == ZLibParams.Header.GZIP =>
-          for {
-            crc <- Stream.eval(F.deferred[Long])
-            count <- Stream.eval(F.deferred[Long])
-            result <- _gzip_header(
+          Stream.eval((F.deferred[Long], F.deferred[Long]).tupled).flatMap { case (crc, bytesIn) =>
+            _gzip_header(
               fileName,
               modificationTime,
               comment,
               params.level.juzDeflaterLevel,
               params.fhCrcEnabled
             ) ++
-              stream.through(CrcPipe(crc)).through(CountPipe(count)).through(deflate) ++
-              Stream.eval(crc.get).flatMap { crc =>
-                Stream.eval(count.get).flatMap { count =>
-                  _gzip_trailer(count, crc)
-                }
-              }
-
-          } yield result
+              stream
+                .through(CrcPipe(crc))
+                .through(CountPipe(bytesIn))
+                .through(deflate) ++
+              _gzip_trailer(bytesIn, crc)
+          }
 
         case params: DeflateParams =>
           Stream.raiseError[F](
@@ -183,21 +179,22 @@ class Gzip[F[_]](implicit F: Async[F]) {
       Stream.chunk(moveAsChunkBytes(crc16))
   }
 
-  private def _gzip_trailer(bytesIn: Long, crc: Long): Stream[F, Byte] = {
-    // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
-    val crc32Value = crc
-    val trailer = Array[Byte](
-      (crc32Value & 0xff).toByte, // CRC-32: Cyclic Redundancy Check
-      ((crc32Value >> 8) & 0xff).toByte,
-      ((crc32Value >> 16) & 0xff).toByte,
-      ((crc32Value >> 24) & 0xff).toByte,
-      (bytesIn & 0xff).toByte, // ISIZE: Input size
-      ((bytesIn >> 8) & 0xff).toByte,
-      ((bytesIn >> 16) & 0xff).toByte,
-      ((bytesIn >> 24) & 0xff).toByte
-    )
-    Stream.chunk(moveAsChunkBytes(trailer))
-  }
+  private def _gzip_trailer(bytesIn: Deferred[F, Long], crc: Deferred[F, Long]): Stream[F, Byte] =
+    Stream.eval((crc.get, bytesIn.get).tupled).flatMap { case (crc, bytesIn) =>
+      // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
+      val crc32Value = crc
+      val trailer = Array[Byte](
+        (crc32Value & 0xff).toByte, // CRC-32: Cyclic Redundancy Check
+        ((crc32Value >> 8) & 0xff).toByte,
+        ((crc32Value >> 16) & 0xff).toByte,
+        ((crc32Value >> 24) & 0xff).toByte,
+        (bytesIn & 0xff).toByte, // ISIZE: Input size
+        ((bytesIn >> 8) & 0xff).toByte,
+        ((bytesIn >> 16) & 0xff).toByte,
+        ((bytesIn >> 24) & 0xff).toByte
+      )
+      Stream.chunk(moveAsChunkBytes(trailer))
+    }
 
   def gunzip(
       inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])],
