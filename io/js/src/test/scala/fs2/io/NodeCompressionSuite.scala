@@ -24,7 +24,6 @@ package io
 
 import cats.effect._
 import fs2.compression._
-import fs2.internal.jsdeps.node.bufferMod.global.Buffer
 import fs2.internal.jsdeps.node.zlibMod
 import fs2.io.NodeCompression._
 import org.scalacheck.effect.PropF.forAllF
@@ -32,7 +31,6 @@ import scodec.bits.{ByteVector, crc}
 
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.FiniteDuration
-import scala.scalajs.js
 import scala.scalajs.js.JSConverters._
 import scala.scalajs.js.typedarray._
 import org.scalacheck.{Arbitrary, Gen}
@@ -99,13 +97,13 @@ class NodeCompressionSuite extends Fs2Suite {
       @unused nowrap: Boolean
   ): Array[Byte] =
     zlibMod
-      .deflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
+      .deflateSync(Int8Array.from(b.toJSArray))
       .asInstanceOf[Int8Array]
       .toArray
 
   def inflateStream(b: Array[Byte], @unused nowrap: Boolean): Array[Byte] =
     zlibMod
-      .inflateSync(Buffer.from(b.toJSArray.asInstanceOf[js.Array[Double]]))
+      .inflateSync(Int8Array.from(b.toJSArray))
       .asInstanceOf[Int8Array]
       .toArray
 
