@@ -223,7 +223,7 @@ object Channel {
 
           def tryOffer(a: A): F[Boolean] = trySend(a).flatMap(raiseClosed)
 
-          private def raiseClosed[A](ca: Either[Closed, A]): F[A] = ca match {
+          private def raiseClosed[B](ca: Either[Closed, B]): F[B] = ca match {
             case Left(Closed) => F.raiseError(new ClosedException)
             case Right(a)     => a.pure[F]
           }
