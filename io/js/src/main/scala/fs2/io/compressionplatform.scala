@@ -22,8 +22,7 @@
 package fs2
 package io
 
-import cats.effect.kernel.Async
-import cats.effect.Deferred
+import cats.effect.{Async, Ref}
 import cats.syntax.all._
 import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
@@ -68,7 +67,7 @@ private[fs2] trait compressionplatform {
       private def inflateAndTrailer(
           inflateParams: InflateParams,
           trailerSize: Int
-      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])] = in => {
+      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])] = in => {
         val options = zlibMod
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
@@ -81,9 +80,9 @@ private[fs2] trait compressionplatform {
             }).asInstanceOf[Duplex]
           }),
           Stream.resource(SuspendedStream(in)),
-          Stream.eval(F.ref(Chunk.empty[Byte])),
-          Stream.eval(F.ref(0)),
-          Stream.eval(F.deferred[Chunk[Byte]])
+          Stream.eval(Ref.of[F, Chunk[Byte]](Chunk.empty)),
+          Stream.eval(Ref.of[F, Int](0)),
+          Stream.eval(Ref.of[F, Chunk[Byte]](Chunk.empty))
         ).tupled.map { case ((inflate, out), suspendedIn, lastChunk, bytesPiped, trailerChunk) =>
           val trackedStream =
             suspendedIn.stream.chunks.evalTap { chunk =>
@@ -105,7 +104,7 @@ private[fs2] trait compressionplatform {
               } else {
                 headTrailerBytes.take(trailerSize).pure[F]
               }
-              (wholeTrailer >>= trailerChunk.complete).void
+              (wholeTrailer >>= trailerChunk.set).void
             }
 
           val inflated = out

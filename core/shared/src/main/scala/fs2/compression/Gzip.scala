@@ -22,15 +22,19 @@
 package fs2
 package compression
 
-import cats.effect.{Async, Deferred}
+import cats.effect.{Ref, Sync}
 import cats.syntax.all._
+import fs2.compression.internal.UnconsUntil
+import scodec.bits.BitVector
+import scodec.bits.crc.crc32Builder
+import scodec.bits.crc.CrcBuilder
 
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.FiniteDuration
 
-class Gzip[F[_]](implicit F: Async[F]) {
+class Gzip[F[_]](implicit F: Sync[F]) {
 
   def gzip(
       fileName: Option[String],
@@ -42,19 +46,20 @@ class Gzip[F[_]](implicit F: Async[F]) {
     stream =>
       deflateParams match {
         case params: DeflateParams if params.header == ZLibParams.Header.GZIP =>
-          Stream.eval((F.deferred[Long], F.deferred[Long]).tupled).flatMap { case (crc, bytesIn) =>
-            _gzip_header(
-              fileName,
-              modificationTime,
-              comment,
-              params.level.juzDeflaterLevel,
-              params.fhCrcEnabled
-            ) ++
-              stream
-                .through(CrcPipe(crc))
-                .through(CountPipe(bytesIn))
-                .through(deflate) ++
-              _gzip_trailer(bytesIn, crc)
+          Stream.eval((Ref.of[F, Long](0), Ref.of[F, Long](0)).tupled).flatMap {
+            case (crc, bytesIn) =>
+              _gzip_header(
+                fileName,
+                modificationTime,
+                comment,
+                params.level.juzDeflaterLevel,
+                params.fhCrcEnabled
+              ) ++
+                stream
+                  .through(CrcPipe(crc))
+                  .through(CountPipe(bytesIn))
+                  .through(deflate) ++
+                _gzip_trailer(bytesIn, crc)
           }
 
         case params: DeflateParams =>
@@ -93,21 +98,21 @@ class Gzip[F[_]](implicit F: Async[F]) {
       },
       gzipOperatingSystem.THIS
     ) // OS: Operating System
-    val crc32 = new CRC32
-    crc32.update(header)
+
+    var crc32 =
+      crc32Builder.updated(BitVector.view(header))
+
     val fileNameEncoded = fileName.map { string =>
       val bytes = string.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1)
-      crc32.update(bytes)
-      crc32.update(zeroByte.toInt)
+      crc32 = crc32.updated(BitVector.view(bytes)).updated(BitVector.fromInt(zeroByte.toInt))
       bytes
     }
     val commentEncoded = comment.map { string =>
       val bytes = string.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1)
-      crc32.update(bytes)
-      crc32.update(zeroByte.toInt)
+      crc32 = crc32.updated(BitVector.view(bytes)).updated(BitVector.fromInt(zeroByte.toInt))
       bytes
     }
-    val crc32Value = crc32.getValue()
+    val crc32Value = crc32.result.toLong()
 
     val crc16 =
       if (fhCrcEnabled)
@@ -128,7 +133,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
       Stream.chunk(moveAsChunkBytes(crc16))
   }
 
-  private def _gzip_trailer(bytesIn: Deferred[F, Long], crc: Deferred[F, Long]): Stream[F, Byte] =
+  private def _gzip_trailer(bytesIn: Ref[F, Long], crc: Ref[F, Long]): Stream[F, Byte] =
     Stream.eval((crc.get, bytesIn.get).tupled).flatMap { case (crc, bytesIn) =>
       // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
       val crc32Value = crc
@@ -146,7 +151,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
     }
 
   def gunzip(
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])],
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])],
       inflateParams: InflateParams
   ): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
     stream =>
@@ -159,7 +164,6 @@ class Gzip[F[_]](implicit F: Async[F]) {
                 _gunzip_matchMandatoryHeader(
                   mandatoryHeaderChunk,
                   streamAfterMandatoryHeader,
-                  new CRC32,
                   inflate
                 )
               case None =>
@@ -178,9 +182,8 @@ class Gzip[F[_]](implicit F: Async[F]) {
   private def _gunzip_matchMandatoryHeader(
       mandatoryHeaderChunk: Chunk[Byte],
       streamAfterMandatoryHeader: Stream[F, Byte],
-      headerCrc32: CRC32,
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])]
-  ) =
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])]
+  ) = {
     (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
       case (
             `gzipHeaderBytes`,
@@ -260,7 +263,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
               _
             )
           ) =>
-        headerCrc32.update(header)
+        val headerCrc32 = crc32Builder.updated(BitVector.view(header))
         val secondsSince197001010000 =
           unsignedToLong(header(4), header(5), header(6), header(7))
         _gunzip_readOptionalHeader(
@@ -305,74 +308,77 @@ class Gzip[F[_]](implicit F: Async[F]) {
           GunzipResult.create(Stream.raiseError(new ZipException("Not in gzip format")))
         )
     }
+  }
 
   private def _gunzip_readOptionalHeader(
       streamAfterMandatoryHeader: Stream[F, Byte],
       flags: Byte,
-      headerCrc32: CRC32,
+      headerCrc32: CrcBuilder[BitVector],
       secondsSince197001010000: Long,
-      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Deferred[F, Chunk[Byte]])]
+      inflate: Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])]
   ): Stream[F, GunzipResult[F]] =
-    streamAfterMandatoryHeader
-      .through(_gunzip_skipOptionalExtraField(gzipFlag.fextra(flags), headerCrc32))
-      .through(
-        _gunzip_readOptionalStringField(
-          gzipFlag.fname(flags),
-          headerCrc32,
-          "file name",
-          fileNameBytesSoftLimit
-        )
-      )
-      .flatMap { case (fileName, streamAfterFileName) =>
-        streamAfterFileName
+    _gunzip_skipOptionalExtraField(gzipFlag.fextra(flags), headerCrc32)(streamAfterMandatoryHeader)
+      .flatMap { case (headerCrc32, streamAfterOptionalExtraField) =>
+        streamAfterOptionalExtraField
           .through(
             _gunzip_readOptionalStringField(
-              gzipFlag.fcomment(flags),
+              gzipFlag.fname(flags),
               headerCrc32,
-              "file comment",
-              fileCommentBytesSoftLimit
+              "file name",
+              fileNameBytesSoftLimit
             )
           )
-          .flatMap { case (comment, streamAfterComment) =>
-            Stream.emit(
-              GunzipResult.create(
-                modificationTimeEpoch =
-                  if (secondsSince197001010000 != 0)
-                    Some(FiniteDuration(secondsSince197001010000, TimeUnit.SECONDS))
-                  else None,
-                fileName = fileName,
-                comment = comment,
-                content = Stream.eval(F.deferred[Long]).flatMap { contentCrc32 =>
-                  Stream.eval(F.deferred[Long]).flatMap { count =>
-                    inflate(
-                      streamAfterComment
-                        .through(
-                          _gunzip_validateHeader(
-                            (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
-                            headerCrc32
-                          )
-                        )
-                    ).flatMap { case (inflated, after) =>
-                      inflated
-                        .through(CrcPipe(contentCrc32))
-                        .through(CountPipe(count)) ++
-                        _gunzip_validateTrailer(
-                          after,
-                          contentCrc32,
-                          count
-                        )
-                    }
-                  }
-                }
+          .flatMap { case (fileName, headerCrc32, streamAfterFileName) =>
+            streamAfterFileName
+              .through(
+                _gunzip_readOptionalStringField(
+                  gzipFlag.fcomment(flags),
+                  headerCrc32,
+                  "file comment",
+                  fileCommentBytesSoftLimit
+                )
               )
-            )
+              .flatMap { case (comment, headerCrc32, streamAfterComment) =>
+                Stream.emit(
+                  GunzipResult.create(
+                    modificationTimeEpoch =
+                      if (secondsSince197001010000 != 0)
+                        Some(FiniteDuration(secondsSince197001010000, TimeUnit.SECONDS))
+                      else None,
+                    fileName = fileName,
+                    comment = comment,
+                    content = Stream
+                      .eval((Ref.of[F, Long](0), Ref.of[F, Long](0)).tupled)
+                      .flatMap { case (contentCrc32, count) =>
+                        inflate(
+                          streamAfterComment
+                            .through(
+                              _gunzip_validateHeader(
+                                (flags & gzipFlag.FHCRC) == gzipFlag.FHCRC,
+                                headerCrc32
+                              )
+                            )
+                        ).flatMap { case (inflated, after) =>
+                          inflated
+                            .through(CrcPipe(contentCrc32))
+                            .through(CountPipe(count)) ++
+                            _gunzip_validateTrailer(
+                              after,
+                              contentCrc32,
+                              count
+                            )
+                        }
+                      }
+                  )
+                )
+              }
           }
       }
 
   private def _gunzip_skipOptionalExtraField(
       isPresent: Boolean,
-      crc32Builder: CRC32
-  ): Pipe[F, Byte, Byte] =
+      crc32Builder: CrcBuilder[BitVector]
+  ): Stream[F, Byte] => Stream[F, (CrcBuilder[BitVector], Stream[F, Byte])] =
     stream =>
       if (isPresent) {
         stream.pull
@@ -387,15 +393,21 @@ class Gzip[F[_]](implicit F: Async[F]) {
                       `gzipOptionalExtraFieldLengthBytes`,
                       lengthBytes @ Array(firstByte, secondByte)
                     ) =>
-                  crc32Builder.update(lengthBytes)
                   val optionalExtraFieldLength = unsignedToInt(firstByte, secondByte)
                   streamAfterOptionalExtraFieldLength.pull
                     .unconsN(optionalExtraFieldLength)
                     .flatMap {
                       case Some((optionalExtraFieldChunk, streamAfterOptionalExtraField)) =>
-                        val fieldBytes = optionalExtraFieldChunk.toArraySlice
-                        crc32Builder.update(fieldBytes.values, fieldBytes.offset, fieldBytes.length)
-                        Pull.output1(streamAfterOptionalExtraField)
+                        Pull.output1(
+                          (
+                            crc32Builder
+                              .updated(BitVector.view(lengthBytes))
+                              .updated(
+                                optionalExtraFieldChunk.toBitVector
+                              ),
+                            streamAfterOptionalExtraField
+                          )
+                        )
                       case None =>
                         Pull.raiseError(
                           new ZipException("Failed to read optional extra field header")
@@ -411,59 +423,54 @@ class Gzip[F[_]](implicit F: Async[F]) {
               Pull.raiseError(new EOFException())
           }
           .stream
-          .flatten
-      } else stream
+      } else Stream((crc32Builder, stream))
 
   private def _gunzip_readOptionalStringField(
       isPresent: Boolean,
-      crc32: CRC32,
+      headerCrc32: CrcBuilder[BitVector],
       fieldName: String,
       fieldBytesSoftLimit: Int
-  ): Stream[F, Byte] => Stream[F, (Option[String], Stream[F, Byte])] =
+  ): Stream[F, Byte] => Stream[F, (Option[String], CrcBuilder[BitVector], Stream[F, Byte])] =
     stream =>
       if (isPresent)
-        unconsUntil[Byte](_ == zeroByte, fieldBytesSoftLimit)
+        UnconsUntil[F](_ == zeroByte, fieldBytesSoftLimit, headerCrc32)
           .apply(stream)
           .flatMap {
-            case Some((chunk, rest)) =>
+            case Some((chunk, crcBuilder, rest)) =>
               Pull.output1(
                 (
-                  if (chunk.isEmpty)
+                  if (chunk.size <= 1)
                     Some("")
                   else {
                     val bytesChunk = chunk.toArraySlice
-                    crc32.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
                     Some(
                       new String(
                         bytesChunk.values,
                         bytesChunk.offset,
-                        bytesChunk.length,
+                        bytesChunk.length - 1,
                         StandardCharsets.ISO_8859_1
                       )
                     )
                   },
+                  crcBuilder,
                   rest
-                    .dropThrough { byte =>
-                      // Will also call crc32.update(byte) for the zeroByte dropped hereafter.
-                      crc32.update(byte.toInt)
-                      byte != zeroByte
-                    }
                 )
               )
             case None =>
               Pull.output1(
                 (
                   Option.empty[String],
+                  crc32Builder,
                   Stream.raiseError(new ZipException(s"Failed to read $fieldName field"))
                 )
               )
           }
           .stream
-      else Stream.emit((Option.empty[String], stream))
+      else Stream.emit((Option.empty[String], crc32Builder, stream))
 
   private def _gunzip_validateHeader(
       isPresent: Boolean,
-      crc32Builder: CRC32
+      headerCrc32: CrcBuilder[BitVector]
   ): Pipe[F, Byte, Byte] =
     stream =>
       if (isPresent)
@@ -472,7 +479,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
           .flatMap {
             case Some((headerCrcChunk, streamAfterHeaderCrc)) =>
               val expectedHeaderCrc16 = unsignedToInt(headerCrcChunk(0), headerCrcChunk(1))
-              val actualHeaderCrc16 = crc32Builder.getValue() & 0xffff
+              val actualHeaderCrc16 = headerCrc32.result.toInt() & 0xffff
               if (expectedHeaderCrc16 != actualHeaderCrc16)
                 Pull.raiseError(new ZipException("Header failed CRC validation"))
               else
@@ -485,15 +492,15 @@ class Gzip[F[_]](implicit F: Async[F]) {
       else stream
 
   private def _gunzip_validateTrailer(
-      trailerStream: Deferred[F, Chunk[Byte]],
-      crc32: Deferred[F, Long],
-      actualInputSize: Deferred[F, Long]
+      trailerStream: Ref[F, Chunk[Byte]],
+      crc32: Ref[F, Long],
+      actualInputSize: Ref[F, Long]
   ): Stream[F, Byte] =
     Stream
       .eval {
         trailerStream.get.flatMap[Unit] { trailerChunk =>
           if (trailerChunk.size != gzipTrailerBytes) {
-            F.raiseError(new ZipException(s"Failed to read trailer (1): ${trailerChunk}"))
+            F.raiseError(new ZipException(s"Failed to read trailer (1): $trailerChunk"))
           } else {
             crc32.get.flatMap { crc32 =>
               actualInputSize.get.flatMap { actualInputSize =>
@@ -505,7 +512,7 @@ class Gzip[F[_]](implicit F: Async[F]) {
                     trailerChunk(3)
                   ) & 0xffffffff
 
-                val actualInputCrc32 = crc32
+                val actualInputCrc32 = crc32 & 0xffffffff
 
                 val expectedInputSize =
                   unsignedToLong(
@@ -516,7 +523,11 @@ class Gzip[F[_]](implicit F: Async[F]) {
                   )
 
                 if (expectedInputCrc32 != actualInputCrc32) {
-                  F.raiseError[Unit](new ZipException("Content failed CRC validation"))
+                  F.raiseError[Unit](
+                    new ZipException(
+                      s"Content failed CRC validation: $expectedInputCrc32 != $actualInputCrc32"
+                    )
+                  )
                 } else if (expectedInputSize != actualInputSize) {
                   F.raiseError[Unit](new ZipException("Content failed size validation"))
                 } else {
@@ -528,39 +539,6 @@ class Gzip[F[_]](implicit F: Async[F]) {
         }
       }
       .flatMap(_ => Stream.empty)
-
-  /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
-    * Elements will not be dropped after the soft limit is breached.
-    *
-    * `Pull.pure(None)` is returned if the end of the source stream is reached.
-    */
-  private def unconsUntil[O](
-      predicate: O => Boolean,
-      softLimit: Int
-  ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-    stream => {
-      def go(
-          acc: Chunk[O],
-          rest: Stream[F, O],
-          size: Int = 0
-      ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
-        rest.pull.uncons.flatMap {
-          case None =>
-            Pull.pure(None)
-          case Some((hd, tl)) =>
-            hd.indexWhere(predicate) match {
-              case Some(i) =>
-                val (pfx, sfx) = hd.splitAt(i)
-                Pull.pure(Some((acc ++ pfx) -> (Stream.chunk(sfx) ++ tl)))
-              case None =>
-                val newSize = size + hd.size
-                if (newSize < softLimit) go(acc ++ hd, tl, newSize)
-                else Pull.pure(Some((acc ++ hd) -> tl))
-            }
-        }
-
-      go(Chunk.empty, stream)
-    }
 
   private val gzipHeaderBytes = 10
   private val gzipMagicFirstByte: Byte = 0x1f.toByte

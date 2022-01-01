@@ -30,7 +30,6 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.zip.{CRC32, DataFormatException, Deflater, Inflater, ZipException}
 import scala.concurrent.duration.FiniteDuration
-import scala.reflect.ClassTag
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
@@ -867,7 +866,7 @@ private[compression] trait CompressionCompanionPlatform {
         *
         * `Pull.pure(None)` is returned if the end of the source stream is reached.
         */
-      private def unconsUntil[O: ClassTag](
+      private def unconsUntil[O](
           predicate: O => Boolean,
           softLimit: Int
       ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
