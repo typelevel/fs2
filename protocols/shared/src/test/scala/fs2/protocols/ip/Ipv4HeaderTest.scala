@@ -41,7 +41,7 @@ class Ipv4HeaderTest extends Fs2Suite {
   private val src = hex"0ae081b2".bits
   private val dst = hex"0ae081ab".bits
   private val dataLength = 80
-  private val data = BitVector.high(dataLength)
+  private val data = BitVector.high(dataLength.toLong)
 
   test("decode IPv4 packet without options") {
     val headerLength = bin"0101" // 5 32-bit words

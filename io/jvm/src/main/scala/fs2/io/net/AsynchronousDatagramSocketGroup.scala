@@ -314,28 +314,30 @@ private[net] object AsynchronousDatagramSocketGroup {
                 selectedKeys.remove
                 val channel = key.channel.asInstanceOf[DatagramChannel]
                 val attachment = key.attachment.asInstanceOf[Attachment]
-                try if (key.isValid) {
-                  if (key.isReadable) {
-                    var success = true
-                    while (success && attachment.hasReaders) {
-                      val reader = attachment.peekReader.get
-                      success = read1(channel, reader)
-                      if (success) attachment.dequeueReader
+                try
+                  if (key.isValid) {
+                    if (key.isReadable) {
+                      var success = true
+                      while (success && attachment.hasReaders) {
+                        val reader = attachment.peekReader.get
+                        success = read1(channel, reader)
+                        if (success) attachment.dequeueReader
+                      }
                     }
-                  }
-                  if (key.isWritable) {
-                    var success = true
-                    while (success && attachment.hasWriters) {
-                      val (p, writer) = attachment.peekWriter.get
-                      success = write1(channel, p, writer)
-                      if (success) attachment.dequeueWriter
+                    if (key.isWritable) {
+                      var success = true
+                      while (success && attachment.hasWriters) {
+                        val (p, writer) = attachment.peekWriter.get
+                        success = write1(channel, p, writer)
+                        if (success) attachment.dequeueWriter
+                      }
                     }
+                    key.interestOps(
+                      (if (attachment.hasReaders) SelectionKey.OP_READ else 0) |
+                        (if (attachment.hasWriters) SelectionKey.OP_WRITE else 0)
+                    )
                   }
-                  key.interestOps(
-                    (if (attachment.hasReaders) SelectionKey.OP_READ else 0) |
-                      (if (attachment.hasWriters) SelectionKey.OP_WRITE else 0)
-                  )
-                } catch {
+                catch {
                   case _: CancelledKeyException => // Ignore; key was closed
                 }
               }

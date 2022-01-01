@@ -38,7 +38,7 @@ private[fs2] object EventEmitterOps {
           .asInstanceOf[eventsMod.EventEmitter]
           .removeListener(
             event.asInstanceOf[String],
-            callback.asInstanceOf[js.Function1[js.Any, Unit]]
+            callback.asInstanceOf[js.Function1[Any, Unit]]
           )
         ()
       }
@@ -59,7 +59,7 @@ private[fs2] object EventEmitterOps {
             .asInstanceOf[eventsMod.EventEmitter]
             .removeListener(
               event.asInstanceOf[String],
-              callback.asInstanceOf[js.Function1[js.Any, Unit]]
+              callback.asInstanceOf[js.Function1[Any, Unit]]
             )
           ()
         }
@@ -78,7 +78,7 @@ private[fs2] object EventEmitterOps {
             .asInstanceOf[eventsMod.EventEmitter]
             .removeListener(
               event.asInstanceOf[String],
-              callback.asInstanceOf[js.Function1[js.Any, Unit]]
+              callback.asInstanceOf[js.Function1[Any, Unit]]
             )
           ()
         }

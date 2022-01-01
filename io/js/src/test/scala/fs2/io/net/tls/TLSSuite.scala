@@ -64,7 +64,7 @@ object JKS extends js.Any {
     def key: String = js.native
   }
 
-  @nowarn("cat=unused-params")
+  @nowarn("msg=never used")
   def toPem(buffer: bufferMod.global.Buffer, password: String): js.Dictionary[CertKey] = js.native
 
 }

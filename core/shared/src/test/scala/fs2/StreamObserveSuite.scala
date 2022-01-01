@@ -21,15 +21,14 @@
 
 package fs2
 
-import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.effect.kernel.Ref
+import cats.effect.kernel.Resource
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-@nowarn("cat=w-flag-dead-code")
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
     def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O]
@@ -62,7 +61,9 @@ class StreamObserveSuite extends Fs2Suite {
 
       test("propagate error from source") {
         forAllF { (s: Stream[Pure, Int]) =>
-          observer(s.drain ++ Stream.raiseError[IO](new Err))(_.drain).attempt.compile.toList
+          observer(s.drain.covaryOutput[Int] ++ Stream.raiseError[IO](new Err))(
+            _.drain
+          ).attempt.compile.toList
             .map { result =>
               assertEquals(result.size, 1)
               assert(
@@ -150,6 +151,23 @@ class StreamObserveSuite extends Fs2Suite {
           .compile
           .toList
           .assertEquals(List(1, 2))
+      }
+
+      test("3 - do not halt the observing sink when upstream terminates") {
+        Stream
+          .eval(IO(1))
+          .observe(
+            _.chunkN(2)
+              .foreach(_ => IO.sleep(100.millis))
+              // Have to do some work here, so that we give time for the underlying stream to try pull more
+              .onFinalizeCase {
+                case Resource.ExitCase.Canceled =>
+                  IO(fail("Expected exit case of Succeeded, but got Canceled"))
+                case _ => IO.unit
+              }
+          )
+          .compile
+          .drain
       }
     }
   }

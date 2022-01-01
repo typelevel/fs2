@@ -24,7 +24,7 @@ package io
 package net
 package tls
 
-import javax.net.ssl.{SSLEngine, SSLEngineResult, SSLSession}
+import javax.net.ssl.{SSLEngine, SSLEngineResult}
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Sync}
