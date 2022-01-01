@@ -358,12 +358,12 @@ class Gzip[F[_]](implicit F: Sync[F]) {
                                 headerCrc32
                               )
                             )
-                        ).flatMap { case (inflated, after) =>
+                        ).flatMap { case (inflated, trailerChunk) =>
                           inflated
                             .through(CrcPipe(contentCrc32))
                             .through(CountPipe(count)) ++
                             _gunzip_validateTrailer(
-                              after,
+                              trailerChunk,
                               contentCrc32,
                               count
                             )

@@ -283,7 +283,7 @@ class JvmCompressionSuite extends CompressionSuite {
   test("gunzip limit fileName and comment length") {
     val longString: String =
       Array
-        .fill(1024 * 1024 + 1)("x")
+        .fill(1024 * 1032)("x")
         .mkString(
           ""
         ) // max(classic.fileNameBytesSoftLimit, classic.fileCommentBytesSoftLimit) + 1
@@ -292,7 +292,7 @@ class JvmCompressionSuite extends CompressionSuite {
     Stream
       .chunk(Chunk.empty[Byte])
       .through(Compression[IO].gzip2(8192, fileName = Some(longString), comment = Some(longString)))
-      .chunkLimit(1)
+      .chunkLimit(1024)
       .unchunks // ensure chunk sizes are less than file name and comment size soft limits
       .through(Compression[IO].gunzip(8192))
       .flatMap { gunzipResult =>
