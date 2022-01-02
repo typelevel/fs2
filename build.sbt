@@ -164,7 +164,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder"),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
-    "fs2.compression.Compression.gzip2"
+    "fs2.compression.Compression.gzip"
   ) // Compression is a sealed trait with an implementation
 )
 
