@@ -32,7 +32,6 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.{Deflater, Inflater}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
-import scala.util.chaining._
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
@@ -138,10 +137,13 @@ private[compression] trait CompressionCompanionPlatform {
           Stream
             .bracket(
               F.delay {
-                new Deflater(
-                  deflateParams.level.juzDeflaterLevel,
-                  deflateParams.header.juzDeflaterNoWrap
-                ).tap(_.setStrategy(deflateParams.strategy.juzDeflaterStrategy))
+                val deflater =
+                  new Deflater(
+                    deflateParams.level.juzDeflaterLevel,
+                    deflateParams.header.juzDeflaterNoWrap
+                  )
+                deflater.setStrategy(deflateParams.strategy.juzDeflaterStrategy)
+                deflater
               }
             )(deflater => F.delay(deflater.end()))
             .flatMap(deflater => _deflate(deflateParams, deflater, crc32 = None)(stream))
