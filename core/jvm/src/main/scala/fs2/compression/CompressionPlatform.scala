@@ -255,43 +255,65 @@ private[compression] trait CompressionCompanionPlatform {
           .flatMap { inflater =>
             val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
 
+            def setTrailerChunk(
+                remaining: Chunk[Byte],
+                s: Stream[F, Byte]
+            ): Pull[F, INothing, Unit] =
+              Pull.eval {
+                s
+                  .take((trailerSize - remaining.size).toLong)
+                  .chunkAll
+                  .compile
+                  .last
+                  .flatMap {
+                    case None          => F.unit
+                    case Some(trailer) => trailerChunk.set(remaining ++ trailer)
+                  }
+              }
+
+            def inflateChunk(
+                bytesChunk: Chunk.ArraySlice[Byte],
+                offset: Int
+            ): Pull[F, Byte, Option[Chunk[Byte]]] = {
+              inflater.setInput(
+                bytesChunk.values,
+                bytesChunk.offset + offset,
+                bytesChunk.length - offset
+              )
+              val inflatedBytes = inflater.inflate(inflatedBuffer)
+              Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
+                val remainingBytes = inflater.getRemaining
+                if (!inflater.finished()) {
+                  if (remainingBytes > 0)
+                    inflateChunk(bytesChunk, bytesChunk.length - remainingBytes)
+                  else
+                    Pull.pure(none)
+                } else {
+                  if (remainingBytes > 0)
+                    Pull.pure(
+                      Chunk
+                        .array(
+                          bytesChunk.values,
+                          bytesChunk.offset + bytesChunk.length - remainingBytes,
+                          if (remainingBytes < trailerSize) remainingBytes
+                          else trailerSize // don't need more than that
+                        )
+                        .some
+                    )
+                  else
+                    Pull.pure(Chunk.empty.some)
+                }
+              }
+            }
+
             def pull: Stream[F, Byte] => Pull[F, Byte, Unit] = in =>
               in.pull.uncons.flatMap {
-                case None =>
-                  Pull.done
+                case None => Pull.done
                 case Some((chunk, rest)) =>
-                  Pull
-                    .eval {
-                      F.delay {
-                        val bytesChunk = chunk.toArraySlice
-                        inflater.setInput(bytesChunk.values, bytesChunk.offset, bytesChunk.length)
-                        inflater.inflate(inflatedBuffer)
-                      }
-                    }
-                    .flatMap { inflatedBytes =>
-                      Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
-                        val remaining =
-                          chunk.takeRight(
-                            inflater.getRemaining
-                          )
-                        if (inflater.finished()) {
-                          Pull.eval {
-                            rest
-                              .cons(remaining)
-                              .take(trailerSize.toLong)
-                              .chunkAll
-                              .compile
-                              .last
-                              .flatMap {
-                                case None          => F.unit
-                                case Some(trailer) => trailerChunk.set(trailer)
-                              }
-                          }
-                        } else {
-                          pull(rest.cons(remaining))
-                        }
-                      }
-                    }
+                  inflateChunk(chunk.toArraySlice, 0).flatMap {
+                    case None            => pull(rest)
+                    case Some(remaining) => setTrailerChunk(remaining, rest)
+                  }
               }
 
             pull(stream)
