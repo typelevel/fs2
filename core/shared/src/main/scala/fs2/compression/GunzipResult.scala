@@ -40,7 +40,7 @@ import scala.concurrent.duration.FiniteDuration
   * @param fileName File name.
   * @param comment File comment.
   */
-final class GunzipResult[F[_]](
+class GunzipResult[F[_]](
     val modificationEpochTime: Option[FiniteDuration],
     val fileName: Option[String],
     val comment: Option[String],
