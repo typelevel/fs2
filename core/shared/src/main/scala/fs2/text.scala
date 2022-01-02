@@ -450,7 +450,7 @@ object text {
           str(idx) match {
             case c if alphabet.ignore(c) => // ignore
             case c =>
-              val cidx = {
+              val cidx =
                 if (padding == 0)
                   if (c == Pad)
                     if (mod == 2 || mod == 3) {
@@ -474,7 +474,6 @@ object text {
                   return Left(
                     s"Unexpected character '$c' at index $idx after padding character; only '=' and whitespace characters allowed after first padding character"
                   )
-              }
               mod match {
                 case 0 =>
                   buffer = cidx & 0x3f
