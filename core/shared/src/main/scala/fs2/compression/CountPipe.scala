@@ -21,12 +21,12 @@
 
 package fs2.compression
 
-import cats.effect.{Ref, Sync}
+import cats.effect.Ref
 import fs2.{Chunk, Pipe, Pull, Stream}
 
-private[compression] object CountPipe {
+private[fs2] object CountPipe {
 
-  def apply[F[_]](deferredCount: Ref[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
+  def apply[F[_]](deferredCount: Ref[F, Long]): Pipe[F, Byte, Byte] = {
     def pull(count: Long): Stream[F, Byte] => Pull[F, Byte, Long] =
       _.pull.uncons.flatMap {
         case None => Pull.pure(count)
