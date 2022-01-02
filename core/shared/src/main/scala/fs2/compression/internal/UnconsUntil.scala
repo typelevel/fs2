@@ -23,7 +23,7 @@ package fs2
 package compression
 package internal
 
-private object UnconsUntil {
+private[compression] object UnconsUntil {
 
   /** Like Stream.unconsN, but returns a chunk of elements that do not satisfy the predicate, splitting chunk as necessary.
     * Elements will not be dropped after the soft limit is breached.
