@@ -64,15 +64,15 @@ sealed trait Compression[F[_]] extends CompressionPlatform[F] {
     * @param fileName         optional file name
     * @param comment          optional file comment
     */
-  def gzip2(
+  def gzip(
       bufferSize: Int = 1024 * 32,
       deflateLevel: Option[Int] = None,
       deflateStrategy: Option[Int] = None,
       modificationTime: Option[FiniteDuration] = None,
       fileName: Option[String] = None,
       comment: Option[String] = None
-  ): Pipe[F, Byte, Byte] =
-    gzip2(
+  )(implicit d: DummyImplicit): Pipe[F, Byte, Byte] =
+    gzip(
       fileName = fileName,
       modificationTime = modificationTime,
       comment = comment,
@@ -110,12 +110,12 @@ sealed trait Compression[F[_]] extends CompressionPlatform[F] {
     * @param comment          optional file comment
     * @param deflateParams    see [[compression.DeflateParams]]
     */
-  def gzip2(
+  def gzip(
       fileName: Option[String],
       modificationTime: Option[FiniteDuration],
       comment: Option[String],
       deflateParams: DeflateParams
-  ): Pipe[F, Byte, Byte]
+  )(implicit d: DummyImplicit): Pipe[F, Byte, Byte]
 
   /** Returns a pipe that incrementally decompresses input according to the GZIP
     * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any

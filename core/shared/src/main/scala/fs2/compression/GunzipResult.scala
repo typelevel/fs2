@@ -40,8 +40,8 @@ import scala.concurrent.duration.FiniteDuration
   * @param fileName File name.
   * @param comment File comment.
   */
-class GunzipResult[F[_]](
-    val modificationTimeEpoch: Option[FiniteDuration],
+final class GunzipResult[F[_]](
+    val modificationEpochTime: Option[FiniteDuration],
     val fileName: Option[String],
     val comment: Option[String],
     val content: Stream[F, Byte]
@@ -50,7 +50,7 @@ class GunzipResult[F[_]](
     with Equals {
 
   def modificationTime: Option[Instant] =
-    modificationTimeEpoch.map(e => Instant.ofEpochSecond(e.toSeconds))
+    modificationEpochTime.map(e => Instant.ofEpochSecond(e.toSeconds))
 
   @deprecated(
     "use the default constructor with modificationTimeEpoch: Option[FiniteDuration]",
@@ -87,7 +87,7 @@ class GunzipResult[F[_]](
   @deprecated("GunzipResult is no longer a case class.", "x.x")
   def productElement(n: Int): Any = n match {
     case 0 => content
-    case 1 => modificationTimeEpoch
+    case 1 => modificationEpochTime
     case 2 => fileName
     case 3 => comment
   }
@@ -100,7 +100,7 @@ class GunzipResult[F[_]](
   override def equals(other: Any): Boolean = other match {
     case that: GunzipResult[_] =>
       (that.canEqual(this)) &&
-        modificationTimeEpoch == that.modificationTimeEpoch &&
+        modificationEpochTime == that.modificationEpochTime &&
         fileName == that.fileName &&
         comment == that.comment &&
         content == that.content
@@ -108,11 +108,11 @@ class GunzipResult[F[_]](
   }
 
   override def hashCode(): Int = {
-    val state = Seq(content, modificationTimeEpoch, fileName, comment)
+    val state = Seq(content, modificationEpochTime, fileName, comment)
     state.map(_.hashCode()).foldLeft(0)((a, b) => 31 * a + b)
   }
 
-  override def toString = s"GunzipResult($content, $modificationTimeEpoch, $fileName, $comment)"
+  override def toString = s"GunzipResult($content, $modificationEpochTime, $fileName, $comment)"
 
 }
 
@@ -131,7 +131,7 @@ object GunzipResult {
     comment
   )
 
-  def create[F[_]](
+  private[compression] def create[F[_]](
       content: Stream[F, Byte],
       modificationTimeEpoch: Option[FiniteDuration] = None,
       fileName: Option[String] = None,

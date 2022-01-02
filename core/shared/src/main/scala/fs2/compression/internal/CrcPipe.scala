@@ -19,6 +19,23 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression
+package fs2
+package compression
+package internal
 
-class ZipException(message: String) extends Throwable(message)
+private[fs2] object CrcPipe {
+
+  def apply[F[_]](crcBuilder: CrcBuilder): Pipe[F, Byte, Byte] = {
+    def pull: Stream[F, Byte] => Pull[F, Byte, Unit] =
+      _.pull.uncons.flatMap {
+        case None =>
+          Pull.done
+        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
+          crcBuilder.update(c)
+          Pull.output(c) >> pull(rest)
+      }
+
+    pull(_).stream
+  }
+
+}

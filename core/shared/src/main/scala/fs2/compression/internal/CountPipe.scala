@@ -19,10 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression
+package fs2
+package compression
+package internal
 
 import cats.effect.Ref
-import fs2.{Chunk, Pipe, Pull, Stream}
 
 private[fs2] object CountPipe {
 

@@ -28,6 +28,8 @@ import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
 import fs2.io.internal.SuspendedStream
 import fs2.compression.internal.CrcBuilder
+import fs2.compression.internal.CountPipe
+import fs2.compression.internal.CrcPipe
 import scala.concurrent.duration.FiniteDuration
 
 private[fs2] trait compressionplatform {
@@ -145,13 +147,20 @@ private[fs2] trait compressionplatform {
         }
       }
 
-      def gzip2(
+      def gzip(
           fileName: Option[String],
           modificationTime: Option[FiniteDuration],
           comment: Option[String],
           deflateParams: DeflateParams
-      ): Pipe[F, Byte, Byte] =
-        gzip.gzip(fileName, modificationTime, comment, deflate(deflateParams), deflateParams)
+      )(implicit d: DummyImplicit): Pipe[F, Byte, Byte] =
+        gzip.gzip(
+          fileName,
+          modificationTime,
+          comment,
+          deflate(deflateParams),
+          deflateParams,
+          fs2.internal.jsdeps.node.processMod.global.process.platform.toString
+        )
 
       def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
         gzip.gunzip(inflateAndTrailer(inflateParams, gzip.gzipTrailerBytes), inflateParams)

@@ -67,12 +67,12 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
     * @param comment          optional file comment
     */
   def gzip(
-      bufferSize: Int = 1024 * 32,
-      deflateLevel: Option[Int] = None,
-      deflateStrategy: Option[Int] = None,
-      modificationTime: Option[Instant] = None,
-      fileName: Option[String] = None,
-      comment: Option[String] = None
+      bufferSize: Int,
+      deflateLevel: Option[Int],
+      deflateStrategy: Option[Int],
+      modificationTime: Option[Instant],
+      fileName: Option[String],
+      comment: Option[String]
   ): Pipe[F, Byte, Byte] =
     gzip(
       fileName = fileName,
@@ -117,7 +117,7 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
       modificationTime: Option[Instant],
       comment: Option[String],
       deflateParams: DeflateParams
-  ): Pipe[F, Byte, Byte] = gzip2(
+  ): Pipe[F, Byte, Byte] = gzip(
     fileName,
     modificationTime.map(i => FiniteDuration(i.getEpochSecond, TimeUnit.SECONDS)),
     comment,
@@ -138,13 +138,10 @@ private[compression] trait CompressionCompanionPlatform {
           Stream
             .bracket(
               F.delay {
-                val deflater =
-                  new Deflater(
-                    deflateParams.level.juzDeflaterLevel,
-                    deflateParams.header.juzDeflaterNoWrap
-                  )
-                deflater.setStrategy(deflateParams.strategy.juzDeflaterStrategy)
-                deflater
+                new Deflater(
+                  deflateParams.level.juzDeflaterLevel,
+                  deflateParams.header.juzDeflaterNoWrap
+                ).tap(_.setStrategy(deflateParams.strategy.juzDeflaterStrategy))
               }
             )(deflater => F.delay(deflater.end()))
             .flatMap(deflater => _deflate(deflateParams, deflater, crc32 = None)(stream))
@@ -353,13 +350,20 @@ private[compression] trait CompressionCompanionPlatform {
 //              }
           }
 
-      def gzip2(
+      def gzip(
           fileName: Option[String],
           modificationTime: Option[FiniteDuration],
           comment: Option[String],
           deflateParams: DeflateParams
-      ): Pipe[F, Byte, Byte] =
-        gzip.gzip(fileName, modificationTime, comment, deflate(deflateParams), deflateParams)
+      )(implicit d: DummyImplicit): Pipe[F, Byte, Byte] =
+        gzip.gzip(
+          fileName,
+          modificationTime,
+          comment,
+          deflate(deflateParams),
+          deflateParams,
+          System.getProperty("os.name")
+        )
 
       def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
         gzip.gunzip(inflateAndTrailer(inflateParams, gzip.gzipTrailerBytes), inflateParams)

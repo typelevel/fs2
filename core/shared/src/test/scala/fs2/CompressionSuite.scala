@@ -173,7 +173,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
       .compile
       .to(Array)
       .flatMap { deflated =>
-        val expected = new String(inflateStream(deflated, false))
+        val expected = new String(inflateStream(deflated, nowrap = false))
         Stream
           .chunk[IO, Byte](Chunk.array(deflated))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
@@ -364,7 +364,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            Compression[IO].gzip2(
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS)),
               comment = Some(s),
@@ -384,7 +384,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationEpochTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -409,7 +409,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            Compression[IO].gzip2(
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS)),
               comment = Some(s),
@@ -429,7 +429,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationEpochTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -454,7 +454,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
-            Compression[IO].gzip2(
+            Compression[IO].gzip(
               fileName = Some(s),
               modificationTime = Some(FiniteDuration(epochSeconds.toLong, TimeUnit.SECONDS)),
               comment = Some(s),
@@ -474,7 +474,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .flatMap { gunzipResult =>
             assertEquals(gunzipResult.fileName, expectedFileName)
             assertEquals(gunzipResult.comment, expectedComment)
-            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationEpochTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -492,7 +492,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
                  |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
     Stream
       .chunk[IO, Byte](Chunk.array(uncompressed))
-      .through(Compression[IO].gzip2(2048))
+      .through(Compression[IO].gzip(2048))
       .compile
       .toVector
       .map(compressed => assert(compressed.length < uncompressed.length))
@@ -502,7 +502,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
     Stream
       .chunk[IO, Byte](Chunk.array(getBytes("Foo")))
       .through(
-        Compression[IO].gzip2(
+        Compression[IO].gzip(
           fileName = None,
           modificationTime = None,
           comment = None,
@@ -539,7 +539,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
 
     Stream
       .chunk(Chunk.empty[Byte])
-      .through(Compression[IO].gzip2(8192, fileName = Some(longString), comment = Some(longString)))
+      .through(Compression[IO].gzip(8192, fileName = Some(longString), comment = Some(longString)))
       .chunkLimit(512)
       .unchunks // ensure chunk sizes are less than file name and comment size soft limits
       .through(Compression[IO].gunzip(8192))
@@ -579,7 +579,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
       .flatMap { gunzipResult =>
         assertEquals(gunzipResult.fileName, expectedFileName)
         assertEquals(gunzipResult.comment, expectedComment)
-        assertEquals(gunzipResult.modificationTimeEpoch, expectedMTime)
+        assertEquals(gunzipResult.modificationEpochTime, expectedMTime)
         gunzipResult.content
       }
       .compile
@@ -591,7 +591,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
   test("gzip and gunzip are reusable") {
     val bytesIn: Int = 1024 * 1024
     val chunkSize = 1024
-    val gzipStream = Compression[IO].gzip2(bufferSize = chunkSize)
+    val gzipStream = Compression[IO].gzip(bufferSize = chunkSize)
     val gunzipStream = Compression[IO].gunzip(bufferSize = chunkSize)
     val stream = Stream
       .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))

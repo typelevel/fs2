@@ -24,9 +24,8 @@ package compression
 
 import cats.effect.{Ref, Sync}
 import cats.syntax.all._
-import fs2.compression.internal.UnconsUntil
+import fs2.compression.internal.{CountPipe, CrcBuilder, CrcPipe, UnconsUntil}
 
-import fs2.compression.internal.CrcBuilder
 import java.io.EOFException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -39,7 +38,8 @@ class Gzip[F[_]](implicit F: Sync[F]) {
       modificationTime: Option[FiniteDuration],
       comment: Option[String],
       deflate: Pipe[F, Byte, Byte],
-      deflateParams: DeflateParams
+      deflateParams: DeflateParams,
+      osName: String
   ): Pipe[F, Byte, Byte] =
     stream =>
       deflateParams match {
@@ -51,7 +51,8 @@ class Gzip[F[_]](implicit F: Sync[F]) {
               modificationTime,
               comment,
               params.level.juzDeflaterLevel,
-              params.fhCrcEnabled
+              params.fhCrcEnabled,
+              osName
             ) ++
               stream
                 .through(CrcPipe(crc))
@@ -73,7 +74,8 @@ class Gzip[F[_]](implicit F: Sync[F]) {
       modificationTime: Option[FiniteDuration],
       comment: Option[String],
       deflateLevel: Int,
-      fhCrcEnabled: Boolean
+      fhCrcEnabled: Boolean,
+      osName: String
   ): Stream[F, Byte] = {
     // See RFC 1952: https://www.ietf.org/rfc/rfc1952.txt
     val secondsSince197001010000: Long =
@@ -94,7 +96,7 @@ class Gzip[F[_]](implicit F: Sync[F]) {
         case 1 => gzipExtraFlag.DEFLATE_FASTEST_ALGO
         case _ => zeroByte
       },
-      gzipOperatingSystem.THIS
+      gzipOperatingSystem.THIS(osName)
     ) // OS: Operating System
 
     val crc32 = new CrcBuilder()
@@ -525,9 +527,9 @@ class Gzip[F[_]](implicit F: Sync[F]) {
       }
       .flatMap(_ => Stream.empty)
 
-  private val gzipHeaderBytes = 10
-  private val gzipMagicFirstByte: Byte = 0x1f.toByte
-  private val gzipMagicSecondByte: Byte = 0x8b.toByte
+  private final val gzipHeaderBytes = 10
+  private final val gzipMagicFirstByte: Byte = 0x1f.toByte
+  private final val gzipMagicSecondByte: Byte = 0x8b.toByte
   private object gzipCompressionMethod {
     val DEFLATE: Byte = 8.toByte // Deflater.DEFLATED.toByte
   }
@@ -544,60 +546,63 @@ class Gzip[F[_]](implicit F: Sync[F]) {
     def reserved6(flags: Byte): Boolean = apply(flags, RESERVED_BIT_6)
     def reserved7(flags: Byte): Boolean = apply(flags, RESERVED_BIT_7)
 
-    val FTEXT: Byte = 1
-    val FHCRC: Byte = 2
-    val FEXTRA: Byte = 4
-    val FNAME: Byte = 8
-    val FCOMMENT: Byte = 16
-    val RESERVED_BIT_5 = 32
-    val RESERVED_BIT_6 = 64
-    val RESERVED_BIT_7: Int = 128
+    final val FTEXT: Byte = 1
+    final val FHCRC: Byte = 2
+    final val FEXTRA: Byte = 4
+    final val FNAME: Byte = 8
+    final val FCOMMENT: Byte = 16
+    final val RESERVED_BIT_5 = 32
+    final val RESERVED_BIT_6 = 64
+    final val RESERVED_BIT_7: Int = 128
   }
   private object gzipExtraFlag {
     val DEFLATE_MAX_COMPRESSION_SLOWEST_ALGO: Byte = 2
     val DEFLATE_FASTEST_ALGO: Byte = 4
   }
-  private val gzipOptionalExtraFieldLengthBytes = 2
-  private val gzipHeaderCrcBytes = 2
+  private final val gzipOptionalExtraFieldLengthBytes = 2
+  private final val gzipHeaderCrcBytes = 2
   private object gzipOperatingSystem {
-    val FAT_FILESYSTEM: Byte = 0
-    val AMIGA: Byte = 1
-    val VMS: Byte = 2
-    val UNIX: Byte = 3
-    val VM_CMS: Byte = 4
-    val ATARI_TOS: Byte = 5
-    val HPFS_FILESYSTEM: Byte = 6
-    val MACINTOSH: Byte = 7
-    val Z_SYSTEM: Byte = 8
-    val CP_M: Byte = 9
-    val TOPS_20: Byte = 10
-    val NTFS_FILESYSTEM: Byte = 11
-    val QDOS: Byte = 12
-    val ACORN_RISCOS: Byte = 13
-    val UNKNOWN: Byte = 255.toByte
+    final val FAT_FILESYSTEM: Byte = 0
+    final val AMIGA: Byte = 1
+    final val VMS: Byte = 2
+    final val UNIX: Byte = 3
+    final val VM_CMS: Byte = 4
+    final val ATARI_TOS: Byte = 5
+    final val HPFS_FILESYSTEM: Byte = 6
+    final val MACINTOSH: Byte = 7
+    final val Z_SYSTEM: Byte = 8
+    final val CP_M: Byte = 9
+    final val TOPS_20: Byte = 10
+    final val NTFS_FILESYSTEM: Byte = 11
+    final val QDOS: Byte = 12
+    final val ACORN_RISCOS: Byte = 13
+    final val UNKNOWN: Byte = 255.toByte
 
-    val THIS: Byte = System.getProperty("os.name") match {
+    def THIS(osName: String): Byte = osName match {
       case null => UNKNOWN
       case s =>
         s.toLowerCase() match {
-          case name if name.indexOf("nux") > 0  => UNIX
-          case name if name.indexOf("nix") > 0  => UNIX
-          case name if name.indexOf("aix") >= 0 => UNIX
-          case name if name.indexOf("win") >= 0 => NTFS_FILESYSTEM
-          case name if name.indexOf("mac") >= 0 => MACINTOSH
-          case _                                => UNKNOWN
+          case name if name.indexOf("nux") > 0     => UNIX
+          case name if name.indexOf("nix") > 0     => UNIX
+          case name if name.indexOf("aix") >= 0    => UNIX
+          case name if name.indexOf("bsd") >= 0    => UNIX
+          case name if name.indexOf("cygwin") >= 0 => NTFS_FILESYSTEM
+          case name if name.indexOf("win") >= 0    => NTFS_FILESYSTEM
+          case name if name.indexOf("mac") >= 0    => MACINTOSH
+          case name if name.indexOf("darwin") >= 0 => MACINTOSH
+          case _                                   => UNKNOWN
         }
     }
   }
-  private val gzipInputCrcBytes = 4
-  private val gzipInputSizeBytes = 4
-  val gzipTrailerBytes: Int = gzipInputCrcBytes + gzipInputSizeBytes
+  private final val gzipInputCrcBytes = 4
+  private final val gzipInputSizeBytes = 4
+  final val gzipTrailerBytes: Int = gzipInputCrcBytes + gzipInputSizeBytes
 
-  private val zeroByte: Byte = 0
+  private final val zeroByte: Byte = 0
 
-  private val fileNameBytesSoftLimit =
+  private final val fileNameBytesSoftLimit =
     1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). Typical maximum file size is 255 characters.
-  private val fileCommentBytesSoftLimit =
+  private final val fileCommentBytesSoftLimit =
     1024 * 1024 // A limit is good practice. Actual limit will be max(chunk.size, soft limit). 1 MiB feels reasonable for a comment.
 
   private def moveAsChunkBytes(values: Array[Byte]): Chunk[Byte] =

@@ -19,6 +19,8 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2.compression
 
-object NodeCompression extends compressionplatform
+import java.io.IOException
+
+class ZipException(message: String, cause: Throwable = null) extends IOException(message, cause)

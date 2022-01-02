@@ -19,9 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression.internal
-
-import fs2.{Chunk, INothing, Pull, Stream}
+package fs2
+package compression
+package internal
 
 private[compression] object UnconsUntil {
 
