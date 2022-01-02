@@ -163,9 +163,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem](
-    "fs2.concurrent.Channel.*"
-  ) // Channel is sealed
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.asQueueSink")
 )
 
 lazy val root = project
