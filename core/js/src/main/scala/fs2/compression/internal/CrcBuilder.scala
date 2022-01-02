@@ -19,28 +19,28 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.compression
+package fs2.compression.internal
 
-import cats.effect.{Ref, Sync}
-import fs2.{Chunk, Pipe, Pull, Stream}
+import fs2.Chunk
 
-private[compression] object CountPipe {
+private[fs2] class CrcBuilder {
 
-  def apply[F[_]](deferredCount: Ref[F, Long])(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
-    def pull(count: Long): Stream[F, Byte] => Pull[F, Byte, Long] =
-      _.pull.uncons.flatMap {
-        case None => Pull.pure(count)
-        case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          Pull.output(c) >> pull(count + c.size)(rest)
-      }
+  private val crc = new CRC32
 
-    def calculateSizeOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
-      for {
-        count <- pull(0)(input)
-        _ <- Pull.eval(deferredCount.set(count))
-      } yield ()
+  def update(b: Int): Unit =
+    crc.update(b)
 
-    calculateSizeOf(_).stream
+  def update(b: Array[Byte], off: Int, len: Int): Unit =
+    crc.update(b, off, len)
+
+  def update(c: Chunk[Byte]): Unit = {
+    val arr = c.toArraySlice
+    update(arr.values, arr.offset, arr.length)
   }
+
+  def update(b: Array[Byte]): Unit =
+    crc.update(b)
+
+  def getValue: Long = crc.getValue()
 
 }

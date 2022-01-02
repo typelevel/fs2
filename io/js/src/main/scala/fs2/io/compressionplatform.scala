@@ -27,7 +27,7 @@ import cats.syntax.all._
 import fs2.compression._
 import fs2.internal.jsdeps.node.zlibMod
 import fs2.io.internal.SuspendedStream
-
+import fs2.compression.internal.CrcBuilder
 import scala.concurrent.duration.FiniteDuration
 
 private[fs2] trait compressionplatform {
@@ -67,7 +67,10 @@ private[fs2] trait compressionplatform {
       private def inflateAndTrailer(
           inflateParams: InflateParams,
           trailerSize: Int
-      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])] = in => {
+      ): Stream[F, Byte] => Stream[
+        F,
+        (Stream[F, Byte], Ref[F, Chunk[Byte]], Ref[F, Long], Ref[F, Long])
+      ] = in => {
         val options = zlibMod
           .ZlibOptions()
           .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
@@ -81,47 +84,64 @@ private[fs2] trait compressionplatform {
           }),
           Stream.resource(SuspendedStream(in)),
           Stream.eval(Ref.of[F, Chunk[Byte]](Chunk.empty)),
-          Stream.eval(Ref.of[F, Int](0)),
+          Stream.eval(Ref.of[F, Long](0)),
+          Stream.eval(Ref.of[F, Long](0)),
+          Stream.eval(Ref.of[F, Long](0)),
           Stream.eval(Ref.of[F, Chunk[Byte]](Chunk.empty))
-        ).tupled.map { case ((inflate, out), suspendedIn, lastChunk, bytesPiped, trailerChunk) =>
-          val trackedStream =
-            suspendedIn.stream.chunks.evalTap { chunk =>
-              bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
-            }.unchunks
+        ).tupled.map {
+          case (
+                (inflate, out),
+                suspendedIn,
+                lastChunk,
+                bytesPiped,
+                bytesWritten,
+                crc32,
+                trailerChunk
+              ) =>
+            val trackedStream =
+              suspendedIn.stream.chunks.evalTap { chunk =>
+                bytesPiped.update(_ + chunk.size) >> lastChunk.set(chunk)
+              }.unchunks
 
-          def onBytesWritten(bytesWritten: Long): F[Unit] =
-            (bytesPiped.get, lastChunk.get).tupled.flatMap { case (bytesPiped, lastChunk) =>
-              val bytesAvailable = bytesPiped - bytesWritten
-              val headTrailerBytes = lastChunk.takeRight(bytesAvailable.toInt)
-              val bytesToPull = trailerSize - headTrailerBytes.size
-              val wholeTrailer = if (bytesToPull > 0) {
-                suspendedIn.stream
-                  .take(bytesToPull.toLong)
-                  .chunkAll
-                  .compile
-                  .lastOrError
-                  .map(remainingBytes => headTrailerBytes ++ remainingBytes)
-              } else {
-                headTrailerBytes.take(trailerSize).pure[F]
-              }
-              (wholeTrailer >>= trailerChunk.set).void
-            }
-
-          val inflated = out
-            .concurrently(
-              trackedStream
-                .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
-            )
-            .onFinalize {
-              F.delay(
-                inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong
-              ).flatMap(onBytesWritten) >>
-                F.async_[Unit] { cb =>
-                  inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
+            def onBytesWritten(bytesWritten: Long): F[Unit] =
+              (bytesPiped.get, lastChunk.get).tupled.flatMap { case (bytesPiped, lastChunk) =>
+                val bytesAvailable = bytesPiped - bytesWritten
+                val headTrailerBytes = lastChunk.takeRight(bytesAvailable.toInt)
+                val bytesToPull = trailerSize - headTrailerBytes.size
+                val wholeTrailer = if (bytesToPull > 0) {
+                  suspendedIn.stream
+                    .take(bytesToPull.toLong)
+                    .chunkAll
+                    .compile
+                    .lastOrError
+                    .map(remainingBytes => headTrailerBytes ++ remainingBytes)
+                } else {
+                  headTrailerBytes.take(trailerSize).pure[F]
                 }
-            }
+                (wholeTrailer >>= trailerChunk.set).void
+              }
 
-          (inflated, trailerChunk)
+            val crcBuilder = new CrcBuilder
+            val inflated = out
+              .concurrently(
+                trackedStream
+                  .through(writeWritable[F](inflate.asInstanceOf[Writable].pure))
+              )
+              .onFinalize {
+                F.delay(
+                  inflate.asInstanceOf[zlibMod.Zlib].bytesWritten.toLong
+                ).flatMap(onBytesWritten) >>
+                  F.async_[Unit] { cb =>
+                    inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(())))
+                  }
+              }
+              .through(CountPipe(bytesWritten))
+              .through(CrcPipe(crcBuilder)) ++
+              Stream
+                .eval(crc32.set(crcBuilder.getValue))
+                .flatMap(_ => Stream.empty)
+
+            (inflated, trailerChunk, bytesWritten, crc32)
         }
       }
 

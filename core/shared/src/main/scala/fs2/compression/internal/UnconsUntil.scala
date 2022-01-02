@@ -22,8 +22,6 @@
 package fs2.compression.internal
 
 import fs2.{Chunk, INothing, Pull, Stream}
-import scodec.bits.BitVector
-import scodec.bits.crc.CrcBuilder
 
 private[compression] object UnconsUntil {
 
@@ -35,16 +33,15 @@ private[compression] object UnconsUntil {
   def apply[F[_]](
       predicate: Byte => Boolean,
       softLimit: Int,
-      crc32: CrcBuilder[BitVector]
+      crc32: CrcBuilder
   ): Stream[F, Byte] => Pull[F, INothing, Option[
-    (Chunk[Byte], CrcBuilder[BitVector], Stream[F, Byte])
+    (Chunk[Byte], Stream[F, Byte])
   ]] = {
 
     def checksumOnly(
-        acc: Chunk[Byte],
-        crc32: CrcBuilder[BitVector],
+        acc: List[Chunk[Byte]],
         rest: Stream[F, Byte]
-    ): Pull[F, INothing, Option[(Chunk[Byte], CrcBuilder[BitVector], Stream[F, Byte])]] =
+    ): Pull[F, INothing, Option[(Chunk[Byte], Stream[F, Byte])]] =
       rest.pull.uncons.flatMap {
         case None =>
           Pull.pure(None)
@@ -52,26 +49,27 @@ private[compression] object UnconsUntil {
           hd.indexWhere(predicate) match {
             case Some(i) =>
               val (pfx, sfx) = hd.splitAt(i + 1)
+
+              crc32.update(pfx)
               Pull.pure(
                 Some(
                   (
-                    acc,
-                    crc32.updated(pfx.toBitVector),
+                    Chunk.concat(acc.reverse),
                     tl.cons(sfx)
                   )
                 )
               )
             case None =>
-              checksumOnly(acc, crc32.updated(hd.toBitVector), tl)
+              crc32.update(hd)
+              checksumOnly(acc, tl)
           }
       }
 
     def go(
-        acc: Chunk[Byte],
-        crc32: CrcBuilder[BitVector],
+        acc: List[Chunk[Byte]],
         rest: Stream[F, Byte],
         size: Int = 0
-    ): Pull[F, INothing, Option[(Chunk[Byte], CrcBuilder[BitVector], Stream[F, Byte])]] =
+    ): Pull[F, INothing, Option[(Chunk[Byte], Stream[F, Byte])]] =
       rest.pull.uncons.flatMap {
         case None =>
           Pull.pure(None)
@@ -79,23 +77,25 @@ private[compression] object UnconsUntil {
           hd.indexWhere(predicate) match {
             case Some(i) =>
               val (pfx, sfx) = hd.splitAt(i + 1)
+              crc32.update(pfx)
               Pull.pure(
                 Some(
                   (
-                    (acc ++ pfx),
-                    crc32.updated(pfx.toBitVector),
+                    Chunk.concat((pfx :: acc).reverse),
                     tl.cons(sfx)
                   )
                 )
               )
             case None =>
+              crc32.update(hd)
               val newSize = size + hd.size
-              if (newSize < softLimit) go(acc ++ hd, crc32.updated(hd.toBitVector), tl, newSize)
-              else checksumOnly((acc ++ hd), crc32.updated(hd.toBitVector), tl)
+              if (newSize < softLimit)
+                go(hd :: acc, tl, newSize)
+              else checksumOnly(hd :: acc, tl)
           }
       }
 
-    go(Chunk.empty, crc32, _)
+    go(List.empty, _)
   }
 
 }

@@ -25,12 +25,14 @@ package compression
 import cats.effect.Ref
 import cats.effect.kernel.Sync
 import cats.syntax.all._
+import fs2.compression.internal.CrcBuilder
 
 import java.time.Instant
 import java.util.concurrent.TimeUnit
-import java.util.zip.{CRC32, Deflater, Inflater}
+import java.util.zip.{Deflater, Inflater}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
+import scala.util.chaining._
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
@@ -150,7 +152,7 @@ private[compression] trait CompressionCompanionPlatform {
       private def _deflate(
           deflateParams: DeflateParams,
           deflater: Deflater,
-          crc32: Option[CRC32]
+          crc32: Option[CrcBuilder]
       ): Pipe[F, Byte, Byte] =
         in =>
           Stream.suspend {
@@ -161,7 +163,7 @@ private[compression] trait CompressionCompanionPlatform {
       private def _deflate_chunk(
           deflateParams: DeflateParams,
           deflater: Deflater,
-          crc32: Option[CRC32],
+          crc32: Option[CrcBuilder],
           chunk: Chunk[Byte],
           deflatedBuffer: Array[Byte],
           isFinalChunk: Boolean
@@ -203,7 +205,7 @@ private[compression] trait CompressionCompanionPlatform {
       private def _deflate_stream(
           deflateParams: DeflateParams,
           deflater: Deflater,
-          crc32: Option[CRC32],
+          crc32: Option[CrcBuilder],
           deflatedBuffer: Array[Byte]
       ): Stream[F, Byte] => Pull[F, Byte, Unit] =
         _.pull.uncons.flatMap {
@@ -238,22 +240,41 @@ private[compression] trait CompressionCompanionPlatform {
       private def inflateAndTrailer(
           inflateParams: InflateParams,
           trailerSize: Int
-      ): Stream[F, Byte] => Stream[F, (Stream[F, Byte], Ref[F, Chunk[Byte]])] = in =>
+      ): Stream[F, Byte] => Stream[
+        F,
+        (Stream[F, Byte], Ref[F, Chunk[Byte]], Ref[F, Long], Ref[F, Long])
+      ] = in =>
         Stream.suspend {
-          Stream.eval(Ref.of[F, Chunk[Byte]](Chunk.empty)).map { trailerChunk =>
-            _inflate_chunks(inflateParams, trailerChunk, trailerSize)(in) -> trailerChunk
-          }
+          Stream
+            .eval(
+              (
+                Ref.of[F, Chunk[Byte]](Chunk.empty),
+                Ref.of[F, Long](0),
+                Ref.of[F, Long](0)
+              ).tupled
+            )
+            .map { case (trailerChunk, bytesWritten, crc32) =>
+              (
+                _inflate_chunks(inflateParams, trailerChunk, bytesWritten, crc32, trailerSize)(in),
+                trailerChunk,
+                bytesWritten,
+                crc32
+              )
+            }
         }
 
       private def _inflate_chunks(
           inflateParams: InflateParams,
           trailerChunk: Ref[F, Chunk[Byte]],
+          bytesWritten: Ref[F, Long],
+          crc32: Ref[F, Long],
           trailerSize: Int
       ): Stream[F, Byte] => Stream[F, Byte] = stream =>
         Stream
           .eval(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))
           .flatMap { inflater =>
             val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
+            val crcBuilder = new CrcBuilder
 
             def setTrailerChunk(
                 remaining: Chunk[Byte],
@@ -268,7 +289,9 @@ private[compression] trait CompressionCompanionPlatform {
                   .flatMap {
                     case None          => F.unit
                     case Some(trailer) => trailerChunk.set(remaining ++ trailer)
-                  }
+                  } >>
+                  bytesWritten.set(inflater.getBytesWritten) >>
+                  crc32.set(crcBuilder.getValue)
               }
 
             def inflateChunk(
@@ -281,6 +304,7 @@ private[compression] trait CompressionCompanionPlatform {
                 bytesChunk.length - offset
               )
               val inflatedBytes = inflater.inflate(inflatedBuffer)
+              crcBuilder.update(inflatedBuffer, 0, inflatedBytes)
               Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
                 val remainingBytes = inflater.getRemaining
                 if (!inflater.finished()) {

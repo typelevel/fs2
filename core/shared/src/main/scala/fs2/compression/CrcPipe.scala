@@ -21,30 +21,22 @@
 
 package fs2.compression
 
-import cats.effect.Ref
 import fs2.{Chunk, Pipe, Pull, Stream}
-import scodec.bits.BitVector
-import scodec.bits.crc.{CrcBuilder, crc32Builder}
+import fs2.compression.internal.CrcBuilder
 
-object CrcPipe {
+private[compression] object CrcPipe {
 
-  def apply[F[_]](deferredCrc: Ref[F, Long]): Pipe[F, Byte, Byte] = {
-    def pull(crcBuilder: CrcBuilder[BitVector]): Stream[F, Byte] => Pull[F, Byte, Long] =
+  def apply[F[_]](crcBuilder: CrcBuilder): Pipe[F, Byte, Byte] = {
+    def pull: Stream[F, Byte] => Pull[F, Byte, Unit] =
       _.pull.uncons.flatMap {
         case None =>
-          Pull.pure(crcBuilder.result.toLong(signed = false) & 0xffffffff)
+          Pull.done
         case Some((c: Chunk[Byte], rest: Stream[F, Byte])) =>
-          Pull.output(c) >> pull(crcBuilder.updated(c.toBitVector))(rest)
+          crcBuilder.update(c)
+          Pull.output(c) >> pull(rest)
       }
 
-    def calculateCrcOf(input: Stream[F, Byte]): Pull[F, Byte, Unit] =
-      for {
-        crcBuilder <- Pull.pure(crc32Builder)
-        crc <- pull(crcBuilder)(input)
-        _ <- Pull.eval(deferredCrc.set(crc))
-      } yield ()
-
-    calculateCrcOf(_).stream
+    pull(_).stream
   }
 
 }
