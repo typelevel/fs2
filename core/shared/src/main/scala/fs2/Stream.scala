@@ -174,7 +174,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def as[O2](o2: O2): Stream[F, O2] = map(_ => o2)
 
-  /** Returns a stream of `O` values wrapped in `Right` until the first error, which is emitted wrapped in `Left`.
+  /** Returns a stream of `O` values wrapped in `Right` until an error is raised.
+    * If an error is raised, it is emitted wrapped in `Left`.
+    *
+    * This combinator preserves chunk structure. Until an error is raised, the
+    * resulting stream emits the same elements as this stream, in the same order
+    * and chunk structure, but with the elements wrapped in a `Right`.
+    * If an error is raised, the resulting stream ends by emitting the error
+    * wrapped in a `Left`, in a singleton chunk.
     *
     * @example {{{
     * scala> import cats.effect.SyncIO
@@ -1722,7 +1729,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }.stream
   }
 
-  /** Returns the last element of this stream, if non-empty.
+  /** Returns the last element of this stream, if non-empty and finite.
+    *
+    * Note that this is a fold-like operation. Pulling from the result stream
+    * starts pulling from `this` stream, without emitting any elements,
+    * until it reaches the end of `this` stream.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).last.toList
@@ -1747,11 +1758,31 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case None    => Pull.output1(fallback)
     }.stream
 
-  /** Applies the specified pure function to each input and emits the result.
+  /** Applies the function to each input and emits the results.
+    *
+    * This combinator keeps chunk structure and order: each output chunk is the
+    * result of applying `ch.map(f)` to a chunk `ch` from the source.
+    *
+    * **Errors** If an error is raised when pulling from the source (`this`)
+    * stream, then the mapped stream rethrows that error. If the function `f`
+    * throws an Exception `e` when applied to an element `o`, then the entire
+    * chunk containing that element is discarded, and the stream fails with
+    * that exception `e`.
+    *
+    * **Interruption**: if an interruption occurs, then the mapped stream is
+    * cut between chunks: the last output chunk is still the image of a whole
+    * source chunk. Once interruption is detected, the stream stops pulling
+    * from the source; however, it may be detected after it has pulled a source
+    * chunk but before mapping it and emitting its image. When this happens,
+    * that chunk is dropped and lost.
     *
     * @example {{{
     * scala> Stream("Hello", "World!").map(_.size).toList
     * res0: List[Int] = List(5, 6)
+    * scala> def fili(x: Int) = if (x < 5) throw new RuntimeException("Boom") else x + 1
+    * scala> val str = (Stream(1,2,3) ++ Stream(4, 5, 6)).map(fili).handleErrorWith(_ => Stream(0))
+    * scala> str.compile.toList.unsafeRunSync()
+    * res1: List[Int] = List(1, 2, 3, 0)
     * }}}
     */
   def map[O2](f: O => O2): Stream[F, O2] =
@@ -1873,10 +1904,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * As such, there may be up to two chunks (one from each stream)
     * waiting to be processed while the resulting stream
     * is processing elements.
-    *
-    * Also note that if either side produces empty chunk,
-    * the processing on that side continues,
-    * w/o downstream requiring to consume result.
     *
     * If either side does not emit anything (i.e. as result of drain) that side
     * will continue to run even when the resulting stream did not ask for more data.
@@ -2037,9 +2064,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
     new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
 
-  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
-    * downstream in the same order as the input stream. The number of concurrent effects
-    * is limited by the `maxConcurrent` parameter.
+  /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting
+    * the results downstream in the same order as the input stream.
+    *
+    * The number of concurrent effects is limited by the `maxConcurrent` parameter.
     *
     * See [[Stream#parEvalMapUnordered]] if there is no requirement to retain the order of
     * the original stream.
@@ -3100,6 +3128,7 @@ object Stream extends StreamLowPriority {
   def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
 
   /** Creates a pure stream that emits the supplied values.
+    * All values are emitted in a single chunk.
     *
     * @example {{{
     * scala> Stream.emits(List(1, 2, 3)).toList
