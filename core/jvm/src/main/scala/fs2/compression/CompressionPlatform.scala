@@ -31,7 +31,6 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.zip.{Deflater, Inflater}
 import scala.concurrent.duration.FiniteDuration
-import scala.util.control.NonFatal
 
 private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
@@ -269,88 +268,85 @@ private[compression] trait CompressionCompanionPlatform {
           crc32: Ref[F, Long],
           trailerSize: Int
       ): Stream[F, Byte] => Stream[F, Byte] = stream =>
-        Stream
-          .eval(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))
-          .flatMap { inflater =>
-            val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
-            val crcBuilder = new CrcBuilder
+        Pull
+          .bracketCase[F, Byte, Inflater, Unit](
+            Pull.eval(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap))),
+            inflater => {
+              val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
+              val crcBuilder = new CrcBuilder
 
-            def setTrailerChunk(
-                remaining: Chunk[Byte],
-                s: Stream[F, Byte]
-            ): Pull[F, INothing, Unit] =
-              Pull.eval {
-                s
-                  .take((trailerSize - remaining.size).toLong)
-                  .chunkAll
-                  .compile
-                  .last
-                  .flatMap {
-                    case None          => F.unit
-                    case Some(trailer) => trailerChunk.set(remaining ++ trailer)
-                  } >>
-                  bytesWritten.set(inflater.getBytesWritten) >>
-                  crc32.set(crcBuilder.getValue)
-              }
+              def setRefs(trailerBytes: Chunk[Byte]) =
+                Pull.eval {
+                  trailerChunk.set(trailerBytes) >>
+                    bytesWritten.set(inflater.getBytesWritten) >>
+                    crc32.set(crcBuilder.getValue)
+                }
 
-            def inflateChunk(
-                bytesChunk: Chunk.ArraySlice[Byte],
-                offset: Int
-            ): Pull[F, Byte, Option[Chunk[Byte]]] = {
-              inflater.setInput(
-                bytesChunk.values,
-                bytesChunk.offset + offset,
-                bytesChunk.length - offset
-              )
-              val inflatedBytes = inflater.inflate(inflatedBuffer)
-              crcBuilder.update(inflatedBuffer, 0, inflatedBytes)
-              Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
-                val remainingBytes = inflater.getRemaining
-                if (!inflater.finished()) {
-                  if (remainingBytes > 0)
-                    inflateChunk(bytesChunk, bytesChunk.length - remainingBytes)
-                  else
-                    Pull.pure(none)
-                } else {
-                  if (remainingBytes > 0)
-                    Pull.pure(
-                      Chunk
-                        .array(
-                          bytesChunk.values,
-                          bytesChunk.offset + bytesChunk.length - remainingBytes,
-                          if (remainingBytes < trailerSize) remainingBytes
-                          else trailerSize // don't need more than that
-                        )
-                        .some
-                    )
-                  else
-                    Pull.pure(Chunk.empty.some)
+              def setTrailerChunk(
+                  remaining: Chunk[Byte]
+              ): Stream[F, Byte] => Pull[F, INothing, Unit] =
+                _.pull.uncons.flatMap {
+                  case None =>
+                    setRefs(remaining)
+                  case Some((chunk, rest)) =>
+                    if (remaining.size + chunk.size > trailerSize) {
+                      setRefs(remaining ++ chunk.take(trailerSize - remaining.size))
+                    } else {
+                      setTrailerChunk(remaining ++ chunk)(rest)
+                    }
+                }
+
+              def inflateChunk(
+                  bytesChunk: Chunk.ArraySlice[Byte],
+                  offset: Int
+              ): Pull[F, Byte, Option[Chunk[Byte]]] = {
+                inflater.setInput(
+                  bytesChunk.values,
+                  bytesChunk.offset + offset,
+                  bytesChunk.length - offset
+                )
+                val inflatedBytes = inflater.inflate(inflatedBuffer)
+                crcBuilder.update(inflatedBuffer, 0, inflatedBytes)
+                Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
+                  val remainingBytes = inflater.getRemaining
+                  if (!inflater.finished()) {
+                    if (remainingBytes > 0)
+                      inflateChunk(bytesChunk, bytesChunk.length - remainingBytes)
+                    else
+                      Pull.pure(none)
+                  } else {
+                    if (remainingBytes > 0)
+                      Pull.pure(
+                        Chunk
+                          .array(
+                            bytesChunk.values,
+                            bytesChunk.offset + bytesChunk.length - remainingBytes,
+                            if (remainingBytes < trailerSize) remainingBytes
+                            else trailerSize // don't need more than that
+                          )
+                          .some
+                      )
+                    else
+                      Pull.pure(Chunk.empty.some)
+                  }
                 }
               }
-            }
 
-            def pull: Stream[F, Byte] => Pull[F, Byte, Unit] = in =>
-              in.pull.uncons.flatMap {
-                case None => Pull.done
-                case Some((chunk, rest)) =>
-                  inflateChunk(chunk.toArraySlice, 0).flatMap {
-                    case None            => pull(rest)
-                    case Some(remaining) => setTrailerChunk(remaining, rest)
-                  }
-              }
+              def pull: Stream[F, Byte] => Pull[F, Byte, Unit] = in =>
+                in.pull.uncons.flatMap {
+                  case None => Pull.done
+                  case Some((chunk, rest)) =>
+                    inflateChunk(chunk.toArraySlice, 0).flatMap {
+                      case None            => pull(rest)
+                      case Some(remaining) => setTrailerChunk(remaining)(rest)
+                    }
+                }
 
-            pull(stream)
-              .flatMap { _ =>
-                Pull.eval(F.delay(inflater.end()))
-              }
-              .handleErrorWith { case NonFatal(e) =>
-                Pull.eval(F.delay(inflater.end())) >> Pull.raiseError(e)
-              }
-              .stream
-//              .onFinalize {
-//                F.delay(inflater.end())
-//              }
-          }
+              pull(stream)
+            },
+            (inflater, _) => Pull.eval(F.delay(inflater.end()))
+          )
+          .stream
 
       def gzip(
           fileName: Option[String],
