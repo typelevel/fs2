@@ -30,6 +30,7 @@ import cats.syntax.all._
 
 import fs2.{Compiler, CompositeFailure}
 import fs2.internal.InterruptContext.InterruptionOutcome
+import fs2.ScopeSnapshot
 
 /** Represents a period of stream execution in which resources are acquired and released.
   * A scope has a state, consisting of resources (with associated finalizers) acquired in this scope
@@ -190,7 +191,7 @@ private[fs2] final class Scope[F[_]] private (
             t => F.pure(Left(t)),
             r => {
               val finalizer = (ec: Resource.ExitCase) => release(r, ec)
-              resource.acquired(finalizer).flatMap { result =>
+              resource.acquired(r, finalizer).flatMap { result =>
                 if (result.exists(identity)) {
                   register(resource).flatMap {
                     case false =>
@@ -479,6 +480,17 @@ private[fs2] final class Scope[F[_]] private (
       def cancel: F[Either[Throwable, Unit]] = traverseError[Lease[F]](allLeases, _.cancel)
     }
 
+  def snapshot: F[ScopeSnapshot] =
+    state.get.flatMap {
+      case Scope.State.Open(resources, children) =>
+        children.traverse(_.snapshot).flatMap(c => 
+          resources.traverse(_.snapshot).flatMap(r =>
+            interruptible.traverse(_.snapshot).map(i =>
+              ScopeSnapshot(id, true, false, c, r, i))))
+      case Scope.State.Closed() =>
+        ScopeSnapshot(id, false, false, Chain.empty, Chain.empty, None).pure[F]
+    }
+ 
   override def toString =
     s"Scope(id=$id,interruptible=${interruptible.nonEmpty})"
 }

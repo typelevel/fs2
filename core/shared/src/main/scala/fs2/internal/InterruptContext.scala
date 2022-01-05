@@ -26,6 +26,7 @@ import cats.effect.kernel.{Concurrent, Deferred, Fiber, Outcome, Ref, Unique}
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
 import InterruptContext.InterruptionOutcome
+import fs2.InterruptContextSnapshot
 
 /** A context of interruption status. This is shared from the parent that was created as interruptible to all
   * its children. It assures consistent view of the interruption through the stack
@@ -93,6 +94,9 @@ final private[fs2] case class InterruptContext[F[_]](
           case Left(other)   => Left(other)
         }
     }
+
+  def snapshot: F[InterruptContextSnapshot] =
+    ref.get.map(InterruptContextSnapshot(interruptRoot, _))
 }
 
 private[fs2] object InterruptContext {

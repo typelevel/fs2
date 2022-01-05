@@ -25,6 +25,7 @@ import cats.effect.kernel.{Resource, Unique}
 import cats.implicits._
 
 import fs2.Compiler
+import fs2.ResourceSnapshot
 
 /** Represents a resource acquired during stream interpretation.
   *
@@ -83,10 +84,11 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     * Yields to true, if the resource's finalizer was successfully acquired and not run, otherwise to false or an error.
     * If the error is yielded then finalizer was run and failed.
     *
+    * @param resource Resource that was acquired (only used for diagnostics)
     * @param finalizer Finalizer to be run on release is provided.
     * @return
     */
-  def acquired(finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]]
+  def acquired(resource: Any, finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]]
 
   /** Signals that this resource was leased by another scope than one allocating this resource.
     *
@@ -94,6 +96,8 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     * or to `None` when this resource cannot be leased because resource is already released.
     */
   def lease: F[Option[Lease[F]]]
+
+  def snapshot: F[ResourceSnapshot]
 }
 
 private[internal] object ScopedResource {
@@ -108,6 +112,7 @@ private[internal] object ScopedResource {
     */
   private[this] final case class State[+F[_]](
       open: Boolean,
+      resource: Option[Any],
       finalizer: Option[Resource.ExitCase => F[Either[Throwable, Unit]]],
       leases: Int
   ) {
@@ -116,7 +121,7 @@ private[internal] object ScopedResource {
     @inline def isFinished: Boolean = !open && leases == 0
   }
 
-  private[this] val initial = State(open = true, finalizer = None, leases = 0)
+  private[this] val initial = State(open = true, resource = None, finalizer = None, leases = 0)
 
   def create[F[_]](implicit F: Compiler.Target[F]): F[ScopedResource[F]] =
     for {
@@ -141,7 +146,7 @@ private[internal] object ScopedResource {
           }
           .flatMap(finalizer => finalizer.map(_(ec)).getOrElse(pru))
 
-      def acquired(finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]] =
+      def acquired(resource: Any, finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]] =
         state.modify { s =>
           if (s.isFinished)
             // state is closed and there are no leases, finalizer has to be invoked right away
@@ -149,7 +154,7 @@ private[internal] object ScopedResource {
           else {
             val attemptFinalizer = (ec: Resource.ExitCase) => finalizer(ec).attempt
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
-            s.copy(finalizer = Some(attemptFinalizer)) -> (Right(true): Either[
+            s.copy(resource = Some(resource), finalizer = Some(attemptFinalizer)) -> (Right(true): Either[
               Throwable,
               Boolean
             ]).pure[F]
@@ -163,6 +168,9 @@ private[internal] object ScopedResource {
           else
             s -> None
         }
+
+      def snapshot: F[ResourceSnapshot] =
+        state.get.map { s => ResourceSnapshot(id, s.resource) }
 
       private[this] object TheLease extends Lease[F] {
         def cancel: F[Either[Throwable, Unit]] =

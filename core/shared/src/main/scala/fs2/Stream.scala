@@ -762,6 +762,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Stream.chunk(os)
     }
 
+  def debugScopes(
+    formatter: ScopeSnapshot => String = _.toDot,
+    logger: String => Unit = println(_)
+  ): Stream[F, O] =
+    this.pull.uncons.flatMap {
+      case Some((hd, tl)) =>
+        Pull.debugScopes(formatter, logger) >> tl.cons(hd).pull.echo
+      case None => Pull.debugScopes(formatter, logger)
+    }.streamNoScope
+
   /** Returns a stream that when run, sleeps for duration `d` and then pulls from this stream.
     *
     * Alias for `sleep_[F](d) ++ this`.

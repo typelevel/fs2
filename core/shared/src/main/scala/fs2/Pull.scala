@@ -774,6 +774,8 @@ object Pull extends PullLowPriority {
 
   private final case class GetScope[F[_]]() extends AlgEffect[Pure, Scope[F]]
 
+  private final case class DebugScopes[F[_]]() extends AlgEffect[Pure, ScopeSnapshot]
+
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
@@ -1199,6 +1201,10 @@ object Pull extends PullLowPriority {
 
         case _: GetScope[_] =>
           go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(scope)))
+        case _: DebugScopes[_] =>
+          initScope.snapshot.flatMap { snapshot =>
+            go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(snapshot.activate(scope.id))))
+          }
         case eval: Eval[G, r]       => goEval[r](eval, getCont[r, G, X])
         case acquire: Acquire[G, r] => goAcquire(acquire, getCont[r, G, X])
         case inScope: InScope[G, _] =>
@@ -1284,6 +1290,14 @@ object Pull extends PullLowPriority {
     go(s)
   }
 
+  def getScopeSnapshot[F[_]]: Pull[F, Nothing, ScopeSnapshot] = DebugScopes()
+
+  def debugScopes[F[_]](
+    formatter: ScopeSnapshot => String = _.toDot,
+    logger: String => Unit = println(_)
+  ): Pull[F, Nothing, Unit] =
+    getScopeSnapshot.map(s => logger(formatter(s)))
+ 
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
   ): Pull[F, O, S] =
