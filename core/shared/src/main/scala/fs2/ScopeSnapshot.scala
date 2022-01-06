@@ -108,8 +108,8 @@ sealed trait ScopeSnapshot {
     val font = "Helvetica,Arial"
     val lines = Chain(
       "digraph {",
-      s"  node [shape=rectangle fontname=\"$font\"]",
-      s"  edge [fontname=\"$font\"]"
+      s"""  node [shape=rectangle fontname="$font"]""",
+      s"""  edge [fontname="$font"]"""
     ) ++ subgraph ++ Chain.one("}")
     lines.iterator.mkString("\n")
   }
