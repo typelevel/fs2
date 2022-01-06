@@ -763,8 +763,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }
 
   def debugScopes(
-    formatter: ScopeSnapshot => String = _.toDot,
-    logger: String => Unit = println(_)
+      formatter: ScopeSnapshot => String = _.toDot(),
+      logger: String => Unit = println(_)
   ): Stream[F, O] =
     this.pull.uncons.flatMap {
       case Some((hd, tl)) =>

@@ -1203,7 +1203,13 @@ object Pull extends PullLowPriority {
           go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(scope)))
         case _: DebugScopes[_] =>
           initScope.snapshot.flatMap { snapshot =>
-            go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(snapshot.activate(scope.id))))
+            go(
+              scope,
+              extendedTopLevelScope,
+              translation,
+              runner,
+              getCont(Succeeded(snapshot.activate(scope.id)))
+            )
           }
         case eval: Eval[G, r]       => goEval[r](eval, getCont[r, G, X])
         case acquire: Acquire[G, r] => goAcquire(acquire, getCont[r, G, X])
@@ -1293,11 +1299,11 @@ object Pull extends PullLowPriority {
   def getScopeSnapshot[F[_]]: Pull[F, Nothing, ScopeSnapshot] = DebugScopes()
 
   def debugScopes[F[_]](
-    formatter: ScopeSnapshot => String = _.toDot,
-    logger: String => Unit = println(_)
+      formatter: ScopeSnapshot => String = _.toDot(),
+      logger: String => Unit = println(_)
   ): Pull[F, Nothing, Unit] =
     getScopeSnapshot.map(s => logger(formatter(s)))
- 
+
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
   ): Pull[F, O, S] =

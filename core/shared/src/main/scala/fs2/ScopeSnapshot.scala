@@ -27,6 +27,8 @@ import cats.data.Chain
 import cats.effect.kernel.{Outcome, Unique}
 import cats.syntax.all._
 
+import fs2.internal.Debug
+
 sealed trait ScopeSnapshot {
   def id: Unique.Token
   def open: Boolean
@@ -34,8 +36,8 @@ sealed trait ScopeSnapshot {
   def children: Chain[ScopeSnapshot]
   def resources: Chain[ResourceSnapshot]
   def interruptible: Option[InterruptContextSnapshot]
-  def activate(id: Unique.Token): ScopeSnapshot
 
+  def activate(id: Unique.Token): ScopeSnapshot
   def withActive(active: Boolean): ScopeSnapshot
   def withChildren(children: Chain[ScopeSnapshot]): ScopeSnapshot
 
@@ -43,19 +45,18 @@ sealed trait ScopeSnapshot {
   def withNoResourceDetails: ScopeSnapshot
   def mapResources(f: Option[Any] => Option[Any]): ScopeSnapshot
 
-  def toDot: String = {
+  def toDot(includeInnteruptRootEdges: Boolean = false): String = {
     def id(t: Unique.Token): String = t.##.toString
-    def render(t: Unique.Token): String = t.##.toHexString
     def renderOutcome(o: Outcome[Id, Throwable, Unique.Token]): String = o match {
       case Outcome.Succeeded(_) => "Succeeded"
-      case Outcome.Errored(t) => s"Errored(${t.getMessage})"
-      case Outcome.Canceled() => "Canceled"
+      case Outcome.Errored(t)   => s"Errored(${t.getMessage})"
+      case Outcome.Canceled()   => "Canceled"
     }
     def escape(s: String): String = s.replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     def table(rows: Option[String]*): String = {
       val bldr = new collection.mutable.StringBuilder
       bldr ++= """<table border="0" cellborder="0" cellspacing="1">"""
-      rows.flatten.foreach { s => 
+      rows.flatten.foreach { s =>
         bldr ++= "<tr><td>"
         bldr ++= s
         bldr ++= "</td></tr>"
@@ -67,41 +68,61 @@ sealed trait ScopeSnapshot {
     val subgraph = ScopeSnapshot.walk { s =>
       val node = {
         val t = table(
-          Some(s"<b>Scope ${render(s.id)}</b>"),
-          s.interruptible.map(i => i.outcome match {
-            case Some(outcome) => s"Interruption outcome: ${renderOutcome(outcome)}"
-            case None => "Interruptible"
-          }),
+          Some(s"<b>Scope ${Debug.displayToken(s.id)}</b>"),
+          s.interruptible.map(i =>
+            i.outcome match {
+              case Some(outcome) => s"Interruption outcome: ${renderOutcome(outcome)}"
+              case None          => "Interruptible"
+            }
+          ),
           Option("Closed").filterNot(_ => s.open),
           Option("Active").filter(_ => s.active)
         )
         s"""  ${id(s.id)} [label=<$t> penwidth=${if (s.active) 2 else 1}]"""
       }
-      val interruptionEdges = Chain.fromSeq(List(
-        s.interruptible.map(i => s"  ${id(s.id)} -> ${id(i.interruptRoot)} [style=dashed]"),
-        s.interruptible.flatMap(_.outcome.collect {
-          case Outcome.Succeeded(t) => s"  ${id(s.id)} -> ${id(t)} [style=dotted label=interrupt]"
-        })
-      ).flatten)
+      val interruptionEdges = Chain.fromSeq(
+        List(
+          s.interruptible
+            .map(i => s"  ${id(s.id)} -> ${id(i.interruptRoot)} [style=dashed]")
+            .filter(_ => includeInnteruptRootEdges),
+          s.interruptible.flatMap(_.outcome.collect { case Outcome.Succeeded(t) =>
+            s"  ${id(s.id)} -> ${id(t)} [style=dotted label=interrupt]"
+          })
+        ).flatten
+      )
       val edges =
         interruptionEdges ++
-        s.resources.flatMap { r => 
-          val t = table(Some(s"<b>Resource ${render(r.id)}</b>"), r.resource.map(a => escape(a.toString)))
-          Chain(
-            s"  ${id(r.id)} [label=<$t>]",
-            s"  ${id(s.id)} -> ${id(r.id)}"
-          )
-        } ++
+          s.resources.flatMap { r =>
+            val t = table(
+              Some(s"<b>Resource ${Debug.displayToken(r.id)}</b>"),
+              r.resource.map(a => escape(a.toString))
+            )
+            Chain(
+              s"  ${id(r.id)} [label=<$t>]",
+              s"  ${id(s.id)} -> ${id(r.id)}"
+            )
+          } ++
           s.children.map(c => s"  ${id(s.id)} -> ${id(c.id)}")
       node +: edges
     }(this)
-    val lines = Chain("digraph {", "  node [shape=rectangle]") ++ subgraph ++ Chain.one("}")
+    val font = "Helvetica,Arial"
+    val lines = Chain(
+      "digraph {",
+      s"  node [shape=rectangle fontname=\"$font\"]",
+      s"  edge [fontname=\"$font\"]"
+    ) ++ subgraph ++ Chain.one("}")
     lines.iterator.mkString("\n")
   }
 }
-
 object ScopeSnapshot {
-  def apply(id0: Unique.Token, open0: Boolean, active0: Boolean, children0: Chain[ScopeSnapshot], resources0: Chain[ResourceSnapshot], interruptible0: Option[InterruptContextSnapshot]): ScopeSnapshot =
+  def apply(
+      id0: Unique.Token,
+      open0: Boolean,
+      active0: Boolean,
+      children0: Chain[ScopeSnapshot],
+      resources0: Chain[ResourceSnapshot],
+      interruptible0: Option[InterruptContextSnapshot]
+  ): ScopeSnapshot =
     new ScopeSnapshot {
       def id = id0
       def open = open0
@@ -114,21 +135,15 @@ object ScopeSnapshot {
         if (this.id == id) withActive(true)
         else withChildren(children.map(_.activate(id)))
 
-      def withActive(active0: Boolean) = apply(id, open, active0, children, resources, interruptible)
-      def withChildren(children0: Chain[ScopeSnapshot]) = apply(id, open, active, children0, resources, interruptible)
+      def withActive(active0: Boolean) =
+        apply(id, open, active0, children, resources, interruptible)
+      def withChildren(children0: Chain[ScopeSnapshot]) =
+        apply(id, open, active, children0, resources, interruptible)
 
       def withSimpleResourceDetails: ScopeSnapshot =
-        mapResources(_.map(simpleTypeName))
+        mapResources(_.map(Debug.displayTypeName))
 
-      private def simpleTypeName(a: Any): String = a match {
-        case _: Function[_, _] | _: Function2[_, _, _] | _: Function3[_, _, _, _] | _: Function4[_, _, _, _, _] | _: Function5[_, _, _, _, _, _] => "<fn>"
-        case p: Product =>
-          val prefix = if (p.productPrefix.startsWith("Tuple")) "" else p.productPrefix
-          p.productIterator.map(simpleTypeName).mkString(prefix + "(", ",", ")")
-        case _ => a.getClass.getSimpleName
-      }
-
-      def withNoResourceDetails: ScopeSnapshot = 
+      def withNoResourceDetails: ScopeSnapshot =
         mapResources(_ => None)
 
       def mapResources(f: Option[Any] => Option[Any]): ScopeSnapshot = {
@@ -162,7 +177,10 @@ sealed trait InterruptContextSnapshot {
 }
 
 object InterruptContextSnapshot {
-  def apply(interruptRoot0: Unique.Token, outcome0: Option[Outcome[Id, Throwable, Unique.Token]]): InterruptContextSnapshot =
+  def apply(
+      interruptRoot0: Unique.Token,
+      outcome0: Option[Outcome[Id, Throwable, Unique.Token]]
+  ): InterruptContextSnapshot =
     new InterruptContextSnapshot {
       def interruptRoot = interruptRoot0
       def outcome = outcome0

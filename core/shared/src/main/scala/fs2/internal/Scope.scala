@@ -483,14 +483,19 @@ private[fs2] final class Scope[F[_]] private (
   def snapshot: F[ScopeSnapshot] =
     state.get.flatMap {
       case Scope.State.Open(resources, children) =>
-        children.traverse(_.snapshot).flatMap(c => 
-          resources.traverse(_.snapshot).flatMap(r =>
-            interruptible.traverse(_.snapshot).map(i =>
-              ScopeSnapshot(id, true, false, c, r, i))))
+        children
+          .traverse(_.snapshot)
+          .flatMap(c =>
+            resources
+              .traverse(_.snapshot)
+              .flatMap(r =>
+                interruptible.traverse(_.snapshot).map(i => ScopeSnapshot(id, true, false, c, r, i))
+              )
+          )
       case Scope.State.Closed() =>
         ScopeSnapshot(id, false, false, Chain.empty, Chain.empty, None).pure[F]
     }
- 
+
   override def toString =
     s"Scope(id=$id,interruptible=${interruptible.nonEmpty})"
 }

@@ -88,7 +88,10 @@ private[fs2] sealed abstract class ScopedResource[F[_]] {
     * @param finalizer Finalizer to be run on release is provided.
     * @return
     */
-  def acquired(resource: Any, finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]]
+  def acquired(
+      resource: Any,
+      finalizer: Resource.ExitCase => F[Unit]
+  ): F[Either[Throwable, Boolean]]
 
   /** Signals that this resource was leased by another scope than one allocating this resource.
     *
@@ -146,7 +149,10 @@ private[internal] object ScopedResource {
           }
           .flatMap(finalizer => finalizer.map(_(ec)).getOrElse(pru))
 
-      def acquired(resource: Any, finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]] =
+      def acquired(
+          resource: Any,
+          finalizer: Resource.ExitCase => F[Unit]
+      ): F[Either[Throwable, Boolean]] =
         state.modify { s =>
           if (s.isFinished)
             // state is closed and there are no leases, finalizer has to be invoked right away
@@ -154,7 +160,9 @@ private[internal] object ScopedResource {
           else {
             val attemptFinalizer = (ec: Resource.ExitCase) => finalizer(ec).attempt
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
-            s.copy(resource = Some(resource), finalizer = Some(attemptFinalizer)) -> (Right(true): Either[
+            s.copy(resource = Some(resource), finalizer = Some(attemptFinalizer)) -> (Right(
+              true
+            ): Either[
               Throwable,
               Boolean
             ]).pure[F]
@@ -170,7 +178,7 @@ private[internal] object ScopedResource {
         }
 
       def snapshot: F[ResourceSnapshot] =
-        state.get.map { s => ResourceSnapshot(id, s.resource) }
+        state.get.map(s => ResourceSnapshot(id, s.resource))
 
       private[this] object TheLease extends Lease[F] {
         def cancel: F[Either[Throwable, Unit]] =
