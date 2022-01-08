@@ -263,19 +263,21 @@ private[compression] trait CompressionCompanionPlatform {
         */
       def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] =
         stream =>
-          Stream
-            .bracket(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap)))(inflater =>
-              F.delay(inflater.end())
+          Pull
+            .bracketCase[F, Byte, Inflater, Unit](
+              Pull.eval(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap))),
+              inflater => _inflate(inflateParams, inflater, crc32 = None)(stream),
+              (inflater, _) => Pull.eval(F.delay(inflater.end()))
             )
-            .flatMap(inflater => _inflate(inflateParams, inflater, crc32 = None)(stream))
+            .stream
 
       private def _inflate(
           inflateParams: InflateParams,
           inflater: Inflater,
           crc32: Option[CRC32]
-      ): Pipe[F, Byte, Byte] =
+      ): Stream[F, Byte] => Pull[F, Byte, Unit] =
         in =>
-          Stream.suspend {
+          Pull.suspend {
             val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
             in.pull.uncons.flatMap {
               case Some((deflatedChunk, deflatedStream)) =>
@@ -292,7 +294,7 @@ private[compression] trait CompressionCompanionPlatform {
                 )(deflatedStream)
               case None =>
                 Pull.done
-            }.stream
+            }
           }
 
       private def _inflate_chunk(
@@ -506,28 +508,29 @@ private[compression] trait CompressionCompanionPlatform {
         stream =>
           inflateParams match {
             case params: InflateParams if params.header == ZLibParams.Header.GZIP =>
-              Stream
-                .bracket(F.delay((new Inflater(true), new CRC32(), new CRC32()))) {
-                  case (inflater, _, _) => F.delay(inflater.end())
-                }
-                .flatMap { case (inflater, headerCrc32, contentCrc32) =>
-                  stream.pull
-                    .unconsN(gzipHeaderBytes)
-                    .flatMap {
-                      case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
-                        _gunzip_matchMandatoryHeader(
-                          params,
-                          mandatoryHeaderChunk,
-                          streamAfterMandatoryHeader,
-                          headerCrc32,
-                          contentCrc32,
-                          inflater
-                        )
-                      case None =>
-                        Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
-                    }
-                    .stream
-                }
+              Pull
+                .bracketCase[F, GunzipResult[F], (Inflater, CRC32, CRC32), Unit](
+                  Pull.eval(F.delay((new Inflater(true), new CRC32(), new CRC32()))),
+                  { case (inflater, headerCrc32, contentCrc32) =>
+                    stream.pull
+                      .unconsN(gzipHeaderBytes)
+                      .flatMap {
+                        case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
+                          _gunzip_matchMandatoryHeader(
+                            params,
+                            mandatoryHeaderChunk,
+                            streamAfterMandatoryHeader,
+                            headerCrc32,
+                            contentCrc32,
+                            inflater
+                          )
+                        case None =>
+                          Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
+                      }
+                  },
+                  { case ((inflater, _, _), _) => Pull.eval(F.delay(inflater.end())) }
+                )
+                .stream
             case params: InflateParams =>
               Stream.raiseError(
                 new ZipException(
@@ -716,12 +719,12 @@ private[compression] trait CompressionCompanionPlatform {
                           headerCrc32
                         )
                       )
-                      .through(
+                      .through(s =>
                         _inflate(
                           inflateParams = inflateParams,
                           inflater = inflater,
                           crc32 = Some(contentCrc32)
-                        )
+                        )(s).stream
                       )
                       .through(_gunzip_validateTrailer(contentCrc32, inflater))
                   )
