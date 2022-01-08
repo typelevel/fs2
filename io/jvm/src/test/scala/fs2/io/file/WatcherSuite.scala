@@ -169,12 +169,11 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
     Stream.sleep_[IO](100.millis)
 
   // Tries to load the Oracle specific SensitivityWatchEventModifier to increase sensitivity of polling
-  private val modifiers: Seq[WatchEvent.Modifier] = {
+  private val modifiers: Seq[WatchEvent.Modifier] =
     try {
       val c = Class.forName("com.sun.nio.file.SensitivityWatchEventModifier")
       Seq(c.getField("HIGH").get(c).asInstanceOf[WatchEvent.Modifier])
     } catch {
       case _: Throwable => Nil
     }
-  }
 }
