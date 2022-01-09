@@ -31,6 +31,7 @@ import fs2.internal.jsdeps.node.fsMod
 import fs2.internal.jsdeps.node.fsPromisesMod
 import fs2.internal.jsdeps.node.nodeStrings
 import fs2.internal.jsdeps.node.osMod
+import fs2.internal.jsdeps.node.processMod
 import fs2.io.file.Files.UnsealedFiles
 
 import scala.concurrent.duration._
@@ -132,6 +133,12 @@ private[fs2] trait FilesCompanionPlatform {
         F.fromPromise(F.delay(fsPromisesMod.rmdir(path.toString))),
         F.fromPromise(F.delay(fsPromisesMod.rm(path.toString)))
       ).adaptError { case IOException(ex) => ex }
+
+    def currentWorkingDirectory: F[Path] =
+      F.delay(Path(processMod.cwd()))
+
+    def userHome: F[Path] =
+      F.delay(Path(osMod.homedir()))
 
     override def delete(path: Path): F[Unit] =
       rmMaybeDir(path)

@@ -128,6 +128,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       permissions: Option[Permissions]
   ): F[Path]
 
+  /** User's current working directory */
+  def currentWorkingDirectory: F[Path]
+
   /** Deletes the specified file or empty directory, failing if it does not exist. */
   def delete(path: Path): F[Unit]
 
@@ -349,6 +352,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       prefix: String,
       permissions: Option[Permissions]
   ): Resource[F, Path]
+
+  /** User's home directory */
+  def userHome: F[Path]
 
   /** Creates a stream of paths contained in a given file tree. Depth is unlimited. */
   def walk(start: Path): Stream[F, Path] =
