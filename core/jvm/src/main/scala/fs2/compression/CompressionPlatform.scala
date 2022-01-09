@@ -233,7 +233,7 @@ private[compression] trait CompressionCompanionPlatform {
         * @param inflateParams See [[compression.InflateParams]]
         */
       def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] =
-        stream => inflateAndTrailer(inflateParams, 0)(stream).flatMap(_._1)
+        stream => _inflate_chunks(inflateParams, none, none, none, trailerSize = 0)(stream)
 
       private def inflateAndTrailer(
           inflateParams: InflateParams,
@@ -253,7 +253,15 @@ private[compression] trait CompressionCompanionPlatform {
             )
             .map { case (trailerChunk, bytesWritten, crc32) =>
               (
-                _inflate_chunks(inflateParams, trailerChunk, bytesWritten, crc32, trailerSize)(in),
+                _inflate_chunks(
+                  inflateParams,
+                  trailerChunk.some,
+                  bytesWritten.some,
+                  crc32.some,
+                  trailerSize
+                )(
+                  in
+                ),
                 trailerChunk,
                 bytesWritten,
                 crc32
@@ -263,23 +271,24 @@ private[compression] trait CompressionCompanionPlatform {
 
       private def _inflate_chunks(
           inflateParams: InflateParams,
-          trailerChunk: Ref[F, Chunk[Byte]],
-          bytesWritten: Ref[F, Long],
-          crc32: Ref[F, Long],
+          trailerChunk: Option[Ref[F, Chunk[Byte]]],
+          bytesWritten: Option[Ref[F, Long]],
+          crc32: Option[Ref[F, Long]],
           trailerSize: Int
       ): Stream[F, Byte] => Stream[F, Byte] = stream =>
         Pull
           .bracketCase[F, Byte, Inflater, Unit](
             Pull.eval(F.delay(new Inflater(inflateParams.header.juzDeflaterNoWrap))),
             inflater => {
+              val track = trailerChunk.isDefined && bytesWritten.isDefined && crc32.isDefined
               val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
               val crcBuilder = new CrcBuilder
 
               def setRefs(trailerBytes: Chunk[Byte]) =
                 Pull.eval {
-                  trailerChunk.set(trailerBytes) >>
-                    bytesWritten.set(inflater.getBytesWritten) >>
-                    crc32.set(crcBuilder.getValue)
+                  trailerChunk.fold(F.unit)(_.set(trailerBytes)) >>
+                    bytesWritten.fold(F.unit)(_.set(inflater.getBytesWritten)) >>
+                    crc32.fold(F.unit)(_.set(crcBuilder.getValue))
                 }
 
               def setTrailerChunk(
@@ -306,7 +315,7 @@ private[compression] trait CompressionCompanionPlatform {
                   bytesChunk.length - offset
                 )
                 val inflatedBytes = inflater.inflate(inflatedBuffer)
-                crcBuilder.update(inflatedBuffer, 0, inflatedBytes)
+                if (track) crcBuilder.update(inflatedBuffer, 0, inflatedBytes)
                 Pull.output(copyAsChunkBytes(inflatedBuffer, inflatedBytes)) >> {
                   val remainingBytes = inflater.getRemaining
                   if (!inflater.finished()) {
@@ -337,8 +346,13 @@ private[compression] trait CompressionCompanionPlatform {
                   case None => Pull.done
                   case Some((chunk, rest)) =>
                     inflateChunk(chunk.toArraySlice, 0).flatMap {
-                      case None            => pull(rest)
-                      case Some(remaining) => setTrailerChunk(remaining)(rest)
+                      case None => pull(rest)
+                      case Some(remaining) =>
+                        if (track) {
+                          setTrailerChunk(remaining)(rest)
+                        } else {
+                          Pull.done
+                        }
                     }
                 }
 

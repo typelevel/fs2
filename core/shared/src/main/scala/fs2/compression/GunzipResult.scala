@@ -100,10 +100,10 @@ class GunzipResult[F[_]](
   override def equals(other: Any): Boolean = other match {
     case that: GunzipResult[_] =>
       (that.canEqual(this)) &&
-        modificationEpochTime == that.modificationEpochTime &&
-        fileName == that.fileName &&
-        comment == that.comment &&
-        content == that.content
+      modificationEpochTime == that.modificationEpochTime &&
+      fileName == that.fileName &&
+      comment == that.comment &&
+      content == that.content
     case _ => false
   }
 
