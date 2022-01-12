@@ -1,3 +1,5 @@
+import com.typesafe.tools.mima.core._
+
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
@@ -243,6 +245,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     )
   )
   .jsSettings(
+    tlVersionIntroduced ~= { _.withDefaultValue("3.1.0") },
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
     useYarn := true,
@@ -260,9 +263,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                              )
                                                                "1.11.9"
                                                              else "2.1.0"),
-    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
-      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
-    }
+    tlVersionIntroduced ~= { _.withDefaultValue("3.2.0") }
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -273,9 +274,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
-    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
-      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
-    }
+    tlVersionIntroduced ~= { _.withDefaultValue("3.2.0") }
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
