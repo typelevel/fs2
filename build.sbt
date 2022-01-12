@@ -246,7 +246,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
     )
   )
   .jsSettings(
-    tlVersionIntroduced ~= { _.withDefaultValue("3.1.0") },
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
     useYarn := true,
@@ -264,7 +264,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                              )
                                                                "1.11.9"
                                                              else "2.1.0"),
-    tlVersionIntroduced ~= { _.withDefaultValue("3.2.0") }
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -275,7 +275,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
-    tlVersionIntroduced ~= { _.withDefaultValue("3.2.0") }
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
