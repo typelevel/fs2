@@ -28,7 +28,7 @@ ThisBuild / githubWorkflowBuild ++= Seq(
   WorkflowStep.Run(
     List("cd scalafix", "sbt testCI"),
     name = Some("Scalafix tests"),
-    cond = Some(s"matrix.scala == '$NewScala'")
+    cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
   )
 )
 
@@ -163,13 +163,6 @@ lazy val root = tlCrossRootProject
     reactiveStreams,
     benchmark
   )
-
-lazy val rootJVM = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin)
-  .aggregate(coreJVM, io.jvm, reactiveStreams, benchmark)
-lazy val rootJS =
-  project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, node.js, io.js)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -341,7 +334,7 @@ lazy val microsite = project
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
     List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '$NewScala'")
+    cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
   )
 )
 
