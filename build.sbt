@@ -1,12 +1,3 @@
-import com.typesafe.tools.mima.core._
-import sbtcrossproject.crossProject
-
-addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
-addCommandAlias(
-  "fmtCheck",
-  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; root/scalafmtSbtCheck"
-)
-
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
