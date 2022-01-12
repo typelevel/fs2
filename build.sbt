@@ -4,18 +4,16 @@ import sbtcrossproject.crossProject
 addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
 addCommandAlias(
   "fmtCheck",
-  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
+  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; root/scalafmtSbtCheck"
 )
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
-ThisBuild / baseVersion := "3.2"
+ThisBuild / tlBaseVersion := "3.2"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
-
-ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.7"
@@ -24,13 +22,9 @@ ThisBuild / crossScalaVersions := Seq("3.1.0", "2.12.15", NewScala)
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 
-ThisBuild / spiewakCiReleaseSnapshots := true
+ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
-ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
-
-ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues")),
-  // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
+ThisBuild / githubWorkflowBuild ++= Seq(
   WorkflowStep.Run(
     List("cd scalafix", "sbt testCI"),
     name = Some("Scalafix tests"),
@@ -38,18 +32,12 @@ ThisBuild / githubWorkflowBuild := Seq(
   )
 )
 
-ThisBuild / scmInfo := Some(
-  ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
-)
-
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
-ThisBuild / testFrameworks += new TestFramework("munit.Framework")
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
 
-ThisBuild / publishGithubUser := "mpilquist"
-ThisBuild / publishFullName := "Michael Pilquist"
 ThisBuild / developers ++= List(
+  "mpilquist" -> "Michael Pilquist",
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
   "SystemFw" -> "Fabio Labella",
@@ -60,7 +48,7 @@ ThisBuild / developers ++= List(
   "jedws" -> "Jed Wesley-Smith",
   "durban" -> "Daniel Urban"
 ).map { case (username, fullName) =>
-  Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
+  tlGitHubDev(username, fullName)
 }
 
 // If debugging tests, it's sometimes useful to disable parallel execution and test result buffering:
@@ -165,19 +153,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder")
 )
 
-lazy val root = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
+lazy val root = tlCrossRootProject
   .aggregate(
-    coreJVM,
-    coreJS,
-    io.jvm,
-    node.js,
-    io.js,
-    scodec.jvm,
-    scodec.js,
-    protocols.jvm,
-    protocols.js,
+    core,
+    io,
+    node,
+    scodec,
+    protocols,
     reactiveStreams,
     benchmark
   )
@@ -351,7 +333,7 @@ lazy val microsite = project
         .mkString("\n")
     ),
     githubWorkflowArtifactUpload := false,
-    fatalWarningsInCI := false
+    tlFatalWarningsInCi := false
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(MdocPlugin, NoPublishPlugin)
@@ -359,7 +341,7 @@ lazy val microsite = project
 ThisBuild / githubWorkflowBuildPostamble ++= List(
   WorkflowStep.Sbt(
     List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '2.13.7'")
+    cond = Some(s"matrix.scala == '$NewScala'")
   )
 )
 
