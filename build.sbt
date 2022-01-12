@@ -254,6 +254,16 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))
+  .jsSettings(
+    mimaBinaryIssueFilters ++= Seq(
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdoutLines"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdout"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdin"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSSocket.applicationProtocol")
+    )
+  )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
