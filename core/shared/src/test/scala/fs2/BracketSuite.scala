@@ -331,4 +331,31 @@ class BracketSuite extends Fs2Suite {
     }
   }
 
+  test("#2785") {
+    Stream(1)
+      .map(identity)
+      .pull
+      .uncons
+      .flatMap {
+        case Some((_, tl)) =>
+          Stream
+            .bracket(Ref.of[IO, Boolean](true))(_.set(false))
+            .flatMap { r =>
+              tl.pull.uncons
+                .flatMap {
+                  case Some(_) => throw new Err
+                  case None =>
+                    Pull.eval(r.get.flatMap(b => if (b) IO.unit else IO.raiseError(new Err)))
+                }
+                .lease
+                .stream
+            }
+            .pull
+            .echo
+        case None => Pull.done
+      }
+      .stream
+      .compile
+      .drain
+  }
 }
