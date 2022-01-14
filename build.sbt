@@ -153,7 +153,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.TLSSocketPlatform.applicationProtocol"
   ),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gzip$default$*")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gzip$default$*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gunzip$default$1$")
 )
 
 lazy val root = tlCrossRootProject
