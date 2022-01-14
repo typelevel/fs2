@@ -156,7 +156,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gzip$default$*"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.compression.Compression.gunzip$default$1$"
-  )
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.ChunkCompanionPlatform.makeArrayBuilder")
 )
 
 lazy val root = tlCrossRootProject
