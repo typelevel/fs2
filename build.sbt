@@ -144,7 +144,15 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.io.net.SocketCompanionPlatform$IntCallbackHandler"
   ),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.interop.reactivestreams.StreamSubscriber.fsm"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.utf8Charset"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.tls.TLSSocketPlatform.applicationProtocol"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gzip$default$*")
 )
 
 lazy val root = tlCrossRootProject
