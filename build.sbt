@@ -269,7 +269,9 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdout"),
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdin"),
       ProblemFilters
-        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSSocket.applicationProtocol")
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSSocket.applicationProtocol"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.*.JavaScript*Exception.this"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.JavaScriptUnknownException")
     )
   )
 
