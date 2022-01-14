@@ -56,6 +56,7 @@ ThisBuild / initialCommands := s"""
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // No bincompat on internal package
   ProblemFilters.exclude[Problem]("fs2.internal.*"),
+  ProblemFilters.exclude[Problem]("fs2.io.internal.*"),
   // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
   ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.apply"),
