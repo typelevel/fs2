@@ -148,6 +148,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.interop.reactivestreams.StreamSubscriber.fsm"
   ),
+  ProblemFilters.exclude[Problem]("fs2.interop.reactivestreams.StreamSubscriber#FSM*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.utf8Charset"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.TLSSocketPlatform.applicationProtocol"
