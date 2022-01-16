@@ -323,7 +323,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
+      "org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test"
     ),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
