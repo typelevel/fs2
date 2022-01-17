@@ -633,7 +633,7 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
 
     test("gzip") {
       forAllF { (s: Stream[Pure, Byte]) =>
-        maybeGunzip[IO](Compression[IO].gzip()(s)).compile.toList.assertEquals(s.toList)
+        maybeGunzip[IO](s.through(Compression[IO].gzip())).compile.toList.assertEquals(s.toList)
       }
     }
   }
