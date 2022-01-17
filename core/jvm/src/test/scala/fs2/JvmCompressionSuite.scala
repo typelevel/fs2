@@ -45,4 +45,30 @@ class JvmCompressionSuite extends CompressionSuite {
     byteArrayStream.toByteArray
   }
 
+  group("maybeGunzip") {
+    def maybeGunzip[F[_]: Compression](s: Stream[F, Byte]): Stream[F, Byte] =
+      s.pull
+        .unconsN(2, allowFewer = true)
+        .flatMap {
+          case Some((hd, tl)) =>
+            if (hd == Chunk[Byte](0x1f, 0x8b.toByte))
+              Compression[F].gunzip(128)(tl.cons(hd)).flatMap(_.content).pull.echo
+            else tl.cons(hd).pull.echo
+          case None => Pull.done
+        }
+        .stream
+
+    test("not gzip") {
+      forAllF { (s: Stream[Pure, Byte]) =>
+        maybeGunzip[IO](s).compile.toList.assertEquals(s.toList)
+      }
+    }
+
+    test("gzip") {
+      forAllF { (s: Stream[Pure, Byte]) =>
+        maybeGunzip[IO](Compression[IO].gzip()(s)).compile.toList.assertEquals(s.toList)
+      }
+    }
+  }
+
 }

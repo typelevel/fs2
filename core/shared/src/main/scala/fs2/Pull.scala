@@ -186,6 +186,10 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
+  /** Alias for `flatMap(r => Pull.eval(f(r)))`. */
+  def evalMap[F2[x] >: F[x], R2](f: R => F2[R2]): Pull[F2, O, R2] =
+    flatMap(r => Pull.eval(f(r)))
+
   /** Allows to recover from any error raised by the evaluation of this pull.
     * This method returns a composed pull with the following semantics:
     * - If an error occurs, the supplied function is used to build a new handler
@@ -265,7 +269,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * pull returns the unit `()` value. Otherwise, the voided pull just does
     * the same as `this` pull does.
     *
-    * Alias for `this.map(_ => () )`.
+    * Alias for `this.map(_ => ())`.
     */
   def void: Pull[F, O, Unit] = as(())
 
@@ -281,6 +285,16 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * @param  s The new result value of the pull
     */
   def as[S](s: S): Pull[F, O, S] = map(_ => s)
+
+  /** Leases all resources that are currently open, canceling the lease at the
+    * termination of this pull.
+    */
+  def lease: Pull[F, O, R] =
+    Pull.bracketCase[F, O, Lease[F], R](
+      Pull.getScope[F].evalMap(_.lease),
+      _ => this,
+      (l, _) => Pull.eval(l.cancel).rethrow
+    )
 }
 
 object Pull extends PullLowPriority {
