@@ -16,8 +16,6 @@ FS2 is built upon two major functional libraries for Scala, [Cats](https://typel
 Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses),
 and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
 
-Prior to the 0.9 release in 2016, FS2 was known as `scalaz-stream`, which was based on the [`scalaz`](https://github.com/scalaz/scalaz) library.
-
 ### Getting Started
 
 Quick links:
