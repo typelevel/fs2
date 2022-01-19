@@ -163,6 +163,12 @@ private[file] trait FilesCompanionPlatform {
           )
       }).map(Path.fromNioPath)
 
+    def currentWorkingDirectory: F[Path] =
+      Sync[F].delay(Path(Option(System.getProperty("user.dir")).get))
+
+    def userHome: F[Path] =
+      Sync[F].delay(Path(Option(System.getProperty("user.home")).get))
+
     def delete(path: Path): F[Unit] =
       Sync[F].blocking(JFiles.delete(path.toNioPath))
 

@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.1.0, 2.12.15, 2.13.7]
+        scala: [3.1.0, 2.12.15, 2.13.8]
         java: [temurin@17]
         project: [rootJS, rootJVM]
     runs-on: ${{ matrix.os }}
@@ -76,12 +76,12 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++${{ matrix.scala }}' doc
 
       - name: Scalafix tests
-        if: matrix.scala == '2.13.7' && matrix.project == 'rootJVM'
+        if: matrix.scala == '2.13.8' && matrix.project == 'rootJVM'
         run: |
           cd scalafix
           sbt testCI
 
-      - if: matrix.scala == '2.13.7' && matrix.project == 'rootJVM'
+      - if: matrix.scala == '2.13.8' && matrix.project == 'rootJVM'
         run: sbt 'project ${{ matrix.project }}' '++${{ matrix.scala }}' microsite/mdoc
 
       - name: Make target directories
@@ -103,7 +103,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.7]
+        scala: [2.13.8]
         java: [temurin@17]
     runs-on: ${{ matrix.os }}
     steps:
@@ -151,12 +151,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.7)
+      - name: Download target directories (2.13.8)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.7-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.8-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.7)
+      - name: Inflate target directories (2.13.8)
         run: |
           tar xf targets.tar
           rm targets.tar
@@ -182,7 +182,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.7]
+        scala: [2.13.8]
         java: [temurin@17]
     runs-on: ${{ matrix.os }}
     steps:
@@ -206,12 +206,12 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.7)
+      - name: Download target directories (2.13.8)
         uses: actions/download-artifact@v2
         with:
-          name: target-${{ matrix.os }}-2.13.7-${{ matrix.java }}
+          name: target-${{ matrix.os }}-2.13.8-${{ matrix.java }}
 
-      - name: Inflate target directories (2.13.7)
+      - name: Inflate target directories (2.13.8)
         run: |
           tar xf targets.tar
           rm targets.tar
