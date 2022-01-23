@@ -239,8 +239,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
-      s
-        .interruptWhen(interrupt)
+      s.interruptWhen(interrupt)
         .evalMap(_ => IO.never)
         .drain
         .append(s)
@@ -254,8 +253,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
-      s
-        .interruptWhen(interrupt)
+      s.interruptWhen(interrupt)
         .evalMap(_ => IO.never.as(None))
         .append(s.map(Some(_)))
         .collect { case Some(v) => v }
@@ -269,8 +267,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
-      s
-        .append(Stream(1))
+      s.append(Stream(1))
         .interruptWhen(interrupt)
         .map(_ => None)
         .append(s.map(Some(_)))
