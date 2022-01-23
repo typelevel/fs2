@@ -37,7 +37,6 @@ class ConcurrentBenchmark {
     val each = Stream
       .range(0, 1000)
       .map(i => Stream.eval(IO.pure(i)))
-      .covary[IO]
     each.parJoin(concurrent).compile.last.unsafeRunSync().get
   }
 }

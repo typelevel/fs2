@@ -180,7 +180,7 @@ class StreamSuite extends Fs2Suite {
         Stream
           .eval(SyncIO[Int](throw new Err))
           .map(Right(_): Either[Throwable, Int])
-          .handleErrorWith(t => Stream.emit(Left(t)).covary[SyncIO])
+          .handleErrorWith(t => Stream.emit(Left(t)))
           .take(1)
           .compile
           .toVector
@@ -214,7 +214,7 @@ class StreamSuite extends Fs2Suite {
       }
 
       test("7 - parJoin") {
-        Stream(Stream.emit(1).covary[IO], Stream.raiseError[IO](new Err), Stream.emit(2).covary[IO])
+        Stream(Stream.emit(1), Stream.raiseError[IO](new Err), Stream.emit(2))
           .covary[IO]
           .parJoin(4)
           .attempt
@@ -232,7 +232,6 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           Pull
             .pure(42)
-            .covary[IO]
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
@@ -300,7 +299,6 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           Stream
             .range(0, 10)
-            .covary[IO]
             .append(Stream.raiseError[IO](new Err))
             .handleErrorWith(_ => Stream.eval(counter.increment))
             .compile
@@ -311,7 +309,6 @@ class StreamSuite extends Fs2Suite {
       test("14") {
         Stream
           .range(0, 3)
-          .covary[SyncIO]
           .append(Stream.raiseError[SyncIO](new Err))
           .chunkLimit(1)
           .unchunks
@@ -327,8 +324,7 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           {
             Stream
-              .range(0, 3)
-              .covary[IO] ++ Stream.raiseError[IO](new Err)
+              .range(0, 3) ++ Stream.raiseError[IO](new Err)
           }.chunkLimit(1)
             .unchunks
             .pull
@@ -473,7 +469,6 @@ class StreamSuite extends Fs2Suite {
       Stream
         .emit(1)
         .append(Stream.raiseError[IO](new Err))
-        .covary[IO]
         .compile
         .drain
         .intercept[Err]
@@ -484,7 +479,6 @@ class StreamSuite extends Fs2Suite {
         .emit(1)
         .append(Stream.raiseError[IO](new Err))
         .take(1)
-        .covary[IO]
         .compile
         .drain
     }

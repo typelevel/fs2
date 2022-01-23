@@ -38,7 +38,7 @@ class StreamInterruptSuite extends Fs2Suite {
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interruptSoon)
+          s.evalMap(_ => semaphore.acquire).interruptWhen(interruptSoon)
         }
         .compile
         .toList
@@ -52,7 +52,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
           val interrupt = Stream.emit(true) ++ Stream.exec(semaphore.release)
-          s.covary[IO].evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
+          s.evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
         }
         .compile
         .toList
@@ -66,7 +66,6 @@ class StreamInterruptSuite extends Fs2Suite {
       val interruptSoon = Stream.sleep_[IO](20.millis).compile.drain.attempt
       Stream
         .constant(true)
-        .covary[IO]
         .interruptWhen(interruptSoon)
         .compile
         .drain
@@ -78,7 +77,6 @@ class StreamInterruptSuite extends Fs2Suite {
         Stream.sleep_[IO](20.millis).compile.drain.attempt
       Stream
         .constant(true)
-        .covary[IO]
         .interruptWhen(interrupt)
         .flatMap(_ => Stream.emit(1))
         .compile
@@ -91,7 +89,7 @@ class StreamInterruptSuite extends Fs2Suite {
         Stream.sleep_[IO](20.millis).compile.drain.attempt
 
       def loop(i: Int): Stream[IO, Int] =
-        Stream.emit(i).covary[IO].flatMap(i => Stream.emit(i) ++ loop(i + 1))
+        Stream.emit(i).flatMap(i => Stream.emit(i) ++ loop(i + 1))
 
       loop(0)
         .interruptWhen(interrupt)
@@ -116,7 +114,7 @@ class StreamInterruptSuite extends Fs2Suite {
 
     test("7 - interruption of an infinitely recursive stream that never emits and has no eval") {
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
-      def loop: Stream[IO, Int] = Stream.emit(()).covary[IO] >> loop
+      def loop: Stream[IO, Int] = Stream.emit(()) >> loop
       loop
         .interruptWhen(interrupt)
         .compile
@@ -141,7 +139,6 @@ class StreamInterruptSuite extends Fs2Suite {
       Stream
         .constant(true)
         .dropWhile(!_)
-        .covary[IO]
         .interruptWhen(interrupt)
         .compile
         .drain
@@ -166,7 +163,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { barrier =>
           Stream.eval(Semaphore[IO](0)).flatMap { enableInterrupt =>
             val interrupt = Stream.eval(enableInterrupt.acquire) >> Stream.emit(false)
-            s.covary[IO]
+            s
               .evalMap { i =>
                 // enable interruption and hang when hitting a value divisible by 7
                 if (i % 7 == 0) enableInterrupt.release.flatMap(_ => barrier.acquire.as(i))
@@ -192,7 +189,7 @@ class StreamInterruptSuite extends Fs2Suite {
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
-          s.covary[IO].interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
+          s.interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
         }
         .compile
         .toList
@@ -202,7 +199,6 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("12a - minimal interruption of stream that never terminates in flatMap") {
     Stream(1)
-      .covary[IO]
       .interruptWhen(IO.sleep(10.millis).attempt)
       .flatMap(_ => Stream.eval(IO.never))
       .compile
@@ -219,8 +215,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { semaphore =>
           Stream(1)
             .append(s)
-            .covary[IO]
-            .interruptWhen(interrupt.covaryOutput[Boolean])
+            .interruptWhen(interrupt)
             .flatMap(_ => Stream.exec(semaphore.acquire))
         }
         .compile
@@ -244,7 +239,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
-      s.covary[IO]
+      s
         .interruptWhen(interrupt)
         .evalMap(_ => IO.never)
         .drain
@@ -259,7 +254,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
-      s.covary[IO]
+      s
         .interruptWhen(interrupt)
         .evalMap(_ => IO.never.as(None))
         .append(s.map(Some(_)))
@@ -274,7 +269,7 @@ class StreamInterruptSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       val expected = s.toList
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
-      s.covary[IO]
+      s
         .append(Stream(1))
         .interruptWhen(interrupt)
         .map(_ => None)
@@ -332,7 +327,6 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("18 - resume with append after evalMap interruption") {
     Stream(1)
-      .covary[IO]
       .interruptWhen(IO.sleep(50.millis).attempt)
       .evalMap(_ => IO.never)
       .append(Stream(5))
@@ -362,7 +356,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { semaphore =>
           val interrupt = IO.sleep(50.millis).attempt
           val neverInterrupt = (IO.never: IO[Unit]).attempt
-          s.covary[IO]
+          s
             .interruptWhen(interrupt)
             .as(None)
             .append(s.map(Option(_)))

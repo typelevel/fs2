@@ -131,7 +131,7 @@ class TimedPullsSuite extends Fs2Suite {
     val timeout = 500.millis
     val t = 600.millis
     val n = 10L
-    val s = Stream.constant(1).covary[IO].metered(t).take(n)
+    val s = Stream.constant(1).metered[IO](t).take(n)
     val expected = Stream("timeout", "elem").repeat.take(n * 2).compile.toList
 
     TestControl

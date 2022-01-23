@@ -39,7 +39,7 @@ class StreamObserveSuite extends Fs2Suite {
       test("basic functionality") {
         forAllF { (s: Stream[Pure, Int]) =>
           IO.ref(0).flatMap { sum =>
-            observer(s.covary[IO])(_.foreach(i => sum.update(_ + i))).compile.foldMonoid
+            observer(s)(_.foreach(i => sum.update(_ + i))).compile.foldMonoid
               .flatMap(out => sum.get.assertEquals(out))
           }
         }
@@ -47,7 +47,7 @@ class StreamObserveSuite extends Fs2Suite {
 
       test("handle errors from observing sink") {
         forAllF { (s: Stream[Pure, Int]) =>
-          observer(s.covary[IO])(_ => Stream.raiseError[IO](new Err)).attempt.compile.toList
+          observer(s)(_ => Stream.raiseError[IO](new Err)).attempt.compile.toList
             .map { result =>
               assertEquals(result.size, 1)
               assert(
@@ -78,7 +78,7 @@ class StreamObserveSuite extends Fs2Suite {
       group("handle finite observing sink") {
         test("1") {
           forAllF { (s: Stream[Pure, Int]) =>
-            observer(s.covary[IO])(_ => Stream.empty).compile.toList.assertEquals(Nil)
+            observer(s)(_ => Stream.empty).compile.toList.assertEquals(Nil)
           }
         }
         test("2") {
@@ -93,7 +93,7 @@ class StreamObserveSuite extends Fs2Suite {
         forAllF { (s: Stream[Pure, Int]) =>
           val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
 
-          observer(observer(s.covary[IO])(sink))(sink).compile.toList
+          observer(observer(s)(sink))(sink).compile.toList
             .assertEquals(s.toList)
         }
       }

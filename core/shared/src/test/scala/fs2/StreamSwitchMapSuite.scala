@@ -36,7 +36,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
       Stream
         .eval(Semaphore[IO](1))
         .flatMap { guard =>
-          s.covary[IO]
+          s
             .evalTap(_ => guard.acquire) // wait for inner to emit to prevent switching
             .onFinalize(guard.acquire) // outer terminates, wait for last inner to emit
             .switchMap(x => Stream.emit(x).onFinalize(guard.release))
@@ -52,7 +52,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
       Stream
         .eval(Ref[IO].of(true))
         .flatMap { ref =>
-          s.covary[IO].switchMap { _ =>
+          s.switchMap { _ =>
             Stream.eval(ref.get).flatMap { released =>
               if (!released) Stream.raiseError[IO](new Err)
               else
@@ -70,7 +70,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
   test("when primary stream terminates, inner stream continues") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val expected = s1.last.unNoneTerminate.flatMap(s => s2 ++ Stream(s)).toList
-      s1.covary[IO]
+      s1
         .switchMap(s => Stream.sleep_[IO](25.millis) ++ s2 ++ Stream.emit(s))
         .compile
         .toList
