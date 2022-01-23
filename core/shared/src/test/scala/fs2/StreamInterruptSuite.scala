@@ -215,7 +215,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { semaphore =>
           Stream(1)
             .append(s)
-            .interruptWhen(interrupt)
+            .interruptWhen(interrupt.covaryOutput[Boolean])
             .flatMap(_ => Stream.exec(semaphore.acquire))
         }
         .compile
