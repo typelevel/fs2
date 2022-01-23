@@ -322,10 +322,8 @@ class StreamSuite extends Fs2Suite {
 
       test("15") {
         Counter[IO].flatMap { counter =>
-          {
-            Stream
-              .range(0, 3) ++ Stream.raiseError[IO](new Err)
-          }.chunkLimit(1)
+          (Stream.range(0, 3) ++ Stream.raiseError[IO](new Err))
+            .chunkLimit(1)
             .unchunks
             .pull
             .echo

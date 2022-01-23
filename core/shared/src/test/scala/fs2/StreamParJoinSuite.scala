@@ -62,8 +62,7 @@ class StreamParJoinSuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
       val n = (n0 % 20).abs + 1
       val expected = s.flatten.toList.toSet
-      s
-        .covary[IO]
+      s.covary[IO]
         .parJoin(n)
         .compile
         .toList
