@@ -40,7 +40,6 @@ class TopicSuite extends Fs2Suite {
       val publisher =
         Stream
           .range(0, count)
-          .covary[IO]
           .through(topic.publish)
 
       // Ensures all subs are registered before consuming
@@ -85,7 +84,6 @@ class TopicSuite extends Fs2Suite {
       val publisher =
         Stream
           .range(0, count)
-          .covary[IO]
           .through(topic.publish)
 
       // Ensures all subs are registered before consuming
@@ -127,7 +125,6 @@ class TopicSuite extends Fs2Suite {
 
         val publisher = Stream.sleep[IO](1.second) ++ Stream
           .range(0, count)
-          .covary[IO]
           .evalTap(i => signal.set(i))
           .through(topic.publish)
         val subscriber = topic
