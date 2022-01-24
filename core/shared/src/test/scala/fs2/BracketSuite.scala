@@ -35,21 +35,28 @@ class BracketSuite extends Fs2Suite {
   case object Acquired extends BracketEvent
   case object Released extends BracketEvent
 
-  def recordBracketEvents(events: Ref[IO, List[BracketEvent]]): Stream[IO, Unit] =
-    Stream.bracket(events.update(evts => evts :+ Acquired))(_ =>
-      events.update(evts => evts :+ Released)
-    )
+  class BracketEventFixture(events: Ref[IO, List[BracketEvent]]) {
+    def recordBracketEvents: Stream[IO, Unit] =
+      Stream.bracket(events.update(evts => evts :+ Acquired))(_ =>
+        events.update(evts => evts :+ Released)
+      )
+
+    def assertHistoryIs(expected: BracketEvent*): IO[Unit] =
+      events.get.map(events => assertEquals(events, expected.toList))
+  }
+
+  object BracketEventFixture {
+    def create: IO[BracketEventFixture] =
+      Ref[IO].of(List.empty[BracketEvent]).map(new BracketEventFixture(_))
+  }
 
   group("single bracket") {
-    def singleBracketTest[A](use: Stream[IO, A]): IO[Unit] =
-      Ref[IO].of(List.empty[BracketEvent]).flatMap { events =>
-        recordBracketEvents(events)
-          .evalMap(_ => events.get.map(events => assertEquals(events, List(Acquired))))
-          .flatMap(_ => use)
-          .compile
-          .drain
+    def singleBracketTest[A](testCase: Stream[IO, A]): IO[Unit] =
+      BracketEventFixture.create.flatMap { fixture =>
+        (fixture.recordBracketEvents.evalMap(_ => fixture.assertHistoryIs(Acquired))
+          >> testCase).compile.drain
           .handleError { case _: Err => () } >>
-          events.get.assertEquals(List(Acquired, Released))
+          fixture.assertHistoryIs(Acquired, Released)
       }
 
     test("normal termination")(singleBracketTest(Stream.empty))
@@ -64,14 +71,13 @@ class BracketSuite extends Fs2Suite {
         use1: Stream[IO, A],
         use2: Stream[IO, A]
     ): IO[Unit] =
-      Ref[IO].of(List.empty[BracketEvent]).flatMap { events =>
-        recordBracketEvents(events)
-          .flatMap(_ => use1)
-          .append(recordBracketEvents(events).flatMap(_ => use2))
+      BracketEventFixture.create.flatMap { fixture =>
+        (fixture.recordBracketEvents >> use1)
+          .append(fixture.recordBracketEvents >> use2)
           .compile
           .drain
           .handleError { case _: Err => () } >>
-          events.get.assertEquals(List(Acquired, Released, Acquired, Released))
+          fixture.assertHistoryIs(Acquired, Released, Acquired, Released)
       }
 
     test("normal termination")(appendBracketTest(Stream.empty, Stream.empty))
@@ -175,7 +181,7 @@ class BracketSuite extends Fs2Suite {
       .bracket(IO.unit)(_ => IO.unit)
       .compile
       .drain
-    s.flatMap(_ => s)
+    s >> s
   }
 
   group("finalizers are run in LIFO order") {
@@ -214,16 +220,13 @@ class BracketSuite extends Fs2Suite {
   }
 
   test("handleErrorWith closes scopes") {
-    Ref[IO]
-      .of(List.empty[BracketEvent])
-      .flatMap { events =>
-        recordBracketEvents(events)
-          .flatMap(_ => Stream.raiseError[IO](new Err))
-          .handleErrorWith(_ => Stream.empty)
-          .append(recordBracketEvents(events))
-          .compile
-          .drain >> events.get.assertEquals(List(Acquired, Released, Acquired, Released))
-      }
+    BracketEventFixture.create.flatMap { fixture =>
+      (fixture.recordBracketEvents >> Stream.raiseError[IO](new Err))
+        .handleErrorWith(_ => Stream.empty)
+        .append(fixture.recordBracketEvents)
+        .compile
+        .drain >> fixture.assertHistoryIs(Acquired, Released, Acquired, Released)
+    }
   }
 
   def bracketCaseLikeTests(
