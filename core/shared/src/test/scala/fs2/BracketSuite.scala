@@ -35,14 +35,12 @@ class BracketSuite extends Fs2Suite {
   case object Acquired extends BracketEvent
   case object Released extends BracketEvent
 
-  class BracketEventRecorder(events: Ref[IO, List[BracketEvent]]) {
+  class BracketEventRecorder(recorded: Ref[IO, List[BracketEvent]]) {
     def recordBracketEvents: Stream[IO, Unit] =
-      Stream.bracket(events.update(evts => evts :+ Acquired))(_ =>
-        events.update(evts => evts :+ Released)
-      )
+      Stream.bracket(recorded.update(_ :+ Acquired))(_ => recorded.update(_ :+ Released))
 
     def assertHistoryIs(expected: BracketEvent*): IO[Unit] =
-      events.get.map(events => assertEquals(events, expected.toList))
+      recorded.get.map(events => assertEquals(events, expected.toList))
   }
 
   def withBracketEventRecorder(f: BracketEventRecorder => IO[Unit]): IO[Unit] =
