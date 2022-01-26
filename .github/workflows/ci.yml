@@ -84,7 +84,7 @@ jobs:
           cd scalafix
           sbt testCI
 
-      - if: matrix.scala == '2.13.8'
+      - if: matrix.scala == '2.13.8' && matrix.project == 'rootJVM'
         run: sbt 'project ${{ matrix.project }}' '++${{ matrix.scala }}' microsite/mdoc
 
       - name: Make target directories
