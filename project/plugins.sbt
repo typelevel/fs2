@@ -1,4 +1,4 @@
-addSbtPlugin("org.typelevel" % "sbt-typelevel" % "0.4.2")
+addSbtPlugin("org.typelevel" % "sbt-typelevel" % "0.4.3")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.8.0")
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.9.9")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.3")
