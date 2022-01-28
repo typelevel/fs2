@@ -603,7 +603,7 @@ class StreamSuite extends Fs2Suite {
       }
   }
 
-  test("fromAutoClosable") {
+  test("fromAutoCloseable") {
     class Auto(var closed: Boolean = false) extends AutoCloseable {
       override def close(): Unit =
         closed = true
@@ -615,7 +615,7 @@ class StreamSuite extends Fs2Suite {
     }
   }
 
-  test("fromAutoClosableWeak") {
+  test("fromAutoCloseableWeak") {
     val counter = new AtomicInteger()
     class Auto(var i: Int = 0) extends AutoCloseable {
       override def close(): Unit =
