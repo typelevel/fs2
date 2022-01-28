@@ -32,6 +32,7 @@ import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 import fs2.concurrent.SignallingRef
+import java.util.concurrent.atomic.AtomicInteger
 
 class StreamSuite extends Fs2Suite {
 
@@ -600,6 +601,32 @@ class StreamSuite extends Fs2Suite {
 
         s.compile.drain >> st.get.assertEquals(expected)
       }
+  }
+
+  test("fromAutoCloseable") {
+    class Auto(var closed: Boolean = false) extends AutoCloseable {
+      override def close(): Unit =
+        closed = true
+    }
+
+    Stream.fromAutoCloseable(IO(new Auto())).compile.toList.flatMap {
+      case h :: Nil => IO(assert(h.closed))
+      case _        => IO(fail("Did not close AutoClosable"))
+    }
+  }
+
+  test("fromAutoCloseableWeak") {
+    val counter = new AtomicInteger()
+    class Auto(var i: Int = 0) extends AutoCloseable {
+      override def close(): Unit =
+        i = counter.incrementAndGet()
+    }
+
+    (Stream.fromAutoCloseableWeak(IO(new Auto()))
+      ++ Stream.fromAutoCloseable(IO(new Auto()))).compile.toList.flatMap {
+      case x :: y :: Nil => IO(assertEquals(x.i, 2)) >> IO(assertEquals(y.i, 1))
+      case _             => IO(fail("Did not close AutoClosable"))
+    }
   }
 
   group("resource safety") {
