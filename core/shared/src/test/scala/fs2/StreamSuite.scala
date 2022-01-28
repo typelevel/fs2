@@ -602,6 +602,30 @@ class StreamSuite extends Fs2Suite {
       }
   }
 
+  test("fromAutoClosable") {
+    class Auto(var closed: Boolean = false) extends AutoCloseable {
+      override def close(): Unit =
+        closed = true
+    }
+
+    Stream.fromAutoClosable(IO(new Auto())).compile.toList.flatMap {
+      case h :: Nil => IO(assert(h.closed))
+      case _        => IO(fail("Did not close AutoClosable"))
+    }
+  }
+
+  test("fromAutoClosableWeak") {
+    class Auto(var closed: Boolean = false) extends AutoCloseable {
+      override def close(): Unit =
+        closed = true
+    }
+
+    Stream.fromAutoClosableWeak(IO(new Auto())).compile.toList.flatMap {
+      case h :: Nil => IO(assert(h.closed))
+      case _        => IO(fail("Did not close AutoClosable"))
+    }
+  }
+
   group("resource safety") {
     test("1") {
       forAllF { (s1: Stream[Pure, Int]) =>

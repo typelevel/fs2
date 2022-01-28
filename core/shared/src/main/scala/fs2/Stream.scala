@@ -3622,6 +3622,18 @@ object Stream extends StreamLowPriority {
       case Resource.Pure(o)  => Stream.emit(o)
     }
 
+  /** Converts the supplied [[Autoclosable]] in to a singleton stream. */
+  def fromAutoClosable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+    Stream.resource(Resource.fromAutoCloseable(fo))
+
+  /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
+    * subsequent appends or other scope-preserving transformations.
+    *
+    * Scopes can be manually introduced via [[Stream#scope]] if desired.
+    */
+  def fromAutoClosableWeak[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+    Stream.resourceWeak(Resource.fromAutoCloseable(fo))
+
   /** Retries `fo` on failure, returning a singleton stream with the
     * result of `fo` as soon as it succeeds.
     *
