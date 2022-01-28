@@ -608,7 +608,7 @@ class StreamSuite extends Fs2Suite {
         closed = true
     }
 
-    Stream.fromAutoClosable(IO(new Auto())).compile.toList.flatMap {
+    Stream.fromAutoCloseable(IO(new Auto())).compile.toList.flatMap {
       case h :: Nil => IO(assert(h.closed))
       case _        => IO(fail("Did not close AutoClosable"))
     }
@@ -620,7 +620,7 @@ class StreamSuite extends Fs2Suite {
         closed = true
     }
 
-    Stream.fromAutoClosableWeak(IO(new Auto())).compile.toList.flatMap {
+    Stream.fromAutoCloseableWeak(IO(new Auto())).compile.toList.flatMap {
       case h :: Nil => IO(assert(h.closed))
       case _        => IO(fail("Did not close AutoClosable"))
     }

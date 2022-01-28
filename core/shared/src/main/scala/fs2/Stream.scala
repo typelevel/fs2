@@ -3623,7 +3623,7 @@ object Stream extends StreamLowPriority {
     }
 
   /** Converts the supplied [[Autoclosable]] in to a singleton stream. */
-  def fromAutoClosable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+  def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
 
   /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
@@ -3631,7 +3631,7 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[Stream#scope]] if desired.
     */
-  def fromAutoClosableWeak[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+  def fromAutoCloseableWeak[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resourceWeak(Resource.fromAutoCloseable(fo))
 
   /** Retries `fo` on failure, returning a singleton stream with the
