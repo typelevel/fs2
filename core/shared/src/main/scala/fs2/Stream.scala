@@ -3599,7 +3599,7 @@ object Stream extends StreamLowPriority {
   /** Alias for `eval(fo).repeat`. */
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
-  /** Converts the supplied resource in to a singleton stream. */
+  /** Converts the supplied resource into a singleton stream. */
   def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     resourceWeak(r).scope
 
@@ -3622,7 +3622,7 @@ object Stream extends StreamLowPriority {
       case Resource.Pure(o)  => Stream.emit(o)
     }
 
-  /** Converts the supplied [[Autoclosable]] in to a singleton stream. */
+  /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
   def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
 
