@@ -24,6 +24,7 @@ package fs2
 import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
+import scala.collection.mutable.ArrayDeque
 import cats.{Eval => _, _}
 import cats.data.Ior
 import cats.effect.{Concurrent, SyncIO}
@@ -843,27 +844,64 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }.stream
   }
 
-  /** Outputs all but the last `n` elements of the input.
+  /** Outputs all but the last `numDropped` elements of the input.
     *
-    * This is a '''pure''' stream operation: if `s` is a finite pure stream, then `s.dropRight(n).toList`
-    * is equal to `this.toList.reverse.drop(n).reverse`.
+    * This is a '''pure''' stream operation: if `s` is a finite pure stream,
+    * then `s.dropRight(n).toList` equals `this.toList.reverse.drop(n).reverse`.
+    *
+    * This method *almost completely* preserves chunk structure: the resulting
+    * stream emits the same chunks as this stream. The exception is at the end,
+    * where the last result chunk may be just a prefix of the corresponding
+    * chunk from the source stream.
+    *
+    * Note that, since the resulting stream cannot emit elements until and
+    * unless those elements are known not to be dropped, this method acts
+    * as a look-ahead behaviour.
     *
     * @example {{{
     * scala> Stream.range(0,10).dropRight(5).toList
     * res0: List[Int] = List(0, 1, 2, 3, 4)
     * }}}
     */
-  def dropRight(n: Int): Stream[F, O] =
-    if (n <= 0) this
+  def dropRight(numDropped: Int): Stream[F, O] =
+    if (numDropped <= 0) this
     else {
-      def go(acc: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
-        s.pull.uncons.flatMap {
-          case None => Pull.done
-          case Some((hd, tl)) =>
-            val all = acc ++ hd
-            Pull.output(all.dropRight(n)) >> go(all.takeRight(n), tl)
+      val queue = new ArrayDeque[Chunk[O]](8)
+      var size = 0
+
+      def enqueue(ch: Chunk[O]): Unit = {
+        queue.addOne(ch)
+        size += ch.size
+      }
+      def dequeue(): Chunk[O] = {
+        val ch = queue.removeHead()
+        size -= ch.size
+        ch
+      }
+
+      def shrinkQueue(atEnd: Boolean): Pull[F, O, Unit] =
+        if (size <= numDropped) // not enough to drop
+          Pull.done
+        else {
+          val rem = size - numDropped // how many "extra" we have
+          if (queue.head.size <= rem) {
+            // we can drop first chunk and we stil are covered
+            Pull.output(dequeue()) >> shrinkQueue(atEnd)
+          } else if (rem > 0 && atEnd) {
+            // at end, we need to emit a prefix of last chunk
+            Pull.output(dequeue().take(rem))
+          } else
+            Pull.done
         }
-      go(Chunk.empty, this).stream
+
+      def go(s: Stream[F, O]): Pull[F, O, Unit] =
+        s.pull.uncons.flatMap {
+          case None => shrinkQueue(true)
+          case Some((hd, tl)) =>
+            enqueue(hd)
+            shrinkQueue(false) >> go(tl)
+        }
+      go(this).stream
     }
 
   /** Like [[dropWhile]], but drops the first value which tests false.
