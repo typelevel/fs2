@@ -36,7 +36,12 @@ package object fs2 {
 
   /** Indicates that a stream evaluates no effects.
     *
-    * A `Stream[Pure,O]` can be safely converted to a `Stream[F,O]` for all `F`.
+    * Because [[Stream]] is covariant, A `Stream[Pure,O]` is also an instance of `Stream[F,O]` for all `F`.
+    *
+    * This should not be confused with [[cats.Id]], which provides an alternative encoding of pure streams,
+    * namely `Stream[Id, O]`. The difference is that `Stream[Id, O]` achieves purity by using an effect type
+    * whose evaluation is a no-op, whereas `Stream[Pure, O]` achieves purity by using an effect type that
+    * has no instances and therefore cannot be instantiated in the first place.
     */
   type Pure[A] <: Nothing
 
