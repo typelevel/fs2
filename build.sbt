@@ -11,7 +11,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.8"
 
-ThisBuild / crossScalaVersions := Seq("3.1.0", "2.12.15", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.15", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
