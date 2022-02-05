@@ -49,8 +49,7 @@ trait Signal[F[_], A] {
     */
   def get: F[A]
 
-  /**
-    * Returns when the condition becomes true, semantically blocking
+  /** Returns when the condition becomes true, semantically blocking
     * in the meantime.
     *
     * This method is particularly useful to transform naive, recursive
