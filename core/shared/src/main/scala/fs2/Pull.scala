@@ -554,9 +554,24 @@ object Pull extends PullLowPriority {
       * previous timeout, but a duration of 0 is treated specially, in
       * that it will cancel a pending timeout but not start a new one.
       *
-      * Note: the very first execution of `timeout` does not start
-      * running until the first call to `uncons`, but subsequent calls
-      * proceed independently after that.
+      * Note:
+      * If for some reason you insert a pause in between `uncons` and
+      * `timeout`, such as:
+      * {{{
+      * timedPull.timeout(n.millis) >>
+      *   Pull.eval(IO.sleep(m.millis)) >>
+      *   timedPull.uncons.flatMap { ...
+      * }}}
+      *
+      * you should be aware that an invocation of `timeout` that
+      * happens before the very first `uncons` will start the timeout
+      * simultaneously with the very first `uncons`. Subsequent
+      * invocations of `timeout` start the timeout immediately
+      * instead.
+      *
+      * This is an implementation detail which should not affect most
+      * cases, given that usually there is no need to sleep in between
+      * `timeout` and the very first call to `uncons`.
       */
     def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }
