@@ -283,4 +283,33 @@ class TimedPullsSuite extends Fs2Suite {
         .replicateA(10) // number of iterations to stress the race
     )
   }
+
+  test("The very first timeout triggers simultaneously with the first uncons") {
+    val emissionTime = 100.millis
+    val timeout = 200.millis
+    val timedPullPause = Pull.eval(IO.sleep(150.millis))
+
+    val prog =
+      Stream
+        .sleep[IO](emissionTime)
+        .pull
+        .timed { tp =>
+          tp.timeout(timeout) >>
+            // If the first timeout started immediately, this pause
+            // before uncons would cause a timeout to be emitted
+          timedPullPause >>
+            tp.uncons.flatMap {
+              case Some((Right(_), _)) =>
+                Pull.done
+              case Some((Left(_), _)) =>
+                fail("Unexpected timeout")
+              case None =>
+                fail("Unexpected of stream")
+            }
+        }.stream
+        .compile
+    .drain
+
+    TestControl.executeEmbed(prog)
+  }
 }
