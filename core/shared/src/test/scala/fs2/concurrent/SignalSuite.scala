@@ -119,11 +119,6 @@ class SignalSuite extends Fs2Suite {
   }
 
   test("waitUntil") {
-    implicit class Temp[A](s: Signal[IO, A]) {
-      def waitUntil(f: A => Boolean): IO[Unit] =
-        IO.sleep(10.millis)
-    }
-
     val target = 5
     val expected = 1
 
