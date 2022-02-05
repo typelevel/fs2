@@ -284,7 +284,9 @@ class TimedPullsSuite extends Fs2Suite {
     )
   }
 
-  test("A timeout called before the very first uncons starts simultaneously with the first uncons") {
+  test(
+    "A timeout called before the very first uncons starts simultaneously with the first uncons"
+  ) {
     val emissionTime = 100.millis
     val timeout = 200.millis
     val timedPullPause = Pull.eval(IO.sleep(150.millis))
@@ -332,17 +334,17 @@ class TimedPullsSuite extends Fs2Suite {
             tp.uncons.flatMap {
               case Some((Right(_), tp)) =>
                 tp.timeout(timeout) >>
-                // The timeout starts immediately, so this pause
-                // before uncons causes a timeout
-                timedPullPause >>
-                tp.uncons.flatMap {
-                  case Some((Left(_), _)) =>
-                    Pull.done
-                  case Some((Right(_), _)) =>
-                    fail("Unexpected element, expected timeout")
-                  case None =>
-                    fail("Unexpected end of stream")
-                }
+                  // The timeout starts immediately, so this pause
+                  // before uncons causes a timeout
+                  timedPullPause >>
+                  tp.uncons.flatMap {
+                    case Some((Left(_), _)) =>
+                      Pull.done
+                    case Some((Right(_), _)) =>
+                      fail("Unexpected element, expected timeout")
+                    case None =>
+                      fail("Unexpected end of stream")
+                  }
               case Some((Left(_), _)) =>
                 fail("Unexpected timeout")
               case None =>
