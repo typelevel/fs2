@@ -54,31 +54,30 @@ class TimedPullsSuite extends Fs2Suite {
   }
 
   test("pulls elements with timeouts, no timeouts trigger") {
-    // TODO cannot use PropF with `TestControl.executeEmbed` at the moment
-    val l = List.range(1, 100)
-    val s = Stream.emits(l).covary[IO].rechunkRandomly()
-    val period = 500.millis
-    val timeout = 600.millis
+    forAllF { (s: Stream[Pure, Int]) =>
+      val period = 500.millis
+      val timeout = 600.millis
 
-    TestControl
-      .executeEmbed(
-        s.metered(period)
-          .pull
-          .timed { tp =>
-            def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
-              tp.uncons.flatMap {
-                case None                   => Pull.done
-                case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
-                case Some((Left(_), _))     => fail("unexpected timeout")
-              }
+      TestControl
+        .executeEmbed(
+          s.covary[IO].metered(period)
+            .pull
+            .timed { tp =>
+              def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+                tp.uncons.flatMap {
+                  case None                   => Pull.done
+                  case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
+                  case Some((Left(_), _))     => fail("unexpected timeout")
+                }
 
-            tp.timeout(timeout) >> loop(tp)
-          }
-          .stream
-          .compile
-          .toList
-      )
-      .assertEquals(l)
+              tp.timeout(timeout) >> loop(tp)
+            }
+            .stream
+            .compile
+            .toList
+        )
+        .assertEquals(s.compile.toList)
+    }
   }
 
   test("times out whilst pulling a single element") {
