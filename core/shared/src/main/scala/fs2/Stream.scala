@@ -2196,6 +2196,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     def waitToResume =
       pauseWhenTrue.discrete.dropWhile(_ == true).take(1).compile.drain
 
+    // The logic can be expressed entirely with `waitToResume`, but
+    // `Signal.get` is lighter than `Signal.discrete`, so the preliminary
+    // check with `get` in `pauseIfNeeded` acts as an optimisation, since
+    // we expect a stream to generally not be in a paused state.
     def pauseIfNeeded = Stream.exec {
       pauseWhenTrue.get.flatMap(paused => waitToResume.whenA(paused))
     }
