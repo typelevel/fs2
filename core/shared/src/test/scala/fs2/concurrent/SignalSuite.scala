@@ -25,6 +25,7 @@ package concurrent
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all._
+import cats.effect.testkit.TestControl
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
 import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
@@ -115,6 +116,37 @@ class SignalSuite extends Fs2Suite {
   test("holdOption") {
     val s = Stream.range(1, 10).covary[IO].holdOption
     s.compile.drain
+  }
+
+  test("waitUntil") {
+    implicit class Temp[A](s: Signal[IO, A]) {
+      def waitUntil(f: A => Boolean): IO[Unit] =
+        IO.sleep(10.millis)
+    }
+
+    val target = 5
+    val expected = 1
+
+    val prog =
+      Stream
+        .iterate(0)(_ + 1)
+        .covary[IO]
+        .metered(100.millis)
+        .holdResource(0)
+        .use { state =>
+          // `poll` is in IO because a Stream implementation would
+          // approximate the implementation of waitUntil itself too
+          // closely
+          def poll(iterations: Int = 0): IO[Int] =
+            state.get.flatMap { n =>
+              if (n > target) iterations.pure[IO]
+              else state.waitUntil(_ > target) >> poll(iterations + 1)
+            }
+
+          poll()
+        }
+
+    TestControl.executeEmbed(prog).assertEquals(expected)
   }
 
   // TODO - Port laws tests once we have a compatible version of cats-laws
