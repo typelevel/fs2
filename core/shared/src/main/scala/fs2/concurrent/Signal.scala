@@ -78,13 +78,13 @@ trait Signal[F[_], A] {
     *       .flatMap { state =>
     *         def refresh: F[Unit] =
     *           state.set(None) >> action.attempt.flatMap { res =>
-    *             val t = res.map(afterEvery).getOrElse(relax)
+    *             val t = res.map(refreshAfter).getOrElse(defaultExpiry)
     *             state.set(res.some) >> Temporal[F].sleep(t) >> refresh
     *           }
     *
     *         def view = new Refresh[A] {
-    *           def get: IO[A] = state.get.flatMap {
-    *             case Some(res) => IO.fromEither(res)
+    *           def get: F[A] = state.get.flatMap {
+    *             case Some(res) => F.fromEither(res)
     *             case None => state.waitUntil(_.isDefined) >> get
     *           }
     *         }
