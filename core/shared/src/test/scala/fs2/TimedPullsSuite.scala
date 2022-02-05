@@ -284,7 +284,7 @@ class TimedPullsSuite extends Fs2Suite {
     )
   }
 
-  test("The very first timeout triggers simultaneously with the first uncons") {
+  test("A timeout called before the very first uncons starts simultaneously with the first uncons") {
     val emissionTime = 100.millis
     val timeout = 200.millis
     val timedPullPause = Pull.eval(IO.sleep(150.millis))
@@ -297,18 +297,61 @@ class TimedPullsSuite extends Fs2Suite {
           tp.timeout(timeout) >>
             // If the first timeout started immediately, this pause
             // before uncons would cause a timeout to be emitted
-          timedPullPause >>
+            timedPullPause >>
             tp.uncons.flatMap {
               case Some((Right(_), _)) =>
                 Pull.done
               case Some((Left(_), _)) =>
                 fail("Unexpected timeout")
               case None =>
-                fail("Unexpected of stream")
+                fail("Unexpected end of stream")
             }
-        }.stream
+        }
+        .stream
         .compile
-    .drain
+        .drain
+
+    TestControl.executeEmbed(prog)
+  }
+
+  test("After the first uncons, timeouts start immediately") {
+    val emissionTime = 100.millis
+    val timeout = 200.millis
+    val timedPullPause = Pull.eval(IO.sleep(150.millis))
+
+    val prog =
+      Stream
+        .sleep[IO](emissionTime)
+        .repeatN(2)
+        .pull
+        .timed { tp =>
+          tp.timeout(timeout) >>
+            // If the first timeout started immediately, this pause
+            // before uncons would cause a timeout to be emitted
+            timedPullPause >>
+            tp.uncons.flatMap {
+              case Some((Right(_), tp)) =>
+                tp.timeout(timeout) >>
+                // The timeout starts immediately, so this pause
+                // before uncons causes a timeout
+                timedPullPause >>
+                tp.uncons.flatMap {
+                  case Some((Left(_), _)) =>
+                    Pull.done
+                  case Some((Right(_), _)) =>
+                    fail("Unexpected element, expected timeout")
+                  case None =>
+                    fail("Unexpected end of stream")
+                }
+              case Some((Left(_), _)) =>
+                fail("Unexpected timeout")
+              case None =>
+                fail("Unexpected end of stream")
+            }
+        }
+        .stream
+        .compile
+        .drain
 
     TestControl.executeEmbed(prog)
   }
