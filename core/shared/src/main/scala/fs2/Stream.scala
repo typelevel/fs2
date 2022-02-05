@@ -2201,7 +2201,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }
 
     pauseIfNeeded ++ chunks.flatMap { chunk =>
-      pauseIfNeeded ++ Stream.chunk(chunk)
+      Stream.chunk(chunk) ++ pauseIfNeeded
     }
   }
 
