@@ -49,7 +49,7 @@ class TimedPullsSuite extends Fs2Suite {
         .stream
         .compile
         .toList
-        .map(it => assertEquals(it, s.compile.toList))
+        .assertEquals(s.compile.toList)
     }
   }
 
@@ -78,7 +78,7 @@ class TimedPullsSuite extends Fs2Suite {
           .compile
           .toList
       )
-      .map(it => assertEquals(it, l))
+      .assertEquals(l)
   }
 
   test("times out whilst pulling a single element") {
@@ -124,7 +124,7 @@ class TimedPullsSuite extends Fs2Suite {
           .compile
           .toList
       )
-      .map(it => assertEquals(it, l))
+      .assertEquals(l)
   }
 
   test("pulls elements with timeouts, timeouts trigger after reset") {
@@ -152,7 +152,7 @@ class TimedPullsSuite extends Fs2Suite {
           .compile
           .toList
       )
-      .map(it => assertEquals(it, expected))
+      .assertEquals(expected)
   }
 
   test("timeout can be reset before triggering") {
