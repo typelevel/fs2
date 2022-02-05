@@ -59,12 +59,7 @@ trait Signal[F[_], A] {
     * definition of `view`:
     *
     *  {{{
-    * import cats.effect._
-    * import cats.syntax.all._
-    * import fs2.concurrent.SignallingRef
-    * import scala.concurrent.duration._
-    *
-    * trait Refresh[F[_], A] {
+    *  trait Refresh[F[_], A] {
     *   def get: F[A]
     * }
     * object Refresh {
@@ -72,7 +67,7 @@ trait Signal[F[_], A] {
     *     action: F[A],
     *     refreshAfter: A => FiniteDuration,
     *     defaultExpiry: FiniteDuration
-    *   ): Resource[IO, Refresh[A]] =
+    *   ): Resource[F, Refresh[F, A]] =
     *     Resource
     *       .eval(SignallingRef[F, Option[Either[Throwable, A]]](None))
     *       .flatMap { state =>
@@ -82,9 +77,9 @@ trait Signal[F[_], A] {
     *             state.set(res.some) >> Temporal[F].sleep(t) >> refresh
     *           }
     *
-    *         def view = new Refresh[A] {
+    *         def view = new Refresh[F, A] {
     *           def get: F[A] = state.get.flatMap {
-    *             case Some(res) => F.fromEither(res)
+    *             case Some(res) => Temporal[F].fromEither(res)
     *             case None => state.waitUntil(_.isDefined) >> get
     *           }
     *         }
