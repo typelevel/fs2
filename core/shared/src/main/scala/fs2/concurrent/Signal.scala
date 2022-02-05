@@ -48,64 +48,6 @@ trait Signal[F[_], A] {
   /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
-
-  /** Returns when the condition becomes true, semantically blocking
-    * in the meantime.
-    *
-    * This method is particularly useful to transform naive, recursive
-    * polling algorithms on the content of a `Signal`/ `SignallingRef`
-    * into semantically blocking ones. For example, here's how to
-    * encode a very simple cache with expiry, pay attention to the
-    * definition of `view`:
-    *
-    *  {{{
-    *  trait Refresh[F[_], A] {
-    *   def get: F[A]
-    * }
-    * object Refresh {
-    *   def create[F[_]: Temporal, A](
-    *     action: F[A],
-    *     refreshAfter: A => FiniteDuration,
-    *     defaultExpiry: FiniteDuration
-    *   ): Resource[F, Refresh[F, A]] =
-    *     Resource
-    *       .eval(SignallingRef[F, Option[Either[Throwable, A]]](None))
-    *       .flatMap { state =>
-    *         def refresh: F[Unit] =
-    *           state.set(None) >> action.attempt.flatMap { res =>
-    *             val t = res.map(refreshAfter).getOrElse(defaultExpiry)
-    *             state.set(res.some) >> Temporal[F].sleep(t) >> refresh
-    *           }
-    *
-    *         def view = new Refresh[F, A] {
-    *           def get: F[A] = state.get.flatMap {
-    *             case Some(res) => Temporal[F].fromEither(res)
-    *             case None => state.waitUntil(_.isDefined) >> get
-    *           }
-    *         }
-    *
-    *         refresh.background.as(view)
-    *       }
-    * }
-    * }}}
-    *
-    * Note that because `Signal` prioritizes the latest update when
-    * its state is updating very quickly, completion of the `F[Unit]`
-    * might not trigger if the condition becomes true and then false
-    * immediately after.
-    *
-    * Therefore, natural use cases of `waitUntil` tend to fall into
-    * two categories:
-    * - Scenarios where conditions don't change instantly, such as
-    *   periodic timed processes updating the `Signal`/`SignallingRef`.
-    * - Scenarios where conditions might change instantly, but the `p`
-    *   predicate is monotonic, i.e. if it tests true for an event, it
-    *   will test true for the following events as well.
-    *   Examples include waiting for a unique ID stored in a `Signal`
-    *   to change, or waiting for the value of the `Signal` of an
-    *   ordered `Stream[IO, Int]` to be greater than a certain number.
-    */
-  def waitUntil(p: A => Boolean): F[Unit]
 }
 
 object Signal extends SignalInstances {
@@ -114,7 +56,6 @@ object Signal extends SignalInstances {
       def get: F[A] = F.pure(a)
       def continuous: Stream[Pure, A] = Stream.constant(a)
       def discrete: Stream[F, A] = Stream(a) ++ Stream.never
-      def waitUntil(p: A => Boolean): F[Unit] = if (p(a)) F.unit else F.never
     }
 
   def mapped[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
@@ -122,8 +63,6 @@ object Signal extends SignalInstances {
       def continuous: Stream[F, B] = fa.continuous.map(f)
       def discrete: Stream[F, B] = fa.discrete.map(f)
       def get: F[B] = Functor[F].map(fa.get)(f)
-      def waitUntil(p: B => Boolean): F[Unit] =
-        fa.waitUntil(a => p(f(a)))
     }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
@@ -132,6 +71,65 @@ object Signal extends SignalInstances {
       */
     def map[B](f: A => B)(implicit F: Functor[F]): Signal[F, B] =
       Signal.mapped(self)(f)
+
+    /** Returns when the condition becomes true, semantically blocking
+      * in the meantime.
+      *
+      * This method is particularly useful to transform naive, recursive
+      * polling algorithms on the content of a `Signal`/ `SignallingRef`
+      * into semantically blocking ones. For example, here's how to
+      * encode a very simple cache with expiry, pay attention to the
+      * definition of `view`:
+      *
+      *  {{{
+      *  trait Refresh[F[_], A] {
+      *   def get: F[A]
+      * }
+      * object Refresh {
+      *   def create[F[_]: Temporal, A](
+      *     action: F[A],
+      *     refreshAfter: A => FiniteDuration,
+      *     defaultExpiry: FiniteDuration
+      *   ): Resource[F, Refresh[F, A]] =
+      *     Resource
+      *       .eval(SignallingRef[F, Option[Either[Throwable, A]]](None))
+      *       .flatMap { state =>
+      *         def refresh: F[Unit] =
+      *           state.set(None) >> action.attempt.flatMap { res =>
+      *             val t = res.map(refreshAfter).getOrElse(defaultExpiry)
+      *             state.set(res.some) >> Temporal[F].sleep(t) >> refresh
+      *           }
+      *
+      *         def view = new Refresh[F, A] {
+      *           def get: F[A] = state.get.flatMap {
+      *             case Some(res) => Temporal[F].fromEither(res)
+      *             case None => state.waitUntil(_.isDefined) >> get
+      *           }
+      *         }
+      *
+      *         refresh.background.as(view)
+      *       }
+      * }
+      * }}}
+      *
+      * Note that because `Signal` prioritizes the latest update when
+      * its state is updating very quickly, completion of the `F[Unit]`
+      * might not trigger if the condition becomes true and then false
+      * immediately after.
+      *
+      * Therefore, natural use cases of `waitUntil` tend to fall into
+      * two categories:
+      * - Scenarios where conditions don't change instantly, such as
+      *   periodic timed processes updating the `Signal`/`SignallingRef`.
+      * - Scenarios where conditions might change instantly, but the `p`
+      *   predicate is monotonic, i.e. if it tests true for an event, it
+      *   will test true for the following events as well.
+      *   Examples include waiting for a unique ID stored in a `Signal`
+      *   to change, or waiting for the value of the `Signal` of an
+      *   ordered `Stream[IO, Int]` to be greater than a certain number.
+      */
+    def waitUntil(p: A => Boolean)(implicit F: Concurrent[F]): F[Unit] =
+      self.discrete.forall(a => !p(a)).compile.drain
   }
 
   implicit class BooleanSignalOps[F[_]](val self: Signal[F, Boolean]) extends AnyVal {
@@ -249,9 +247,6 @@ object SignallingRef {
             }
           }
 
-          def waitUntil(p: A => Boolean): F[Unit] =
-            discrete.forall(a => !p(a)).compile.drain
-
           def set(a: A): F[Unit] = update(_ => a)
 
           def update(f: A => A): F[Unit] = modify(a => (f(a), ()))
@@ -299,7 +294,6 @@ object SignallingRef {
           def get: F[B] = fa.get.map(f)
           def discrete: Stream[F, B] = fa.discrete.map(f)
           def continuous: Stream[F, B] = fa.continuous.map(f)
-          def waitUntil(p: B => Boolean): F[Unit] = fa.waitUntil(a => p(f(a)))
           def set(b: B): F[Unit] = fa.set(g(b))
           def access: F[(B, B => F[Boolean])] =
             fa.access.map { case (getter, setter) =>
@@ -360,9 +354,6 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
           def continuous: Stream[F, B] = Stream.repeatEval(get)
 
           def get: F[B] = ff.get.ap(fa.get)
-
-          def waitUntil(p: B => Boolean): F[Unit] =
-            discrete.forall(a => !p(a)).compile.drain
         }
     }
   }
