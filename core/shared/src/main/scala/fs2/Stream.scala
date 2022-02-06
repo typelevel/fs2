@@ -2194,10 +2194,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] = {
 
     def waitToResume =
-      pauseWhenTrue.discrete.dropWhile(_ == true).take(1).compile.drain
+      pauseWhenTrue.waitUntil(_ == false)
 
     // The logic can be expressed entirely with `waitToResume`, but
-    // `Signal.get` is lighter than `Signal.discrete`, so the preliminary
+    // `Signal.get` is lighter than `Signal.waitUntil`, so the preliminary
     // check with `get` in `pauseIfNeeded` acts as an optimisation, since
     // we expect a stream to generally not be in a paused state.
     def pauseIfNeeded = Stream.exec {
@@ -4010,8 +4010,6 @@ object Stream extends StreamLowPriority {
               .updateAndGet(_ - 1)
               .flatMap(now => if (now == 0) outcomes.close.void else F.unit)
 
-          val awaitWhileRunning: F[Unit] = running.discrete.forall(_ > 0).compile.drain
-
           def onOutcome(
               oc: Outcome[F, Throwable, Unit],
               cancelResult: Either[Throwable, Unit]
@@ -4095,7 +4093,7 @@ object Stream extends StreamLowPriority {
                 // in case of short-circuiting, the `fiberJoiner` would not have had a chance
                 // to wait until all fibers have been joined, so we need to do it manually
                 // by waiting on the counter
-                awaitWhileRunning >>
+                running.waitUntil(_ == 0) >>
                 signalResult(fiber)
             }
             .flatMap { _ =>
