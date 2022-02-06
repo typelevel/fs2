@@ -58,8 +58,8 @@ trait Signal[F[_], A] {
     * encode a very simple cache with expiry, pay attention to the
     * definition of `view`:
     *
-    *  {{{
-    *  trait Refresh[F[_], A] {
+    * {{{
+    * trait Refresh[F[_], A] {
     *   def get: F[A]
     * }
     * object Refresh {
