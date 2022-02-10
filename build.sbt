@@ -339,44 +339,11 @@ lazy val microsite = project
   .in(file("mdoc"))
   .settings(
     mdocIn := file("site"),
-    mdocOut := file("target/website"),
-    mdocVariables := Map(
-      "version" -> version.value,
-      "scalaVersions" -> crossScalaVersions.value
-        .map(v => s"- **$v**")
-        .mkString("\n")
-    ),
-    githubWorkflowArtifactUpload := false,
+    laikaSite := {
+      sbt.IO.copyDirectory(mdocOut.value, (laikaSite / target).value)
+      Set.empty
+    },
     tlFatalWarningsInCi := false
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
-  .enablePlugins(MdocPlugin, NoPublishPlugin)
-
-ThisBuild / githubWorkflowBuildPostamble ++= List(
-  WorkflowStep.Sbt(
-    List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
-  )
-)
-
-ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
-  id = "site",
-  name = "Deploy site",
-  needs = List("publish"),
-  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
-  scalas = (ThisBuild / scalaVersion).value :: Nil,
-  cond = """
-  | always() &&
-  | needs.build.result == 'success' &&
-  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
-  """.stripMargin.trim.linesIterator.mkString.some,
-  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
-    WorkflowStep.Use(
-      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
-      name = Some(s"Deploy site"),
-      params = Map(
-        "publish_dir" -> "./target/website",
-        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
-      )
-    )
-)
+  .enablePlugins(TypelevelSitePlugin)
