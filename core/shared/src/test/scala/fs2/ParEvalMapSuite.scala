@@ -277,7 +277,7 @@ class ParEvalMapSuite extends Fs2Suite {
         .compile
         .drain
         .attempt
-        .void
+        .timeout(2.seconds)
     }
 
     test("parEvalMap") {
@@ -287,7 +287,7 @@ class ParEvalMapSuite extends Fs2Suite {
         .compile
         .drain
         .attempt
-        .void
+        .timeout(2.seconds)
     }
   }
 }
