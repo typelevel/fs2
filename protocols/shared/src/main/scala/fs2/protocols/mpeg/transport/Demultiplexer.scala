@@ -210,7 +210,7 @@ object Demultiplexer {
             ) // Safe cast b/c DecodeBody must provide a Decoder[Out]
             decoded ++ processHeader(remainder, false, payloadUnitStartAfterData)
           case Attempt.Failure(err) =>
-            val out = {
+            val out =
               if (err.isInstanceOf[ResetDecodeState]) Chunk.empty
               else
                 Chunk.singleton(
@@ -224,7 +224,6 @@ object Demultiplexer {
                     )
                   )
                 )
-            }
             val failure = StepResult(None, out)
             awaitingBody.neededBits match {
               case Some(n) =>

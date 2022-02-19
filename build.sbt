@@ -1,55 +1,37 @@
 import com.typesafe.tools.mima.core._
-import sbtcrossproject.crossProject
-
-addCommandAlias("fmt", "; Compile/scalafmt; Test/scalafmt; IntegrationTest/scalafmt; scalafmtSbt")
-addCommandAlias(
-  "fmtCheck",
-  "; Compile/scalafmtCheck; Test/scalafmtCheck; IntegrationTest/scalafmtCheck; scalafmtSbtCheck"
-)
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 Global / stQuiet := true
 
-ThisBuild / baseVersion := "3.2"
+ThisBuild / tlBaseVersion := "3.2"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
-
-ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-val NewScala = "2.13.7"
+val NewScala = "2.13.8"
 
-ThisBuild / crossScalaVersions := Seq("3.1.0", "2.12.15", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.15", NewScala)
+ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 
-ThisBuild / spiewakCiReleaseSnapshots := true
+ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
-ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
-
-ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues")),
-  // WorkflowStep.Sbt(List("coreJVM/it:test")) // Memory leak tests fail intermittently on CI
+ThisBuild / githubWorkflowBuild ++= Seq(
   WorkflowStep.Run(
     List("cd scalafix", "sbt testCI"),
     name = Some("Scalafix tests"),
-    cond = Some(s"matrix.scala == '$NewScala'")
+    cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
   )
-)
-
-ThisBuild / scmInfo := Some(
-  ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
 )
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
-ThisBuild / testFrameworks += new TestFramework("munit.Framework")
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
 
-ThisBuild / publishGithubUser := "mpilquist"
-ThisBuild / publishFullName := "Michael Pilquist"
 ThisBuild / developers ++= List(
+  "mpilquist" -> "Michael Pilquist",
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
   "SystemFw" -> "Fabio Labella",
@@ -60,7 +42,7 @@ ThisBuild / developers ++= List(
   "jedws" -> "Jed Wesley-Smith",
   "durban" -> "Daniel Urban"
 ).map { case (username, fullName) =>
-  Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
+  tlGitHubDev(username, fullName)
 }
 
 // If debugging tests, it's sometimes useful to disable parallel execution and test result buffering:
@@ -74,6 +56,7 @@ ThisBuild / initialCommands := s"""
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // No bincompat on internal package
   ProblemFilters.exclude[Problem]("fs2.internal.*"),
+  ProblemFilters.exclude[Problem]("fs2.io.internal.*"),
   // Mima reports all ScalaSignature changes as errors, despite the fact that they don't cause bincompat issues when version swapping (see https://github.com/lightbend/mima/issues/361)
   ProblemFilters.exclude[IncompatibleSignatureProblem]("*"),
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.apply"),
@@ -163,33 +146,33 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Chunk$BufferChunk"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk.makeArrayBuilder"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.interop.reactivestreams.StreamSubscriber.fsm"
+  ),
+  ProblemFilters.exclude[Problem]("fs2.interop.reactivestreams.StreamSubscriber#FSM*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.utf8Charset"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.tls.TLSSocketPlatform.applicationProtocol"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.compression.Compression.gzip$default$*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.compression.Compression.gunzip$default$1$"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.ChunkCompanionPlatform.makeArrayBuilder"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.asQueueSink")
 )
 
-lazy val root = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
+lazy val root = tlCrossRootProject
   .aggregate(
-    coreJVM,
-    coreJS,
-    io.jvm,
-    node.js,
-    io.js,
-    scodec.jvm,
-    scodec.js,
-    protocols.jvm,
-    protocols.js,
+    core,
+    io,
+    node,
+    scodec,
+    protocols,
     reactiveStreams,
     benchmark
   )
-
-lazy val rootJVM = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin)
-  .aggregate(coreJVM, io.jvm, reactiveStreams, benchmark)
-lazy val rootJS =
-  project.in(file(".")).enablePlugins(NoPublishPlugin).aggregate(coreJS, node.js, io.js)
 
 lazy val IntegrationTest = config("it").extend(Test)
 
@@ -207,9 +190,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.7.0",
       "org.typelevel" %%% "cats-laws" % "2.7.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.1",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.1" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.3.5",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.5" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.5" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.30",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.3" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
@@ -269,16 +252,18 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2"
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2",
+    tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
   )
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.15" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.17" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
   .jsSettings(
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
     Test / npmDevDependencies += "jks-js" -> "1.0.1",
     useYarn := true,
@@ -286,6 +271,21 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsConfigure(_.dependsOn(node.js))
+  .jsSettings(
+    mimaBinaryIssueFilters ++= Seq(
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdoutLines"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdout"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdin"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSSocket.applicationProtocol"),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.*.JavaScript*Exception.this"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.JavaScriptUnknownException"),
+      ProblemFilters.exclude[DirectMissingMethodProblem](
+        "fs2.io.net.tls.TLSSocketCompanionPlatform#AsyncTLSSocket.this"
+      )
+    )
+  )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
@@ -296,9 +296,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                              )
                                                                "1.11.9"
                                                              else "2.1.0"),
-    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
-      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
-    }
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -309,9 +307,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
-    mimaPreviousArtifacts := mimaPreviousArtifacts.value.filter { v =>
-      VersionNumber(v.revision).matchesSemVer(SemanticSelector(">3.2.0"))
-    }
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -325,7 +321,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      ("org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test").cross(CrossVersion.for3Use2_13)
+      "org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test"
     ),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
@@ -345,44 +341,11 @@ lazy val microsite = project
   .in(file("mdoc"))
   .settings(
     mdocIn := file("site"),
-    mdocOut := file("target/website"),
-    mdocVariables := Map(
-      "version" -> version.value,
-      "scalaVersions" -> crossScalaVersions.value
-        .map(v => s"- **$v**")
-        .mkString("\n")
-    ),
-    githubWorkflowArtifactUpload := false,
-    fatalWarningsInCI := false
+    laikaSite := {
+      sbt.IO.copyDirectory(mdocOut.value, (laikaSite / target).value)
+      Set.empty
+    },
+    tlFatalWarningsInCi := false
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
-  .enablePlugins(MdocPlugin, NoPublishPlugin)
-
-ThisBuild / githubWorkflowBuildPostamble ++= List(
-  WorkflowStep.Sbt(
-    List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '2.13.7'")
-  )
-)
-
-ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
-  id = "site",
-  name = "Deploy site",
-  needs = List("publish"),
-  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
-  scalas = (ThisBuild / scalaVersion).value :: Nil,
-  cond = """
-  | always() &&
-  | needs.build.result == 'success' &&
-  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
-  """.stripMargin.trim.linesIterator.mkString.some,
-  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
-    WorkflowStep.Use(
-      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
-      name = Some(s"Deploy site"),
-      params = Map(
-        "publish_dir" -> "./target/website",
-        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
-      )
-    )
-)
+  .enablePlugins(TypelevelSitePlugin)

@@ -268,4 +268,26 @@ class ParEvalMapSuite extends Fs2Suite {
       (1 to iterations).toList.as(action).sequence_
     }
   }
+
+  group("issue-2825, Stream shouldn't hang after exceptions thrown in") {
+    test("parEvalMapUnordered") {
+      Stream
+        .eval(IO.unit)
+        .parEvalMapUnordered(Int.MaxValue)(_ => throw new RuntimeException)
+        .compile
+        .drain
+        .attempt
+        .timeout(2.seconds)
+    }
+
+    test("parEvalMap") {
+      Stream
+        .eval(IO.unit)
+        .parEvalMap(Int.MaxValue)(_ => throw new RuntimeException)
+        .compile
+        .drain
+        .attempt
+        .timeout(2.seconds)
+    }
+  }
 }

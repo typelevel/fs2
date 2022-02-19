@@ -68,8 +68,7 @@ trait BaseFileSuite extends Fs2Suite {
     Stream
       .range(0, 4)
       .map(_.toByte)
-      .covary[IO]
-      .metered(250.millis)
+      .metered[IO](250.millis)
       .through(Files[IO].writeAll(file))
 
   protected def deleteDirectoryRecursively(dir: Path): IO[Unit] =

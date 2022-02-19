@@ -2123,7 +2123,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 Deferred[F2, Unit].flatMap { pushed =>
                   val init = initFork(channel, pushed.complete(()).void)
                   poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
-                    val action = f(el).attempt.flatMap(send) *> pushed.get
+                    val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                     F.start(stop.get.race(action) *> releaseAndCheckCompletion)
                   }
                 }
@@ -2194,14 +2194,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] = {
 
     def waitToResume =
-      pauseWhenTrue.discrete.dropWhile(_ == true).take(1).compile.drain
+      pauseWhenTrue.waitUntil(_ == false)
 
+    // The logic can be expressed entirely with `waitToResume`, but
+    // `Signal.get` is lighter than `Signal.waitUntil`, so the preliminary
+    // check with `get` in `pauseIfNeeded` acts as an optimisation, since
+    // we expect a stream to generally not be in a paused state.
     def pauseIfNeeded = Stream.exec {
       pauseWhenTrue.get.flatMap(paused => waitToResume.whenA(paused))
     }
 
     pauseIfNeeded ++ chunks.flatMap { chunk =>
-      pauseIfNeeded ++ Stream.chunk(chunk)
+      Stream.chunk(chunk) ++ pauseIfNeeded
     }
   }
 
@@ -3599,7 +3603,7 @@ object Stream extends StreamLowPriority {
   /** Alias for `eval(fo).repeat`. */
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
-  /** Converts the supplied resource in to a singleton stream. */
+  /** Converts the supplied resource into a singleton stream. */
   def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     resourceWeak(r).scope
 
@@ -3621,6 +3625,18 @@ object Stream extends StreamLowPriority {
       case Resource.Eval(fo) => Stream.eval(fo)
       case Resource.Pure(o)  => Stream.emit(o)
     }
+
+  /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
+  def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+    Stream.resource(Resource.fromAutoCloseable(fo))
+
+  /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
+    * subsequent appends or other scope-preserving transformations.
+    *
+    * Scopes can be manually introduced via [[Stream#scope]] if desired.
+    */
+  def fromAutoCloseableWeak[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
+    Stream.resourceWeak(Resource.fromAutoCloseable(fo))
 
   /** Retries `fo` on failure, returning a singleton stream with the
     * result of `fo` as soon as it succeeds.
@@ -3799,7 +3815,26 @@ object Stream extends StreamLowPriority {
     def observe(p: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] =
       observeAsync(1)(p)
 
-    /** Send chunks through `p`, allowing up to `maxQueued` pending _chunks_ before blocking `s`. */
+    /** Attaches to this stream an observer pipe, that pre-inspects the outputs
+      * from `this` stream (the source) before the result stream emits them.
+      *
+      * Outputs from the source are fed to the observer pipe, to build a stream
+      * that is run in the background. However, unlike the `background` method,
+      * the `observe` method binds the mainstream: if the observation stream
+      * reaches a stream end, the resulting stream is cut short.
+      *
+      * The resulting stream emits the same outputs as the source (`this`) stream,
+      * in the same order and chunk structure. However, no chunk is emitted by the
+      * resulting stream until _after_ the observer pipe is done processing it.
+      *
+      * Any errors raised either from the evaluation of the source stream (this)
+      * or from the observer pipe (when applied to source chunks) will cause the
+      * termination of the resulting stream, and will be raised from this.
+      *
+      * @returns A stream that may emit the same outputs as this stream (source),
+      *          in the same order and chunks, and performs the same effects as
+      *          the source; but in which every chunk is processed by the pipe.
+      */
     def observeAsync(
         maxQueued: Int
     )(pipe: Pipe[F, O, INothing])(implicit F: Concurrent[F]): Stream[F, O] = Stream.force {
@@ -3975,8 +4010,6 @@ object Stream extends StreamLowPriority {
               .updateAndGet(_ - 1)
               .flatMap(now => if (now == 0) outcomes.close.void else F.unit)
 
-          val awaitWhileRunning: F[Unit] = running.discrete.forall(_ > 0).compile.drain
-
           def onOutcome(
               oc: Outcome[F, Throwable, Unit],
               cancelResult: Either[Throwable, Unit]
@@ -4060,7 +4093,7 @@ object Stream extends StreamLowPriority {
                 // in case of short-circuiting, the `fiberJoiner` would not have had a chance
                 // to wait until all fibers have been joined, so we need to do it manually
                 // by waiting on the counter
-                awaitWhileRunning >>
+                running.waitUntil(_ == 0) >>
                 signalResult(fiber)
             }
             .flatMap { _ =>

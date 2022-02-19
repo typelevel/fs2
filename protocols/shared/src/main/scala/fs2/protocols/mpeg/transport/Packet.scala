@@ -110,15 +110,13 @@ object Packet {
       else {
         val (packetData, overflow, remSections) =
           accumulateN(184 * 8, remaining +: remainingSections)
-        val payloadUnitStart = {
+        val payloadUnitStart =
           if (remSections.size < remainingSections.size) Some((remaining.size / 8).toInt)
           else None
-        }
-        val (adjPacketData, adjOverflow) = {
+        val (adjPacketData, adjOverflow) =
           if (payloadUnitStart.isDefined)
             (packetData.take(183 * 8), packetData.drop(183 * 8) ++ overflow)
           else (packetData, overflow)
-        }
         val packet = payload(pid, cc, payloadUnitStart, adjPacketData)
         go(cc.next, adjOverflow, remSections, acc :+ packet)
       }

@@ -132,7 +132,7 @@ object Compiler extends CompilerLowPriority {
     )(foldChunk: (B, Chunk[O]) => B): B =
       Compiler
         .target[SyncIO]
-        .apply(stream.covary[SyncIO], init)(foldChunk)
+        .apply(stream, init)(foldChunk)
         .unsafeRunSync()
   }
 

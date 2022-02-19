@@ -48,6 +48,65 @@ trait Signal[F[_], A] {
   /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
+
+  /** Returns when the condition becomes true, semantically blocking
+    * in the meantime.
+    *
+    * This method is particularly useful to transform naive, recursive
+    * polling algorithms on the content of a `Signal`/ `SignallingRef`
+    * into semantically blocking ones. For example, here's how to
+    * encode a very simple cache with expiry, pay attention to the
+    * definition of `view`:
+    *
+    * {{{
+    * trait Refresh[F[_], A] {
+    *   def get: F[A]
+    * }
+    * object Refresh {
+    *   def create[F[_]: Temporal, A](
+    *     action: F[A],
+    *     refreshAfter: A => FiniteDuration,
+    *     defaultExpiry: FiniteDuration
+    *   ): Resource[F, Refresh[F, A]] =
+    *     Resource
+    *       .eval(SignallingRef[F, Option[Either[Throwable, A]]](None))
+    *       .flatMap { state =>
+    *         def refresh: F[Unit] =
+    *           state.set(None) >> action.attempt.flatMap { res =>
+    *             val t = res.map(refreshAfter).getOrElse(defaultExpiry)
+    *             state.set(res.some) >> Temporal[F].sleep(t) >> refresh
+    *           }
+    *
+    *         def view = new Refresh[F, A] {
+    *           def get: F[A] = state.get.flatMap {
+    *             case Some(res) => Temporal[F].fromEither(res)
+    *             case None => state.waitUntil(_.isDefined) >> get
+    *           }
+    *         }
+    *
+    *         refresh.background.as(view)
+    *       }
+    * }
+    * }}}
+    *
+    * Note that because `Signal` prioritizes the latest update when
+    * its state is updating very quickly, completion of the `F[Unit]`
+    * might not trigger if the condition becomes true and then false
+    * immediately after.
+    *
+    * Therefore, natural use cases of `waitUntil` tend to fall into
+    * two categories:
+    * - Scenarios where conditions don't change instantly, such as
+    *   periodic timed processes updating the `Signal`/`SignallingRef`.
+    * - Scenarios where conditions might change instantly, but the `p`
+    *   predicate is monotonic, i.e. if it tests true for an event, it
+    *   will test true for the following events as well.
+    *   Examples include waiting for a unique ID stored in a `Signal`
+    *   to change, or waiting for the value of the `Signal` of an
+    *   ordered `Stream[IO, Int]` to be greater than a certain number.
+    */
+  def waitUntil(p: A => Boolean)(implicit F: Concurrent[F]): F[Unit] =
+    discrete.forall(a => !p(a)).compile.drain
 }
 
 object Signal extends SignalInstances {

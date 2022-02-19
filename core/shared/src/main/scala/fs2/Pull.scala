@@ -186,6 +186,10 @@ sealed abstract class Pull[+F[_], +O, +R] {
         }
     }
 
+  /** Alias for `flatMap(r => Pull.eval(f(r)))`. */
+  def evalMap[F2[x] >: F[x], R2](f: R => F2[R2]): Pull[F2, O, R2] =
+    flatMap(r => Pull.eval(f(r)))
+
   /** Allows to recover from any error raised by the evaluation of this pull.
     * This method returns a composed pull with the following semantics:
     * - If an error occurs, the supplied function is used to build a new handler
@@ -265,7 +269,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * pull returns the unit `()` value. Otherwise, the voided pull just does
     * the same as `this` pull does.
     *
-    * Alias for `this.map(_ => () )`.
+    * Alias for `this.map(_ => ())`.
     */
   def void: Pull[F, O, Unit] = as(())
 
@@ -281,6 +285,16 @@ sealed abstract class Pull[+F[_], +O, +R] {
     * @param  s The new result value of the pull
     */
   def as[S](s: S): Pull[F, O, S] = map(_ => s)
+
+  /** Leases all resources that are currently open, canceling the lease at the
+    * termination of this pull.
+    */
+  def lease: Pull[F, O, R] =
+    Pull.bracketCase[F, O, Lease[F], R](
+      Pull.getScope[F].evalMap(_.lease),
+      _ => this,
+      (l, _) => Pull.eval(l.cancel).rethrow
+    )
 }
 
 object Pull extends PullLowPriority {
@@ -540,9 +554,24 @@ object Pull extends PullLowPriority {
       * previous timeout, but a duration of 0 is treated specially, in
       * that it will cancel a pending timeout but not start a new one.
       *
-      * Note: the very first execution of `timeout` does not start
-      * running until the first call to `uncons`, but subsequent calls
-      * proceed independently after that.
+      * Note:
+      * If for some reason you insert a pause in between `uncons` and
+      * `timeout`, such as:
+      * {{{
+      * timedPull.timeout(n.millis) >>
+      *   Pull.eval(IO.sleep(m.millis)) >>
+      *   timedPull.uncons.flatMap { ...
+      * }}}
+      *
+      * you should be aware that an invocation of `timeout` that
+      * happens before the very first `uncons` will start the timeout
+      * simultaneously with the very first `uncons`. Subsequent
+      * invocations of `timeout` start the timeout immediately
+      * instead.
+      *
+      * This is an implementation detail which should not affect most
+      * cases, given that usually there is no need to sleep in between
+      * `timeout` and the very first call to `uncons`.
       */
     def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
   }

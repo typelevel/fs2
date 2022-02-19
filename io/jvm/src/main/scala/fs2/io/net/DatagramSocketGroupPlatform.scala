@@ -121,8 +121,8 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
 
           override def toString =
             s"Socket(${Option(
-              channel.socket.getLocalSocketAddress
-            ).getOrElse("<unbound>")})"
+                channel.socket.getLocalSocketAddress
+              ).getOrElse("<unbound>")})"
         }
 
         (socket, Async[F].delay(adsg.close(ctx0)))

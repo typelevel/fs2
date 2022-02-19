@@ -121,7 +121,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
 
               Stream
                 .bracket(IO.unit)(_ => finRef.update(_ :+ "Outer"))
-                .flatMap(_ => s.covary[IO].concurrently(runner))
+                .flatMap(_ => s.concurrently(runner))
                 .interruptWhen(halt.get.attempt)
                 .compile
                 .drain

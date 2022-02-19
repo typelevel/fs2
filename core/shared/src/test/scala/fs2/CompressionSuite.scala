@@ -250,5 +250,4 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
           .last
     } yield assertEquals(first, second)
   }
-
 }
