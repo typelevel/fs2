@@ -83,12 +83,12 @@ object Collector extends CollectorPlatform {
     def array[A: ClassTag]: Builder[A, Array[A]] =
       Chunk.newBuilder.mapResult(_.toArray)
 
-    protected def fromBuilder[A, C[_], B](
-        builder: collection.mutable.Builder[A, C[B]]
-    ): Builder[A, C[B]] =
-      new Builder[A, C[B]] {
+    protected def fromBuilder[A, C](
+        builder: collection.mutable.Builder[A, C]
+    ): Builder[A, C] =
+      new Builder[A, C] {
         def +=(c: Chunk[A]): Unit = builder ++= c.iterator
-        def result: C[B] = builder.result()
+        def result: C = builder.result()
       }
 
     def string: Builder[String, String] =
