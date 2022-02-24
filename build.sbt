@@ -66,7 +66,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.Pull#MapOutput.this"),
   ProblemFilters.exclude[AbstractClassProblem]("fs2.Pull$CloseScope"),
   ProblemFilters.exclude[DirectAbstractMethodProblem]("fs2.Pull#CloseScope.*"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#BindBind.this"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#BindBind.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#CloseScope.*"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$CloseScope$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$EvalView"),
