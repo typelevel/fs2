@@ -1247,6 +1247,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def foldMonoid[O2 >: O](implicit O: Monoid[O2]): Stream[F, O2] =
     fold(O.empty)(O.combine)
 
+  /** Folds this stream with the semigroup for `O`, given an initial element.
+    *
+    * @return Either a singleton stream or a `never` stream:
+    *  - If `this` is a finite stream, the result is a singleton stream containing `Some`.
+    *    If `this` is empty, that value is `None`.
+    *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
+    *    equivalent to the `Stream.never`: it never terminates nor yields any value.
+    *
+    * @example {{{
+    * scala> Stream(1, 2, 3, 4, 5).foldSemigroup.toList
+    * res0: List[Option[Int]] = List(Some(15))
+    * }}}
+    */
+  def foldSemigroup[O2 >: O](implicit O: Semigroup[O2]): Stream[F, Option[O2]] =
+    fold(Option.empty[O2])((acc, o) => acc.map(O.combine(_, o)).orElse(Some(o)))
+
   /** Emits `false` and halts as soon as a non-matching element is received; or
     * emits a single `true` value if it reaches the stream end and every input before that matches the predicate;
     * or hangs without emitting values if the input is infinite and all inputs match the predicate.
