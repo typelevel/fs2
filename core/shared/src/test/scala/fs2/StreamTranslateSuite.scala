@@ -27,66 +27,60 @@ import cats.~>
 import cats.effect.{Async, IO}
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamTranslateSuite extends Fs2Suite {
+class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
+
+  val thunkToIO: Function0 ~> IO = new (Function0 ~> IO) {
+    def apply[A](thunk: Function0[A]): IO[A] = IO(thunk())
+  }
+
+  val thunkToSome: Function0 ~> Some = new (Function0 ~> Some) {
+    def apply[A](thunk: Function0[A]): Some[A] = Some(thunk())
+  }
+
+  val someToIO: Some ~> IO = new (Some ~> IO) {
+    def apply[A](some: Some[A]): IO[A] = IO.pure(some.get)
+  }
+
   test("1 - id") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       s.covary[IO]
         .flatMap(i => Stream.eval(IO.pure(i)))
         .translate(cats.arrow.FunctionK.id[IO])
-        .compile
-        .toList
-        .assertEquals(expected)
+        .emitsSameOutputsAs(s)
     }
   }
 
   test("2 - Appending another stream after translation") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      val expected = (s1 ++ s2).toList
       val translated: Stream[IO, Int] = s1
         .covary[Function0]
         .flatMap(i => Stream.eval(() => i))
         .flatMap(i => Stream.eval(() => i))
-        .translate(new (Function0 ~> IO) {
-          def apply[A](thunk: Function0[A]) = IO(thunk())
-        })
+        .translate(thunkToIO)
 
-      (translated ++ s2.covary[IO]).compile.toList
-        .assertEquals(expected)
+      (translated ++ s2.covary[IO]).emitsSameOutputsAs(s1 ++ s2)
     }
   }
 
   test("3 - ok to have multiple translates") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       s.covary[Function0]
         .flatMap(i => Stream.eval(() => i))
         .flatMap(i => Stream.eval(() => i))
-        .translate(new (Function0 ~> Some) {
-          def apply[A](thunk: Function0[A]) = Some(thunk())
-        })
+        .translate(thunkToSome)
         .flatMap(i => Stream.eval(Some(i)))
         .flatMap(i => Stream.eval(Some(i)))
-        .translate(new (Some ~> IO) {
-          def apply[A](some: Some[A]) = IO(some.get)
-        })
-        .compile
-        .toList
-        .assertEquals(expected)
+        .translate(someToIO)
+        .emitsSameOutputsAs(s)
     }
   }
 
   test("4 - ok to translate after zip with effects") {
-    val stream: Stream[Function0, Int] =
-      Stream.eval(() => 1)
+    val stream: Stream[Function0, Int] = Stream.eval(() => 1)
     stream
       .zip(stream)
-      .translate(new (Function0 ~> IO) {
-        def apply[A](thunk: Function0[A]) = IO(thunk())
-      })
-      .compile
-      .toList
-      .assertEquals(List((1, 1)))
+      .translate(thunkToIO)
+      .emitsOutputs(List((1, 1)))
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
@@ -98,12 +92,8 @@ class StreamTranslateSuite extends Fs2Suite {
     (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
       .flatMap(goStep)
       .stream
-      .translate(new (Function0 ~> IO) {
-        def apply[A](thunk: Function0[A]) = IO(thunk())
-      })
-      .compile
-      .toList
-      .assertEquals(List(1, 2))
+      .translate(thunkToIO)
+      .emitsOutputs(List(1, 2))
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
@@ -119,12 +109,8 @@ class StreamTranslateSuite extends Fs2Suite {
       .stepLeg
       .flatMap(goStep)
       .stream
-      .translate(new (Function0 ~> IO) {
-        def apply[A](thunk: Function0[A]) = IO(thunk())
-      })
-      .compile
-      .toList
-      .assertEquals(List(2, 3, 3, 4))
+      .translate(thunkToIO)
+      .emitsOutputs(List(2, 3, 3, 4))
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
@@ -137,12 +123,8 @@ class StreamTranslateSuite extends Fs2Suite {
     (Stream.eval(() => 1) ++ Stream.eval(() => 2)).pull.stepLeg
       .flatMap(goStep)
       .stream
-      .translate(new (Function0 ~> IO) {
-        def apply[A](thunk: Function0[A]) = IO(thunk())
-      })
-      .compile
-      .toList
-      .assertEquals(List(1, 2))
+      .translate(thunkToIO)
+      .emitsOutputs(List(1, 2))
   }
 
   test("stack safety") {
@@ -154,19 +136,21 @@ class StreamTranslateSuite extends Fs2Suite {
       .drain
   }
 
-  test("translateInterruptible") {
+  test("Interruption - Translate does not suppress interruptions in inner stream") {
     type Eff[A] = cats.data.EitherT[IO, String, A]
     val Eff = Async[Eff]
+    val effToIO: Eff ~> IO = new (Eff ~> IO) {
+      def apply[X](eff: Eff[X]): IO[X] = eff.value.flatMap {
+        case Left(t)  => IO.raiseError(new RuntimeException(t))
+        case Right(x) => IO.pure(x)
+      }
+    }
+
     Stream
       .eval(Eff.never)
       .merge(Stream.eval(Eff.delay(1)).delayBy(5.millis).repeat)
       .interruptAfter(10.millis)
-      .translate(new (Eff ~> IO) {
-        def apply[X](eff: Eff[X]) = eff.value.flatMap {
-          case Left(t)  => IO.raiseError(new RuntimeException(t))
-          case Right(x) => IO.pure(x)
-        }
-      })
+      .translate(effToIO)
       .compile
       .drain
   }

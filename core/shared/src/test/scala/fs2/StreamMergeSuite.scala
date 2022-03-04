@@ -28,47 +28,40 @@ import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamMergeSuite extends Fs2Suite {
+class StreamMergeSuite extends Fs2Suite with StreamAssertions {
+
   group("merge") {
     test("basic") {
       forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-        val expected = s1.toList.toSet ++ s2.toList.toSet
-        s1.merge(s2.covary[IO])
-          .compile
-          .toList
-          .map(_.toSet)
-          .assertEquals(expected)
+        s1.merge(s2.covary[IO]).emitsSameUnorderedOutputsAs(s1 ++ s2)
       }
     }
 
-    group("left/right identity") {
-      test("1") {
+    group("identity elements") {
+      test("right identity: merging with empty stream on right equals left stream") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          val expected = s1.toList
-          s1.covary[IO].merge(Stream.empty).compile.toList.assertEquals(expected)
+          s1.covary[IO].merge(Stream.empty).emitsSameOutputsAs(s1)
         }
       }
-      test("2") {
+      test("left identity: merging empty stream with another stream equals the right stream") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          val expected = s1.toList
-          Stream.empty.merge(s1.covary[IO]).compile.toList.assertEquals(expected)
+          Stream.empty.merge(s1.covary[IO]).emitsSameOutputsAs(s1)
         }
       }
     }
 
     group("left/right failure") {
+      val errorStream = Stream.raiseError[IO](new Err)
       test("1") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          s1.covary[IO].merge(Stream.raiseError[IO](new Err)).compile.drain.intercept[Err].void
+          s1.covary[IO].merge(errorStream).intercept[Err].void
         }
       }
 
       test("2 - never-ending flatMap, failure after emit".ignore) {
         forAllF { (s1: Stream[Pure, Int]) =>
-          s1.merge(Stream.raiseError[IO](new Err))
+          s1.merge(errorStream)
             .evalMap(_ => IO.never)
-            .compile
-            .drain
             .intercept[Err]
             .void
         }
@@ -82,10 +75,8 @@ class StreamMergeSuite extends Fs2Suite {
       if (isJVM)
         test("3 - constant flatMap, failure after emit".ignore) {
           forAllF { (s1: Stream[Pure, Int]) =>
-            s1.merge(Stream.raiseError[IO](new Err))
+            s1.merge(errorStream)
               .flatMap(_ => Stream.constant(true))
-              .compile
-              .drain
               .intercept[Err]
               .void
           }
@@ -196,48 +187,59 @@ class StreamMergeSuite extends Fs2Suite {
     }
   }
 
-  test("mergeHaltL") {
-    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      val s1List = s1.toList
-      s1.covary[IO]
-        .map(Left(_))
-        .mergeHaltL(s2.map(Right(_)))
-        .collect { case Left(a) => a }
-        .compile
-        .toList
-        .assertEquals(s1List)
+  group("mergeHaltL") {
+    test("mergeHaltL emits all the outputs from left stream in same order ") {
+      forAllF { (leftStream: Stream[Pure, Int], rightStream: Stream[Pure, Int]) =>
+        val leftTagged = leftStream.covary[IO].map(Left(_))
+        val rightTagged = rightStream.covary[IO].map(Right(_))
+        leftTagged
+          .mergeHaltL(rightTagged)
+          .collect { case Left(a) => a }
+          .emitsSameOutputsAs(leftStream)
+      }
     }
+
+    test("mergeHaltL may emit a prefix of outputs from right stream") {
+      forAllF { (leftStream: Stream[Pure, Int], rightStream: Stream[Pure, Char]) =>
+        val leftTagged = leftStream.covary[IO].map(Left(_))
+        val rightTagged = rightStream.covary[IO].map(Right(_))
+        leftTagged
+          .mergeHaltL(rightTagged)
+          .collect { case Right(a) => a }
+          .compile
+          .toList
+          .map { (prefix: List[Char]) =>
+            assertEquals(prefix, rightStream.toList.take(prefix.length))
+          }
+      }
+    }
+
   }
 
-  test("mergeHaltR") {
+  test("mergeHaltR emits all outputs from right stream, in same order") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      val s2List = s2.toList
       s1.covary[IO]
         .map(Left(_))
         .mergeHaltR(s2.map(Right(_)))
         .collect { case Right(a) => a }
-        .compile
-        .toList
-        .assertEquals(s2List)
+        .emitsSameOutputsAs(s2)
     }
   }
 
   test("merge not emit ahead") {
     forAllF { (v: Int) =>
-      val expected = List(v, v + 1)
       Ref
         .of[IO, Int](v)
         .flatMap { ref =>
+          def sleepAndSet(value: Int): IO[Int] =
+            IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
+
           Stream
             .repeatEval(ref.get)
             .merge(Stream.never[IO])
-            .evalMap { value =>
-              IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
-            }
+            .evalMap(sleepAndSet)
             .take(2)
-            .compile
-            .toList
-            .assertEquals(expected)
+            .emitsOutputs(List(v, v + 1))
         }
     }
   }

@@ -28,7 +28,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._
 
-class ParEvalMapSuite extends Fs2Suite {
+class ParEvalMapSuite extends Fs2Suite with StreamAssertions {
 
   private implicit class verifyOps[T](val action: IO[T]) {
     def assertNotCompletes(): IO[Unit] = IO.race(IO.sleep(1.second), action).assertEquals(Left(()))
@@ -60,8 +60,8 @@ class ParEvalMapSuite extends Fs2Suite {
 
     test("should be preserved in parEvalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
-        val s2 = s.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(math.abs(i % 3).millis).as(i))
-        s2.compile.toList.assertEquals(s.toList)
+        def sleepMillis(i: Int): IO[Int] = IO.sleep(math.abs(i % 3).millis).as(i)
+        s.covary[IO].parEvalMap(Int.MaxValue)(sleepMillis).emitsSameOutputsAs(s)
       }
     }
 

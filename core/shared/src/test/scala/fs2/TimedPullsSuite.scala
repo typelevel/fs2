@@ -28,13 +28,12 @@ import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._
 
-class TimedPullsSuite extends Fs2Suite {
+class TimedPullsSuite extends Fs2Suite with StreamAssertions {
 
   def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 
   test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.compile.toList
       val prog =
         s.covary[IO]
           .pull
@@ -49,10 +48,8 @@ class TimedPullsSuite extends Fs2Suite {
             loop(tp)
           }
           .stream
-          .compile
-          .toList
 
-      prog.assertEquals(expected)
+      prog.emitsSameOutputsAs(s)
     }
   }
 

@@ -25,7 +25,8 @@ import cats.effect.IO
 import cats.effect.kernel.Ref
 import org.scalacheck.Prop.forAll
 
-class PullSuite extends Fs2Suite {
+class PullSuite extends Fs2Suite with StreamAssertions {
+
   test("early termination of uncons") {
     Ref.of[IO, Int](0).flatMap { ref =>
       Stream(1, 2, 3)
@@ -90,10 +91,8 @@ class PullSuite extends Fs2Suite {
           .map(v => assert(v == rightValue))
           .void
           .stream
-          .compile
-          .toList
 
-      assertEquals(result, list)
+      result.emitsOutputs(list)
     }
   }
 
