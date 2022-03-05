@@ -59,9 +59,7 @@ abstract class Fs2Suite
     (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
     registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
   }
-}
 
-trait StreamAssertions { self: CatsEffectSuite =>
   implicit class StreamAssertionsOf[A](val str: Stream[IO, A]) {
 
     def assertEmpty(): IO[Unit] =
@@ -70,8 +68,8 @@ trait StreamAssertions { self: CatsEffectSuite =>
     def assertEmits(expectedOutputs: List[A]): IO[Unit] =
       str.compile.toList.assertEquals(expectedOutputs)
 
-    def assertEmits(one: A, rest: A*): IO[Unit] =
-      str.compile.toList.assertEquals(one :: rest.toList)
+    def assertForall(pred: A => Boolean): IO[Unit] =
+      str.compile.toList.map(ls => assert(ls.forall(pred)))
 
     def assertEmitsSameAs(expectedOutputs: Stream[IO, A]): IO[Unit] =
       for {
@@ -99,9 +97,8 @@ trait StreamAssertions { self: CatsEffectSuite =>
     def assertEmits(expectedOutputs: List[A]): Unit =
       assertEquals(str.toList, expectedOutputs)
 
-    def assertEmits(one: A, rest: A*): Unit =
-      assertEquals(str.toList, one :: rest.toList)
-
+    def assertForall(pred: A => Boolean): Unit =
+      assert(str.toList.forall(pred))
   }
 
 }

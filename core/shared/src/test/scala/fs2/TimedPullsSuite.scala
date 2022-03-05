@@ -28,7 +28,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._
 
-class TimedPullsSuite extends Fs2Suite with StreamAssertions {
+class TimedPullsSuite extends Fs2Suite {
 
   def fail(s: String) = Pull.raiseError[IO](new Exception(s))
 

@@ -29,8 +29,7 @@ import cats.effect.std.Semaphore
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamSwitchMapSuite extends Fs2Suite with StreamAssertions {
-
+class StreamSwitchMapSuite extends Fs2Suite {
   test("flatMap equivalence when switching never occurs") {
     forAllF { (s: Stream[Pure, Int]) =>
       Stream

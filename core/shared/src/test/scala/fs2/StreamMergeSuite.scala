@@ -28,12 +28,11 @@ import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamMergeSuite extends Fs2Suite with StreamAssertions {
-
+class StreamMergeSuite extends Fs2Suite {
   group("merge") {
     test("basic") {
       forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-        s1.merge(s2.covary[IO]).assertEmitsSameAs(s1 ++ s2)
+        s1.merge(s2.covary[IO]).assertEmitsUnorderedSameAs(s1 ++ s2)
       }
     }
 
@@ -239,7 +238,7 @@ class StreamMergeSuite extends Fs2Suite with StreamAssertions {
             .merge(Stream.never[IO])
             .evalMap(sleepAndSet)
             .take(2)
-            .assertEmits(v, v + 1)
+            .assertEmits(List(v, v + 1))
         }
     }
   }

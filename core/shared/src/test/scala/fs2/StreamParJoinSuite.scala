@@ -30,8 +30,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 import scala.util.control.NoStackTrace
 
-class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
-
+class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.covary[IO].map(Stream.emit(_)).parJoin(1).assertEmits(s.toList)
@@ -138,16 +137,16 @@ class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
         .drain
 
     test("1") {
-      Stream(full, hang).parJoin(10).take(1).assertEmits(42)
+      Stream(full, hang).parJoin(10).take(1).assertEmits(List(42))
     }
     test("2") {
-      Stream(full, hang2).parJoin(10).take(1).assertEmits(42)
+      Stream(full, hang2).parJoin(10).take(1).assertEmits(List(42))
     }
     test("3") {
-      Stream(full, hang3).parJoin(10).take(1).assertEmits(42)
+      Stream(full, hang3).parJoin(10).take(1).assertEmits(List(42))
     }
     test("4") {
-      Stream(hang3, hang2, full).parJoin(10).take(1).assertEmits(42)
+      Stream(hang3, hang2, full).parJoin(10).take(1).assertEmits(List(42))
     }
   }
 

@@ -28,8 +28,7 @@ import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamObserveSuite extends Fs2Suite with StreamAssertions {
-
+class StreamObserveSuite extends Fs2Suite {
   trait Observer {
     def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O]
   }
@@ -145,7 +144,7 @@ class StreamObserveSuite extends Fs2Suite with StreamAssertions {
             Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)
           ) // Have to do some work here, so that we give time for the underlying stream to try pull more
           .take(2)
-          .assertEmits(1, 2)
+          .assertEmits(List(1, 2))
       }
 
       test("3 - do not halt the observing sink when upstream terminates") {

@@ -27,7 +27,7 @@ import cats.~>
 import cats.effect.{Async, IO}
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
+class StreamTranslateSuite extends Fs2Suite {
 
   val thunkToIO: Function0 ~> IO = new (Function0 ~> IO) {
     def apply[A](thunk: Function0[A]): IO[A] = IO(thunk())
@@ -77,7 +77,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
 
   test("4 - ok to translate after zip with effects") {
     val stream: Stream[Function0, Int] = Stream.eval(() => 1)
-    stream.zip(stream).translate(thunkToIO).assertEmits((1, 1))
+    stream.zip(stream).translate(thunkToIO).assertEmits(List(1 -> 1))
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
@@ -90,7 +90,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .assertEmits(1, 2)
+      .assertEmits(List(1, 2))
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
@@ -107,7 +107,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .assertEmits(2, 3, 3, 4)
+      .assertEmits(List(2, 3, 3, 4))
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
@@ -121,7 +121,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .assertEmits(1, 2)
+      .assertEmits(List(1, 2))
   }
 
   test("stack safety") {

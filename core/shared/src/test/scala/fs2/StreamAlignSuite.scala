@@ -25,7 +25,7 @@ import cats.data.Ior
 import cats.syntax.all._
 import org.scalacheck.Prop.forAll
 
-class StreamAlignSuite extends Fs2Suite with StreamAssertions {
+class StreamAlignSuite extends Fs2Suite {
   property("align") {
     forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       s1.align(s2).assertEmits(s1.toList.align(s2.toList))

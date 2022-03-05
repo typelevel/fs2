@@ -28,7 +28,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._
 
-class ParEvalMapSuite extends Fs2Suite with StreamAssertions {
+class ParEvalMapSuite extends Fs2Suite {
 
   private implicit class verifyOps[T](val action: IO[T]) {
     def assertNotCompletes(): IO[Unit] = IO.race(IO.sleep(1.second), action).assertEquals(Left(()))

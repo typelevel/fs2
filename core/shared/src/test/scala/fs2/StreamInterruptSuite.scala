@@ -28,7 +28,7 @@ import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
+class StreamInterruptSuite extends Fs2Suite {
   val interruptRepeatCount = if (isJVM) 25 else 1
 
   test("1 - can interrupt a hung eval") {
@@ -218,7 +218,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .eval(IO.never)
       .interruptWhen(IO.sleep(10.millis).attempt)
       .append(Stream(5))
-      .assertEmits(5)
+      .assertEmits(List(5))
   }
 
   test("14a - interrupt evalMap and then resume on append") {
@@ -294,7 +294,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .stream
       .interruptScope
       .append(Stream(5))
-      .assertEmits(5)
+      .assertEmits(List(5))
   }
 
   test("18 - resume with append after evalMap interruption") {
@@ -302,7 +302,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .interruptWhen(IO.sleep(50.millis).attempt)
       .evalMap(_ => IO.never)
       .append(Stream(5))
-      .assertEmits(5)
+      .assertEmits(List(5))
   }
 
   test("19 - interrupted eval is cancelled") {
@@ -354,7 +354,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .append(Stream(1).delayBy[IO](10.millis))
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .append(Stream(2))
-      .assertEmits(2)
+      .assertEmits(List(2))
   }
 
   def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = s.compile

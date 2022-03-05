@@ -30,7 +30,7 @@ import cats.effect.std.Semaphore
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-class StreamConcurrentlySuite extends Fs2Suite with StreamAssertions {
+class StreamConcurrentlySuite extends Fs2Suite {
 
   test("when background stream terminates, overall stream continues") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
