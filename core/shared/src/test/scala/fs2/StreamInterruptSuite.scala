@@ -143,7 +143,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
     test("10 - terminates when interruption stream is infinitely false") {
       forAllF { (s: Stream[Pure, Int]) =>
         val allFalse = Stream.constant(false)
-        s.covary[IO].interruptWhen(allFalse).emitsSameOutputsAs(s)
+        s.covary[IO].interruptWhen(allFalse).assertEmitsSameAs(s)
       }
     }
   }
@@ -218,7 +218,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .eval(IO.never)
       .interruptWhen(IO.sleep(10.millis).attempt)
       .append(Stream(5))
-      .emitsOutputs(List(5))
+      .assertEmits(5)
   }
 
   test("14a - interrupt evalMap and then resume on append") {
@@ -228,7 +228,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
         .evalMap(_ => IO.never)
         .drain
         .append(s)
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -239,7 +239,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
         .evalMap(_ => IO.never.as(None))
         .append(s.map(Some(_)))
         .collect { case Some(v) => v }
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -255,7 +255,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
           case Some(i) => Stream.emit(Some(i))
         }
         .collect { case Some(i) => i }
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -294,7 +294,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .stream
       .interruptScope
       .append(Stream(5))
-      .emitsOutputs(List(5))
+      .assertEmits(5)
   }
 
   test("18 - resume with append after evalMap interruption") {
@@ -302,7 +302,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .interruptWhen(IO.sleep(50.millis).attempt)
       .evalMap(_ => IO.never)
       .append(Stream(5))
-      .emitsOutputs(List(5))
+      .assertEmits(5)
   }
 
   test("19 - interrupted eval is cancelled") {
@@ -335,7 +335,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
             }
             .collect { case Some(i) => i }
         }
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -354,7 +354,7 @@ class StreamInterruptSuite extends Fs2Suite with StreamAssertions {
       .append(Stream(1).delayBy[IO](10.millis))
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .append(Stream(2))
-      .emitsOutputs(List(2))
+      .assertEmits(2)
   }
 
   def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = s.compile

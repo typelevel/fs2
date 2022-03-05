@@ -46,7 +46,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       s.covary[IO]
         .flatMap(i => Stream.eval(IO.pure(i)))
         .translate(cats.arrow.FunctionK.id[IO])
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -58,7 +58,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
         .flatMap(i => Stream.eval(() => i))
         .translate(thunkToIO)
 
-      (translated ++ s2.covary[IO]).emitsSameOutputsAs(s1 ++ s2)
+      (translated ++ s2.covary[IO]).assertEmitsSameAs(s1 ++ s2)
     }
   }
 
@@ -71,16 +71,13 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
         .flatMap(i => Stream.eval(Some(i)))
         .flatMap(i => Stream.eval(Some(i)))
         .translate(someToIO)
-        .emitsSameOutputsAs(s)
+        .assertEmitsSameAs(s)
     }
   }
 
   test("4 - ok to translate after zip with effects") {
     val stream: Stream[Function0, Int] = Stream.eval(() => 1)
-    stream
-      .zip(stream)
-      .translate(thunkToIO)
-      .emitsOutputs(List((1, 1)))
+    stream.zip(stream).translate(thunkToIO).assertEmits((1, 1))
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
@@ -93,7 +90,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .emitsOutputs(List(1, 2))
+      .assertEmits(1, 2)
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
@@ -110,7 +107,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .emitsOutputs(List(2, 3, 3, 4))
+      .assertEmits(2, 3, 3, 4)
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
@@ -124,7 +121,7 @@ class StreamTranslateSuite extends Fs2Suite with StreamAssertions {
       .flatMap(goStep)
       .stream
       .translate(thunkToIO)
-      .emitsOutputs(List(1, 2))
+      .assertEmits(1, 2)
   }
 
   test("stack safety") {

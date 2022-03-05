@@ -33,19 +33,19 @@ class StreamMergeSuite extends Fs2Suite with StreamAssertions {
   group("merge") {
     test("basic") {
       forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-        s1.merge(s2.covary[IO]).emitsSameUnorderedOutputsAs(s1 ++ s2)
+        s1.merge(s2.covary[IO]).assertEmitsSameAs(s1 ++ s2)
       }
     }
 
     group("identity elements") {
       test("right identity: merging with empty stream on right equals left stream") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          s1.covary[IO].merge(Stream.empty).emitsSameOutputsAs(s1)
+          s1.covary[IO].merge(Stream.empty).assertEmitsSameAs(s1)
         }
       }
       test("left identity: merging empty stream with another stream equals the right stream") {
         forAllF { (s1: Stream[Pure, Int]) =>
-          Stream.empty.merge(s1.covary[IO]).emitsSameOutputsAs(s1)
+          Stream.empty.merge(s1.covary[IO]).assertEmitsSameAs(s1)
         }
       }
     }
@@ -195,7 +195,7 @@ class StreamMergeSuite extends Fs2Suite with StreamAssertions {
         leftTagged
           .mergeHaltL(rightTagged)
           .collect { case Left(a) => a }
-          .emitsSameOutputsAs(leftStream)
+          .assertEmitsSameAs(leftStream)
       }
     }
 
@@ -222,7 +222,7 @@ class StreamMergeSuite extends Fs2Suite with StreamAssertions {
         .map(Left(_))
         .mergeHaltR(s2.map(Right(_)))
         .collect { case Right(a) => a }
-        .emitsSameOutputsAs(s2)
+        .assertEmitsSameAs(s2)
     }
   }
 
@@ -239,7 +239,7 @@ class StreamMergeSuite extends Fs2Suite with StreamAssertions {
             .merge(Stream.never[IO])
             .evalMap(sleepAndSet)
             .take(2)
-            .emitsOutputs(List(v, v + 1))
+            .assertEmits(v, v + 1)
         }
     }
   }

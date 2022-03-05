@@ -61,7 +61,7 @@ class ParEvalMapSuite extends Fs2Suite with StreamAssertions {
     test("should be preserved in parEvalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         def sleepMillis(i: Int): IO[Int] = IO.sleep(math.abs(i % 3).millis).as(i)
-        s.covary[IO].parEvalMap(Int.MaxValue)(sleepMillis).emitsSameOutputsAs(s)
+        s.covary[IO].parEvalMap(Int.MaxValue)(sleepMillis).assertEmitsSameAs(s)
       }
     }
 

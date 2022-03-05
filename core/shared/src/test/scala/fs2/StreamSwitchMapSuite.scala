@@ -40,7 +40,7 @@ class StreamSwitchMapSuite extends Fs2Suite with StreamAssertions {
             .onFinalize(guard.acquire) // outer terminates, wait for last inner to emit
             .switchMap(x => Stream.emit(x).onFinalize(guard.release))
         }
-        .emitsOutputs(s.toList)
+        .assertEmits(s.toList)
     }
   }
 

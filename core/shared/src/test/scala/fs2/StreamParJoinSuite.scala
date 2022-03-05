@@ -34,29 +34,21 @@ class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
 
   test("no concurrency") {
     forAllF { (s: Stream[Pure, Int]) =>
-      s.covary[IO]
-        .map(Stream.emit(_))
-        .parJoin(1)
-        .emitsSameOutputsAs(s)
+      s.covary[IO].map(Stream.emit(_)).parJoin(1).assertEmits(s.toList)
     }
   }
 
   test("concurrency") {
     forAllF { (s: Stream[Pure, Int], n0: Int) =>
       val n = (n0 % 20).abs + 1
-      s.covary[IO]
-        .map(Stream.emit(_))
-        .parJoin(n)
-        .emitsSameUnorderedOutputsAs(s)
+      s.covary[IO].map(Stream.emit(_)).parJoin(n).assertEmitsUnorderedSameAs(s)
     }
   }
 
   test("concurrent flattening") {
     forAllF { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
       val n = (n0 % 20).abs + 1
-      s.covary[IO]
-        .parJoin(n)
-        .emitsSameUnorderedOutputsAs(s.flatten)
+      s.covary[IO].parJoin(n).assertEmitsUnorderedSameAs(s.flatten)
     }
   }
 
@@ -64,7 +56,7 @@ class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
       val parJoined = Stream(s1.covary[IO], s2).parJoin(2)
       val merged = s1.covary[IO].merge(s2)
-      parJoined.emitsSameUnorderedOutputsAs(merged)
+      parJoined.assertEmitsUnorderedSameAs(merged)
     }
   }
 
@@ -146,16 +138,16 @@ class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
         .drain
 
     test("1") {
-      Stream(full, hang).parJoin(10).take(1).emitsOutputs(List(42))
+      Stream(full, hang).parJoin(10).take(1).assertEmits(42)
     }
     test("2") {
-      Stream(full, hang2).parJoin(10).take(1).emitsOutputs(List(42))
+      Stream(full, hang2).parJoin(10).take(1).assertEmits(42)
     }
     test("3") {
-      Stream(full, hang3).parJoin(10).take(1).emitsOutputs(List(42))
+      Stream(full, hang3).parJoin(10).take(1).assertEmits(42)
     }
     test("4") {
-      Stream(hang3, hang2, full).parJoin(10).take(1).emitsOutputs(List(42))
+      Stream(hang3, hang2, full).parJoin(10).take(1).assertEmits(42)
     }
   }
 
@@ -180,7 +172,7 @@ class StreamParJoinSuite extends Fs2Suite with StreamAssertions {
     test("do not block while evaluating a stream of streams in IO in parallel") {
       def f(n: Int): Stream[IO, String] = Stream(n).map(_.toString)
       val expected = Set("1", "2", "3")
-      Stream(1, 2, 3).map(f).parJoinUnbounded.emitsSameUnorderedOutputsAs(expected)
+      Stream(1, 2, 3).map(f).parJoinUnbounded.assertEmitsUnordered(expected)
     }
 
     test(

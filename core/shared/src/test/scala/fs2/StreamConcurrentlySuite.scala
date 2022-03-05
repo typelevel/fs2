@@ -34,7 +34,7 @@ class StreamConcurrentlySuite extends Fs2Suite with StreamAssertions {
 
   test("when background stream terminates, overall stream continues") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      s1.delayBy[IO](25.millis).concurrently(s2).emitsSameOutputsAs(s1)
+      s1.delayBy[IO](25.millis).concurrently(s2).assertEmitsSameAs(s1)
     }
   }
 
@@ -65,8 +65,7 @@ class StreamConcurrentlySuite extends Fs2Suite with StreamAssertions {
         .flatMap { semaphore =>
           val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
           val fg = s.delayBy[IO](25.millis)
-          fg.concurrently(bg)
-            .onFinalize(semaphore.acquire)
+          fg.concurrently(bg).onFinalize(semaphore.acquire)
         }
         .compile
         .drain

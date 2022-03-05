@@ -28,7 +28,7 @@ import org.scalacheck.Prop.forAll
 class StreamAlignSuite extends Fs2Suite with StreamAssertions {
   property("align") {
     forAll { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      s1.align(s2).emitsOutputs(s1.toList.align(s2.toList))
+      s1.align(s2).assertEmits(s1.toList.align(s2.toList))
     }
   }
 
@@ -36,14 +36,14 @@ class StreamAlignSuite extends Fs2Suite with StreamAssertions {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
     val expected = List(Ior.Right("A"), Ior.Right("B"), Ior.Right("C"))
-    empty.align(s).take(3).emitsOutputs(expected)
+    empty.align(s).take(3).assertEmits(expected)
   }
 
   test("right side empty and left side populated") {
     val empty = Stream.empty
     val s = Stream("A", "B", "C")
     val expected = List(Ior.Left("A"), Ior.Left("B"), Ior.Left("C"))
-    s.align(empty).take(3).emitsOutputs(expected)
+    s.align(empty).take(3).assertEmits(expected)
   }
 
   test("values in both sides") {
@@ -55,7 +55,7 @@ class StreamAlignSuite extends Fs2Suite with StreamAssertions {
       Ior.Both("C", "1"),
       Ior.Right("1")
     )
-    s.align(ones).take(4).emitsOutputs(expected)
+    s.align(ones).take(4).assertEmits(expected)
   }
 
   test("extra values in right") {
@@ -68,7 +68,7 @@ class StreamAlignSuite extends Fs2Suite with StreamAssertions {
       Ior.Right("4"),
       Ior.Right("5")
     )
-    s.align(nums).take(5).emitsOutputs(expected)
+    s.align(nums).take(5).assertEmits(expected)
   }
 
   test("extra values in left") {
@@ -81,6 +81,6 @@ class StreamAlignSuite extends Fs2Suite with StreamAssertions {
       Ior.Left("4"),
       Ior.Left("5")
     )
-    nums.align(s).take(5).emitsOutputs(expected)
+    nums.align(s).take(5).assertEmits(expected)
   }
 }

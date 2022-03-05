@@ -63,17 +63,17 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
 
     test("short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(1.nanos).emitsSameOutputsAs(input)
+      input.metered(1.nanos).assertEmitsSameAs(input)
     }
 
     test("very short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(0.3.nanos).emitsSameOutputsAs(input)
+      input.metered(0.3.nanos).assertEmitsSameAs(input)
     }
 
     test("zero-length periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(0.nanos).emitsSameOutputsAs(input)
+      input.metered(0.nanos).assertEmitsSameAs(input)
     }
 
     test("dampening") {
@@ -162,7 +162,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     assertEquals(Stream(1, 2, 3, 4).changes.toList, List(1, 2, 3, 4))
     assertEquals(Stream(1, 1, 2, 2, 3, 3, 4, 3).changes.toList, List(1, 2, 3, 4, 3))
     val result = Stream("1", "2", "33", "44", "5", "66").changesBy(_.length)
-    result.emitsOutputs(List("1", "33", "5", "66"))
+    result.assertEmits(List("1", "33", "5", "66"))
   }
 
   property("collect consistent with list collect") {
@@ -193,7 +193,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
       .sleep[IO](delay / 2) ++ Stream(6))
       .debounce(delay)
-      .emitsOutputs(List(3, 6))
+      .assertEmits(3, 6)
   }
 
   property("delete") {
@@ -299,7 +299,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   group("evalFilter") {
     test("with effectful const(true)") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.evalFilter(_ => IO.pure(true)).emitsSameOutputsAs(s)
+        s.evalFilter(_ => IO.pure(true)).assertEmitsSameAs(s)
       }
     }
 
@@ -313,7 +313,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       Stream
         .range(1, 10)
         .evalFilter(e => IO(e % 2 == 0))
-        .emitsOutputs(List(2, 4, 6, 8))
+        .assertEmits(2, 4, 6, 8)
     }
   }
 
@@ -322,7 +322,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterAsync(5)(_ => IO.pure(true))
-          .emitsSameOutputsAs(s)
+          .assertEmitsSameAs(s)
       }
     }
 
@@ -338,7 +338,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       Stream
         .range(1, 10)
         .evalFilterAsync[IO](5)(e => IO(e % 2 == 0))
-        .emitsOutputs(List(2, 4, 6, 8))
+        .assertEmits(2, 4, 6, 8)
     }
 
     test("filters up to N items in parallel".flaky) {
@@ -377,7 +377,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   group("evalFilterNot") {
     test("with effectful const(true)") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.evalFilterNot(_ => IO.pure(false)).emitsSameOutputsAs(s)
+        s.evalFilterNot(_ => IO.pure(false)).assertEmitsSameAs(s)
       }
     }
 
@@ -391,7 +391,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       Stream
         .range(1, 10)
         .evalFilterNot(e => IO(e % 2 == 0))
-        .emitsOutputs(List(1, 3, 5, 7, 9))
+        .assertEmits(1, 3, 5, 7, 9)
     }
   }
 
@@ -408,7 +408,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       forAllF { (s: Stream[Pure, Int]) =>
         s.covary[IO]
           .evalFilterNotAsync(5)(_ => IO.pure(false))
-          .emitsSameOutputsAs(s)
+          .assertEmitsSameAs(s)
       }
     }
 
@@ -416,7 +416,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       Stream
         .range(1, 10)
         .evalFilterNotAsync[IO](5)(e => IO(e % 2 == 0))
-        .emitsOutputs(List(1, 3, 5, 7, 9))
+        .assertEmits(List(1, 3, 5, 7, 9))
     }
 
     test("filters up to N items in parallel") {
@@ -468,7 +468,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   group("evalMapFilter") {
     test("with effectful optional identity function") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.evalMapFilter(n => IO.pure(n.some)).emitsSameOutputsAs(s)
+        s.evalMapFilter(n => IO.pure(n.some)).assertEmitsSameAs(s)
       }
     }
 
@@ -479,10 +479,10 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     }
 
     test("with effectful function that filters out odd elements") {
-      Stream
-        .range(1, 10)
-        .evalMapFilter(e => IO.pure(e.some.filter(_ % 2 == 0)))
-        .emitsOutputs(List(2, 4, 6, 8))
+      def isEven(e: Int): IO[Option[Int]] =
+        IO.pure(e.some.filter(_ % 2 == 0))
+
+      Stream.range(1, 10).evalMapFilter(isEven).assertEmits(2, 4, 6, 8)
     }
   }
 
@@ -491,7 +491,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
       val g = (a: String, b: Int) => a + b
       val expected = s.toList.scanLeft(n)(g)
-      s.covary[IO].evalScan(n)(f).emitsOutputs(expected)
+      s.covary[IO].evalScan(n)(f).assertEmits(expected)
     }
   }
 
@@ -539,7 +539,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     forAll { (s: Stream[Pure, Int], n0: Int) =>
       val n = (n0 % 20).abs + 1
       val f = (i: Int) => i % n == 0
-      s.exists(f).emitsOutputs(List(s.toList.exists(f)))
+      s.exists(f).assertEmits(List(s.toList.exists(f)))
     }
   }
 
@@ -548,7 +548,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       forAll { (s: Stream[Pure, Int], n0: Int) =>
         val n = (n0 % 20).abs + 1
         val predicate = (i: Int) => i % n == 0
-        s.filter(predicate).emitsOutputs(s.toList.filter(predicate))
+        s.filter(predicate).assertEmits(s.toList.filter(predicate))
       }
     }
 
@@ -564,7 +564,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       forAll { (s: Stream[Pure, Byte]) =>
         val predicate = (b: Byte) => b < 0
         val s2 = s.mapChunks(c => Chunk.array(c.toArray))
-        s2.filter(predicate).emitsOutputs(s2.toList.filter(predicate))
+        s2.filter(predicate).assertEmits(s2.toList.filter(predicate))
       }
     }
 
@@ -572,7 +572,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       forAll { (s: Stream[Pure, Boolean]) =>
         val predicate = (b: Boolean) => !b
         val s2 = s.mapChunks(c => Chunk.array(c.toArray))
-        s2.filter(predicate).emitsOutputs(s2.toList.filter(predicate))
+        s2.filter(predicate).assertEmits(s2.toList.filter(predicate))
       }
     }
   }
@@ -580,21 +580,21 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   property("find") {
     forAll { (s: Stream[Pure, Int], i: Int) =>
       val predicate = (item: Int) => item < i
-      s.find(predicate).emitsOutputs(s.toList.find(predicate).toList)
+      s.find(predicate).assertEmits(s.toList.find(predicate).toList)
     }
   }
   group("fold") {
     property("1") {
       forAll { (s: Stream[Pure, Int], n: Int) =>
         val f = (a: Int, b: Int) => a + b
-        s.fold(n)(f).emitsOutputs(List(s.toList.foldLeft(n)(f)))
+        s.fold(n)(f).assertEmits(List(s.toList.foldLeft(n)(f)))
       }
     }
 
     property("2") {
       forAll { (s: Stream[Pure, Int], n: String) =>
         val f = (a: String, b: Int) => a + b
-        s.fold(n)(f).emitsOutputs(List(s.toList.foldLeft(n)(f)))
+        s.fold(n)(f).assertEmits(List(s.toList.foldLeft(n)(f)))
       }
     }
   }
@@ -657,14 +657,14 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   test("fromIterator") {
     forAllF { (x: List[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromIterator[IO](x.iterator, chunkSize).emitsOutputs(x)
+      Stream.fromIterator[IO](x.iterator, chunkSize).assertEmits(x)
     }
   }
 
   test("fromBlockingIterator") {
     forAllF { (x: List[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).emitsOutputs(x)
+      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).assertEmits(x)
     }
   }
 
@@ -701,7 +701,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
           .evalTap(shortDuration => IO.sleep(shortDuration.micros))
           .groupWithin(maxGroupSize, d)
           .flatMap(s => Stream.emits(s.toList))
-          .emitsSameOutputsAs(s)
+          .assertEmitsSameAs(s)
       }
     }
 
@@ -784,10 +784,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
         List(19, 20, 21, 22)
       )
 
-      source
-        .groupWithin(size, t)
-        .map(_.toList)
-        .emitsOutputs(expected)
+      source.groupWithin(size, t).map(_.toList).assertEmits(expected)
     }
 
     test("does not reset timeout if nothing is emitted") {
@@ -866,15 +863,15 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     test("interleave left/right side infinite") {
       val ones = Stream.constant("1")
       val s = Stream("A", "B", "C")
-      ones.interleave(s).emitsOutputs(List("1", "A", "1", "B", "1", "C"))
-      s.interleave(ones).emitsOutputs(List("A", "1", "B", "1", "C", "1"))
+      ones.interleave(s).assertEmits("1", "A", "1", "B", "1", "C")
+      s.interleave(ones).assertEmits("A", "1", "B", "1", "C", "1")
     }
 
     test("interleave both side infinite") {
       val ones = Stream.constant("1")
       val as = Stream.constant("A")
-      ones.interleave(as).take(3).emitsOutputs(List("1", "A", "1"))
-      as.interleave(ones).take(3).emitsOutputs(List("A", "1", "A"))
+      ones.interleave(as).take(3).assertEmits("1", "A", "1")
+      as.interleave(ones).take(3).assertEmits("A", "1", "A")
     }
 
     test("interleaveAll left/right side infinite") {
@@ -928,12 +925,12 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
     Stream
       .iterateEval(0)(i => IO(i + 1))
       .take(100)
-      .emitsOutputs(List.iterate(0, 100)(_ + 1))
+      .assertEmits(List.iterate(0, 100)(_ + 1))
   }
 
   property("last") {
     forAll { (s: Stream[Pure, Int]) =>
-      s.last.emitsOutputs(List(s.toList.lastOption))
+      s.last.assertEmits(List(s.toList.lastOption))
     }
   }
 
@@ -989,7 +986,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       .repeatN(10)
       .meteredStartImmediately(1.second)
       .interruptAfter(500.milliseconds)
-      .emitsOutputs(List(1))
+      .assertEmits(1)
   }
 
   test("spaced should start immediately if startImmediately is not set") {
@@ -998,7 +995,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       .repeatN(10)
       .spaced(1.second)
       .interruptAfter(500.milliseconds)
-      .emitsOutputs(List(1))
+      .assertEmits(1)
   }
 
   test("spaced should not start immediately if startImmediately is set to false") {
@@ -1100,7 +1097,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   group("prefetch") {
     test("identity: a prefeteched stream emits same outputs as the source") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.covary[IO].prefetch.emitsSameOutputsAs(s)
+        s.covary[IO].prefetch.assertEmitsSameAs(s)
       }
     }
 
@@ -1185,7 +1182,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
   group("rechunkRandomly") {
     test("output identity: the rechunked stream emits same output values as source") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.rechunkRandomly[IO]().emitsSameOutputsAs(s)
+        s.rechunkRandomly[IO]().assertEmitsSameAs(s)
       }
     }
   }
@@ -1251,7 +1248,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
       s.append(never)
         .scan(0)(f)
         .take(result.size.toLong)
-        .emitsOutputs(result)
+        .assertEmits(result)
     }
   }
 
@@ -1367,7 +1364,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
         if (f1 <= 13) Some(((f1, f2), (f2, f1 + f2))) else None
       }
       .map(_._1)
-      .emitsOutputs(List(0, 1, 1, 2, 3, 5, 8, 13))
+      .assertEmits(0, 1, 1, 2, 3, 5, 8, 13)
   }
 
   test("unfoldChunk") {
@@ -1376,13 +1373,13 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
 
     Stream
       .unfoldChunk(4L)(expand)
-      .emitsOutputs(List[Long](4, 4, 3, 3, 2, 2, 1, 1))
+      .assertEmits(4, 4, 3, 3, 2, 2, 1, 1)
   }
 
   test("unfoldEval") {
     Stream
       .unfoldEval(10)(s => IO.pure(if (s > 0) Some((s, s - 1)) else None))
-      .emitsOutputs(List.range(10, 0, -1))
+      .assertEmits(List.range(10, 0, -1))
   }
 
   test("unfoldChunkEval") {
@@ -1413,7 +1410,7 @@ class StreamCombinatorsSuite extends Fs2Suite with StreamAssertions {
         value <- Stream.range(0, 10)
         if value % 2 == 0
       } yield value
-      stream.emitsOutputs(List(0, 2, 4, 6, 8))
+      stream.assertEmits(0, 2, 4, 6, 8)
     }
   }
 

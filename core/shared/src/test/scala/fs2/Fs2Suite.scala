@@ -67,22 +67,25 @@ trait StreamAssertions { self: CatsEffectSuite =>
     def assertEmpty(): IO[Unit] =
       str.compile.toList.assertEquals(Nil)
 
-    def emitsOutputs(expectedOutputs: List[A]): IO[Unit] =
+    def assertEmits(expectedOutputs: List[A]): IO[Unit] =
       str.compile.toList.assertEquals(expectedOutputs)
 
-    def emitsSameOutputsAs(expectedOutputs: Stream[IO, A]): IO[Unit] =
+    def assertEmits(one: A, rest: A*): IO[Unit] =
+      str.compile.toList.assertEquals(one :: rest.toList)
+
+    def assertEmitsSameAs(expectedOutputs: Stream[IO, A]): IO[Unit] =
       for {
         actual <- str.compile.toList
         expect <- expectedOutputs.compile.toList
       } yield assertEquals(actual, expect)
 
-    def emitsSameUnorderedOutputsAs(expectedOutputs: Set[A]): IO[Unit] =
+    def assertEmitsUnordered(expectedOutputs: Set[A]): IO[Unit] =
       str.compile.toList.map(_.toSet).assertEquals(expectedOutputs)
 
-    def emitsSameUnorderedOutputsAs(expectedOutputs: List[A]): IO[Unit] =
+    def assertEmitsUnordered(expectedOutputs: List[A]): IO[Unit] =
       str.compile.toList.map(_.toSet).assertEquals(expectedOutputs.toSet)
 
-    def emitsSameUnorderedOutputsAs(expected: Stream[IO, A]): IO[Unit] =
+    def assertEmitsUnorderedSameAs(expected: Stream[IO, A]): IO[Unit] =
       for {
         actual <- str.compile.toList
         expect <- expected.compile.toList
@@ -93,8 +96,11 @@ trait StreamAssertions { self: CatsEffectSuite =>
   }
 
   implicit class PureStreamAssertions[A](val str: Stream[Pure, A]) {
-    def emitsOutputs(expectedOutputs: List[A]): Unit =
+    def assertEmits(expectedOutputs: List[A]): Unit =
       assertEquals(str.toList, expectedOutputs)
+
+    def assertEmits(one: A, rest: A*): Unit =
+      assertEquals(str.toList, one :: rest.toList)
 
   }
 

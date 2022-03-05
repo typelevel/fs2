@@ -92,7 +92,7 @@ class PullSuite extends Fs2Suite with StreamAssertions {
           .void
           .stream
 
-      result.emitsOutputs(list)
+      result.assertEmits(list)
     }
   }
 

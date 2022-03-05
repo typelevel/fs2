@@ -49,7 +49,7 @@ class TimedPullsSuite extends Fs2Suite with StreamAssertions {
           }
           .stream
 
-      prog.emitsSameOutputsAs(s)
+      prog.assertEmitsSameAs(s)
     }
   }
 
