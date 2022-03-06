@@ -14,7 +14,7 @@ val NewScala = "2.13.8"
 ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.15", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("8"), JavaSpec.temurin("17"))
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
