@@ -966,7 +966,7 @@ object Pull extends PullLowPriority {
         }
         def interrupted(inter: Interrupted): F[B] =
           go(scope, extendedTopLevelScope, translation, runner, view(inter))
-        def fail(e: Throwable): F[B] = runner.fail(e)
+        def fail(e: Throwable): F[B] = goErr(e, view)
       }
 
       abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y] {
