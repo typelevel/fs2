@@ -185,7 +185,10 @@ object TimeStamped {
     def doThrottle: Pipe2[F, TimeStamped[A], Unit, TimeStamped[A]] = {
 
       type PullFromSourceOrTicks =
-        (Stream.StepLeg[F, TimeStamped[A]], Stream.StepLeg[F, Unit]) => Pull[F, TimeStamped[A], Unit]
+        (
+            Stream.StepLeg[F, TimeStamped[A]],
+            Stream.StepLeg[F, Unit]
+        ) => Pull[F, TimeStamped[A], Unit]
 
       def takeUpto(
           chunk: Chunk[TimeStamped[A]],
@@ -199,7 +202,7 @@ object TimeStamped {
         if (src.head.isEmpty) {
           src.stepLeg.flatMap {
             case Some(l) => read(upto)(l, ticks)
-            case None => Pull.done
+            case None    => Pull.done
           }
         } else {
           val (toOutput, pending) = takeUpto(src.head, upto)
@@ -213,7 +216,7 @@ object TimeStamped {
           if (ticks.head.isEmpty) {
             ticks.stepLeg.flatMap {
               case Some(leg) => awaitTick(upto, pending)(src, leg)
-              case None => Pull.done
+              case None      => Pull.done
             }
           } else {
             val tl = ticks.setHead(ticks.head.drop(1))
