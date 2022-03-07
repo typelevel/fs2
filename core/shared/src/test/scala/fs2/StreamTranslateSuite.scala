@@ -24,6 +24,7 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.~>
+import cats.data.IdT
 import cats.effect.{Async, IO}
 import org.scalacheck.effect.PropF.forAllF
 
@@ -39,6 +40,13 @@ class StreamTranslateSuite extends Fs2Suite {
 
   val someToIO: Some ~> IO = new (Some ~> IO) {
     def apply[A](some: Some[A]): IO[A] = IO.pure(some.get)
+  }
+
+  val ioToIdTio: IO ~> IdT[IO, *] = new (IO ~> IdT[IO, *]) {
+    def apply[A](io: IO[A]): IdT[IO, A] = IdT(io)
+  }
+  val idTioToIo: IdT[IO, *] ~> IO = new (IdT[IO, *] ~> IO) {
+    def apply[A](io: IdT[IO, A]): IO[A] = io.value
   }
 
   test("1 - id") {
@@ -122,6 +130,16 @@ class StreamTranslateSuite extends Fs2Suite {
       .stream
       .translate(thunkToIO)
       .assertEmits(List(1, 2))
+  }
+
+  test("Handling Errors raised from the translated stream") {
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      (s1.covary[IO] ++ Stream.raiseError[IO](new Err) ++ s1.covary[IO])
+        .translate(ioToIdTio)
+        .handleErrorWith(_ => s2.translate(ioToIdTio))
+        .translate(idTioToIo)
+        .assertEmitsSameAs(s1 ++ s2)
+    }
   }
 
   test("stack safety") {
