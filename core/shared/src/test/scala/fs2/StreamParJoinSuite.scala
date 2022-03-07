@@ -26,7 +26,6 @@ import scala.concurrent.duration._
 import cats.data.{EitherT, OptionT}
 import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
-import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 import scala.util.control.NoStackTrace
@@ -34,48 +33,29 @@ import scala.util.control.NoStackTrace
 class StreamParJoinSuite extends Fs2Suite {
   test("no concurrency") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
-      s.covary[IO]
-        .map(Stream.emit(_))
-        .parJoin(1)
-        .compile
-        .toList
-        .assertEquals(expected)
+      s.covary[IO].map(Stream.emit(_)).parJoin(1).assertEmits(s.toList)
     }
   }
 
   test("concurrency") {
     forAllF { (s: Stream[Pure, Int], n0: Int) =>
       val n = (n0 % 20).abs + 1
-      val expected = s.toList.toSet
-      s.covary[IO]
-        .map(Stream.emit(_))
-        .parJoin(n)
-        .compile
-        .toList
-        .map(_.toSet)
-        .assertEquals(expected)
+      s.covary[IO].map(Stream.emit(_)).parJoin(n).assertEmitsUnorderedSameAs(s)
     }
   }
 
   test("concurrent flattening") {
     forAllF { (s: Stream[Pure, Stream[Pure, Int]], n0: Int) =>
       val n = (n0 % 20).abs + 1
-      val expected = s.flatten.toList.toSet
-      s.covary[IO]
-        .parJoin(n)
-        .compile
-        .toList
-        .map(_.toSet)
-        .assertEquals(expected)
+      s.covary[IO].parJoin(n).assertEmitsUnorderedSameAs(s.flatten)
     }
   }
 
   test("merge consistency") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      val parJoined = Stream(s1.covary[IO], s2).parJoin(2).compile.toList.map(_.toSet)
-      val merged = s1.covary[IO].merge(s2).compile.toList.map(_.toSet)
-      (parJoined, merged).tupled.map { case (pj, m) => assertEquals(pj, m) }
+      val parJoined = Stream(s1.covary[IO], s2).parJoin(2)
+      val merged = s1.covary[IO].merge(s2)
+      parJoined.assertEmitsUnorderedSameAs(merged)
     }
   }
 
@@ -157,36 +137,16 @@ class StreamParJoinSuite extends Fs2Suite {
         .drain
 
     test("1") {
-      Stream(full, hang)
-        .parJoin(10)
-        .take(1)
-        .compile
-        .lastOrError
-        .assertEquals(42)
+      Stream(full, hang).parJoin(10).take(1).assertEmits(List(42))
     }
     test("2") {
-      Stream(full, hang2)
-        .parJoin(10)
-        .take(1)
-        .compile
-        .lastOrError
-        .assertEquals(42)
+      Stream(full, hang2).parJoin(10).take(1).assertEmits(List(42))
     }
     test("3") {
-      Stream(full, hang3)
-        .parJoin(10)
-        .take(1)
-        .compile
-        .lastOrError
-        .assertEquals(42)
+      Stream(full, hang3).parJoin(10).take(1).assertEmits(List(42))
     }
     test("4") {
-      Stream(hang3, hang2, full)
-        .parJoin(10)
-        .take(1)
-        .compile
-        .lastOrError
-        .assertEquals(42)
+      Stream(hang3, hang2, full).parJoin(10).take(1).assertEmits(List(42))
     }
   }
 
@@ -210,16 +170,8 @@ class StreamParJoinSuite extends Fs2Suite {
   group("short-circuiting transformers") {
     test("do not block while evaluating a stream of streams in IO in parallel") {
       def f(n: Int): Stream[IO, String] = Stream(n).map(_.toString)
-
-      Stream(1, 2, 3)
-        .map(f)
-        .parJoinUnbounded
-        .compile
-        .toList
-        .map(_.toSet)
-        .flatMap { actual =>
-          IO(assertEquals(actual, Set("1", "2", "3")))
-        }
+      val expected = Set("1", "2", "3")
+      Stream(1, 2, 3).map(f).parJoinUnbounded.assertEmitsUnordered(expected)
     }
 
     test(
@@ -227,6 +179,7 @@ class StreamParJoinSuite extends Fs2Suite {
     ) {
       def f(n: Int): Stream[EitherT[IO, Throwable, *], String] = Stream(n).map(_.toString)
 
+      val expected = Set("1", "2", "3")
       Stream(1, 2, 3)
         .map(f)
         .parJoinUnbounded
@@ -234,9 +187,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .toList
         .map(_.toSet)
         .value
-        .flatMap { actual =>
-          IO(assertEquals(actual, Right(Set("1", "2", "3"))))
-        }
+        .flatMap(actual => IO(assertEquals(actual, Right(expected))))
     }
 
     test(
@@ -321,9 +272,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .compile
         .toList
         .value
-        .flatMap { actual =>
-          IO(assertEquals(actual, None))
-        }
+        .flatMap(actual => IO(assertEquals(actual, None)))
     }
   }
 }

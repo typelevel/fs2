@@ -26,7 +26,6 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
-import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {
@@ -78,13 +77,12 @@ class StreamObserveSuite extends Fs2Suite {
       group("handle finite observing sink") {
         test("1") {
           forAllF { (s: Stream[Pure, Int]) =>
-            observer(s)(_ => Stream.empty).compile.toList.assertEquals(Nil)
+            observer(s)(_ => Stream.empty).assertEmpty()
           }
         }
         test("2") {
           forAllF { (s: Stream[Pure, Int]) =>
-            observer(Stream(1, 2) ++ s.covary[IO])(_.take(1).drain).compile.toList
-              .assertEquals(Nil)
+            observer(Stream(1, 2) ++ s.covary[IO])(_.take(1).drain).assertEmpty()
           }
         }
       }
@@ -92,9 +90,7 @@ class StreamObserveSuite extends Fs2Suite {
       test("handle multiple consecutive observations") {
         forAllF { (s: Stream[Pure, Int]) =>
           val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
-
-          observer(observer(s)(sink))(sink).compile.toList
-            .assertEquals(s.toList)
+          observer(observer(s)(sink))(sink).assertEmitsSameAs(s)
         }
       }
 
@@ -148,9 +144,7 @@ class StreamObserveSuite extends Fs2Suite {
             Stream.eval(IO.sleep(100.millis)) >> Stream(1, 2)
           ) // Have to do some work here, so that we give time for the underlying stream to try pull more
           .take(2)
-          .compile
-          .toList
-          .assertEquals(List(1, 2))
+          .assertEmits(List(1, 2))
       }
 
       test("3 - do not halt the observing sink when upstream terminates") {
@@ -191,17 +185,11 @@ class StreamObserveSuite extends Fs2Suite {
 
     group("termination") {
       test("left") {
-        s.observeEither[Int, String](_.take(0).drain, _.drain)
-          .compile
-          .last
-          .assertEquals(None)
+        s.observeEither[Int, String](_.take(0).drain, _.drain).assertEmpty()
       }
 
       test("right") {
-        s.observeEither[Int, String](_.drain, _.take(0).drain)
-          .compile
-          .last
-          .assertEquals(None)
+        s.observeEither[Int, String](_.drain, _.take(0).drain).assertEmpty()
       }
     }
   }

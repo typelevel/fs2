@@ -21,7 +21,9 @@
 
 package fs2
 
-import munit.{CatsEffectSuite, DisciplineSuite, ScalaCheckEffectSuite}
+import cats.effect.IO
+import munit.{CatsEffectSuite, DisciplineSuite, Location, ScalaCheckEffectSuite}
+import scala.reflect.ClassTag
 
 abstract class Fs2Suite
     extends CatsEffectSuite
@@ -57,4 +59,46 @@ abstract class Fs2Suite
     (0 until countRegistered).foreach(_ => munitTestsBuffer.remove(countBefore))
     registered.foreach(t => munitTestsBuffer += t.withName(s"$name - ${t.name}"))
   }
+
+  implicit class StreamAssertionsOf[A](val str: Stream[IO, A]) {
+
+    def assertEmpty(): IO[Unit] =
+      str.compile.toList.assertEquals(Nil)
+
+    def assertEmits(expectedOutputs: List[A]): IO[Unit] =
+      str.compile.toList.assertEquals(expectedOutputs)
+
+    def assertForall(pred: A => Boolean): IO[Unit] =
+      str.compile.toList.map(ls => assert(ls.forall(pred)))
+
+    def assertEmitsSameAs(expectedOutputs: Stream[IO, A]): IO[Unit] =
+      for {
+        actual <- str.compile.toList
+        expect <- expectedOutputs.compile.toList
+      } yield assertEquals(actual, expect)
+
+    def assertEmitsUnordered(expectedOutputs: Set[A]): IO[Unit] =
+      str.compile.toList.map(_.toSet).assertEquals(expectedOutputs)
+
+    def assertEmitsUnordered(expectedOutputs: List[A]): IO[Unit] =
+      str.compile.toList.map(_.toSet).assertEquals(expectedOutputs.toSet)
+
+    def assertEmitsUnorderedSameAs(expected: Stream[IO, A]): IO[Unit] =
+      for {
+        actual <- str.compile.toList
+        expect <- expected.compile.toList
+      } yield assertEquals(actual.toSet, expect.toSet)
+
+    def intercept[T <: Throwable](implicit T: ClassTag[T], loc: Location): IO[T] =
+      str.compile.drain.intercept[T]
+  }
+
+  implicit class PureStreamAssertions[A](val str: Stream[Pure, A]) {
+    def assertEmits(expectedOutputs: List[A]): Unit =
+      assertEquals(str.toList, expectedOutputs)
+
+    def assertForall(pred: A => Boolean): Unit =
+      assert(str.toList.forall(pred))
+  }
+
 }

@@ -60,8 +60,8 @@ class ParEvalMapSuite extends Fs2Suite {
 
     test("should be preserved in parEvalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
-        val s2 = s.covary[IO].parEvalMap(Int.MaxValue)(i => IO.sleep(math.abs(i % 3).millis).as(i))
-        s2.compile.toList.assertEquals(s.toList)
+        def sleepMillis(i: Int): IO[Int] = IO.sleep(math.abs(i % 3).millis).as(i)
+        s.covary[IO].parEvalMap(Int.MaxValue)(sleepMillis).assertEmitsSameAs(s)
       }
     }
 

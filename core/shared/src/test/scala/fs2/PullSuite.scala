@@ -90,10 +90,8 @@ class PullSuite extends Fs2Suite {
           .map(v => assert(v == rightValue))
           .void
           .stream
-          .compile
-          .toList
 
-      assertEquals(result, list)
+      result.assertEmits(list)
     }
   }
 

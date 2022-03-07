@@ -26,7 +26,6 @@ import scala.concurrent.duration._
 import cats.effect.{IO, Sync}
 import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
-import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamInterruptSuite extends Fs2Suite {
@@ -40,9 +39,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { semaphore =>
           s.evalMap(_ => semaphore.acquire).interruptWhen(interruptSoon)
         }
-        .compile
-        .toList
-        .assertEquals(Nil)
+        .assertEmpty()
     }
   }
 
@@ -54,9 +51,7 @@ class StreamInterruptSuite extends Fs2Suite {
           val interrupt = Stream.emit(true) ++ Stream.exec(semaphore.release)
           s.evalMap(_ => semaphore.acquire).interruptWhen(interrupt)
         }
-        .compile
-        .toList
-        .assertEquals(Nil)
+        .assertEmpty()
     }
   }
 
@@ -102,7 +97,7 @@ class StreamInterruptSuite extends Fs2Suite {
       val interrupt =
         Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-      def loop: Stream[IO, Int] =
+      def loop: Stream[IO, INothing] =
         Stream.eval(IO.unit) >> loop
 
       loop
@@ -147,11 +142,8 @@ class StreamInterruptSuite extends Fs2Suite {
 
     test("10 - terminates when interruption stream is infinitely false") {
       forAllF { (s: Stream[Pure, Int]) =>
-        s.covary[IO]
-          .interruptWhen(Stream.constant(false))
-          .compile
-          .toList
-          .assertEquals(s.toList)
+        val allFalse = Stream.constant(false)
+        s.covary[IO].interruptWhen(allFalse).assertEmitsSameAs(s)
       }
     }
   }
@@ -191,9 +183,7 @@ class StreamInterruptSuite extends Fs2Suite {
         .flatMap { semaphore =>
           s.interruptWhen(interrupt) >> Stream.exec(semaphore.acquire)
         }
-        .compile
-        .toList
-        .assertEquals(Nil)
+        .assertEmpty()
     }
   }
 
@@ -218,8 +208,6 @@ class StreamInterruptSuite extends Fs2Suite {
             .interruptWhen(interrupt.covaryOutput[Boolean])
             .flatMap(_ => Stream.exec(semaphore.acquire))
         }
-        .compile
-        .toList
         .intercept[Err]
         .void
     }
@@ -230,42 +218,33 @@ class StreamInterruptSuite extends Fs2Suite {
       .eval(IO.never)
       .interruptWhen(IO.sleep(10.millis).attempt)
       .append(Stream(5))
-      .compile
-      .toList
-      .assertEquals(List(5))
+      .assertEmits(List(5))
   }
 
   test("14a - interrupt evalMap and then resume on append") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.interruptWhen(interrupt)
         .evalMap(_ => IO.never)
         .drain
         .append(s)
-        .compile
-        .toList
-        .assertEquals(expected)
+        .assertEmitsSameAs(s)
     }
   }
 
   test("14b - interrupt evalMap+collect and then resume on append") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       val interrupt = IO.sleep(50.millis).attempt
       s.interruptWhen(interrupt)
         .evalMap(_ => IO.never.as(None))
         .append(s.map(Some(_)))
         .collect { case Some(v) => v }
-        .compile
-        .toList
-        .assertEquals(expected)
+        .assertEmitsSameAs(s)
     }
   }
 
   test("15 - interruption works when flatMap is followed by collect") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       val interrupt = Stream.sleep_[IO](20.millis).compile.drain.attempt
       s.append(Stream(1))
         .interruptWhen(interrupt)
@@ -276,9 +255,7 @@ class StreamInterruptSuite extends Fs2Suite {
           case Some(i) => Stream.emit(Some(i))
         }
         .collect { case Some(i) => i }
-        .compile
-        .toList
-        .assertEquals(expected)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -317,9 +294,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .stream
       .interruptScope
       .append(Stream(5))
-      .compile
-      .toList
-      .assertEquals(List(5))
+      .assertEmits(List(5))
   }
 
   test("18 - resume with append after evalMap interruption") {
@@ -327,10 +302,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .interruptWhen(IO.sleep(50.millis).attempt)
       .evalMap(_ => IO.never)
       .append(Stream(5))
-      .compile
-      .toList
-      .assertEquals(List(5))
-
+      .assertEmits(List(5))
   }
 
   test("19 - interrupted eval is cancelled") {
@@ -347,7 +319,6 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("20 - nested-interrupt") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       Stream
         .eval(Semaphore[IO](0))
         .flatMap { semaphore =>
@@ -364,9 +335,7 @@ class StreamInterruptSuite extends Fs2Suite {
             }
             .collect { case Some(i) => i }
         }
-        .compile
-        .toList
-        .assertEquals(expected)
+        .assertEmitsSameAs(s)
     }
   }
 
@@ -375,9 +344,7 @@ class StreamInterruptSuite extends Fs2Suite {
       .eval(IO.never[Unit])
       .interruptWhen(IO.never[Either[Throwable, Unit]])
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
-      .compile
-      .toList
-      .assertEquals(Nil)
+      .assertEmpty()
   }
 
   test("22 - nested-interrupt - interrupt in enclosing scope recovers") {
@@ -387,16 +354,14 @@ class StreamInterruptSuite extends Fs2Suite {
       .append(Stream(1).delayBy[IO](10.millis))
       .interruptWhen(IO(Right(()): Either[Throwable, Unit]))
       .append(Stream(2))
-      .compile
-      .toList
-      .assertEquals(List(2))
+      .assertEmits(List(2))
   }
 
   def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = s.compile
 
   test("23 - sync compiler interruption - succeeds when interrupted never") {
-    compileWithSync(Stream.empty[IO].interruptWhen(IO.never[Either[Throwable, Unit]])).toList
-      .assertEquals(Nil)
+    val ioNever = IO.never[Either[Throwable, Unit]]
+    compileWithSync(Stream.empty[IO].interruptWhen(ioNever)).toList.assertEquals(Nil)
   }
 
   test("24 - sync compiler interruption - non-terminating when interrupted") {

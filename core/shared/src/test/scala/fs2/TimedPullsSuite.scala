@@ -34,7 +34,6 @@ class TimedPullsSuite extends Fs2Suite {
 
   test("behaves as a normal Pull when no timeouts are used") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.compile.toList
       val prog =
         s.covary[IO]
           .pull
@@ -49,10 +48,8 @@ class TimedPullsSuite extends Fs2Suite {
             loop(tp)
           }
           .stream
-          .compile
-          .toList
 
-      prog.assertEquals(expected)
+      prog.assertEmitsSameAs(s)
     }
   }
 

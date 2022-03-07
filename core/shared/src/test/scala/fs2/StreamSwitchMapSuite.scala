@@ -32,7 +32,6 @@ import org.scalacheck.effect.PropF.forAllF
 class StreamSwitchMapSuite extends Fs2Suite {
   test("flatMap equivalence when switching never occurs") {
     forAllF { (s: Stream[Pure, Int]) =>
-      val expected = s.toList
       Stream
         .eval(Semaphore[IO](1))
         .flatMap { guard =>
@@ -40,9 +39,7 @@ class StreamSwitchMapSuite extends Fs2Suite {
             .onFinalize(guard.acquire) // outer terminates, wait for last inner to emit
             .switchMap(x => Stream.emit(x).onFinalize(guard.release))
         }
-        .compile
-        .toList
-        .assertEquals(expected)
+        .assertEmits(s.toList)
     }
   }
 
@@ -81,8 +78,6 @@ class StreamSwitchMapSuite extends Fs2Suite {
       val s = Stream(0) ++ s0
       s.delayBy[IO](25.millis)
         .switchMap(_ => Stream.raiseError[IO](new Err))
-        .compile
-        .drain
         .intercept[Err]
         .void
     }
@@ -99,8 +94,6 @@ class StreamSwitchMapSuite extends Fs2Suite {
           )
           .onFinalize(semaphore.acquire)
       }
-      .compile
-      .drain
       .intercept[Err]
   }
 
@@ -119,8 +112,6 @@ class StreamSwitchMapSuite extends Fs2Suite {
               Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO.unit))
           }
         }
-        .compile
-        .drain
         .intercept[Err]
         .void
     }
@@ -140,8 +131,6 @@ class StreamSwitchMapSuite extends Fs2Suite {
             Stream.eval(verdict.get.flatMap(if (_) IO.raiseError(new Err) else IO(())))
         }
       }
-      .compile
-      .drain
       .intercept[Err]
   }
 

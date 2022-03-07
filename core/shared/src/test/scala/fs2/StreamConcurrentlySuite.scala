@@ -34,12 +34,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
 
   test("when background stream terminates, overall stream continues") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      val expected = s1.toList
-      s1.delayBy[IO](25.millis)
-        .concurrently(s2)
-        .compile
-        .toList
-        .assertEquals(expected)
+      s1.delayBy[IO](25.millis).concurrently(s2).assertEmitsSameAs(s1)
     }
   }
 
@@ -47,8 +42,6 @@ class StreamConcurrentlySuite extends Fs2Suite {
     forAllF { (s: Stream[Pure, Int]) =>
       s.delayBy[IO](25.millis)
         .concurrently(Stream.raiseError[IO](new Err))
-        .compile
-        .drain
         .intercept[Err]
         .void
     }
@@ -60,11 +53,8 @@ class StreamConcurrentlySuite extends Fs2Suite {
       .flatMap { semaphore =>
         val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
         val fg = Stream.raiseError[IO](new Err).delayBy(25.millis)
-        fg.concurrently(bg)
-          .onFinalize(semaphore.acquire)
+        fg.concurrently(bg).onFinalize(semaphore.acquire)
       }
-      .compile
-      .drain
       .intercept[Err]
   }
 
@@ -75,8 +65,7 @@ class StreamConcurrentlySuite extends Fs2Suite {
         .flatMap { semaphore =>
           val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
           val fg = s.delayBy[IO](25.millis)
-          fg.concurrently(bg)
-            .onFinalize(semaphore.acquire)
+          fg.concurrently(bg).onFinalize(semaphore.acquire)
         }
         .compile
         .drain
@@ -94,8 +83,6 @@ class StreamConcurrentlySuite extends Fs2Suite {
             .concurrently(Stream.raiseError[IO](new Err))
             .evalTap(_ => gate.get)
         }
-        .compile
-        .drain
         .intercept[Err]
         .void
     }
