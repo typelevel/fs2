@@ -222,10 +222,9 @@ object TimeStamped {
             val tl = ticks.setHead(ticks.head.drop(1))
             val newUpto = upto + ((1000 / ticksPerSecond) * throttlingFactor).toLong.millis
             val (toOutput, stillPending) = takeUpto(pending, newUpto)
-            if (stillPending.isEmpty) {
-              Pull.output(toOutput) >> read(newUpto)(src, tl)
-            } else {
-              Pull.output(toOutput) >> awaitTick(newUpto, stillPending)(src, tl)
+            Pull.output(toOutput) >> {
+              if (stillPending.isEmpty) read(newUpto)(src, tl)
+              else awaitTick(newUpto, stillPending)(src, tl)
             }
           }
       }
