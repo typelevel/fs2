@@ -2855,9 +2855,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * it is requested.
     *
     * @example {{{
-    * scala> import cats.effect.IO
+    * scala> import cats.effect._
     * scala> import cats.effect.unsafe.implicits.global
-    * scala> import cats.effect.std.Ref
     * scala> import scala.concurrent.duration._
     * scala> val s = Stream(1) ++ Stream.sleep_[IO](100.millis) ++ Stream(2).repeat.meteredStartImmediately[IO](200.millis)
     * scala> Ref[IO].of(0).flatTap { lateCount =>
