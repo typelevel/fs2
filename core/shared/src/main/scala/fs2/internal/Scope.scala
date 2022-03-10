@@ -132,19 +132,22 @@ private[fs2] final class Scope[F[_]] private (
      *
      */
     val createScope: F[Scope[F]] = F.unique.flatMap { newScopeId =>
-      self.interruptible match {
+      val optFCtx = self.interruptible match {
         case None =>
-          val optFCtx = interruptible match {
+          interruptible match {
             case Scope.Interrupt.Enabled => F.interruptContext(newScopeId)
-            case Scope.Interrupt.Inherited => None
+            case Scope.Interrupt.Inherited | Scope.Interrupt.Disabled => None
           }
-          optFCtx.sequence.flatMap(iCtx => Scope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>
-          parentICtx.childContext(interruptible, newScopeId).flatMap { iCtx =>
-            Scope[F](newScopeId, Some(self), Some(iCtx))
+          interruptible match {
+            case Scope.Interrupt.Enabled   => Some(parentICtx.childContext(true, newScopeId))
+            case Scope.Interrupt.Inherited => Some(parentICtx.childContext(false, newScopeId))
+            case Scope.Interrupt.Disabled  => None
           }
       }
+
+      optFCtx.sequence.flatMap(iCtx => Scope[F](newScopeId, Some(self), iCtx))
     }
 
     createScope.flatMap { scope =>

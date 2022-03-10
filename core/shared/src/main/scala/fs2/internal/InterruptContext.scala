@@ -63,29 +63,26 @@ final private[fs2] case class InterruptContext[F[_]](
     * @param newScopeId     The id of the new scope.
     */
   def childContext(
-      interruptible: Scope.Interrupt,
+      interruptible: Boolean,
       newScopeId: Unique.Token
   ): F[InterruptContext[F]] =
-    interruptible match {
-      case Scope.Interrupt.Enabled =>
-        self.deferred.get.start.flatMap { fiber =>
-          InterruptContext(newScopeId, fiber.cancel).flatMap { context =>
-            fiber.join
-              .flatMap {
-                case Outcome.Succeeded(interrupt) =>
-                  interrupt.flatMap(i => context.complete(i))
-                case Outcome.Errored(t) =>
-                  context.complete(Outcome.Errored(t))
-                case Outcome.Canceled() =>
-                  context.complete(Outcome.Canceled())
-              }
-              .start
-              .as(context)
-          }
+    if (interruptible) {
+      self.deferred.get.start.flatMap { fiber =>
+        InterruptContext(newScopeId, fiber.cancel).flatMap { context =>
+          fiber.join
+            .flatMap {
+              case Outcome.Succeeded(interrupt) =>
+                interrupt.flatMap(i => context.complete(i))
+              case Outcome.Errored(t) =>
+                context.complete(Outcome.Errored(t))
+              case Outcome.Canceled() =>
+                context.complete(Outcome.Canceled())
+            }
+            .start
+            .as(context)
         }
-      case Scope.Interrupt.Inherited =>
-        copy(cancelParent = Applicative[F].unit).pure[F]
-    }
+      }
+    } else copy(cancelParent = Applicative[F].unit).pure[F]
 
   def eval[A](fa: F[A]): F[Either[InterruptionOutcome, A]] =
     ref.get.flatMap {
