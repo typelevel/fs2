@@ -372,8 +372,8 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("issue #2842 - no interrupt scope") {
     val s = Stream.eval(IOLocal(List.empty[Int])).flatMap { local =>
-      Stream.eval(local.update(1 :: _)).flatMap { _ =>
-        Stream.eval(local.update(2 :: _)).flatMap { _ =>
+      Stream.eval(local.update(1 :: _)).noInterruptScope.flatMap { _ =>
+        Stream.eval(local.update(2 :: _)).noInterruptScope.flatMap { _ =>
           Stream.eval(local.get)
         }
       }
