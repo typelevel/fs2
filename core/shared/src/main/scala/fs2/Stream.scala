@@ -2847,7 +2847,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def timeoutOnPullTo[F2[x] >: F[x]: Temporal, O2 >: O](
       timeout: FiniteDuration,
-      onTimeout: Stream[F2, O2]
+      onTimeout: => Stream[F2, O2]
   ): Stream[F2, O2] =
     timeoutOnPullWith[F2, O2](timeout)(_ => onTimeout)
 
