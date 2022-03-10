@@ -114,7 +114,7 @@ private[fs2] final class Scope[F[_]] private (
     *
     * Returns scope that has to be used in next compilation step.
     */
-  def open(interruptible: Boolean): F[Either[Throwable, Scope[F]]] = {
+  def open(interruptible: Scope.Interrupt): F[Either[Throwable, Scope[F]]] = {
     /*
      * Creates a context for a new scope.
      *
@@ -134,7 +134,10 @@ private[fs2] final class Scope[F[_]] private (
     val createScope: F[Scope[F]] = F.unique.flatMap { newScopeId =>
       self.interruptible match {
         case None =>
-          val optFCtx = if (interruptible) F.interruptContext(newScopeId) else None
+          val optFCtx = interruptible match {
+            case Scope.Interrupt.Enabled => F.interruptContext(newScopeId)
+            case Scope.Interrupt.Inherited => None
+          }
           optFCtx.sequence.flatMap(iCtx => Scope[F](newScopeId, Some(self), iCtx))
 
         case Some(parentICtx) =>

@@ -777,7 +777,7 @@ object Pull extends PullLowPriority {
 
   private final case class InScope[+F[_], +O](
       stream: Pull[F, O, Unit],
-      useInterruption: Boolean
+      useInterruption: Scope.Interrupt
   ) extends Action[F, O, Unit]
 
   private final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
@@ -817,12 +817,14 @@ object Pull extends PullLowPriority {
   /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, false)
+  private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
+    InScope(s, Scope.Interrupt.Inherited)
 
   /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, true)
+  private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
+    InScope(s, Scope.Interrupt.Enabled)
 
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
@@ -1098,7 +1100,7 @@ object Pull extends PullLowPriority {
 
       def goInScope(
           stream: Pull[G, X, Unit],
-          useInterruption: Boolean,
+          useInterruption: Scope.Interrupt,
           view: Cont[Unit, G, X]
       ): F[B] = {
         def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull[G, X, Unit] =
