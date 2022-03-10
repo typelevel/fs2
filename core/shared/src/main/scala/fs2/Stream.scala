@@ -2833,7 +2833,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Stream.raiseError[F2](new TimeoutException(s"Timed out waiting for pull after $timeout"))
     )
 
-  /** Stops pulling from this stream if it if it does not emit a new chunk within the
+  /** Stops pulling from this stream if it does not emit a new chunk within the
     *  given `timeout` after it is requested, and starts pulling from the `onTimeout` stream instead.
     *
     * @example {{{
@@ -2857,8 +2857,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @example {{{
     * scala> import cats.effect.IO
     * scala> import cats.effect.unsafe.implicits.global
+    * scala> import cats.effect.std.Ref
     * scala> import scala.concurrent.duration._
-    * scala> import cats.effect.std.Queue
     * scala> val s = Stream(1) ++ Stream.sleep_[IO](100.millis) ++ Stream(2).repeat.meteredStartImmediately[IO](200.millis)
     * scala> Ref[IO].of(0).flatTap { lateCount =>
     *      |    s.take(4).timeoutOnPullWith(150.millis)(Stream.exec(lateCount.update(_ + 1)) ++ _).compile.drain
