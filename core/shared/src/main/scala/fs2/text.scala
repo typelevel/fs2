@@ -22,7 +22,7 @@
 package fs2
 
 import cats.ApplicativeThrow
-import java.nio.{Buffer, ByteBuffer, CharBuffer}
+import java.nio.{ByteBuffer, CharBuffer}
 import java.nio.charset.{
   CharacterCodingException,
   Charset,
