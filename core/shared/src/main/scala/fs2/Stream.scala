@@ -1976,6 +1976,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     that.mergeHaltL(this)
 
+  /** Creates a scope that cannot be interrupted.
+    */
+  def noInterruptScope: Stream[F, O] =
+    new Stream(Pull.noInterruptScope(underlying))
+
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
     *
     * `s.noneTerminate.unNoneTerminate == s`

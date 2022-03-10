@@ -826,6 +826,11 @@ object Pull extends PullLowPriority {
   private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
     InScope(s, Scope.Interrupt.Enabled)
 
+  /** Like `scope` but prevents this scope from being interrupted.
+    */
+  private[fs2] def noInterruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] =
+    InScope(s, Scope.Interrupt.Disabled)
+
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
