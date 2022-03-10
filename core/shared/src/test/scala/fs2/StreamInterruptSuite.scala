@@ -23,7 +23,7 @@ package fs2
 
 import scala.concurrent.duration._
 
-import cats.effect.{IO, Sync}
+import cats.effect.{IO, IOLocal, Sync}
 import cats.effect.kernel.Deferred
 import cats.effect.std.Semaphore
 import org.scalacheck.effect.PropF.forAllF
@@ -368,5 +368,16 @@ class StreamInterruptSuite extends Fs2Suite {
     val s = Stream.never[IO].interruptWhen(IO.unit.attempt)
     val interrupt = IO.sleep(250.millis)
     IO.race(compileWithSync(s).drain, interrupt).map(_.isRight).assert
+  }
+
+  test("issue #2842 - no interrupt scope") {
+    val s = Stream.eval(IOLocal(List.empty[Int])).flatMap { local =>
+      Stream.eval(local.update(1 :: _)).flatMap { _ =>
+        Stream.eval(local.update(2 :: _)).flatMap { _ =>
+          Stream.eval(local.get)
+        }
+      }
+    }
+    s.interruptScope.compile.lastOrError.assertEquals(List(2, 1))
   }
 }
