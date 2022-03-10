@@ -196,18 +196,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
     ),
-    Compile / unmanagedSourceDirectories ++= {
-      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
-      )
-    },
-    Test / unmanagedSourceDirectories ++= {
-      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
-      )
-    },
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
