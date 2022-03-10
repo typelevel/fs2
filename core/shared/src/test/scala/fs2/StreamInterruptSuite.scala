@@ -371,13 +371,13 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   test("issue #2842 - no interrupt scope") {
-    val s = Stream.eval(IOLocal(List.empty[Int])).flatMap { local =>
-      Stream.eval(local.update(1 :: _)).noInterruptScope.flatMap { _ =>
-        Stream.eval(local.update(2 :: _)).noInterruptScope.flatMap { _ =>
-          Stream.eval(local.get)
-        }
-      }
-    }
-    s.interruptScope.compile.lastOrError.assertEquals(List(2, 1))
+    val s = for {
+      local <- Stream.eval(IOLocal(List.empty[Int]))
+      _ <- Stream.eval(local.update(1 :: _)).noInterruptScope
+      _ <- Stream.eval(local.update(2 :: _)) // this one will be lost on a forked fiber
+      _ <- Stream.eval(local.update(3 :: _)).noInterruptScope
+      result <- Stream.eval(local.get)
+    } yield result
+    s.interruptScope.compile.lastOrError.assertEquals(List(3, 1))
   }
 }
