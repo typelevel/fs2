@@ -485,6 +485,13 @@ private[fs2] final class Scope[F[_]] private (
 
 private[fs2] object Scope {
 
+  sealed abstract class Interrupt
+  object Interrupt {
+    object Disabled extends Interrupt
+    object Enabled extends Interrupt
+    object Inherited extends Interrupt
+  }
+
   private def apply[F[_]](
       id: Unique.Token,
       parent: Option[Scope[F]],
