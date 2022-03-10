@@ -780,6 +780,13 @@ object Pull extends PullLowPriority {
       useInterruption: Boolean
   ) extends Action[F, O, Unit]
 
+  private sealed abstract class Interruption
+  private object Interruption {
+    object Disabled extends Interruption
+    object Enabled extends Interruption
+    object Inherited extends Interruption
+  }
+
   private final case class InterruptWhen[+F[_]](haltOnSignal: F[Either[Throwable, Unit]])
       extends AlgEffect[F, Unit]
 
