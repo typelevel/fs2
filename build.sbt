@@ -284,7 +284,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                                "1.11.9"
                                                              else "2.1.0"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
-    tlJdkRelease := Some(8),
+    tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -296,7 +296,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-protocols",
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
-    tlJdkRelease := Some(8),
+    tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
