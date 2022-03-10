@@ -209,7 +209,7 @@ object text {
         }
 
         val isLast = r.isEmpty
-        (lastOutBuffer: Buffer).clear()
+        lastOutBuffer.clear()
 
         val outBufferSize = (decoder.averageCharsPerByte() * toDecode.size).toInt
 
@@ -220,7 +220,7 @@ object text {
 
         val inBuffer = toDecode.toByteBuffer
         val result = decoder.decode(inBuffer, out, isLast)
-        (out: Buffer).flip()
+        out.flip()
 
         val nextAcc =
           if (inBuffer.remaining() > 0) Chunk.byteBuffer(inBuffer.slice) else Chunk.empty
@@ -258,11 +258,11 @@ object text {
         decoder: CharsetDecoder,
         out: CharBuffer
     ): Pull[F, String, Unit] = {
-      (out: Buffer).clear()
+      out.clear()
       decoder.flush(out) match {
         case res if res.isUnderflow =>
           if (out.position() > 0) {
-            (out: Buffer).flip()
+            out.flip()
             Pull.output1(out.toString) >> Pull.done
           } else
             Pull.done
@@ -568,7 +568,7 @@ object text {
             .append(alphabet.toChar(fourth))
           idx = idx + 3
         }
-        (bldr: Buffer).flip()
+        bldr.flip()
         val out = bldr.toString
         if (mod == 0)
           (out, ByteVector.empty)
@@ -662,7 +662,7 @@ object text {
             }
           idx += 1
         }
-        (bldr: Buffer).flip()
+        bldr.flip()
         (Chunk.byteVector(ByteVector(bldr)), hi, midByte)
       }
       def dropPrefix(s: Stream[F, String], acc: String): Pull[F, Byte, Unit] =
