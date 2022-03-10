@@ -118,8 +118,12 @@ private[fs2] final class Scope[F[_]] private (
     /*
      * Creates a context for a new scope.
      *
-     * We need to differentiate between three states:
+     * We need to differentiate between four states:
      *  The new scope is not interruptible -
+     *     It should ignore the interrupt of the current scope. But it should not
+     *     close the listening on parent scope close when the new scope will close.
+     *
+     *  The new scope inherits interruptibility -
      *     It should respect the interrupt of the current scope. But it should not
      *     close the listening on parent scope close when the new scope will close.
      *
