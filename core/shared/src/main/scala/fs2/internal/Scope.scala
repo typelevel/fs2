@@ -425,9 +425,11 @@ private[fs2] final class Scope[F[_]] private (
     * to evaluate
     */
   def isInterrupted: F[Option[InterruptionOutcome]] =
-    openScope.map(_.interruptible).flatMap {
-      case None       => F.pure(None)
-      case Some(iCtx) => iCtx.ref.get
+    openScope.flatMap { scope =>
+      scope.interruptible match {
+        case None       => F.pure(None)
+        case Some(iCtx) => iCtx.ref.get
+      }
     }
 
   /** When the stream is evaluated, there may be `Eval` that needs to be cancelled early,
