@@ -4286,7 +4286,7 @@ object Stream extends StreamLowPriority {
     def echo: Pull.ToStream[F, O] = self.underlying
 
     /** Reads a single element from the input and emits it to the output. */
-    def echo1: Pull.Streaming[F, O] =
+    def echo1: Pull.TransformStream[F, O] =
       uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>
@@ -4295,7 +4295,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Reads the next available chunk from the input and emits it to the output. */
-    def echoChunk: Pull.Streaming[F, O] =
+    def echoChunk: Pull.TransformStream[F, O] =
       uncons.flatMap {
         case None           => Pull.pure(None)
         case Some((hd, tl)) => Pull.output(hd).as(Some(tl))
@@ -4425,7 +4425,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Emits the first `n` elements of the input. */
-    def take(n: Long): Pull.Streaming[F, O] =
+    def take(n: Long): Pull.TransformStream[F, O] =
       if (n <= 0) Pull.pure(None)
       else
         uncons.flatMap {
@@ -4453,20 +4453,20 @@ object Stream extends StreamLowPriority {
     }
 
     /** Like [[takeWhile]], but emits the first value which tests false. */
-    def takeThrough(p: O => Boolean): Pull.Streaming[F, O] =
+    def takeThrough(p: O => Boolean): Pull.TransformStream[F, O] =
       takeWhile_(p, true)
 
     /** Emits the elements of the stream until the predicate `p` fails,
       * and returns the remaining `Stream`. If non-empty, the returned stream will have
       * a first element `i` for which `p(i)` is `false`.
       */
-    def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Pull.Streaming[F, O] =
+    def takeWhile(p: O => Boolean, takeFailure: Boolean = false): Pull.TransformStream[F, O] =
       takeWhile_(p, takeFailure)
 
     private def takeWhile_(
         p: O => Boolean,
         takeFailure: Boolean
-    ): Pull.Streaming[F, O] =
+    ): Pull.TransformStream[F, O] =
       uncons.flatMap {
         case None => Pull.pure(None)
         case Some((hd, tl)) =>

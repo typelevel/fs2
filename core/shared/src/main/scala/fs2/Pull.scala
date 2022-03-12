@@ -317,7 +317,7 @@ object Pull extends PullLowPriority {
     * - processing the resource further via `flatMap
     *    `
     */
-  type Streaming[+F[_], +O] = Pull[F, O, Option[Stream[F, O]]]
+  type TransformStream[+F[_], +O] = Pull[F, O, Option[Stream[F, O]]]
 
   implicit final class StreamPullOps[F[_], O](private val self: Pull.ToStream[F, O])
       extends AnyVal {
@@ -344,7 +344,7 @@ object Pull extends PullLowPriority {
     def streamNoScope: Stream[F, O] = new Stream(self)
   }
 
-  implicit final class StreamingPullOps[F[_], O](private val self: Pull.Streaming[F, O]) {
+  implicit final class StreamingPullOps[F[_], O](private val self: Pull.TransformStream[F, O]) {
     /* Echoes the resource of this [[Pull]] to the output
      */
     def echo: Pull.ToStream[F, O] =
