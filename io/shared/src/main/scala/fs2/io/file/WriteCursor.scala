@@ -45,7 +45,7 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
 
   /** Like `write` but returns a pull instead of an `F[WriteCursor[F]]`.
     */
-  def writePull(bytes: Chunk[Byte]): Pull[F, Nothing, WriteCursor[F]] =
+  def writePull(bytes: Chunk[Byte]): Pull.From[F, WriteCursor[F]] =
     write_(bytes, Pull.functionKInstance)
 
   private def write_[G[_]: Monad](bytes: Chunk[Byte], u: F ~> G): G[WriteCursor[F]] =
@@ -58,7 +58,7 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
   /** Writes all chunks from the supplied stream to the underlying file handle, returning a cursor
     * with offset incremented by the total number of bytes written.
     */
-  def writeAll(s: Stream[F, Byte]): Pull[F, Nothing, WriteCursor[F]] =
+  def writeAll(s: Stream[F, Byte]): Pull.From[F, WriteCursor[F]] =
     s.pull.uncons.flatMap {
       case Some((hd, tl)) => writePull(hd).flatMap(_.writeAll(tl))
       case None           => Pull.pure(this)

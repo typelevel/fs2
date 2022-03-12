@@ -97,7 +97,7 @@ private[fs2] trait CompilerLowPriority0 extends CompilerLowPriority1 {
   implicit val idInstance: Compiler[Id, Id] = new Compiler[Id, Id] {
     val target: Monad[Id] = implicitly
     def apply[O, B](
-        stream: Pull[Id, O, Unit],
+        stream: Pull.ToStream[Id, O],
         init: B
     )(foldChunk: (B, Chunk[O]) => B): B =
       Compiler
@@ -112,12 +112,12 @@ private[fs2] trait CompilerLowPriority extends CompilerLowPriority0 {
     new Compiler[Fallible, Either[Throwable, *]] {
       val target: Monad[Either[Throwable, *]] = implicitly
       def apply[O, B](
-          stream: Pull[Fallible, O, Unit],
+          stream: Pull.ToStream[Fallible, O],
           init: B
       )(foldChunk: (B, Chunk[O]) => B): Either[Throwable, B] =
         Compiler
           .target[SyncIO]
-          .apply(stream.asInstanceOf[Pull[SyncIO, O, Unit]], init)(foldChunk)
+          .apply(stream.asInstanceOf[Pull.ToStream[SyncIO, O]], init)(foldChunk)
           .attempt
           .unsafeRunSync()
     }
@@ -127,7 +127,7 @@ object Compiler extends CompilerLowPriority {
   implicit val pureInstance: Compiler[Pure, Id] = new Compiler[Pure, Id] {
     val target: Monad[Id] = implicitly
     def apply[O, B](
-        stream: Pull[Pure, O, Unit],
+        stream: Pull.ToStream[Pure, O],
         init: B
     )(foldChunk: (B, Chunk[O]) => B): B =
       Compiler

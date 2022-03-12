@@ -89,7 +89,7 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("5 - ok to translate a step leg that emits multiple chunks") {
-    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull.ToStream[Function0, Int] =
       step match {
         case None       => Pull.done
         case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
@@ -102,7 +102,7 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("6 - ok to translate step leg that has uncons in its structure") {
-    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull.ToStream[Function0, Int] =
       step match {
         case None       => Pull.done
         case Some(step) => Pull.output(step.head) >> step.stepLeg.flatMap(goStep)
@@ -119,7 +119,7 @@ class StreamTranslateSuite extends Fs2Suite {
   }
 
   test("7 - ok to translate step leg that is forced back in to a stream") {
-    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
+    def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull.ToStream[Function0, Int] =
       step match {
         case None => Pull.done
         case Some(step) =>
