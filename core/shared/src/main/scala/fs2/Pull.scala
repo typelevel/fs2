@@ -748,7 +748,7 @@ object Pull extends PullLowPriority {
 
   /* A translation point, that wraps an inner stream written in another effect. */
   private final case class Translate[G[_], F[_], +O](
-      stream: Pull[G, O, Unit],
+      stream: Pull.ToStream[G, O],
       fk: G ~> F
   ) extends Action[F, O, Unit]
 
@@ -829,12 +829,13 @@ object Pull extends PullLowPriority {
   /** Wraps supplied pull in new scope, that will be opened before this pull is evaluated
     * and closed once this pull either finishes its evaluation or when it fails.
     */
-  private[fs2] def scope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, false)
+  private[fs2] def scope[F[_], O](s: Pull.ToStream[F, O]): Pull.ToStream[F, O] = InScope(s, false)
 
   /** Like `scope` but allows this scope to be interrupted.
     * Note that this may fail with `Interrupted` when interruption occurred
     */
-  private[fs2] def interruptScope[F[_], O](s: Pull[F, O, Unit]): Pull[F, O, Unit] = InScope(s, true)
+  private[fs2] def interruptScope[F[_], O](s: Pull.ToStream[F, O]): Pull.ToStream[F, O] =
+    InScope(s, true)
 
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
@@ -846,11 +847,11 @@ object Pull extends PullLowPriority {
    *   the non-empty chunk of values and the rest of the stream.
    */
   private[fs2] def uncons[F[_], O](
-      s: Pull[F, O, Unit]
-  ): Pull.From[F, Option[(Chunk[O], Pull[F, O, Unit])]] =
+      s: Pull.ToStream[F, O]
+  ): Pull.From[F, Option[(Chunk[O], Pull.ToStream[F, O])]] =
     Uncons(s)
 
-  private type Cont[-Y, +G[_], +O] = Terminal[Y] => Pull[G, O, Unit]
+  private type Cont[-Y, +G[_], +O] = Terminal[Y] => Pull.ToStream[G, O]
 
   private[this] type Nought[A] = Any
 
@@ -875,7 +876,7 @@ object Pull extends PullLowPriority {
     def getCont[Y, G[_], X]: Cont[Y, G, X] = contP.asInstanceOf[Cont[Y, G, X]]
 
     @tailrec
-    def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
+    def viewL[G[_], X](free: Pull.ToStream[G, X]): ViewL[G, X] =
       free match {
         case e: Action[G, X, Unit] =>
           contP = IdContP
@@ -895,13 +896,13 @@ object Pull extends PullLowPriority {
     /* Inject interruption to the tail used in `flatMap`. Assures that close of the scope
      * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path. */
     def interruptBoundary[G[_], X](
-        stream: Pull[G, X, Unit],
+        stream: Pull.ToStream[G, X],
         interruption: Interrupted
-    ): Pull[G, X, Unit] =
+    ): Pull.ToStream[G, X] =
       viewL(stream) match {
         case cs: CloseScope =>
           // Inner scope is getting closed b/c a parent was interrupted
-          val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
+          val cl: Pull.ToStream[G, X] = CanceledScope(cs.scopeId, interruption)
           transformWith(cl)(getCont[Unit, G, X])
         case _: Action[G, X, y] =>
           // all other actions, roll the interruption forwards
@@ -918,7 +919,7 @@ object Pull extends PullLowPriority {
 
     trait Run[-G[_], -X] {
       def done(scope: Scope[F]): F[B]
-      def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): F[B]
+      def out(head: Chunk[X], scope: Scope[F], tail: Pull.ToStream[G, X]): F[B]
       def interrupted(inter: Interrupted): F[B]
       def fail(e: Throwable): F[B]
     }
@@ -928,7 +929,7 @@ object Pull extends PullLowPriority {
         extendedTopLevelScope: Option[Scope[F]],
         translation: G ~> F,
         runner: Run[G, X],
-        stream: Pull[G, X, Unit]
+        stream: Pull.ToStream[G, X]
     ): F[B] = {
 
       def interruptGuard(scope: Scope[F], view: Cont[INothing, G, X])(next: => F[B]): F[B] =
@@ -952,9 +953,9 @@ object Pull extends PullLowPriority {
         def done(doneScope: Scope[F]): F[B] =
           go(doneScope, extendedTopLevelScope, translation, prevRunner, view(unit))
 
-        def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): F[B] = {
+        def out(head: Chunk[X], scope: Scope[F], tail: Pull.ToStream[G, X]): F[B] = {
           @tailrec
-          def outLoop(acc: Pull[G, X, Unit], pred: Run[G, X]): F[B] =
+          def outLoop(acc: Pull.ToStream[G, X], pred: Run[G, X]): F[B] =
             // bit of an ugly hack to avoid a stack overflow when these accummulate
             pred match {
               case vrun: ViewRunner => outLoop(bindView(acc, vrun.view), vrun.prevRunner)
@@ -972,7 +973,7 @@ object Pull extends PullLowPriority {
       class TranslateRunner[H[_]](fk: H ~> G, view: Cont[Unit, G, X]) extends Run[H, X] {
         def done(doneScope: Scope[F]): F[B] =
           go(doneScope, extendedTopLevelScope, translation, runner, view(unit))
-        def out(head: Chunk[X], scope: Scope[F], tail: Pull[H, X, Unit]): F[B] = {
+        def out(head: Chunk[X], scope: Scope[F], tail: Pull.ToStream[H, X]): F[B] = {
           val next = bindView(Translate(tail, fk), view)
           runner.out(head, scope, next)
         }
@@ -993,10 +994,10 @@ object Pull extends PullLowPriority {
         def fail(e: Throwable): F[B] = goErr(e, view)
       }
 
-      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[G, Y, Unit])], G, X])
-          extends StepRunR[Y, (Chunk[Y], Pull[G, Y, Unit])](view) {
+      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull.ToStream[G, Y])], G, X])
+          extends StepRunR[Y, (Chunk[Y], Pull.ToStream[G, Y])](view) {
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] =
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull.ToStream[G, Y]): F[B] =
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           interruptGuard(outScope, view) {
             val result = Succeeded(Some((head, tail)))
@@ -1007,7 +1008,7 @@ object Pull extends PullLowPriority {
       class StepLegRunR[Y](view: Cont[Option[Stream.StepLeg[G, Y]], G, X])
           extends StepRunR[Y, Stream.StepLeg[G, Y]](view) {
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] =
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull.ToStream[G, Y]): F[B] =
           // StepLeg: we shift back to the scope at which we were
           // before we started to interpret the Leg's inner stream.
           interruptGuard(scope, view) {
@@ -1016,8 +1017,11 @@ object Pull extends PullLowPriority {
           }
       }
 
-      class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit]) extends Run[G, Y] {
-        private[this] def unconsed(chunk: Chunk[Y], tail: Pull[G, Y, Unit]): Pull[G, X, Unit] =
+      class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull.ToStream[G, X]) extends Run[G, Y] {
+        private[this] def unconsed(
+            chunk: Chunk[Y],
+            tail: Pull.ToStream[G, Y]
+        ): Pull.ToStream[G, X] =
           if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
             // check if hd has only a single element, and if so, process it directly instead of folding.
@@ -1025,7 +1029,7 @@ object Pull extends PullLowPriority {
             try fun(chunk(0))
             catch { case NonFatal(e) => Fail(e) }
           else {
-            def go(idx: Int): Pull[G, X, Unit] =
+            def go(idx: Int): Pull.ToStream[G, X] =
               if (idx == chunk.size)
                 flatMapOutput[G, G, Y, X](tail, fun)
               else {
@@ -1047,7 +1051,7 @@ object Pull extends PullLowPriority {
             go(scope, extendedTopLevelScope, translation, runner, view(unit))
           }
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] = {
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull.ToStream[G, Y]): F[B] = {
           val next = bindView(unconsed(head, tail), view)
           go(outScope, extendedTopLevelScope, translation, runner, next)
         }
@@ -1109,11 +1113,11 @@ object Pull extends PullLowPriority {
       }
 
       def goInScope(
-          stream: Pull[G, X, Unit],
+          stream: Pull.ToStream[G, X],
           useInterruption: Boolean,
           view: Cont[Unit, G, X]
       ): F[B] = {
-        def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull[G, X, Unit] =
+        def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull.ToStream[G, X] =
           result match {
             case Succeeded(_)              => SucceedScope(scopeId)
             case inter @ Interrupted(_, _) => CanceledScope(scopeId, inter)
@@ -1131,7 +1135,7 @@ object Pull extends PullLowPriority {
         val tail = maybeCloseExtendedScope.flatMap { newExtendedScope =>
           scope.open(useInterruption).rethrow.flatMap { childScope =>
             val bb = new Bind[G, X, Unit, Unit](stream) {
-              def cont(r: Terminal[Unit]): Pull[G, X, Unit] = endScope(childScope.id, r)
+              def cont(r: Terminal[Unit]): Pull.ToStream[G, X] = endScope(childScope.id, r)
             }
             go(childScope, newExtendedScope, translation, new ViewRunner(view), bb)
           }
@@ -1147,7 +1151,7 @@ object Pull extends PullLowPriority {
           case Interrupted(_, _) => sys.error(s"Impossible, cannot interrupt here")
         }
 
-        def viewCont(res: Terminal[Unit]): Pull[G, X, Unit] =
+        def viewCont(res: Terminal[Unit]): Pull.ToStream[G, X] =
           close.exitCase match {
             case ExitCase.Errored(err) => view(addError(err, res))
             case _                     => view(res)
@@ -1214,7 +1218,7 @@ object Pull extends PullLowPriority {
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
         case u: Uncons[G, y] @unchecked =>
-          val v = getCont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]
+          val v = getCont[Option[(Chunk[y], Pull.ToStream[G, y])], G, X]
           // a Uncons is run on the same scope, without shifting.
           F.unit >> go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
 
@@ -1283,7 +1287,7 @@ object Pull extends PullLowPriority {
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull.ToStream[F, O],
       fK: F ~> G
-  ): Pull[G, O, Unit] =
+  ): Pull.ToStream[G, O] =
     stream match {
       case t: Translate[e, f, _] =>
         translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
