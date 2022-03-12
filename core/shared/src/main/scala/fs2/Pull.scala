@@ -300,12 +300,23 @@ sealed abstract class Pull[+F[_], +O, +R] {
 object Pull extends PullLowPriority {
 
   /** A [[Pull]] instance that has has no unprocessed resource and can be converted to
-    * a [[Stream[F, O]]] using [[StreamPullOps.stream]]
+    * a [[Stream[F, O]]] using [[StreamPullOps.stream]].
     */
   type ToStream[+F[_], +O] = Pull[F, O, Unit]
 
+  /** A [[Pull]] instance with no output. Because its output type is [[INothing]] it can
+    * be transformed via `flatMap` into Pulls with, and ultimately produce a Stream of, any
+    * output type.
+    */
   type From[+F[_], +R] = Pull[F, INothing, R]
 
+  /** A [[Pull]] that is transforming a [[Stream[F, O]]] into a new [[Stream[F, O]]] but
+    * may still have further elements from the source stream to process. Can be converted
+    * to [[Pull.ToStream]] in three ways:
+    *
+    * - processing the resource further via `flatMap
+    *    `
+    */
   type Streaming[+F[_], +O] = Pull[F, O, Option[Stream[F, O]]]
 
   implicit final class StreamPullOps[F[_], O](private val self: Pull.ToStream[F, O])
@@ -331,6 +342,13 @@ object Pull extends PullLowPriority {
       * Use `p.void.stream` to explicitly ignore the result of a pull.
       */
     def streamNoScope: Stream[F, O] = new Stream(self)
+  }
+
+  implicit final class StreamingPullOps[F[_], O](private val self: Pull.Streaming[F, O]) {
+    /* Echoes the resource of this [[Pull]] to the output
+     */
+    def echo: Pull.ToStream[F, O] =
+      self.flatMap(_.fold(Pull.done: Pull.ToStream[F, O])(_.pull.echo))
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
