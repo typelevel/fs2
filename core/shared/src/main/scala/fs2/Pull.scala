@@ -299,6 +299,10 @@ sealed abstract class Pull[+F[_], +O, +R] {
 
 object Pull extends PullLowPriority {
 
+  /** A [[Pull]] instance that has has no unprocessed resource and can be converted to
+   * a [[Stream[F, O]]] using [[StreamPullOps.stream]]
+   */ 
+  type ToStream[+F[_], +O] = Pull[F, O, Unit]
   implicit final class StreamPullOps[F[_], O](private val self: Pull[F, O, Unit]) extends AnyVal {
 
     /** Interprets this pull to produce a stream. This method introduces a resource

@@ -147,7 +147,7 @@ import fs2.internal._
   * @hideImplicitConversion PureOps
   * @hideImplicitConversion IdOps
   */
-final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F, O, Unit]) {
+final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull.ToStream[F, O]) {
 
   /** Appends `s2` to the end of this stream.
     *
@@ -324,10 +324,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def bufferBy(f: O => Boolean): Stream[F, O] = {
-    def dumpBuffer(bb: List[Chunk[O]]): Pull[F, O, Unit] =
-      bb.reverse.foldLeft(Pull.done: Pull[F, O, Unit])((acc, c) => acc >> Pull.output(c))
+    def dumpBuffer(bb: List[Chunk[O]]): Pull.ToStream[F, O] =
+      bb.reverse.foldLeft(Pull.done: Pull.ToStream[F, O])((acc, c) => acc >> Pull.output(c))
 
-    def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull[F, O, Unit] =
+    def go(buffer: List[Chunk[O]], last: Boolean, s: Stream[F, O]): Pull.ToStream[F, O] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val (out, buf, newLast) =
@@ -385,7 +385,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def chunkAll: Stream[F, Chunk[O]] = {
-    def loop(s: Stream[F, O], acc: Chunk[O]): Pull[F, Chunk[O], Unit] =
+    def loop(s: Stream[F, O], acc: Chunk[O]): Pull.ToStream[F, Chunk[O]] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) => loop(tl, acc ++ hd)
         case None           => Pull.output1(acc)
@@ -435,7 +435,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
     // Untyped Guarantee: accFull.size >= n | accFull.size == 0
-    def go[A](nextChunk: Chunk[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
+    def go[A](nextChunk: Chunk[A], s: Stream[F, A]): Pull.ToStream[F, Chunk[A]] =
       s.pull.uncons.flatMap {
         case None =>
           if (allowFewerTotal && nextChunk.size > 0)
@@ -826,7 +826,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def dropLastIf(p: O => Boolean): Stream[F, O] = {
-    def go(last: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
+    def go(last: Chunk[O], s: Stream[F, O]): Pull.ToStream[F, O] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           Pull.output(last) >> go(hd, tl)
@@ -856,7 +856,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def dropRight(n: Int): Stream[F, O] =
     if (n <= 0) this
     else {
-      def go(acc: Chunk[O], s: Stream[F, O]): Pull[F, O, Unit] =
+      def go(acc: Chunk[O], s: Stream[F, O]): Pull.ToStream[F, O] =
         s.pull.uncons.flatMap {
           case None => Pull.done
           case Some((hd, tl)) =>
@@ -1132,7 +1132,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def filterWithPrevious(f: (O, O) => Boolean): Stream[F, O] = {
-    def go(last: O, s: Stream[F, O]): Pull[F, O, Unit] =
+    def go(last: O, s: Stream[F, O]): Pull.ToStream[F, O] =
       s.pull.uncons.flatMap {
         case None           => Pull.done
         case Some((hd, tl)) =>
@@ -1306,7 +1306,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def groupAdjacentByLimit[O2](
       limit: Int
   )(f: O => O2)(implicit eq: Eq[O2]): Stream[F, (O2, Chunk[O])] = {
-    def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull[F, (O2, Chunk[O]), Unit] =
+    def go(current: Option[(O2, Chunk[O])], s: Stream[F, O]): Pull.ToStream[F, (O2, Chunk[O])] =
       s.pull.unconsLimit(limit).flatMap {
         case Some((hd, tl)) =>
           val (k1, out) = current.getOrElse((f(hd(0)), Chunk.empty[O]))
@@ -1326,7 +1326,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         k1: O2,
         out: Chunk[O],
         acc: collection.immutable.Queue[(O2, Chunk[O])]
-    ): Pull[F, (O2, Chunk[O]), Unit] = {
+    ): Pull.ToStream[F, (O2, Chunk[O])] = {
       val differsAt = chunk.indexWhere(v => eq.neqv(f(v), k1)).getOrElse(-1)
       if (differsAt == -1) {
         // whole chunk matches the current key, add this chunk to the accumulated output
@@ -1711,7 +1711,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
       Chunk.vector(bldr.result())
     }
-    def go(str: Stream[F, O]): Pull[F, O2, Unit] =
+    def go(str: Stream[F, O]): Pull.ToStream[F, O2] =
       str.pull.uncons.flatMap {
         case None           => Pull.done
         case Some((hd, tl)) => Pull.output(doChunk(hd, false)) >> go(tl)
@@ -2395,7 +2395,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def scan[O2](z: O2)(f: (O2, O) => O2): Stream[F, O2] =
     (Pull.output1(z) >> scan_(z)(f)).stream
 
-  private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull[F, O2, Unit] =
+  private def scan_[O2](z: O2)(f: (O2, O) => O2): Pull.ToStream[F, O2] =
     this.pull.uncons.flatMap {
       case None => Pull.done
       case Some((hd, tl)) =>
@@ -2502,7 +2502,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     require(size > 0, "size must be > 0")
     require(step > 0, "step must be > 0")
 
-    def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull[F, Chunk[O], Unit] =
+    def stepNotSmallerThanSize(s: Stream[F, O], prev: Chunk[O]): Pull.ToStream[F, Chunk[O]] =
       s.pull.uncons
         .flatMap {
           case None =>
@@ -2523,7 +2523,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         s: Stream[F, O],
         window: Chunk[O],
         prev: Chunk[O]
-    ): Pull[F, Chunk[O], Unit] =
+    ): Pull.ToStream[F, Chunk[O]] =
       s.pull.uncons
         .flatMap {
           case None =>
@@ -2573,7 +2573,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
-    def go(buffer: Chunk[O], s: Stream[F, O]): Pull[F, Chunk[O], Unit] =
+    def go(buffer: Chunk[O], s: Stream[F, O]): Pull.ToStream[F, Chunk[O]] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           hd.indexWhere(f) match {
@@ -2858,7 +2858,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def zipWithNext: Stream[F, (O, Option[O])] = {
-    def go(last: O, s: Stream[F, O]): Pull[F, (O, Option[O]), Unit] =
+    def go(last: O, s: Stream[F, O]): Pull.ToStream[F, (O, Option[O])] =
       s.pull.uncons.flatMap {
         case None => Pull.output1((last, None))
         case Some((hd, tl)) =>
@@ -3845,7 +3845,7 @@ object Stream extends StreamLowPriority {
       } yield {
 
         val sinkIn: Stream[F, INothing] = {
-          def go(s: Stream[F, O]): Pull[F, INothing, Unit] =
+          def go(s: Stream[F, O]): Pull.ToStream[F, INothing] =
             s.pull.uncons.flatMap {
               case None           => Pull.eval(sinkChan.close.void)
               case Some((hd, tl)) => Pull.eval(sinkChan.send(hd) >> guard.acquire) >> go(tl)
@@ -3855,7 +3855,7 @@ object Stream extends StreamLowPriority {
         }
 
         val sinkOut: Stream[F, O] = {
-          def go(s: Stream[F, Chunk[O]]): Pull[F, O, Unit] =
+          def go(s: Stream[F, Chunk[O]]): Pull.ToStream[F, O] =
             s.pull.uncons1.flatMap {
               case None => Pull.done
               case Some((ch, rest)) =>
@@ -4283,7 +4283,7 @@ object Stream extends StreamLowPriority {
       }
 
     /** Writes all inputs to the output of the returned `Pull`. */
-    def echo: Pull[F, O, Unit] = self.underlying
+    def echo: Pull.ToStream[F, O] = self.underlying
 
     /** Reads a single element from the input and emits it to the output. */
     def echo1: Pull[F, O, Option[Stream[F, O]]] =
@@ -4546,7 +4546,7 @@ object Stream extends StreamLowPriority {
                 s.pull.uncons1
                   .map(_.map { case (r, next) => r -> toTimedPull(next) })
 
-              def timeout(t: FiniteDuration): Pull[F, INothing, Unit] = Pull.eval {
+              def timeout(t: FiniteDuration): Pull.ToStream[F, INothing] = Pull.eval {
                 F.unique.tupleRight(t).flatMap(time.set)
               }
             }
@@ -4557,7 +4557,7 @@ object Stream extends StreamLowPriority {
 
   /** Projection of a `Stream` providing various ways to compile a `Stream[F,O]` to a `G[...]`. */
   final class CompileOps[F[_], G[_], O] private[Stream] (
-      private val underlying: Pull[F, O, Unit]
+      private val underlying: Pull.ToStream[F, O]
   )(implicit compiler: Compiler[F, G]) {
 
     /** Compiles this stream to a count of the elements in the target effect type `G`.
@@ -4831,7 +4831,7 @@ object Stream extends StreamLowPriority {
   final class StepLeg[+F[_], +O](
       val head: Chunk[O],
       private[fs2] val scopeId: Unique.Token,
-      private[fs2] val next: Pull[F, O, Unit]
+      private[fs2] val next: Pull.ToStream[F, O]
   ) { self =>
 
     /** Converts this leg back to regular stream. Scope is updated to the scope associated with this leg.
@@ -4872,7 +4872,7 @@ object Stream extends StreamLowPriority {
     def emit(l: L, r: R) = Pull.output1(l -> r)
 
     Stream.eval(F.ref(Racing: State)).flatMap { state =>
-      def lhs(stream: Stream[F, L]): Pull[F, (L, R), Unit] =
+      def lhs(stream: Stream[F, L]): Pull.ToStream[F, (L, R)] =
         stream.pull.uncons1.flatMap {
           case None => Pull.done
           case Some((leftValue, stream)) =>
@@ -4889,7 +4889,7 @@ object Stream extends StreamLowPriority {
             }.flatten >> lhs(stream)
         }
 
-      def rhs(stream: Stream[F, R]): Pull[F, (L, R), Unit] =
+      def rhs(stream: Stream[F, R]): Pull.ToStream[F, (L, R)] =
         stream.pull.uncons1.flatMap {
           case None => Pull.done
           case Some((rightValue, stream)) =>
@@ -5055,7 +5055,7 @@ object Stream extends StreamLowPriority {
     new FunctorFilter[Stream[F, *]] {
       override def functor: Functor[Stream[F, *]] = Functor[Stream[F, *]]
       override def mapFilter[A, B](fa: Stream[F, A])(f: A => Option[B]): Stream[F, B] = {
-        def pull: Stream[F, A] => Pull[F, B, Unit] =
+        def pull: Stream[F, A] => Pull.ToStream[F, B] =
           _.pull.uncons.flatMap {
             case None => Pull.done
             case Some((chunk, rest)) =>
