@@ -343,7 +343,7 @@ object Pull extends PullLowPriority {
   /** Creates an pull that performs no effects, emits no outputs,
     * and terminates successfully with the supplied value as its result.
     */
-  def pure[F[_], R](r: R): Pull[F, INothing, R] = Succeeded(r)
+  def pure[F[_], R](r: R): Pull.From[F, R] = Succeeded(r)
 
   /** Lifts a throwable error into an atomic pull that emits no outputs and
     * fails with the given error, without any result.
@@ -352,13 +352,13 @@ object Pull extends PullLowPriority {
     * or `raiseError[Fallible]`).
     */
   @nowarn("msg=never used")
-  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
+  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull.From[F, INothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
     * outputs, and terminates with the result of the effect.
     * If the `fr` effect fails with an error, the new pull fails with that error.
     */
-  def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
+  def eval[F[_], R](fr: F[R]): Pull.From[F, R] = Eval[F, R](fr)
 
   /** Creates a pull that waits for the duration `d` */
   def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull.ToStream[F, INothing] =
@@ -389,19 +389,19 @@ object Pull extends PullLowPriority {
   private[fs2] def acquire[F[_], R](
       resource: F[R],
       release: (R, ExitCase) => F[Unit]
-  ): Pull[F, INothing, R] =
+  ): Pull.From[F, R] =
     Acquire(resource, release, cancelable = false)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
+  )(implicit F: MonadCancel[F, _]): Pull.From[F, R] =
     Acquire(F.uncancelable(resource), release, cancelable = true)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned
     * in a `Left` instead of failing the pull.
     */
-  def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
+  def attemptEval[F[_], R](fr: F[R]): Pull.From[F, Either[Throwable, R]] =
     Eval[F, R](fr)
       .map(r => Right(r): Either[Throwable, R])
       .handleErrorWith(t => Succeeded[Either[Throwable, R]](Left(t)))
@@ -440,7 +440,7 @@ object Pull extends PullLowPriority {
     */
   def extendScopeTo[F[_], O](
       s: Stream[F, O]
-  )(implicit F: MonadError[F, Throwable]): Pull[F, INothing, Stream[F, O]] =
+  )(implicit F: MonadError[F, Throwable]): Pull.From[F, Stream[F, O]] =
     for {
       scope <- Pull.getScope[F]
       lease <- Pull.eval(scope.lease)
@@ -467,7 +467,7 @@ object Pull extends PullLowPriority {
         case Right(r) => Pull.pure(r)
       }
 
-  private[fs2] def fail[F[_]](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
+  private[fs2] def fail[F[_]](err: Throwable): Pull.From[F, INothing] = Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
     def apply[A](either: Either[Throwable, A])(implicit
@@ -491,7 +491,7 @@ object Pull extends PullLowPriority {
   /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
-  private[fs2] def getScope[F[_]]: Pull[F, INothing, Scope[F]] = GetScope[F]()
+  private[fs2] def getScope[F[_]]: Pull.From[F, Scope[F]] = GetScope[F]()
 
   /** Returns a pull that evaluates the supplied by-name each time the pull is
     * used, allowing use of a mutable value in pull computations.
@@ -550,7 +550,7 @@ object Pull extends PullLowPriority {
       * (hidden, basically) so you cannot do anything on it except for
       * pattern matching, which is best done as a `Left(_)` case.
       */
-    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
+    def uncons: Pull.From[F, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
 
     /** Asynchronously starts a timeout that will be received by
       * `uncons` after `t`, and immediately returns.
@@ -592,7 +592,7 @@ object Pull extends PullLowPriority {
   implicit def syncInstance[F[_]: Sync, O]: Sync[Pull[F, O, *]] =
     new PullSyncInstance[F, O]
 
-  /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
+  /** `FunctionK` instance for `F ~> Pull.From[F, *]`
     *
     * @example {{{
     * scala> import cats.Id
@@ -600,8 +600,8 @@ object Pull extends PullLowPriority {
     * res0: cats.Id[List[Int]] = List(42)
     * }}}
     */
-  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
-    new (F ~> Pull[F, INothing, *]) {
+  implicit def functionKInstance[F[_]]: F ~> Pull.From[F, *] =
+    new (F ~> Pull.From[F, *]) {
       def apply[X](fx: F[X]) = Pull.eval(fx)
     }
 
@@ -847,7 +847,7 @@ object Pull extends PullLowPriority {
    */
   private[fs2] def uncons[F[_], O](
       s: Pull[F, O, Unit]
-  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
+  ): Pull.From[F, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Uncons(s)
 
   private type Cont[-Y, +G[_], +O] = Terminal[Y] => Pull[G, O, Unit]

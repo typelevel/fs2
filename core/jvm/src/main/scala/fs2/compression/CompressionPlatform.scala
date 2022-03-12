@@ -904,13 +904,13 @@ private[compression] trait CompressionCompanionPlatform {
       private def unconsUntil[O: ClassTag](
           predicate: O => Boolean,
           softLimit: Int
-      ): Stream[F, O] => Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+      ): Stream[F, O] => Pull.From[F, Option[(Chunk[O], Stream[F, O])]] =
         stream => {
           def go(
               acc: List[Chunk[O]],
               rest: Stream[F, O],
               size: Int = 0
-          ): Pull[F, INothing, Option[(Chunk[O], Stream[F, O])]] =
+          ): Pull.From[F, Option[(Chunk[O], Stream[F, O])]] =
             rest.pull.uncons.flatMap {
               case None =>
                 Pull.pure(None)
