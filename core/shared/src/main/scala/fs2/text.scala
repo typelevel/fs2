@@ -130,7 +130,7 @@ object text {
         }
       }
 
-      def doPull(buf: Chunk[Byte], s: Stream[F, Chunk[Byte]]): Pull[F, String, Unit] =
+      def doPull(buf: Chunk[Byte], s: Stream[F, Chunk[Byte]]): Pull.ToStream[F, String] =
         s.pull.uncons.flatMap {
           case Some((byteChunks, tail)) =>
             // use local and private mutability here
@@ -153,7 +153,7 @@ object text {
       def processByteOrderMark(
           buffer: Chunk.Queue[Byte] /* or null which we use as an Optional type to avoid boxing */,
           s: Stream[F, Chunk[Byte]]
-      ): Pull[F, String, Unit] =
+      ): Pull.ToStream[F, String] =
         s.pull.uncons1.flatMap {
           case Some((hd, tl)) =>
             val newBuffer0 =
@@ -201,7 +201,7 @@ object text {
         acc: Chunk[Byte],
         s: Stream[F, Chunk[Byte]],
         lastOutBuffer: CharBuffer
-    ): Pull[F, String, Unit] =
+    ): Pull.ToStream[F, String] =
       s.pull.uncons1.flatMap { r =>
         val toDecode = r match {
           case Some((c, _)) => acc ++ c
@@ -257,7 +257,7 @@ object text {
     def flush(
         decoder: CharsetDecoder,
         out: CharBuffer
-    ): Pull[F, String, Unit] = {
+    ): Pull.ToStream[F, String] = {
       (out: Buffer).clear()
       decoder.flush(out) match {
         case res if res.isUnderflow =>
@@ -373,7 +373,7 @@ object text {
         stream: Stream[F, String],
         stringBuilder: StringBuilder,
         first: Boolean
-    ): Pull[F, String, Unit] =
+    ): Pull.ToStream[F, String] =
       stream.pull.uncons.flatMap {
         case None =>
           if (first) Pull.done
@@ -516,7 +516,7 @@ object text {
               )
           }
 
-      def go(state: State, s: Stream[F, String]): Pull[F, Byte, Unit] =
+      def go(state: State, s: Stream[F, String]): Pull.ToStream[F, Byte] =
         s.pull.uncons1.flatMap {
           case Some((hd, tl)) =>
             decode(state, hd) match {
@@ -578,7 +578,7 @@ object text {
           (out, ByteVector(bytes(idx), bytes(idx + 1)))
       }
 
-      def go(carry: ByteVector, s: Stream[F, Byte]): Pull[F, String, Unit] =
+      def go(carry: ByteVector, s: Stream[F, Byte]): Pull.ToStream[F, String] =
         s.pull.uncons.flatMap {
           case Some((hd, tl)) =>
             val (out, newCarry) = encode(carry ++ hd.toByteVector)
@@ -665,7 +665,7 @@ object text {
         (bldr: Buffer).flip()
         (Chunk.byteVector(ByteVector(bldr)), hi, midByte)
       }
-      def dropPrefix(s: Stream[F, String], acc: String): Pull[F, Byte, Unit] =
+      def dropPrefix(s: Stream[F, String], acc: String): Pull.ToStream[F, Byte] =
         s.pull.uncons1.flatMap {
           case Some((hd, tl)) =>
             if (acc.size + hd.size < 2) dropPrefix(tl, acc + hd)
@@ -678,7 +678,7 @@ object text {
           case None =>
             Pull.done
         }
-      def go(s: Stream[F, String], hi: Int, midByte: Boolean): Pull[F, Byte, Unit] =
+      def go(s: Stream[F, String], hi: Int, midByte: Boolean): Pull.ToStream[F, Byte] =
         s.pull.uncons1.flatMap {
           case Some((hd, tl)) =>
             val (out, newHi, newMidByte) = decode1(hd, hi, midByte)

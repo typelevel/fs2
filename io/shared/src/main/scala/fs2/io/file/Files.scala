@@ -526,7 +526,7 @@ object Files extends FilesCompanionPlatform {
           cursor: WriteCursor[F],
           acc: Long,
           s: Stream[F, Byte]
-      ): Pull[F, Unit, Unit] = {
+      ): Pull.ToStream[F, Unit] = {
         val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
         s.pull.unconsLimit(toWrite).flatMap {
           case Some((hd, tl)) =>

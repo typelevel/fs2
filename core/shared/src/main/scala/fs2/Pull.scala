@@ -271,7 +271,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     *
     * Alias for `this.map(_ => ())`.
     */
-  def void: Pull[F, O, Unit] = as(())
+  def void: Pull.ToStream[F, O] = as(())
 
   /** Replaces the result of this pull with the given constant value.
     * If `this` pull succeeds, then its result is discarded and the resulting
@@ -300,10 +300,16 @@ sealed abstract class Pull[+F[_], +O, +R] {
 object Pull extends PullLowPriority {
 
   /** A [[Pull]] instance that has has no unprocessed resource and can be converted to
-   * a [[Stream[F, O]]] using [[StreamPullOps.stream]]
-   */ 
+    * a [[Stream[F, O]]] using [[StreamPullOps.stream]]
+    */
   type ToStream[+F[_], +O] = Pull[F, O, Unit]
-  implicit final class StreamPullOps[F[_], O](private val self: Pull[F, O, Unit]) extends AnyVal {
+
+  type From[+F[_], +R] = Pull[F, INothing, R]
+
+  type Streaming[+F[_], +O] = Pull[F, O, Option[Stream[F, O]]]
+
+  implicit final class StreamPullOps[F[_], O](private val self: Pull.ToStream[F, O])
+      extends AnyVal {
 
     /** Interprets this pull to produce a stream. This method introduces a resource
       * scope, to ensure any resources acquired by this pull are released in due
@@ -355,7 +361,7 @@ object Pull extends PullLowPriority {
   def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
 
   /** Creates a pull that waits for the duration `d` */
-  def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull[F, INothing, Unit] =
+  def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull.ToStream[F, INothing] =
     Pull.eval(t.sleep(d))
 
   /** Lifts the given output value `O` into a pull that performs no
@@ -365,19 +371,19 @@ object Pull extends PullLowPriority {
     * _Note_: using singleton chunks is not efficient. If possible,
     * use the chunk-based `output` method instead.
     */
-  def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
+  def output1[F[x] >: Pure[x], O](o: O): Pull.ToStream[F, O] = Output(Chunk.singleton(o))
 
   /** Lifts the given optional value `O` into a pull that performs no
     * effects, emits the content of that option, and always
     * terminates successfully with a unit result.
     */
-  def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull[F, O, Unit] =
+  def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull.ToStream[F, O] =
     opt.map(output1).getOrElse(done)
 
   /** Creates a pull that emits the elements of the given chunk.
     * The new pull performs no effects and terminates successfully with a unit result.
     */
-  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
+  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull.ToStream[F, O] =
     if (os.isEmpty) Pull.done else Output[O](os)
 
   private[fs2] def acquire[F[_], R](
@@ -403,7 +409,7 @@ object Pull extends PullLowPriority {
   def bracketCase[F[_], O, A, B](
       acquire: Pull[F, O, A],
       use: A => Pull[F, O, B],
-      release: (A, ExitCase) => Pull[F, O, Unit]
+      release: (A, ExitCase) => Pull.ToStream[F, O]
   ): Pull[F, O, B] =
     acquire.flatMap { a =>
       val used =
@@ -443,7 +449,7 @@ object Pull extends PullLowPriority {
   /** Repeatedly uses the output of the pull as input for the next step of the
     * pull. Halts when a step terminates with `None` or `Pull.raiseError`.
     */
-  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull[F, O, Unit] =
+  def loop[F[_], O, R](f: R => Pull[F, O, Option[R]]): R => Pull.ToStream[F, O] =
     (r: R) =>
       f(r).flatMap {
         case None    => Pull.done
@@ -464,11 +470,13 @@ object Pull extends PullLowPriority {
   private[fs2] def fail[F[_]](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
-    def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
+    def apply[A](either: Either[Throwable, A])(implicit
+        ev: RaiseThrowable[F]
+    ): Pull.ToStream[F, A] =
       either.fold(raiseError[F], output1)
   }
 
-  /** Lifts an Either[Throwable, A] to an effectful Pull[F, A, Unit].
+  /** Lifts an Either[Throwable, A] to an effectful Pull.ToStream[F, A].
     *
     * @example {{{
     * scala> import cats.effect.SyncIO, scala.util.Try
@@ -508,7 +516,7 @@ object Pull extends PullLowPriority {
     * with shape:
     *
     * {{{
-    * def go(timedPull: Pull.Timed[F, A]): Pull[F, B, Unit] =
+    * def go(timedPull: Pull.Timed[F, A]): Pull.ToStream[F, B] =
     *   timedPull.uncons.flatMap {
     *     case Some((Right(chunk), next)) => doSomething >> go(next)
     *     case Some((Left(_), next)) => doSomethingElse >> go(next)
@@ -577,7 +585,7 @@ object Pull extends PullLowPriority {
       * cases, given that usually there is no need to sleep in between
       * `timeout` and the very first call to `uncons`.
       */
-    def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
+    def timeout(t: FiniteDuration): Pull.ToStream[F, INothing]
   }
 
   /** `Sync` instance for `Pull`. */
@@ -674,13 +682,13 @@ object Pull extends PullLowPriority {
       step: Pull[F, O, Y],
       override val delegate: Bind[F, O, Y, Unit]
   ) extends Bind[F, O, Y, Unit](step) {
-    def cont(yr: Terminal[Y]): Pull[F, O, Unit] = delegate.cont(yr)
+    def cont(yr: Terminal[Y]): Pull.ToStream[F, O] = delegate.cont(yr)
   }
 
   private def bindView[F[_], O, Y](
-      fmoc: Pull[F, O, Unit],
+      fmoc: Pull.ToStream[F, O],
       view: Cont[Unit, F, O]
-  ): Pull[F, O, Unit] =
+  ): Pull.ToStream[F, O] =
     view match {
       case IdContP => fmoc
       case bv: Bind[F, O, Unit, Unit] @unchecked =>
@@ -702,7 +710,7 @@ object Pull extends PullLowPriority {
       var endBind: Bind[F, O, Y, Unit]
   ) extends Bind[F, O, X, Unit](null) {
     override def step: Pull[F, O, X] = innerBind.step
-    def cont(xterm: Terminal[X]): Pull[F, O, Unit] =
+    def cont(xterm: Terminal[X]): Pull.ToStream[F, O] =
       try bindBindAux(xterm, this)
       catch { case NonFatal(e) => Fail(e) }
   }
@@ -711,7 +719,7 @@ object Pull extends PullLowPriority {
   private def bindBindAux[F[_], O, X, Y](
       py: Pull[F, O, Y],
       del: Bind[F, O, Y, Unit]
-  ): Pull[F, O, Unit] =
+  ): Pull.ToStream[F, O] =
     py match {
       case ty: Terminal[_] =>
         del match {
@@ -745,8 +753,8 @@ object Pull extends PullLowPriority {
   ) extends Action[F, O, Unit]
 
   private final case class FlatMapOutput[+F[_], O, +P](
-      stream: Pull[F, O, Unit],
-      fun: O => Pull[F, P, Unit]
+      stream: Pull.ToStream[F, O],
+      fun: O => Pull.ToStream[F, P]
   ) extends Action[F, P, Unit]
 
   /* Steps through the given inner stream, until the first `Output` is reached.
@@ -756,8 +764,8 @@ object Pull extends PullLowPriority {
    *
    * @param stream             Stream to step
    */
-  private final case class Uncons[+F[_], +O](stream: Pull[F, O, Unit])
-      extends Action[Pure, INothing, Option[(Chunk[O], Pull[F, O, Unit])]]
+  private final case class Uncons[+F[_], +O](stream: Pull.ToStream[F, O])
+      extends Action[Pure, INothing, Option[(Chunk[O], Pull.ToStream[F, O])]]
 
   /** Steps through the stream, providing a `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
@@ -765,7 +773,7 @@ object Pull extends PullLowPriority {
     * @param stream             Stream to step
     * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
-  private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
+  private final case class StepLeg[+F[_], +O](stream: Pull.ToStream[F, O], scope: Unique.Token)
       extends Action[Pure, INothing, Option[Stream.StepLeg[F, O]]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output. */
@@ -780,7 +788,7 @@ object Pull extends PullLowPriority {
   ) extends AlgEffect[F, R]
 
   private final case class InScope[+F[_], +O](
-      stream: Pull[F, O, Unit],
+      stream: Pull.ToStream[F, O],
       useInterruption: Boolean
   ) extends Action[F, O, Unit]
 
@@ -830,7 +838,7 @@ object Pull extends PullLowPriority {
 
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
-  ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
+  ): Pull.ToStream[F, O] = InterruptWhen(haltOnSignal)
 
   /* Pull transformation that takes the given stream (pull), unrolls it until it either:
    * - Reaches the end of the stream, and returns None; or
@@ -855,7 +863,7 @@ object Pull extends PullLowPriority {
    * needs to find the recovery point where stream evaluation continues.
    */
   private[fs2] def compile[F[_], O, B](
-      stream: Pull[F, O, Unit],
+      stream: Pull.ToStream[F, O],
       initScope: Scope[F],
       extendLastTopLevelScope: Boolean,
       init: B
@@ -1244,7 +1252,7 @@ object Pull extends PullLowPriority {
       override def interrupted(inter: Interrupted): F[B] =
         inter.deferredError.fold(F.pure(accB))(F.raiseError)
 
-      override def out(head: Chunk[O], scope: Scope[F], tail: Pull[F, O, Unit]): F[B] =
+      override def out(head: Chunk[O], scope: Scope[F], tail: Pull.ToStream[F, O]): F[B] =
         try {
           accB = foldChunk(accB, head)
           go(scope, None, initFk, self, tail)
@@ -1263,7 +1271,7 @@ object Pull extends PullLowPriority {
   }
 
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
-      p: Pull[F, O, Unit],
+      p: Pull.ToStream[F, O],
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
     p match {
@@ -1273,7 +1281,7 @@ object Pull extends PullLowPriority {
     }
 
   private[fs2] def translate[F[_], G[_], O](
-      stream: Pull[F, O, Unit],
+      stream: Pull.ToStream[F, O],
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
@@ -1285,15 +1293,15 @@ object Pull extends PullLowPriority {
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
-  private[fs2] def mapOutput[F[_], O, P](s: Stream[F, O], f: O => P): Pull[F, P, Unit] =
+  private[fs2] def mapOutput[F[_], O, P](s: Stream[F, O], f: O => P): Pull.ToStream[F, P] =
     interruptScope(mapOutputNoScope(s, f))
 
   /** Like `mapOutput` but does not insert an interruption scope. */
   private[fs2] def mapOutputNoScope[F[_], O, P](
       s: Stream[F, O],
       f: O => P
-  ): Pull[F, P, Unit] = {
-    def go(s: Stream[F, O]): Pull[F, P, Unit] =
+  ): Pull.ToStream[F, P] = {
+    def go(s: Stream[F, O]): Pull.ToStream[F, P] =
       s.pull.uncons.flatMap {
         case None           => Pull.done
         case Some((hd, tl)) => Pull.output(hd.map(f)) >> go(tl)
@@ -1321,7 +1329,7 @@ object Pull extends PullLowPriority {
     private def idToApplicative[F[_]: Applicative]: Id ~> F =
       new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
 
-    def covaryId[F[_]: Applicative]: Pull[F, O, Unit] = Pull.translate(self, idToApplicative[F])
+    def covaryId[F[_]: Applicative]: Pull.ToStream[F, O] = Pull.translate(self, idToApplicative[F])
   }
 }
 

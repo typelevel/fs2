@@ -156,7 +156,7 @@ class MemoryLeakSpec extends FunSuite {
 
   leakTest("repeatEval") {
     def id[F[_], A]: Pipe[F, A, A] = {
-      def go(s: Stream[F, A]): Pull[F, A, Unit] =
+      def go(s: Stream[F, A]): Pull.From[F, A] =
         s.pull.uncons1.flatMap {
           case Some((h, t)) => Pull.output1(h) >> go(t); case None => Pull.done
         }

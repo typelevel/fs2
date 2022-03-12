@@ -194,7 +194,7 @@ private[compression] trait CompressionCompanionPlatform {
           chunk: Chunk[Byte],
           deflatedBuffer: Array[Byte],
           isFinalChunk: Boolean
-      ): Pull[F, Byte, Unit] = {
+      ): Pull.ToStream[F, Byte] = {
         val bytesChunk = chunk.toArraySlice
         deflater.setInput(
           bytesChunk.values,
@@ -218,7 +218,7 @@ private[compression] trait CompressionCompanionPlatform {
               deflateParams.flushMode.juzDeflaterFlushMode
             )
 
-        def pull(): Pull[F, Byte, Unit] = {
+        def pull(): Pull.ToStream[F, Byte] = {
           val deflatedBytes = runDeflate()
           if (isDone)
             Pull.output(copyAsChunkBytes(deflatedBuffer, deflatedBytes))
@@ -234,7 +234,7 @@ private[compression] trait CompressionCompanionPlatform {
           deflater: Deflater,
           crc32: Option[CRC32],
           deflatedBuffer: Array[Byte]
-      ): Stream[F, Byte] => Pull[F, Byte, Unit] =
+      ): Stream[F, Byte] => Pull.ToStream[F, Byte] =
         _.pull.uncons.flatMap {
           case Some((inflatedChunk, inflatedStream)) =>
             _deflate_chunk(
@@ -275,7 +275,7 @@ private[compression] trait CompressionCompanionPlatform {
           inflateParams: InflateParams,
           inflater: Inflater,
           crc32: Option[CRC32]
-      ): Stream[F, Byte] => Pull[F, Byte, Unit] =
+      ): Stream[F, Byte] => Pull.ToStream[F, Byte] =
         in =>
           Pull.suspend {
             val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
@@ -302,7 +302,7 @@ private[compression] trait CompressionCompanionPlatform {
           crc32: Option[CRC32],
           chunk: Chunk[Byte],
           inflatedBuffer: Array[Byte]
-      ): Pull[F, Byte, Unit] = {
+      ): Pull.ToStream[F, Byte] = {
         val bytesChunk = chunk.toArraySlice
         inflater.setInput(
           bytesChunk.values,
@@ -318,7 +318,7 @@ private[compression] trait CompressionCompanionPlatform {
             byteCount
           }
 
-        def pull(): Pull[F, Byte, Unit] =
+        def pull(): Pull.ToStream[F, Byte] =
           runInflate() match {
             case inflatedBytes if inflatedBytes <= -2 =>
               inflater.getRemaining match {
@@ -363,7 +363,7 @@ private[compression] trait CompressionCompanionPlatform {
           inflater: Inflater,
           crc32: Option[CRC32],
           inflatedBuffer: Array[Byte]
-      ): Stream[F, Byte] => Pull[F, Byte, Unit] =
+      ): Stream[F, Byte] => Pull.ToStream[F, Byte] =
         _.pull.uncons.flatMap {
           case Some((deflatedChunk, deflatedStream)) =>
             _inflate_chunk(
@@ -854,7 +854,7 @@ private[compression] trait CompressionCompanionPlatform {
         stream =>
           {
 
-            def validateTrailer(trailerChunk: Chunk[Byte]): Pull[F, Byte, Unit] =
+            def validateTrailer(trailerChunk: Chunk[Byte]): Pull.ToStream[F, Byte] =
               if (trailerChunk.size == gzipTrailerBytes) {
                 val expectedInputCrc32 =
                   unsignedToLong(trailerChunk(0), trailerChunk(1), trailerChunk(2), trailerChunk(3))
@@ -870,7 +870,7 @@ private[compression] trait CompressionCompanionPlatform {
                   Pull.done
               } else Pull.raiseError(new ZipException("Failed to read trailer (1)"))
 
-            def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
+            def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull.ToStream[F, Byte] =
               _.pull.uncons
                 .flatMap {
                   case Some((next, rest)) =>

@@ -261,7 +261,7 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("16 - issue #1179 - if a pipe is interrupted, it will not restart evaluation") {
     def p: Pipe[IO, Int, Int] = {
-      def loop(acc: Int, s: Stream[IO, Int]): Pull[IO, Int, Unit] =
+      def loop(acc: Int, s: Stream[IO, Int]): Pull.ToStream[IO, Int] =
         s.pull.uncons1.flatMap {
           case None           => Pull.output1[IO, Int](acc)
           case Some((hd, tl)) => Pull.output1[IO, Int](hd) >> loop(acc + hd, tl)

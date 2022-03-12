@@ -38,7 +38,7 @@ class TimedPullsSuite extends Fs2Suite {
         s.covary[IO]
           .pull
           .timed { tp =>
-            def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+            def loop(tp: Pull.Timed[IO, Int]): Pull.ToStream[IO, Int] =
               tp.uncons.flatMap {
                 case None                   => Pull.done
                 case Some((Right(c), next)) => Pull.output(c) >> loop(next)
@@ -63,7 +63,7 @@ class TimedPullsSuite extends Fs2Suite {
           .metered(period)
           .pull
           .timed { tp =>
-            def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+            def loop(tp: Pull.Timed[IO, Int]): Pull.ToStream[IO, Int] =
               tp.uncons.flatMap {
                 case None                   => Pull.done
                 case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
@@ -108,7 +108,7 @@ class TimedPullsSuite extends Fs2Suite {
       .metered(t)
       .pull
       .timed { tp =>
-        def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
+        def go(tp: Pull.Timed[IO, Int]): Pull.ToStream[IO, Int] =
           tp.uncons.flatMap {
             case Some((Right(c), n)) => Pull.output(c) >> go(n)
             case Some((Left(_), _))  => Pull.done
@@ -133,7 +133,7 @@ class TimedPullsSuite extends Fs2Suite {
     val prog =
       s.pull
         .timed { tp =>
-          def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
+          def go(tp: Pull.Timed[IO, Int]): Pull.ToStream[IO, String] =
             tp.uncons.flatMap {
               case None => Pull.done
               case Some((Right(_), next)) =>
@@ -240,7 +240,7 @@ class TimedPullsSuite extends Fs2Suite {
     val prog =
       (Stream.sleep[IO](t) ++ Stream.never[IO]).pull
         .timed { tp =>
-          def go(tp: Pull.Timed[IO, Unit]): Pull[IO, String, Unit] =
+          def go(tp: Pull.Timed[IO, Unit]): Pull.ToStream[IO, String] =
             tp.uncons.flatMap {
               case None => Pull.done
               case Some((Right(_), n)) =>

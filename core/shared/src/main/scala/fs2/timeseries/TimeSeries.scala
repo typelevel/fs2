@@ -97,7 +97,7 @@ object TimeSeries {
     def go(
         nextTick: FiniteDuration,
         s: Stream[F, TimeStamped[A]]
-    ): Pull[F, TimeStamped[Option[A]], Unit] = {
+    ): Pull.ToStream[F, TimeStamped[Option[A]]] = {
       def tickTime(x: Int) = nextTick + (x * tickPeriod)
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>

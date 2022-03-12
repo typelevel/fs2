@@ -159,7 +159,7 @@ private[fs2] trait ioplatform {
         .flatMap { writable =>
           def go(
               s: Stream[F, Byte]
-          ): Pull[F, INothing, Unit] = s.pull.uncons.flatMap {
+          ): Pull.ToStream[F, INothing] = s.pull.uncons.flatMap {
             case Some((head, tail)) =>
               Pull.eval {
                 F.async_[Unit] { cb =>

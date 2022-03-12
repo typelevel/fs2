@@ -185,7 +185,7 @@ object TimeStamped {
     def doThrottle: Pipe2[F, TimeStamped[A], Unit, TimeStamped[A]] = {
 
       type PullFromSourceOrTicks =
-        (Stream[F, TimeStamped[A]], Stream[F, Unit]) => Pull[F, TimeStamped[A], Unit]
+        (Stream[F, TimeStamped[A]], Stream[F, Unit]) => Pull.ToStream[F, TimeStamped[A]]
 
       def takeUpto(
           chunk: Chunk[TimeStamped[A]],
@@ -311,7 +311,7 @@ object TimeStamped {
     def go(
         buffered: SortedMap[FiniteDuration, Chain[TimeStamped[A]]],
         s: Stream[F, TimeStamped[A]]
-    ): Pull[F, TimeStamped[A], Unit] =
+    ): Pull.ToStream[F, TimeStamped[A]] =
       s.pull.uncons.flatMap {
         case Some((hd, tl)) =>
           val all = Chain.fromSeq(hd.toList).foldLeft(buffered) { (acc, tsa) =>

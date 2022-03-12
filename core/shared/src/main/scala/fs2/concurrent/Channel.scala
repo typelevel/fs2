@@ -183,7 +183,7 @@ object Channel {
 
         def stream = consumeLoop.stream
 
-        def consumeLoop: Pull[F, A, Unit] =
+        def consumeLoop: Pull.ToStream[F, A] =
           Pull.eval {
             F.deferred[Unit].flatMap { waiting =>
               state
