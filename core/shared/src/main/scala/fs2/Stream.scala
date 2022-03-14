@@ -2870,7 +2870,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] = this
     .covaryAll[F2, O2]
     .pull
-    .timeoutWith(timeout)(pull => f(pull.stream).pull.echo)
+    .timeoutWith(timeout)(_.stream.through(f).pull.echo)
     .stream
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
