@@ -196,18 +196,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
     ),
-    Compile / unmanagedSourceDirectories ++= {
-      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "main").toList.map(f => file(f.getPath + major))
-      )
-    },
-    Test / unmanagedSourceDirectories ++= {
-      val major = if (scalaVersion.value.startsWith("3")) "-3" else "-2"
-      List(CrossType.Pure, CrossType.Full).flatMap(
-        _.sharedSrcDir(baseDirectory.value, "test").toList.map(f => file(f.getPath + major))
-      )
-    },
+    tlJdkRelease := Some(8),
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
@@ -294,7 +283,8 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
                                                              )
                                                                "1.11.9"
                                                              else "2.1.0"),
-    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
+    tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -305,7 +295,8 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
-    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap
+    tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
+    tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
@@ -321,6 +312,7 @@ lazy val reactiveStreams = project
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
       "org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test"
     ),
+    tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
