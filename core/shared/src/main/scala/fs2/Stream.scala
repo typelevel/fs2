@@ -2065,6 +2065,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     parEvalMapAction(maxConcurrent, f)((ch, release) => init(ch, release).map(send))
   }
 
+  /** Like parEvalMap but with unbounded concurrency.
+    */
+  def parEvalMapUnbounded[F2[x] >: F[x], O2](f: O => F2[O2])(implicit
+      F: Concurrent[F2]
+  ): Stream[F2, O2] =
+    parEvalMap[F2, O2](Int.MaxValue)(f)
+
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream. The number of concurrent effects is limited by the `maxConcurrent` parameter.
     *
