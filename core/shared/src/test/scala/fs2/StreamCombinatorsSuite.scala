@@ -480,6 +480,19 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  test("evalScan1") {
+    forAllF { (s: Stream[Pure, Int]) =>
+      val v = s.toVector
+      val f = (a: Int, b: Int) => a + b
+      val g = (a: Int, b: Int) => IO.pure(a + b)
+      s.covary[IO]
+        .evalScan1(g)
+        .assertEmits(
+          v.headOption.fold(Vector.empty[Int])(h => v.drop(1).scanLeft(h)(f)).toList
+        )
+    }
+  }
+
   test("every".flaky) {
     type BD = (Boolean, FiniteDuration)
     def durationSinceLastTrue[F[_]]: Pipe[F, BD, BD] = {
