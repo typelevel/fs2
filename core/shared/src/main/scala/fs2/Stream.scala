@@ -4073,10 +4073,7 @@ object Stream extends StreamLowPriority {
             }
 
           def outcomeJoiner: F[Unit] =
-            outcomes.stream
-              .evalMap(identity)
-              .compile
-              .drain
+            outcomes.stream.evalFlatten.compile.drain
               .guaranteeCase {
                 case Outcome.Succeeded(_) =>
                   stop(None) >> output.close.void
@@ -4115,6 +4112,25 @@ object Stream extends StreamLowPriority {
     /** Like [[parJoin]] but races all inner streams simultaneously. */
     def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
       parJoin(Int.MaxValue)
+  }
+
+  /** Provides syntax for a stream of `F` effects. */
+  implicit class StreamFOps[F[_], O](private val self: Stream[F, F[O]]) {
+
+    /** Sequences the inner effects into the stream. */
+    def evalFlatten: Stream[F, O] =
+      self.evalMap(identity)
+
+    /** Evaluates up to `maxConcurrent` inner effects concurrently, emitting
+      * the results in order.
+      */
+    def parEvalFlatten(
+        maxConcurrent: Int
+    )(implicit F: Concurrent[F]) = self.parEvalMap(maxConcurrent)(identity)
+
+    /** Evaluates all inner effects concurrently, emitting the results in order.
+      */
+    def parEvalFlattenUnbounded(implicit F: Concurrent[F]) = self.parEvalMapUnbounded(identity)
   }
 
   /** Provides syntax for pure streams. */
