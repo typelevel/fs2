@@ -860,11 +860,24 @@ object Pull extends PullLowPriority {
   ): F[B] = {
     import scala.collection.mutable.Stack
 
+    trait Run[-G[_], -X] {
+      def done: F[B]
+      def out(head: Chunk[X], tail: Pull[G, X, Unit]): F[B]
+      def interrupted(inter: Interrupted): F[B]
+      def fail(e: Throwable): F[B]
+    }
+
     val contsP: Stack[ContP[INothing, Nought, Any, Any]] =
       new Stack[ContP[INothing, Nought, Any, Any]](8)
 
+    val runners: Stack[Run[Pure, INothing]] =
+      new Stack[Run[Pure, INothing]](8)
+
     def getCont[Y, G[_], P]: Cont[Y, G, P] =
       contsP.pop().asInstanceOf[Cont[Y, G, P]]
+
+    def getRunner[G[_], X]: Run[G, X] =
+      runners.pop().asInstanceOf[Run[G, X]]
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
@@ -907,17 +920,10 @@ object Pull extends PullLowPriority {
           Fail(mixed)
       }
 
-    trait Run[-G[_], -X] {
-      def done: F[B]
-      def out(head: Chunk[X], tail: Pull[G, X, Unit]): F[B]
-      def interrupted(inter: Interrupted): F[B]
-      def fail(e: Throwable): F[B]
-    }
-
     var scope: Scope[F] = initScope
     var extendedTopLevelScope: Option[Scope[F]] = None
 
-    def go[G[_], X](translation: G ~> F, runner: Run[G, X], stream: Pull[G, X, Unit]): F[B] = {
+    def go[G[_], X](translation: G ~> F, stream: Pull[G, X, Unit]): F[B] = {
 
       def interruptGuard(next: => F[B]): F[B] =
         scope.isInterrupted.flatMap {
@@ -928,44 +934,43 @@ object Pull extends PullLowPriority {
               case Outcome.Canceled()         => Interrupted(scope.id, None)
               case Outcome.Succeeded(scopeId) => Interrupted(scopeId, None)
             }
-            go(translation, runner, getCont(result))
+            go(translation, getCont(result))
         }
 
       class ViewRunner() extends Run[G, X] {
-        private val prevRunner = runner
 
-        def interrupted(inter: Interrupted): F[B] = go(translation, prevRunner, getCont(inter))
-        def fail(e: Throwable): F[B] = go(translation, runner, getCont(Fail(e)))
-        def done: F[B] = go(translation, prevRunner, getCont(unit))
+        def interrupted(inter: Interrupted): F[B] = go(translation, getCont(inter))
+        def fail(e: Throwable): F[B] = go(translation, getCont(Fail(e)))
+        def done: F[B] = go(translation, getCont(unit))
 
-        def out(head: Chunk[X], tail: Pull[G, X, Unit]): F[B] = {
+        def out(head: Chunk[X], acc: Pull[G, X, Unit]): F[B] = {
           @tailrec
-          def outLoop(acc: Pull[G, X, Unit], pred: Run[G, X]): F[B] =
+          def outLoop(acc: Pull[G, X, Unit]): F[B] =
             // bit of an ugly hack to avoid a stack overflow when these accummulate
-            pred match {
-              case vrun: ViewRunner => outLoop(bindView(acc, getCont), vrun.prevRunner)
-              case _                => pred.out(head, acc)
+            getRunner match {
+              case _: ViewRunner => outLoop(bindView(acc, getCont))
+              case pred          => pred.out(head, acc)
             }
-          outLoop(tail, this)
+          outLoop(bindView(acc, getCont))
         }
 
       }
 
       class TranslateRunner[H[_]](fk: H ~> G) extends Run[H, X] {
-        def interrupted(inter: Interrupted): F[B] = go(translation, runner, getCont(inter))
-        def fail(e: Throwable): F[B] = go(translation, runner, getCont(Fail(e)))
-        def done: F[B] = go(translation, runner, getCont(unit))
+        def interrupted(inter: Interrupted): F[B] = go(translation, getCont(inter))
+        def fail(e: Throwable): F[B] = go(translation, getCont(Fail(e)))
+        def done: F[B] = go(translation, getCont(unit))
 
         def out(head: Chunk[X], tail: Pull[H, X, Unit]): F[B] =
-          runner.out(head, bindView(Translate(tail, fk), getCont))
+          getRunner.out(head, bindView(Translate(tail, fk), getCont))
       }
 
       abstract class StepRunR[Y, S] extends Run[G, Y] {
-        def done: F[B] = interruptGuard(go(translation, runner, getCont(Succeeded(None))))
+        def done: F[B] = interruptGuard(go(translation, getCont(Succeeded(None))))
 
-        def interrupted(inter: Interrupted): F[B] = go(translation, runner, getCont(inter))
+        def interrupted(inter: Interrupted): F[B] = go(translation, getCont(inter))
 
-        def fail(e: Throwable): F[B] = go(translation, runner, getCont(Fail(e)))
+        def fail(e: Throwable): F[B] = go(translation, getCont(Fail(e)))
       }
 
       class UnconsRunR[Y] extends StepRunR[Y, (Chunk[Y], Pull[G, Y, Unit])] {
@@ -973,7 +978,7 @@ object Pull extends PullLowPriority {
         def out(head: Chunk[Y], tail: Pull[G, Y, Unit]): F[B] =
           // we continue in same Scope at which we ended compilation of inner stream
           interruptGuard {
-            go(translation, runner, getCont(Succeeded(Some((head, tail)))))
+            go(translation, getCont(Succeeded(Some((head, tail)))))
           }
       }
 
@@ -985,7 +990,7 @@ object Pull extends PullLowPriority {
           // StepLeg: we shift back to the scope at which we were
           // before we started to interpret the Leg's inner stream.
           interruptGuard {
-            go(translation, runner, getCont(Succeeded(Some(leg))))
+            go(translation, getCont(Succeeded(Some(leg))))
           }
         }
       }
@@ -1018,11 +1023,11 @@ object Pull extends PullLowPriority {
           }
 
         def out(head: Chunk[Y], tail: Pull[G, Y, Unit]): F[B] =
-          go(translation, runner, bindView(unconsed(head, tail), getCont))
+          go(translation, bindView(unconsed(head, tail), getCont))
 
-        def done: F[B] = interruptGuard(go(translation, runner, getCont(unit)))
-        def interrupted(inter: Interrupted): F[B] = go(translation, runner, getCont(inter))
-        def fail(e: Throwable): F[B] = go(translation, runner, getCont(Fail(e)))
+        def done: F[B] = interruptGuard(go(translation, getCont(unit)))
+        def interrupted(inter: Interrupted): F[B] = go(translation, getCont(inter))
+        def fail(e: Throwable): F[B] = go(translation, getCont(Fail(e)))
       }
 
       def goEval[V](eval: Eval[G, V]): F[B] =
@@ -1033,7 +1038,7 @@ object Pull extends PullLowPriority {
             case Left(Outcome.Canceled())       => Interrupted(scope.id, None)
             case Left(Outcome.Succeeded(token)) => Interrupted(token, None)
           }
-          go(translation, runner, getCont(result))
+          go(translation, getCont(result))
         }
 
       def goAcquire[R](acquire: Acquire[G, R]): F[B] = {
@@ -1050,7 +1055,7 @@ object Pull extends PullLowPriority {
             case Outcome.Canceled()               => Interrupted(scope.id, None)
             case Outcome.Errored(err)             => Fail(err)
           }
-          go(translation, runner, getCont(result))
+          go(translation, getCont(result))
         }
         interruptGuard(cont)
       }
@@ -1067,7 +1072,7 @@ object Pull extends PullLowPriority {
             case Outcome.Canceled()               => Interrupted(scope.id, None)
             case Outcome.Errored(err)             => Fail(err)
           }
-          go(translation, runner, getCont(result))
+          go(translation, getCont(result))
         }
         interruptGuard(cont)
       }
@@ -1095,7 +1100,8 @@ object Pull extends PullLowPriority {
             }
             scope = childScope
             extendedTopLevelScope = newExtendedScope
-            go(translation, new ViewRunner(), bb)
+            runners.push(new ViewRunner())
+            go(translation, bb)
           }
         }
         interruptGuard(tail)
@@ -1134,7 +1140,7 @@ object Pull extends PullLowPriority {
         scope.findInLineage(close.scopeId).flatMap {
           case Some(toClose) if toClose.isRoot =>
             // Impossible - don't close root scope as a result of a `CloseScope` call
-            go(translation, runner, viewCont(unit))
+            go(translation, viewCont(unit))
 
           case Some(toClose) if extendLastTopLevelScope && toClose.level == 1 =>
             // Request to close the current top-level scope - if we're supposed to extend
@@ -1143,64 +1149,62 @@ object Pull extends PullLowPriority {
               toClose.openAncestor.flatMap { ancestor =>
                 scope = ancestor
                 extendedTopLevelScope = Some(toClose)
-                go(translation, runner, viewCont(unit))
+                go(translation, viewCont(unit))
               }
 
           case Some(toClose) =>
             toClose.close(close.exitCase).flatMap { r =>
               toClose.openAncestor.flatMap { ancestor =>
                 scope = ancestor
-                val res = closeTerminal(r, ancestor)
-                go(translation, runner, viewCont(res))
+                go(translation, viewCont(closeTerminal(r, ancestor)))
               }
             }
 
           case None =>
             // scope already closed, continue with current scope
-            val result = close.interruption.getOrElse(unit)
-            go(translation, runner, viewCont(result))
+            go(translation, viewCont(close.interruption.getOrElse(unit)))
         }
       }
 
       (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
         case tst: Translate[h, G, _] @unchecked => // y = Unit
-          val translateRunner: Run[h, X] = new TranslateRunner(tst.fk)
           val composed: h ~> F = translation.compose[h](tst.fk)
-          go[h, X](composed, translateRunner, tst.stream)
-
-        case output: Output[_] => interruptGuard(runner.out(output.values, getCont(unit)))
+          runners.push(new TranslateRunner[h](tst.fk))
+          go[h, X](composed, tst.stream)
 
         case fmout: FlatMapOutput[G, z, _] => // y = Unit
-          F.unit >> go(translation, new FlatMapR(fmout.fun), fmout.stream)
+          runners.push(new FlatMapR(fmout.fun))
+          F.unit >> go(translation, fmout.stream)
 
         case u: Uncons[G, y] @unchecked =>
-          val urr = new UnconsRunR().asInstanceOf[Run[G, y]]
+          runners.push(new UnconsRunR().asInstanceOf[Run[G, y]])
           // a Uncons is run on the same scope, without shifting.
-          F.unit >> go(translation, urr, u.stream)
+          F.unit >> go(translation, u.stream)
 
         case s: StepLeg[G, y] @unchecked =>
-          val slrr = new StepLegRunR(scope).asInstanceOf[Run[G, y]]
           scope.shiftScope(s.scope, s.toString).flatMap { newScope =>
+            runners.push(new StepLegRunR(scope).asInstanceOf[Run[G, y]])
             scope = newScope
-            go(translation, slrr, s.stream)
+            go(translation, s.stream)
           }
 
-        case _: GetScope[_]         => go(translation, runner, getCont(Succeeded(scope)))
+        case output: Output[_]      => interruptGuard(getRunner.out(output.values, getCont(unit)))
+        case _: GetScope[_]         => go(translation, getCont(Succeeded(scope)))
         case eval: Eval[G, r]       => goEval[r](eval)
         case acquire: Acquire[G, r] => goAcquire(acquire)
         case inScope: InScope[G, _] => goInScope(inScope.stream, inScope.useInterruption)
         case int: InterruptWhen[G]  => goInterruptWhen(translation(int.haltOnSignal))
         case close: CloseScope      => goCloseScope(close)
-        case _: Succeeded[_]        => runner.done
-        case failed: Fail           => runner.fail(failed.error)
-        case int: Interrupted       => runner.interrupted(int)
+        case _: Succeeded[_]        => getRunner.done
+        case failed: Fail           => getRunner.fail(failed.error)
+        case int: Interrupted       => getRunner.interrupted(int)
       }
     }
 
     val initFk: F ~> F = cats.arrow.FunctionK.id[F]
 
-    class OuterRun(initB: B) extends Run[F, O] { self =>
-      private[this] var accB: B = initB
+    val outerRun: Run[F, O] = new Run[F, O] { self =>
+      private[this] var accB: B = init
 
       override def done: F[B] = F.pure(accB)
 
@@ -1213,11 +1217,12 @@ object Pull extends PullLowPriority {
         try {
           extendedTopLevelScope = None
           accB = foldChunk(accB, head)
-          go(initFk, self, tail)
+          runners.push(self)
+          go(initFk, tail)
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case _: Action[F, O, _]  => go(initFk, self, getCont(Fail(e)))
+              case _: Action[F, O, _]  => go(initFk, getCont(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
               case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
@@ -1225,7 +1230,8 @@ object Pull extends PullLowPriority {
         }
     }
 
-    go[F, O](initFk, new OuterRun(init), stream)
+    runners.push(outerRun)
+    go[F, O](initFk, stream)
   }
 
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
