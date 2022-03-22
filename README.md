@@ -22,7 +22,7 @@ Quick links:
 
 * [Microsite][microsite]
 * [About the library](#about)
-* [How to get latest version](#getit)
+* [How to get latest version](https://fs2.io/#/getstarted/install)
 * API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api]
 * [Docs and getting help](#docs)
 
