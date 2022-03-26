@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect._
-import cats.effect.implicits._
+import cats.effect.std.Queue
 import cats.syntax.all._
 
 /** Stream aware, multiple producer, single consumer closeable channel.
@@ -105,149 +105,59 @@ sealed trait Channel[F[_], A] {
   /** Semantically blocks until the channel gets closed. */
   def closed: F[Unit]
 }
+
 object Channel {
   type Closed = Closed.type
   object Closed
 
   def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    bounded(Int.MaxValue)
+    Queue.unbounded[F, A].flatMap(impl(_))
 
   def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    bounded(0)
+    Queue.synchronous[F, A].flatMap(impl(_))
 
-  def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
-    case class State(
-        values: List[A],
-        size: Int,
-        waiting: Option[Deferred[F, Unit]],
-        producers: List[(A, Deferred[F, Unit])],
-        closed: Boolean
-    )
+  def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] =
+    Queue.bounded[F, A](capacity).flatMap(impl(_))
 
-    val open = State(List.empty, 0, None, List.empty, closed = false)
-
-    def empty(isClosed: Boolean): State =
-      if (isClosed) State(List.empty, 0, None, List.empty, closed = true)
-      else open
-
-    (F.ref(open), F.deferred[Unit]).mapN { (state, closedGate) =>
+  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, A]): F[Channel[F, A]] =
+    Concurrent[F].deferred[Unit].map { closedR =>
       new Channel[F, A] {
 
-        def sendAll: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
-            .evalMap(send)
-            .takeWhile(_.isRight)
-            .drain
+        def sendAll: Pipe[F, A, Nothing] =
+          _.evalMapChunk(send(_)).onComplete(Stream.exec(close.void)).drain
+
+        // doesn't interrupt taking in progress
+        def close: F[Either[Channel.Closed, Unit]] =
+          closedR.complete(()).map {
+            case false => Left(Channel.Closed)
+            case true  => Right(())
+          }
+
+        def isClosed: F[Boolean] = closedR.tryGet.map(_.isDefined)
+
+        def send(a: A): F[Either[Channel.Closed, Unit]] =
+          isClosed.ifM(Channel.Closed.asLeft[Unit].pure[F], q.offer(a).map(Right(_)))
+
+        def stream: Stream[F, A] = {
+          val takeN: F[Chunk[A]] =
+            q.tryTakeN(None).flatMap {
+              case None =>
+                val fallback = Spawn[F].race(q.take, closedR.get).map {
+                  case Left(a)  => Chunk.singleton(a)
+                  case Right(_) => Chunk.empty[A]
+                }
+
+                isClosed.ifM(Chunk.empty[A].pure[F], fallback)
+
+              case Some(as) =>
+                Chunk.seq(as).pure[F]
+            }
+
+          // you can do this more efficiently, just proves a point
+          Stream.eval(takeN).repeat.takeWhile(!_.isEmpty).flatMap(Stream.chunk(_))
         }
 
-        def send(a: A) =
-          F.deferred[Unit].flatMap { producer =>
-            F.uncancelable { poll =>
-              state.modify {
-                case s @ State(_, _, _, _, closed @ true) =>
-                  (s, Channel.closed.pure[F])
-
-                case State(values, size, waiting, producers, closed @ false) =>
-                  if (size < capacity)
-                    (
-                      State(a :: values, size + 1, None, producers, false),
-                      notifyStream(waiting)
-                    )
-                  else
-                    (
-                      State(values, size, None, (a, producer) :: producers, false),
-                      notifyStream(waiting) <* waitOnBound(producer, poll)
-                    )
-              }.flatten
-            }
-          }
-
-        def close =
-          state
-            .modify {
-              case s @ State(_, _, _, _, closed @ true) =>
-                (s, Channel.closed.pure[F])
-
-              case State(values, size, waiting, producers, closed @ false) =>
-                (
-                  State(values, size, None, producers, true),
-                  notifyStream(waiting) <* signalClosure
-                )
-            }
-            .flatten
-            .uncancelable
-
-        def isClosed = closedGate.tryGet.map(_.isDefined)
-
-        def closed = closedGate.get
-
-        def stream = consumeLoop.stream
-
-        def consumeLoop: Pull[F, A, Unit] =
-          Pull.eval {
-            F.deferred[Unit].flatMap { waiting =>
-              state
-                .modify { state =>
-                  if (shouldEmit(state)) (empty(state.closed), state)
-                  else (state.copy(waiting = waiting.some), state)
-                }
-                .flatMap {
-                  case s @ State(values, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
-                    if (shouldEmit(s)) {
-                      var size = stateSize
-                      var allValues = values
-                      var unblock = F.unit
-
-                      producers.foreach { case (value, producer) =>
-                        size += 1
-                        allValues = value :: allValues
-                        unblock = unblock <* producer.complete(())
-                      }
-
-                      val toEmit = makeChunk(allValues, size)
-
-                      unblock.as(Pull.output(toEmit) >> consumeLoop)
-                    } else {
-                      F.pure(
-                        if (closed) Pull.done
-                        else Pull.eval(waiting.get) >> consumeLoop
-                      )
-                    }
-                }
-                .uncancelable
-            }
-          }.flatten
-
-        def notifyStream(waitForChanges: Option[Deferred[F, Unit]]) =
-          waitForChanges.traverse(_.complete(())).as(rightUnit)
-
-        def waitOnBound(producer: Deferred[F, Unit], poll: Poll[F]) =
-          poll(producer.get).onCancel {
-            state.update { s =>
-              s.copy(producers = s.producers.filter(_._2 ne producer))
-            }
-          }
-
-        def signalClosure = closedGate.complete(())
-
-        @inline private def shouldEmit(s: State) = s.values.nonEmpty || s.producers.nonEmpty
-
-        private def makeChunk(allValues: List[A], size: Int): Chunk[A] = {
-          val arr = new Array[Any](size)
-          var i = size - 1
-          var values = allValues
-          while (i >= 0) {
-            arr(i) = values.head
-            values = values.tail
-            i -= 1
-          }
-          Chunk.array(arr).asInstanceOf[Chunk[A]]
-        }
+        def closed: F[Unit] = closedR.get
       }
     }
-  }
-
-  // allocate once
-  private final val closed: Either[Closed, Unit] = Left(Closed)
-  private final val rightUnit: Either[Closed, Unit] = Right(())
 }
