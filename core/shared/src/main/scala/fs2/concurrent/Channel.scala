@@ -142,9 +142,22 @@ object Channel {
           val takeN: F[Chunk[A]] =
             q.tryTakeN(None).flatMap {
               case None =>
-                val fallback = Spawn[F].race(q.take, closedR.get).map {
-                  case Left(a)  => Chunk.singleton(a)
-                  case Right(_) => Chunk.empty[A]
+                val fallback = MonadCancel[F].uncancelable { poll =>
+                  poll(Spawn[F].racePair(q.take, closedR.get)).flatMap {
+                    case Left((oca, fiber)) =>
+                      oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
+
+                    case Right((fiber, ocb)) =>
+                      ocb.embedNever.flatMap { _ =>
+                        (fiber.cancel *> fiber.join).flatMap { oca =>
+                          oca.fold(
+                            Chunk.empty[A].pure[F],
+                            _ => Chunk.empty[A].pure[F],
+                            _.map(Chunk.singleton(_))
+                          )
+                        }
+                      }
+                  }
                 }
 
                 isClosed.ifM(Chunk.empty[A].pure[F], fallback)
