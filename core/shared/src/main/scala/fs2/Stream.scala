@@ -4126,11 +4126,7 @@ object Stream extends StreamLowPriority {
       */
     def parEvalFlatten(
         maxConcurrent: Int
-    )(implicit F: Concurrent[F]) = self.parEvalMap(maxConcurrent)(identity)
-
-    /** Evaluates all inner effects concurrently, emitting the results in order.
-      */
-    def parEvalFlattenUnbounded(implicit F: Concurrent[F]) = self.parEvalMapUnbounded(identity)
+    )(implicit F: Concurrent[F]): Stream[F, O] = self.parEvalMap(maxConcurrent)(identity)
   }
 
   /** Provides syntax for pure streams. */
