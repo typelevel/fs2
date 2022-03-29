@@ -22,6 +22,7 @@
 package fs2
 
 import scala.scalajs.js.typedarray.ArrayBuffer
+import scala.scalajs.js.typedarray.Int8Array
 import scala.scalajs.js.typedarray.TypedArrayBuffer
 import scala.scalajs.js.typedarray.Uint8Array
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
@@ -49,9 +50,11 @@ trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
 
   def jsArrayBuffer(buffer: ArrayBuffer): Chunk[Byte] =
-    byteBuffer(TypedArrayBuffer.wrap(buffer))
+    uint8Array(new Uint8Array(buffer))
 
   def uint8Array(array: Uint8Array): Chunk[Byte] =
-    jsArrayBuffer(array.buffer)
+    byteBuffer(
+      TypedArrayBuffer.wrap(new Int8Array(array.buffer, array.byteOffset, array.byteLength))
+    )
 
 }
