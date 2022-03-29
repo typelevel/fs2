@@ -22,7 +22,6 @@
 package fs2
 
 import cats.effect.kernel.Sync
-import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream}
 
@@ -38,12 +37,27 @@ package object io extends ioplatform {
       fis: F[InputStream],
       chunkSize: Int,
       closeAfterUse: Boolean = true
+  )(implicit F: Sync[F]): Stream[F, Byte] = {
+    val newArray = F.delay(new Array[Byte](chunkSize))
+    readInputStreamGeneric(fis, newArray, chunkSize, closeAfterUse)
+  }
+
+  /** Whenever a read from the Input has too few bytes to fill the buffer,
+    * so that at least `minShare` bytes are left after the read ones, then
+    * the next read will use the same array of bytes, after the last ones.
+    * This does not prevent emitting those as a chunk.
+    */
+  def readInputStreamShare[F[_]](
+      fis: F[InputStream],
+      maxChunkSize: Int,
+      minShare: Int = 64,
+      closeAfterUse: Boolean = true
   )(implicit F: Sync[F]): Stream[F, Byte] =
-    readInputStreamGeneric(
-      fis,
-      F.delay(new Array[Byte](chunkSize)),
-      closeAfterUse
-    )
+    if (maxChunkSize >= minShare) {
+      val newArray = F.delay(new Array[Byte](maxChunkSize))
+      readInputStreamGeneric(fis, newArray, minShare, closeAfterUse)
+    } else
+      Stream.raiseError[F](new Exception("minShare should be smaller than chunk size"))
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -57,39 +71,43 @@ package object io extends ioplatform {
       fis: F[InputStream],
       chunkSize: Int,
       closeAfterUse: Boolean = true
-  )(implicit F: Sync[F]): Stream[F, Byte] =
-    readInputStreamGeneric(
-      fis,
-      F.pure(new Array[Byte](chunkSize)),
-      closeAfterUse
-    )
-
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit
-      F: Sync[F]
-  ): F[Option[Chunk[Byte]]] =
-    F.blocking(is.read(buf)).map { numBytes =>
-      if (numBytes < 0) None
-      else if (numBytes == 0) Some(Chunk.empty)
-      else if (numBytes < buf.size) Some(Chunk.array(buf, 0, numBytes))
-      else Some(Chunk.array(buf))
-    }
+  )(implicit F: Sync[F]): Stream[F, Byte] = {
+    val newArray = F.pure(new Array[Byte](chunkSize))
+    readInputStreamGeneric(fis, newArray, chunkSize, closeAfterUse)
+  }
 
   private def readInputStreamGeneric[F[_]](
-      fis: F[InputStream],
+      openInputStream: F[InputStream],
       buf: F[Array[Byte]],
+      minShare: Int,
       closeAfterUse: Boolean
   )(implicit F: Sync[F]): Stream[F, Byte] = {
-    def useIs(is: InputStream) =
-      Stream
-        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)))
-        .repeat
-        .unNoneTerminate
-        .flatMap(c => Stream.chunk(c))
+    def readLoop(input: InputStream, barr: Array[Byte], offset: Int): Pull[F, Byte, Unit] = {
+      val available = barr.length - offset
 
-    if (closeAfterUse)
-      Stream.bracket(fis)(is => Sync[F].blocking(is.close())).flatMap(useIs)
-    else
-      Stream.eval(fis).flatMap(useIs)
+      Pull.eval(F.blocking(input.read(barr, offset, available))).flatMap { numBytes =>
+        if (numBytes < 0) // stream closed or no more bytes
+          Pull.done
+        else if (numBytes == 0)
+          readLoop(input, barr, offset) // no change
+        else
+          Pull.output(Chunk.array(barr, offset, numBytes)) >> {
+            val nextOffset = offset + numBytes
+            if (barr.length - nextOffset >= minShare)
+              readLoop(input, barr, nextOffset)
+            else
+              Pull.eval(buf).flatMap(readLoop(input, _, 0))
+          }
+      }
+    }
+
+    val openStream: Stream[F, InputStream] =
+      if (closeAfterUse)
+        Stream.bracket(openInputStream)(input => F.blocking(input.close()))
+      else
+        Stream.eval(openInputStream)
+
+    openStream.flatMap(input => Pull.eval(buf).flatMap(readLoop(input, _, 0)).streamNoScope)
   }
 
   /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
