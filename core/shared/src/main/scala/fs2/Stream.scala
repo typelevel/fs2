@@ -3790,7 +3790,10 @@ object Stream extends StreamLowPriority {
       )(s)
       .stream
 
-  /** Provides syntax for streams that are invariant in `F` and `O`. */
+  /** A view of `Stream` that removes the variance from the type parameters. This allows
+    * defining syntax in which the type parameters appear in contravariant (i.e. input)
+    * position, which would fail to compile if defined as instance methods.
+    */
   implicit final class InvariantOps[F[_], O](private val self: Stream[F, O]) extends AnyVal {
 
     /** Lifts this stream to the specified effect type.
