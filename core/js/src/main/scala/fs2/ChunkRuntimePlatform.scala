@@ -22,7 +22,6 @@
 package fs2
 
 import scala.scalajs.js.typedarray.ArrayBuffer
-import scala.scalajs.js.typedarray.Int8Array
 import scala.scalajs.js.typedarray.TypedArrayBuffer
 import scala.scalajs.js.typedarray.Uint8Array
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
@@ -54,7 +53,7 @@ trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
 
   def uint8Array(array: Uint8Array): Chunk[Byte] =
     byteBuffer(
-      TypedArrayBuffer.wrap(new Int8Array(array.buffer, array.byteOffset, array.byteLength))
+      TypedArrayBuffer.wrap(array.buffer, array.byteOffset, array.byteLength)
     )
 
 }
