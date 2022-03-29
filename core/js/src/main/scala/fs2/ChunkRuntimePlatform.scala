@@ -52,6 +52,8 @@ trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
     byteBuffer(TypedArrayBuffer.wrap(buffer))
 
   def uint8Array(array: Uint8Array): Chunk[Byte] =
-    jsArrayBuffer(array.buffer)
+    byteBuffer(
+      TypedArrayBuffer.wrap(array.buffer, array.byteOffset, array.byteLength)
+    )
 
 }
