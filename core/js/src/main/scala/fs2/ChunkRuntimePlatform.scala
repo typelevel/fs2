@@ -50,7 +50,7 @@ trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
 
   def jsArrayBuffer(buffer: ArrayBuffer): Chunk[Byte] =
-    uint8Array(new Uint8Array(buffer))
+    byteBuffer(TypedArrayBuffer.wrap(buffer))
 
   def uint8Array(array: Uint8Array): Chunk[Byte] =
     byteBuffer(
