@@ -89,6 +89,11 @@ class PathSuite extends Fs2Suite {
     )
   }
 
+  test("names") {
+    assertEquals(Path("foo").names, List(Path("foo")))
+    assertEquals(Path("foo/bar").names, List(Path("foo"), Path("bar")))
+  }
+
   test("extName") {
     assertEquals(Path("index.html").extName, ".html")
     assertEquals(Path("index.coffee.md").extName, ".md")
@@ -96,6 +101,10 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("index").extName, "")
     assertEquals(Path(".index").extName, "")
     assertEquals(Path(".index.md").extName, ".md")
+  }
+
+  test("endsWith") {
+    assert(!Path("foo").endsWith(".xml"))
   }
 
   test("startsWith/endsWith") {
