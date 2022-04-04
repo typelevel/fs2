@@ -26,7 +26,7 @@ import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.{Eval => _, _}
 import cats.data.Ior
-import cats.effect.{Concurrent, SyncIO}
+import cats.effect.Concurrent
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
 import cats.effect.std.{Console, Queue, QueueSink, QueueSource, Semaphore}
@@ -4131,7 +4131,7 @@ object Stream extends StreamLowPriority {
 
     /** Runs this pure stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on pure streams. */
     def to(c: Collector[O]): c.Out =
-      self.covary[SyncIO].compile.to(c).unsafeRunSync()
+      self.compile.to(c)
 
     /** Runs this pure stream and returns the emitted elements in a list. Note: this method is only available on pure streams. */
     def toList: List[O] = to(List)
@@ -4159,7 +4159,7 @@ object Stream extends StreamLowPriority {
 
     /** Runs this fallible stream and returns the emitted elements in a collection of the specified type. Note: this method is only available on fallible streams. */
     def to(c: Collector[O]): Either[Throwable, c.Out] =
-      lift[SyncIO].compile.to(c).attempt.unsafeRunSync()
+      self.compile.to(c)
 
     /** Runs this fallible stream and returns the emitted elements in a list. Note: this method is only available on fallible streams. */
     def toList: Either[Throwable, List[O]] = to(List)
