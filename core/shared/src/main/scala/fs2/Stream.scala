@@ -2963,7 +2963,7 @@ object Stream extends StreamLowPriority {
     * res1: Vector[Either[Throwable,Nothing]] = Vector(Left(java.lang.RuntimeException))
     * }}}
     */
-  def attemptEval[F[x] >: Pure[x], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
+  def attemptEval[F[_], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
     new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
 
   /** Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
@@ -3022,13 +3022,13 @@ object Stream extends StreamLowPriority {
     * @param acquire resource to acquire at start of stream
     * @param release function which returns an effect that releases the resource
     */
-  def bracket[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
+  def bracket[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
     bracketCase(acquire)((r, _) => release(r))
 
   /** Like [[bracket]] but no scope is introduced, causing resource finalization to
     * occur at the end of the current scope at the time of acquisition.
     */
-  def bracketWeak[F[x] >: Pure[x], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
+  def bracketWeak[F[_], R](acquire: F[R])(release: R => F[Unit]): Stream[F, R] =
     bracketCaseWeak(acquire)((r, _) => release(r))
 
   /** Like [[bracket]] but the release action is passed an `ExitCase[Throwable]`.
@@ -3036,7 +3036,7 @@ object Stream extends StreamLowPriority {
     * `ExitCase.Canceled` is passed to the release action in the event of either stream interruption or
     * overall compiled effect cancelation.
     */
-  def bracketCase[F[x] >: Pure[x], R](
+  def bracketCase[F[_], R](
       acquire: F[R]
   )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
     bracketCaseWeak(acquire)(release).scope
@@ -3044,14 +3044,14 @@ object Stream extends StreamLowPriority {
   /** Like [[bracketCase]] but no scope is introduced, causing resource finalization to
     * occur at the end of the current scope at the time of acquisition.
     */
-  def bracketCaseWeak[F[x] >: Pure[x], R](
+  def bracketCaseWeak[F[_], R](
       acquire: F[R]
   )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
     new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
 
   /** Like [[bracketCase]] but the acquire action may be canceled.
     */
-  def bracketFull[F[x] >: Pure[x], R](
+  def bracketFull[F[_], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
       F: MonadCancel[F, _]
@@ -3061,7 +3061,7 @@ object Stream extends StreamLowPriority {
   /** Like [[bracketFull]] but no scope is introduced, causing resource finalization to
     * occur at the end of the current scope at the time of acquisition.
     */
-  def bracketFullWeak[F[x] >: Pure[x], R](
+  def bracketFullWeak[F[_], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
       F: MonadCancel[F, _]
