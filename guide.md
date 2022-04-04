@@ -358,28 +358,28 @@ A pull that writes a single a single output of type `Int` can be constructed wit
 ```scala
 import fs2._
 val p1 = Pull.output1(1)
-// p1: Pull[[x]Pure[x], Int, Unit] = Output(values = Chunk(1))
+// p1: Pull[Nothing, Int, Unit] = Output(values = Chunk(1))
 ```
 
 This can be converted directly to a stream equivalent to `Stream(1)`.
 
 ```scala
 val s1 = p1.stream
-// s1: Stream[[x]Pure[x], Int] = Stream(..)
+// s1: Stream[Nothing, Int] = Stream(..)
 ```
 
 Pulls form a monad in their result `R` and can be composed using monadic operations. The following code produces a `Pull` corresponding to `Stream(1, 2)`.
 
 ```scala
 p1 >> Pull.output1(2)
-// res34: Pull[[x]Pure[x], Int, Unit] = <function1>
+// res34: Pull[Nothing, Int, Unit] = <function1>
 ```
 
 A `Pull` can be created from a stream using a variety of operations accessed under the `pull` function. For example `echo` converts a stream to its corresponding pull representation.
 
 ```scala
 s1.pull.echo
-// res35: Pull[[x]Pure[x], Int, Unit] = InScope(
+// res35: Pull[Nothing, Int, Unit] = InScope(
 //   stream = Output(values = Chunk(1)),
 //   useInterruption = false
 // )
@@ -390,7 +390,7 @@ A more useful pull is created by `uncons`. This constructs a pull that pulls the
 
 ```scala
 s1.pull.uncons
-// res36: Pull[[x]Pure[x], INothing, Option[(Chunk[Int], Stream[[x]Pure[x], Int])]] = <function1>
+// res36: Pull[Nothing, INothing, Option[(Chunk[Int], Stream[Nothing, Int])]] = <function1>
 ```
 
 Let’s examine its result type.
@@ -590,10 +590,10 @@ val program =
 // program: Stream[[x]IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 18:48:24.082500479
-// 18:48:25.081192942
-// 18:48:26.080641414
-// 18:48:27.083031457
+// 18:48:58.279455222
+// 18:48:59.277940048
+// 18:49:00.277522289
+// 18:49:01.277443034
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -635,10 +635,10 @@ val program1 =
 // program1: Stream[[x]IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 18:48:29.083404637
-// 18:48:30.083259377
-// 18:48:31.083394430
-// 18:48:32.083308736
+// 18:49:03.280674067
+// 18:49:04.280753513
+// 18:49:05.280790160
+// 18:49:06.281801431
 ```
 
 ### Talking to the external world
@@ -671,7 +671,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@7b07fcd1
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@83edd9b
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[[x]IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -804,13 +804,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$11199/0x0000000802aedcd0@39ff561c
+//         resource = cats.effect.kernel.Resource$$$Lambda$11104/0x0000000802aba8a0@742f6a59
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$11779/0x0000000802c37298@477f1c3d
+//       fs = cats.effect.kernel.Resource$$Lambda$11677/0x0000000802bfec00@62a37bfe
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$11780/0x0000000802c37668@5c191cb8
+//     fs = cats.effect.std.Dispatcher$$$Lambda$11678/0x0000000802bfefd0@3589fba9
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$11779/0x0000000802c37298@18bc829e
+//   fs = cats.effect.kernel.Resource$$Lambda$11677/0x0000000802bfec00@4ba53a86
 // )
 ```
 
@@ -822,19 +822,19 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Allocate(
-//         resource = cats.effect.kernel.Resource$$$Lambda$11199/0x0000000802aedcd0@5bb07823
+//         resource = cats.effect.kernel.Resource$$$Lambda$11104/0x0000000802aba8a0@44d7ec09
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$11779/0x0000000802c37298@6491199c
+//       fs = cats.effect.kernel.Resource$$Lambda$11677/0x0000000802bfec00@3d5213e6
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$11780/0x0000000802c37668@70f9256a
+//     fs = cats.effect.std.Dispatcher$$$Lambda$11678/0x0000000802bfefd0@47fce356
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$11779/0x0000000802c37298@cadf199
+//   fs = cats.effect.kernel.Resource$$Lambda$11677/0x0000000802bfec00@25ef9025
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res56: IO[List[Int]] = Uncancelable(
-//   body = cats.effect.IO$$$Lambda$11204/0x0000000802aef460@5404f14f,
+//   body = cats.effect.IO$$$Lambda$11109/0x0000000802abc030@5ea38735,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
