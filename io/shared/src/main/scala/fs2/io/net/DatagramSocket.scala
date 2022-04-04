@@ -50,7 +50,7 @@ trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
 
   /** Writes supplied datagrams to this udp socket.
     */
-  def writes: Pipe[F, Datagram, INothing]
+  def writes: Pipe[F, Datagram, Nothing]
 
   /** Returns the local address of this udp socket. */
   def localAddress: F[SocketAddress[IpAddress]]

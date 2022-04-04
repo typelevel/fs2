@@ -152,14 +152,14 @@ private[fs2] trait ioplatform {
   def writeWritable[F[_]](
       writable: F[Writable],
       endAfterUse: Boolean = true
-  )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
     in =>
       Stream
         .eval(writable.map(_.asInstanceOf[streamMod.Writable]))
         .flatMap { writable =>
           def go(
               s: Stream[F, Byte]
-          ): Pull[F, INothing, Unit] = s.pull.uncons.flatMap {
+          ): Pull[F, Nothing, Unit] = s.pull.uncons.flatMap {
             case Some((head, tail)) =>
               Pull.eval {
                 F.async_[Unit] { cb =>
@@ -307,13 +307,13 @@ private[fs2] trait ioplatform {
   def stdin[F[_]: Async](ignored: Int): Stream[F, Byte] = stdin
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Async]: Pipe[F, Byte, INothing] = stdoutAsync
+  def stdout[F[_]: Async]: Pipe[F, Byte, Nothing] = stdoutAsync
 
-  private def stdoutAsync[F[_]: Async]: Pipe[F, Byte, INothing] =
+  private def stdoutAsync[F[_]: Async]: Pipe[F, Byte, Nothing] =
     writeWritable(processMod.stdout.asInstanceOf[Writable].pure, false)
 
   /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  def stderr[F[_]: Async]: Pipe[F, Byte, INothing] =
+  def stderr[F[_]: Async]: Pipe[F, Byte, Nothing] =
     writeWritable(processMod.stderr.asInstanceOf[Writable].pure, false)
 
   /** Writes this stream to standard output asynchronously, converting each element to
@@ -321,7 +321,7 @@ private[fs2] trait ioplatform {
     */
   def stdoutLines[F[_]: Async, O: Show](
       charset: Charset = StandardCharsets.UTF_8
-  ): Pipe[F, O, INothing] =
+  ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdoutAsync)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
@@ -344,13 +344,13 @@ private[fs2] trait ioplatform {
     readInputStream(Sync[F].blocking(System.in), bufSize, false)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  private[fs2] def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] = stdoutSync
+  private[fs2] def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] = stdoutSync
 
-  private def stdoutSync[F[_]: Sync]: Pipe[F, Byte, INothing] =
+  private def stdoutSync[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
   /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  private[fs2] def stderr[F[_]: Sync]: Pipe[F, Byte, INothing] =
+  private[fs2] def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.err), false)
 
   /** Writes this stream to standard output asynchronously, converting each element to
@@ -358,7 +358,7 @@ private[fs2] trait ioplatform {
     */
   private[fs2] def stdoutLines[F[_]: Sync, O: Show](
       charset: Charset
-  ): Pipe[F, O, INothing] =
+  ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdoutSync)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */

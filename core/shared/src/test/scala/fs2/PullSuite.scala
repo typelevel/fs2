@@ -67,7 +67,7 @@ class PullSuite extends Fs2Suite {
 
   test("loop is stack safe") {
     val stackUnsafeSize = if (isJVM) 1000000 else 10000
-    def func(s: Int): Pull[Pure, INothing, Option[Int]] =
+    def func(s: Int): Pull[Pure, Nothing, Option[Int]] =
       s match {
         case `stackUnsafeSize` => Pull.pure(None)
         case _                 => Pull.pure(Some(s + 1))
@@ -97,7 +97,7 @@ class PullSuite extends Fs2Suite {
 
   test("loopEither is stack safe") {
     val stackUnsafeSize = if (isJVM) 1000000 else 10000
-    def func(s: Int): Pull[Pure, INothing, Either[Int, Unit]] =
+    def func(s: Int): Pull[Pure, Nothing, Either[Int, Unit]] =
       s match {
         case `stackUnsafeSize` => Pull.pure(Right(()))
         case _                 => Pull.pure(Left(s + 1))

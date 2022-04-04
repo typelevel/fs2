@@ -359,7 +359,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def size(path: Path): F[Long] =
       stat(path).map(_.size.toLong)
 
-    override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing] =
+    override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
         in.through {
           writeWritable(
