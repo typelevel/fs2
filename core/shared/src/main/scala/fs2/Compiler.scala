@@ -54,7 +54,7 @@ import scala.annotation.implicitNotFound
   * Support for stream interruption requires compilation to an effect which has a `Concurrent` instance.
   */
 @implicitNotFound(
-  "Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope"
+  "Cannot find an implicit Compiler[${F}, ${G}]. This typically means you need a Concurrent[${F}] in scope"
 )
 sealed trait Compiler[F[_], G[_]] {
   private[fs2] val target: Monad[G]
