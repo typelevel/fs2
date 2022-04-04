@@ -113,7 +113,7 @@ private[net] trait DatagramSocketCompanionPlatform {
       )
     }
 
-    override def writes: Pipe[F, Datagram, INothing] = _.foreach(write)
+    override def writes: Pipe[F, Datagram, Nothing] = _.foreach(write)
 
     override def localAddress: F[SocketAddress[IpAddress]] =
       F.delay {

@@ -78,7 +78,7 @@ trait BaseFileSuite {
       .drain
       .as(file)
 
-  protected def modifyLater(file: Path): Stream[IO, INothing] =
+  protected def modifyLater(file: Path): Stream[IO, Nothing] =
     Stream
       .range(0, 4)
       .map(_.toByte)

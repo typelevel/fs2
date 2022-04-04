@@ -356,7 +356,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   def writeAll(
       path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, INothing] =
+  ): Pipe[F, Byte, Nothing] =
     writeAll(Path.fromNioPath(path), Flags.fromOpenOptions(StandardOpenOption.WRITE +: flags))
 
   /** Returns a `WriteCursor` for the specified path.
@@ -383,7 +383,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
       computePath: F[JPath],
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, INothing] =
+  ): Pipe[F, Byte, Nothing] =
     writeRotate(
       computePath.map(Path.fromNioPath),
       limit,

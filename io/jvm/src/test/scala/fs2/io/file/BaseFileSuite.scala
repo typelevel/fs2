@@ -64,7 +64,7 @@ trait BaseFileSuite extends Fs2Suite {
   protected def modify(file: Path): IO[Path] =
     IO(JFiles.write(file.toNioPath, Array[Byte](0, 1, 2, 3))).as(file)
 
-  protected def modifyLater(file: Path): Stream[IO, INothing] =
+  protected def modifyLater(file: Path): Stream[IO, Nothing] =
     Stream
       .range(0, 4)
       .map(_.toByte)

@@ -81,7 +81,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def reads: Stream[F, Byte] =
         Stream.repeatEval(read(8192)).unNoneTerminate.unchunks
 
-      def writes: Pipe[F, Byte, INothing] =
+      def writes: Pipe[F, Byte, Nothing] =
         _.chunks.foreach(write)
 
       def endOfOutput: F[Unit] =

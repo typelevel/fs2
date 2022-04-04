@@ -97,7 +97,7 @@ class StreamInterruptSuite extends Fs2Suite {
       val interrupt =
         Stream.sleep_[IO](20.millis).compile.drain.attempt
 
-      def loop: Stream[IO, INothing] =
+      def loop: Stream[IO, Nothing] =
         Stream.eval(IO.unit) >> loop
 
       loop

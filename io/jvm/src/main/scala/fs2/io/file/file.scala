@@ -86,7 +86,7 @@ package object file {
   def writeAll[F[_]: Async](
       path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, INothing] = Files[F].writeAll(path, flags)
+  ): Pipe[F, Byte, Nothing] = Files[F].writeAll(path, flags)
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
@@ -100,7 +100,7 @@ package object file {
       computePath: F[JPath],
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  )(implicit F: Async[F]): Pipe[F, Byte, INothing] =
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
     Files[F].writeRotate(computePath, limit, flags)
 
   /** Creates a [[Watcher]] for the default file system.

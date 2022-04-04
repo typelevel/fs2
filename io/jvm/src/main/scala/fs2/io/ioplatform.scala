@@ -119,11 +119,11 @@ private[fs2] trait ioplatform {
     readInputStream(Sync[F].blocking(System.in), bufSize, false)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
+  def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
   /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  def stderr[F[_]: Sync]: Pipe[F, Byte, INothing] =
+  def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.err), false)
 
   /** Writes this stream to standard output asynchronously, converting each element to
@@ -131,7 +131,7 @@ private[fs2] trait ioplatform {
     */
   def stdoutLines[F[_]: Sync, O: Show](
       charset: Charset = StandardCharsets.UTF_8
-  ): Pipe[F, O, INothing] =
+  ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */

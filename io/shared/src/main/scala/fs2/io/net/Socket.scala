@@ -68,7 +68,7 @@ trait Socket[F[_]] {
 
   /** Writes the supplied stream of bytes to this socket via `write` semantics.
     */
-  def writes: Pipe[F, Byte, INothing]
+  def writes: Pipe[F, Byte, Nothing]
 }
 
 object Socket extends SocketCompanionPlatform
