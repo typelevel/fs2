@@ -328,7 +328,7 @@ object Pull extends PullLowPriority {
   /** A pull that performs no effects, emits no outputs, and
     * always terminates successfully with a unit result.
     */
-  val done: Pull[Pure, Nothing, Unit] = unit
+  val done: Pull[Nothing, Nothing, Unit] = unit
 
   /** Creates an pull that performs no effects, emits no outputs,
     * and terminates successfully with the supplied value as its result.
@@ -618,8 +618,8 @@ object Pull extends PullLowPriority {
    * or interrupted from another concurrent pull.
    */
   private sealed abstract class Terminal[+R]
-      extends Pull[Pure, Nothing, R]
-      with ViewL[Pure, Nothing]
+      extends Pull[Nothing, Nothing, R]
+      with ViewL[Nothing, Nothing]
 
   private final case class Succeeded[+R](r: R) extends Terminal[R] {
     override def map[R2](f: R => R2): Terminal[R2] =
@@ -650,8 +650,8 @@ object Pull extends PullLowPriority {
     protected def cont(r: Terminal[Y]): Pull[F, O, X]
   }
 
-  private object IdContP extends ContP[Unit, Pure, Nothing, Unit] {
-    def cont(r: Terminal[Unit]): Pull[Pure, Nothing, Unit] = r
+  private object IdContP extends ContP[Unit, Nothing, Nothing, Unit] {
+    def cont(r: Terminal[Unit]): Pull[Nothing, Nothing, Unit] = r
   }
 
   private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X])
@@ -726,7 +726,7 @@ object Pull extends PullLowPriority {
   private sealed abstract class Action[+F[_], +O, +R] extends Pull[F, O, R] with ViewL[F, O]
 
   /* An action that emits a non-empty chunk of outputs. */
-  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
+  private final case class Output[+O](values: Chunk[O]) extends Action[Nothing, O, Unit]
 
   /* A translation point, that wraps an inner stream written in another effect. */
   private final case class Translate[G[_], F[_], +O](
@@ -747,7 +747,7 @@ object Pull extends PullLowPriority {
    * @param stream             Stream to step
    */
   private final case class Uncons[+F[_], +O](stream: Pull[F, O, Unit])
-      extends Action[Pure, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]]
+      extends Action[Nothing, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]]
 
   /** Steps through the stream, providing a `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
@@ -756,7 +756,7 @@ object Pull extends PullLowPriority {
     * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
-      extends Action[Pure, Nothing, Option[Stream.StepLeg[F, O]]]
+      extends Action[Nothing, Nothing, Option[Stream.StepLeg[F, O]]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output. */
   private sealed abstract class AlgEffect[+F[_], R] extends Action[F, Nothing, R]
@@ -779,7 +779,7 @@ object Pull extends PullLowPriority {
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
-  private abstract class CloseScope extends AlgEffect[Pure, Unit] {
+  private abstract class CloseScope extends AlgEffect[Nothing, Unit] {
     def scopeId: Unique.Token
     def interruption: Option[Interrupted]
     def exitCase: ExitCase
@@ -801,7 +801,7 @@ object Pull extends PullLowPriority {
     def interruption: Option[Interrupted] = None
   }
 
-  private final case class GetScope[F[_]]() extends AlgEffect[Pure, Scope[F]]
+  private final case class GetScope[F[_]]() extends AlgEffect[Nothing, Scope[F]]
 
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
@@ -906,12 +906,12 @@ object Pull extends PullLowPriority {
     }
     type CallRun[+G[_], +X, End] = Run[G, X, End] => End
 
-    object TheBuildR extends Run[Pure, Nothing, F[CallRun[Pure, Nothing, F[Nothing]]]] {
-      type TheRun = Run[Pure, Nothing, F[Nothing]]
+    object TheBuildR extends Run[Nothing, Nothing, F[CallRun[Nothing, Nothing, F[Nothing]]]] {
+      type TheRun = Run[Nothing, Nothing, F[Nothing]]
       def fail(e: Throwable) = F.raiseError(e)
       def done(scope: Scope[F]) =
         F.pure((cont: TheRun) => cont.done(scope))
-      def out(head: Chunk[Nothing], scope: Scope[F], tail: Pull[Pure, Nothing, Unit]) =
+      def out(head: Chunk[Nothing], scope: Scope[F], tail: Pull[Nothing, Nothing, Unit]) =
         F.pure((cont: TheRun) => cont.out(head, scope, tail))
       def interrupted(i: Interrupted) =
         F.pure((cont: TheRun) => cont.interrupted(i))
