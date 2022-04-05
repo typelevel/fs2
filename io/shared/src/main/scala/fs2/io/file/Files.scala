@@ -370,12 +370,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * Use `writeAll(path, Flags.Append)` to append to the end of
     * the file, or pass other flags to further customize behavior.
     */
-  def writeAll(path: Path): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
+  def writeAll(path: Path): Pipe[F, Byte, Nothing] = writeAll(path, Flags.Write)
 
   /** Writes all data to the file at the specified path, using the
     * specified flags to open the file.
     */
-  def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing]
+  def writeAll(path: Path, flags: Flags): Pipe[F, Byte, Nothing]
 
   /** Returns a `WriteCursor` for the specified path.
     */
@@ -398,7 +398,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       computePath: F[Path],
       limit: Long,
       flags: Flags
-  ): Pipe[F, Byte, INothing]
+  ): Pipe[F, Byte, Nothing]
 }
 
 object Files extends FilesCompanionPlatform {
@@ -486,7 +486,7 @@ object Files extends FilesCompanionPlatform {
     def writeAll(
         path: Path,
         flags: Flags
-    ): Pipe[F, Byte, INothing] =
+    ): Pipe[F, Byte, Nothing] =
       in =>
         Stream
           .resource(writeCursor(path, flags))
@@ -512,7 +512,7 @@ object Files extends FilesCompanionPlatform {
         computePath: F[Path],
         limit: Long,
         flags: Flags
-    ): Pipe[F, Byte, INothing] = {
+    ): Pipe[F, Byte, Nothing] = {
       def openNewFile: Resource[F, FileHandle[F]] =
         Resource
           .eval(computePath)

@@ -184,7 +184,7 @@ object Topic {
                 .as(chan.stream)
             }
 
-        def publish: Pipe[F, A, INothing] = { in =>
+        def publish: Pipe[F, A, Nothing] = { in =>
           (in ++ Stream.exec(close.void))
             .evalMap(publish1)
             .takeWhile(_.isRight)

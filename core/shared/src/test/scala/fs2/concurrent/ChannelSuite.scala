@@ -94,6 +94,19 @@ class ChannelSuite extends Fs2Suite {
     p.assertEquals(v)
   }
 
+  test("trySend does not block") {
+    val v = Vector(1, 2, 3, 4)
+    val capacity = 3
+    val p = for {
+      chan <- Channel.bounded[IO, Int](capacity)
+      _ <- v.traverse(chan.trySend)
+      _ <- chan.close
+      res <- chan.stream.chunks.take(1).compile.lastOrError
+    } yield res.toVector
+
+    p.assertEquals(v.take(capacity))
+  }
+
   test("Timely closure") {
     val v = Vector(1, 2, 3)
     val p = for {

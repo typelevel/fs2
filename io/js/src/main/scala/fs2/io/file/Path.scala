@@ -55,7 +55,7 @@ final case class Path private (override val toString: String) extends PathApi {
     @tailrec
     def go(path: Path, acc: List[Path]): List[Path] =
       path.parent match {
-        case None         => acc
+        case None         => path :: acc
         case Some(parent) => go(parent, path.fileName :: acc)
       }
 
