@@ -324,6 +324,7 @@ lazy val unidocs = project
   .enablePlugins(TypelevelUnidocPlugin)
   .settings(
     name := "fs2-docs",
+    tlFatalWarnings := false,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       core.jvm,
       io.jvm,
