@@ -170,6 +170,7 @@ lazy val root = tlCrossRootProject
     scodec,
     protocols,
     reactiveStreams,
+    unidocs,
     benchmark
   )
 
@@ -317,6 +318,21 @@ lazy val reactiveStreams = project
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
+
+lazy val unidocs = project
+  .in(file("unidocs"))
+  .enablePlugins(TypelevelUnidocPlugin)
+  .settings(
+    name := "fs2-docs",
+    tlFatalWarnings := false,
+    ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
+      core.jvm,
+      io.jvm,
+      scodec.jvm,
+      protocols.jvm,
+      reactiveStreams
+    )
+  )
 
 lazy val benchmark = project
   .in(file("benchmark"))
