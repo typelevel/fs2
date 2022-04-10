@@ -2617,6 +2617,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Emits the last `n` elements of the input.
     *
+    * Note that the resulting stream will not emit any outputs at all until
+    * and unless the end of this stream is reached first.
+    *
     * @example {{{
     * scala> Stream.range(0,1000).takeRight(5).toList
     * res0: List[Int] = List(995, 996, 997, 998, 999)
@@ -2635,8 +2638,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def takeThrough(p: O => Boolean): Stream[F, O] =
-    this.pull.takeThrough(p).void.stream
+  def takeThrough(pred: O => Boolean): Stream[F, O] =
+    this.pull.takeThrough(pred).void.stream
 
   /** Emits the longest prefix of the input for which all elements test true according to `f`.
     *
@@ -2789,11 +2792,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     zipWith_[F2, O2, O3, O4](that)(cont1, cont2, contRight)(f)
   }
 
-  /** Deterministically zips elements, terminating when the end of either branch is reached naturally.
+  /** Combines this stream with another stream into a stream of tuples,
+    *
+    * The result is a stream such that, for each position `n`, the nth output
+    * of the resulting stream is a tuple `(x, y)` where `x` and `y` are the
+    * `nth` outputs of this and that stream, respectively.
+    *
+    * The resulting stream is terminated if and when either stream is.
+    * If either streams raises an error, that error is raised again by
+    * the zipped stream.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).zip(Stream(4, 5, 6, 7)).toList
-    * res0: List[(Int,Int)] = List((1,4), (2,5), (3,6))
+    * scala> Stream(1, 2, 3).zip(Stream('a', 'b', 'c', 'd')).toList
+    * res0: List[(Int,Char)] = List((1,'a'), (2,'b'), (3,'c'))
     * }}}
     */
   def zip[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, (O, O2)] =
@@ -2825,18 +2836,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def zipLeft[F2[x] >: F[x], O2](that: Stream[F2, O2]): Stream[F2, O] =
     zipWith(that)((x, _) => x)
 
-  /** Deterministically zips elements using the specified function,
-    * terminating when the end of either branch is reached naturally.
+  /** Combines the outputs of this and that stream using the `mix` function.
+    *
+    * The result is a stream such that, for each position `n`, the nth output
+    * of the resulting stream is the result of applying the `mix` function to
+    * the `nth` output of this stream and the `nth` output of that stream.
+    *
+    * The resulting stream ends when the end of either branch is reached naturally.
     *
     * @example {{{
     * scala> Stream(1, 2, 3).zipWith(Stream(4, 5, 6, 7))(_ + _).toList
     * res0: List[Int] = List(5, 7, 9)
     * }}}
     */
-  def zipWith[F2[x] >: F[x], O2 >: O, O3, O4](
+  def zipWith[F2[x] >: F[x], Fst >: O, Snd, Out](
       that: Stream[F2, O3]
-  )(f: (O2, O3) => O4): Stream[F2, O4] =
-    zipWith_[F2, O2, O3, O4](that)((_, _) => Pull.done, (_, _) => Pull.done, _ => Pull.done)(f)
+  )(mix: (Fst, Snd) => Out): Stream[F2, Out] =
+    zipWith_[F2, Fst, Snd, Out](that)((_, _) => Pull.done, (_, _) => Pull.done, _ => Pull.done)(mix)
 
   /** Zips the elements of the input stream with its indices, and returns the new stream.
     *
