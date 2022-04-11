@@ -3639,6 +3639,12 @@ object Stream extends StreamLowPriority {
       case Resource.Pure(o)  => Stream.emit(o)
     }
 
+  /** Same as [[resourceWeak]], but expressed as a FunctionK. */
+  def resourceWeakK[F[_]](implicit F: MonadCancel[F, _]): Resource[F, *] ~> Stream[F, *] =
+    new (Resource[F, *] ~> Stream[F, *]) {
+      override def apply[A](fa: Resource[F, A]): Stream[F, A] = resourceWeak[F, A](fa)
+    }
+
   /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
   def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
