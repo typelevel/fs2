@@ -3614,6 +3614,12 @@ object Stream extends StreamLowPriority {
   def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     resourceWeak(r).scope
 
+  /** Same as [[resource]], but expressed as a FunctionK. */
+  def resourceK[F[_]](implicit F: MonadCancel[F, _]): Resource[F, *] ~> Stream[F, *] =
+    new (Resource[F, *] ~> Stream[F, *]) {
+      override def apply[A](fa: Resource[F, A]): Stream[F, A] = resource[F, A](fa)
+    }
+
   /** Like [[resource]] but does not introduce a scope, allowing finalization to occur after
     * subsequent appends or other scope-preserving transformations.
     *
