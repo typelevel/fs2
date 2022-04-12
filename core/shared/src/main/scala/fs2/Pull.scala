@@ -851,7 +851,7 @@ object Pull extends PullLowPriority {
   ): F[Chunk[O]] = {
     var contP: ContP[Nothing, Nought, Any, Unit] = null
 
-    def getCont[Y, G[_], X]: Cont[Y, G, X] = contP.asInstanceOf[Cont[Y, G, X]]
+    def getCont[Y, X]: Cont[Y, F, X] = contP.asInstanceOf[Cont[Y, F, X]]
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
@@ -957,15 +957,15 @@ object Pull extends PullLowPriority {
           go(runner, tst.stream)
 
         case output: Output[_] =>
-          val view = getCont[Unit, F, X]
+          val view = getCont[Unit, X]
           runner.out(output.values, view(unit))
 
         case fmout: FlatMapOutput[F, z, _] => // y = Unit
-          val fmrunr = new FlatMapR(getCont[Unit, F, X], fmout.fun)
+          val fmrunr = new FlatMapR(getCont[Unit, X], fmout.fun)
           F.unit >> go(fmrunr, fmout.stream)
 
         case u: Uncons[F, y] @unchecked =>
-          val v = getCont[Option[(Chunk[y], Pull[F, y, Unit])], F, X]
+          val v = getCont[Option[(Chunk[y], Pull[F, y, Unit])], X]
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[y, End]
           F.unit >> go(runr, u.stream).attempt
