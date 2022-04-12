@@ -845,7 +845,8 @@ object Pull extends PullLowPriority {
    * needs to find the recovery point where stream evaluation continues.
    */
   def compileChunk[F[_], O](
-      stream: Pull[Nought, O, Unit]
+      stream: Pull[Nought, O, Unit],
+      limit: Int
   )(implicit
       F: MonadError[F, Throwable]
   ): F[Chunk[O]] = {
@@ -880,7 +881,7 @@ object Pull extends PullLowPriority {
 
     object TheBuildR extends Run[Nothing, F[CallRun[Nothing, F[Nothing]]]] {
       type TheRun = Run[Nothing, F[Nothing]]
-      def fail(e: Throwable) = F.raiseError(e)
+      def fail(e: Throwable) = done
       def done =
         F.pure((cont: TheRun) => cont.done)
       def out(head: Chunk[Nothing], tail: Pull[Nought, Nothing, Unit]) =
@@ -892,15 +893,17 @@ object Pull extends PullLowPriority {
 
     def go[X, End](
         runner: Run[X, F[End]],
-        stream: Pull[Nought, X, Unit]
-    ): F[End] = {
+        stream: Pull[Nought, X, Unit],
+        limit: Int
+    ): F[End] = if (limit <= 0) runner.done
+    else {
 
       def goErr(err: Throwable, view: Cont[Nothing, Nought, X]): F[End] =
-        go(runner, view(Fail(err)))
+        go(runner, view(Fail(err)), limit)
 
       abstract class StepRunR[Y, S](view: Cont[Option[S], Nought, X]) extends Run[Y, F[End]] {
         def done: F[End] =
-          go(runner, view(Succeeded(None)))
+          go(runner, view(Succeeded(None)), limit)
 
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
@@ -912,7 +915,7 @@ object Pull extends PullLowPriority {
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           {
             val result = Succeeded(Some((head, tail)))
-            go(runner, view(result))
+            go(runner, view(result), limit)
           }
       }
 
@@ -946,11 +949,11 @@ object Pull extends PullLowPriority {
           }
 
         def done: F[End] =
-          go(runner, view(unit))
+          go(runner, view(unit), limit)
 
         def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit]): F[End] = {
           val next = bindView(unconsed(head, tail), view)
-          go(runner, next)
+          go(runner, next, limit)
         }
 
         def fail(e: Throwable): F[End] = goErr(e, view)
@@ -958,7 +961,7 @@ object Pull extends PullLowPriority {
 
       (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
         case tst: Translate[_, _, _] => // y = Unit
-          go(runner, tst.stream)
+          go(runner, tst.stream, limit)
 
         case output: Output[_] =>
           val view = getCont[Unit, X]
@@ -966,13 +969,13 @@ object Pull extends PullLowPriority {
 
         case fmout: FlatMapOutput[Nought, z, _] => // y = Unit
           val fmrunr = new FlatMapR(getCont[Unit, X], fmout.fun)
-          F.unit >> go(fmrunr, fmout.stream)
+          F.unit >> go(fmrunr, fmout.stream, limit)
 
         case u: Uncons[Nought, y] @unchecked =>
           val v = getCont[Option[(Chunk[y], Pull[Nought, y, Unit])], X]
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[y, End]
-          F.unit >> go(runr, u.stream).attempt
+          F.unit >> go(runr, u.stream, limit).attempt
             .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
         case _: StepLeg[_, _]    => runner.done
@@ -996,24 +999,13 @@ object Pull extends PullLowPriority {
 
       override def fail(e: Throwable): F[Chunk[O]] = F.raiseError(e)
 
-      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit]): F[Chunk[O]] =
-        try {
-          accB = accB ++ head
-          go(self, tail)
-        } catch {
-          case NonFatal(e) =>
-            viewL(tail) match {
-              case _: Action[Nought, O, _] =>
-                val v = contP.asInstanceOf[ContP[Unit, Nought, O, Unit]]
-                go(self, v(Fail(e)))
-              case Succeeded(_)        => F.raiseError(e)
-              case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
-              case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
-            }
-        }
+      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit]): F[Chunk[O]] = {
+        accB = accB ++ head
+        go(self, tail, limit - head.size)
+      }
     }
 
-    go(OuterRun, stream)
+    go(OuterRun, stream, limit)
   }
 
   /* Left-folds the output of a stream in to a single value of type `B`.
