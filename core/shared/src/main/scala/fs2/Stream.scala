@@ -149,6 +149,8 @@ import fs2.internal._
   */
 final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F, O, Unit]) {
 
+  def force[F1[x] >: F[x], O2 >: O](implicit ev: MonadThrow[F1]): F1[Chunk[O2]] = Pull.compileChunk[F1, O2](underlying)
+
   /** Appends `s2` to the end of this stream.
     *
     * @example {{{
