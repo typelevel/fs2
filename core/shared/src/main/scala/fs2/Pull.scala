@@ -881,7 +881,7 @@ object Pull extends PullLowPriority {
 
     object TheBuildR extends Run[Nothing, F[CallRun[Nothing, F[Nothing]]]] {
       type TheRun = Run[Nothing, F[Nothing]]
-      def fail(e: Throwable) = done
+      def fail(e: Throwable) = F.pure((cont: TheRun) => cont.fail(e))
       def done =
         F.pure((cont: TheRun) => cont.done)
       def out(head: Chunk[Nothing], tail: Pull[Nought, Nothing, Unit], limit: Int) =
@@ -901,15 +901,10 @@ object Pull extends PullLowPriority {
       def goErr(err: Throwable, view: Cont[Nothing, Nought, X]): F[End] =
         go(runner, view(Fail(err)), limit)
 
-      abstract class StepRunR[Y, S](view: Cont[Option[S], Nought, X]) extends Run[Y, F[End]] {
+      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[Nought, Y, Unit])], Nought, X])
+          extends Run[Y, F[End]] {
         def done: F[End] =
           go(runner, view(Succeeded(None)), limit)
-
-        def fail(e: Throwable): F[End] = goErr(e, view)
-      }
-
-      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[Nought, Y, Unit])], Nought, X])
-          extends StepRunR[Y, (Chunk[Y], Pull[Nought, Y, Unit])](view) {
 
         def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit], limit: Int): F[End] =
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
@@ -917,6 +912,8 @@ object Pull extends PullLowPriority {
             val result = Succeeded(Some((head, tail)))
             go(runner, view(result), limit)
           }
+
+        def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
       class FlatMapR[Y](view: Cont[Unit, Nought, X], fun: Y => Pull[Nought, X, Unit])
