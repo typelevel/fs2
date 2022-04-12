@@ -845,13 +845,13 @@ object Pull extends PullLowPriority {
    * needs to find the recovery point where stream evaluation continues.
    */
   def compileChunk[F[_], O](
-      stream: Pull[F, O, Unit]
+      stream: Pull[Nought, O, Unit]
   )(implicit
       F: MonadError[F, Throwable]
   ): F[Chunk[O]] = {
     var contP: ContP[Nothing, Nought, Any, Unit] = null
 
-    def getCont[Y, X]: Cont[Y, F, X] = contP.asInstanceOf[Cont[Y, F, X]]
+    def getCont[Y, X]: Cont[Y, Nought, X] = contP.asInstanceOf[Cont[Y, Nought, X]]
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
@@ -873,7 +873,7 @@ object Pull extends PullLowPriority {
 
     trait Run[-X, +End] {
       def done: End
-      def out(head: Chunk[X], tail: Pull[F, X, Unit]): End
+      def out(head: Chunk[X], tail: Pull[Nought, X, Unit]): End
       def fail(e: Throwable): End
     }
     type CallRun[+X, End] = Run[X, End] => End
@@ -883,7 +883,7 @@ object Pull extends PullLowPriority {
       def fail(e: Throwable) = F.raiseError(e)
       def done =
         F.pure((cont: TheRun) => cont.done)
-      def out(head: Chunk[Nothing], tail: Pull[F, Nothing, Unit]) =
+      def out(head: Chunk[Nothing], tail: Pull[Nought, Nothing, Unit]) =
         F.pure((cont: TheRun) => cont.out(head, tail))
     }
 
@@ -892,23 +892,23 @@ object Pull extends PullLowPriority {
 
     def go[X, End](
         runner: Run[X, F[End]],
-        stream: Pull[F, X, Unit]
+        stream: Pull[Nought, X, Unit]
     ): F[End] = {
 
-      def goErr(err: Throwable, view: Cont[Nothing, F, X]): F[End] =
+      def goErr(err: Throwable, view: Cont[Nothing, Nought, X]): F[End] =
         go(runner, view(Fail(err)))
 
-      abstract class StepRunR[Y, S](view: Cont[Option[S], F, X]) extends Run[Y, F[End]] {
+      abstract class StepRunR[Y, S](view: Cont[Option[S], Nought, X]) extends Run[Y, F[End]] {
         def done: F[End] =
           go(runner, view(Succeeded(None)))
 
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
-      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[F, Y, Unit])], F, X])
-          extends StepRunR[Y, (Chunk[Y], Pull[F, Y, Unit])](view) {
+      class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[Nought, Y, Unit])], Nought, X])
+          extends StepRunR[Y, (Chunk[Y], Pull[Nought, Y, Unit])](view) {
 
-        def out(head: Chunk[Y], tail: Pull[F, Y, Unit]): F[End] =
+        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit]): F[End] =
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           {
             val result = Succeeded(Some((head, tail)))
@@ -916,8 +916,12 @@ object Pull extends PullLowPriority {
           }
       }
 
-      class FlatMapR[Y](view: Cont[Unit, F, X], fun: Y => Pull[F, X, Unit]) extends Run[Y, F[End]] {
-        private[this] def unconsed(chunk: Chunk[Y], tail: Pull[F, Y, Unit]): Pull[F, X, Unit] =
+      class FlatMapR[Y](view: Cont[Unit, Nought, X], fun: Y => Pull[Nought, X, Unit])
+          extends Run[Y, F[End]] {
+        private[this] def unconsed(
+            chunk: Chunk[Y],
+            tail: Pull[Nought, Y, Unit]
+        ): Pull[Nought, X, Unit] =
           if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
             // check if hd has only a single element, and if so, process it directly instead of folding.
@@ -925,9 +929,9 @@ object Pull extends PullLowPriority {
             try fun(chunk(0))
             catch { case NonFatal(e) => Fail(e) }
           else {
-            def go(idx: Int): Pull[F, X, Unit] =
+            def go(idx: Int): Pull[Nought, X, Unit] =
               if (idx == chunk.size)
-                flatMapOutput[F, F, Y, X](tail, fun)
+                flatMapOutput[Nought, Nought, Y, X](tail, fun)
               else {
                 try
                   transformWith(fun(chunk(idx))) {
@@ -944,7 +948,7 @@ object Pull extends PullLowPriority {
         def done: F[End] =
           go(runner, view(unit))
 
-        def out(head: Chunk[Y], tail: Pull[F, Y, Unit]): F[End] = {
+        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit]): F[End] = {
           val next = bindView(unconsed(head, tail), view)
           go(runner, next)
         }
@@ -960,12 +964,12 @@ object Pull extends PullLowPriority {
           val view = getCont[Unit, X]
           runner.out(output.values, view(unit))
 
-        case fmout: FlatMapOutput[F, z, _] => // y = Unit
+        case fmout: FlatMapOutput[Nought, z, _] => // y = Unit
           val fmrunr = new FlatMapR(getCont[Unit, X], fmout.fun)
           F.unit >> go(fmrunr, fmout.stream)
 
-        case u: Uncons[F, y] @unchecked =>
-          val v = getCont[Option[(Chunk[y], Pull[F, y, Unit])], X]
+        case u: Uncons[Nought, y] @unchecked =>
+          val v = getCont[Option[(Chunk[y], Pull[Nought, y, Unit])], X]
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[y, End]
           F.unit >> go(runr, u.stream).attempt
@@ -992,15 +996,15 @@ object Pull extends PullLowPriority {
 
       override def fail(e: Throwable): F[Chunk[O]] = F.raiseError(e)
 
-      override def out(head: Chunk[O], tail: Pull[F, O, Unit]): F[Chunk[O]] =
+      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit]): F[Chunk[O]] =
         try {
           accB = accB ++ head
           go(self, tail)
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case _: Action[F, O, _] =>
-                val v = contP.asInstanceOf[ContP[Unit, F, O, Unit]]
+              case _: Action[Nought, O, _] =>
+                val v = contP.asInstanceOf[ContP[Unit, Nought, O, Unit]]
                 go(self, v(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
