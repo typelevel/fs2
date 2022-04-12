@@ -874,7 +874,7 @@ object Pull extends PullLowPriority {
 
     trait Run[-X, +End] {
       def done: End
-      def out(head: Chunk[X], tail: Pull[Nought, X, Unit]): End
+      def out(head: Chunk[X], tail: Pull[Nought, X, Unit], limit: Int): End
       def fail(e: Throwable): End
     }
     type CallRun[+X, End] = Run[X, End] => End
@@ -884,8 +884,8 @@ object Pull extends PullLowPriority {
       def fail(e: Throwable) = done
       def done =
         F.pure((cont: TheRun) => cont.done)
-      def out(head: Chunk[Nothing], tail: Pull[Nought, Nothing, Unit]) =
-        F.pure((cont: TheRun) => cont.out(head, tail))
+      def out(head: Chunk[Nothing], tail: Pull[Nought, Nothing, Unit], limit: Int) =
+        F.pure((cont: TheRun) => cont.out(head, tail, limit))
     }
 
     def buildR[X, End]: Run[X, F[CallRun[X, F[End]]]] =
@@ -911,7 +911,7 @@ object Pull extends PullLowPriority {
       class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[Nought, Y, Unit])], Nought, X])
           extends StepRunR[Y, (Chunk[Y], Pull[Nought, Y, Unit])](view) {
 
-        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit]): F[End] =
+        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit], limit: Int): F[End] =
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           {
             val result = Succeeded(Some((head, tail)))
@@ -951,7 +951,7 @@ object Pull extends PullLowPriority {
         def done: F[End] =
           go(runner, view(unit), limit)
 
-        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit]): F[End] = {
+        def out(head: Chunk[Y], tail: Pull[Nought, Y, Unit], limit: Int): F[End] = {
           val next = bindView(unconsed(head, tail), view)
           go(runner, next, limit)
         }
@@ -965,7 +965,7 @@ object Pull extends PullLowPriority {
 
         case output: Output[_] =>
           val view = getCont[Unit, X]
-          runner.out(output.values, view(unit))
+          runner.out(output.values, view(unit), limit)
 
         case fmout: FlatMapOutput[Nought, z, _] => // y = Unit
           val fmrunr = new FlatMapR(getCont[Unit, X], fmout.fun)
@@ -999,7 +999,7 @@ object Pull extends PullLowPriority {
 
       override def fail(e: Throwable): F[Chunk[O]] = F.raiseError(e)
 
-      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit]): F[Chunk[O]] = {
+      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit], limit: Int): F[Chunk[O]] = {
         accB = accB ++ head
         go(self, tail, limit - head.size)
       }
