@@ -907,14 +907,11 @@ object Pull extends PullLowPriority {
     type CallRun[+G[_], +X, End] = Run[G, X, End] => End
 
     object TheBuildR extends Run[Nothing, Nothing, F[CallRun[Nothing, Nothing, F[Nothing]]]] {
-      type TheRun = Run[Nothing, Nothing, F[Nothing]]
       def fail(e: Throwable) = F.raiseError(e)
-      def done(scope: Scope[F]) =
-        F.pure((cont: TheRun) => cont.done(scope))
+      def done(scope: Scope[F]) = F.pure(_.done(scope))
       def out(head: Chunk[Nothing], scope: Scope[F], tail: Pull[Nothing, Nothing, Unit]) =
-        F.pure((cont: TheRun) => cont.out(head, scope, tail))
-      def interrupted(i: Interrupted) =
-        F.pure((cont: TheRun) => cont.interrupted(i))
+        F.pure(_.out(head, scope, tail))
+      def interrupted(i: Interrupted) = F.pure(_.interrupted(i))
     }
 
     def buildR[G[_], X, End]: Run[G, X, F[CallRun[G, X, F[End]]]] =
