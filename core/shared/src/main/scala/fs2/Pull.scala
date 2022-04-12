@@ -871,34 +871,34 @@ object Pull extends PullLowPriority {
         case r: Terminal[Unit] => r
       }
 
-    trait Run[-G[_], -X, +End] {
+    trait Run[-X, +End] {
       def done: End
-      def out(head: Chunk[X], tail: Pull[G, X, Unit]): End
+      def out(head: Chunk[X], tail: Pull[F, X, Unit]): End
       def fail(e: Throwable): End
     }
-    type CallRun[+G[_], +X, End] = Run[G, X, End] => End
+    type CallRun[+X, End] = Run[X, End] => End
 
-    object TheBuildR extends Run[Pure, Nothing, F[CallRun[Pure, Nothing, F[Nothing]]]] {
-      type TheRun = Run[Pure, Nothing, F[Nothing]]
+    object TheBuildR extends Run[Nothing, F[CallRun[Nothing, F[Nothing]]]] {
+      type TheRun = Run[Nothing, F[Nothing]]
       def fail(e: Throwable) = F.raiseError(e)
       def done =
         F.pure((cont: TheRun) => cont.done)
-      def out(head: Chunk[Nothing], tail: Pull[Pure, Nothing, Unit]) =
+      def out(head: Chunk[Nothing], tail: Pull[F, Nothing, Unit]) =
         F.pure((cont: TheRun) => cont.out(head, tail))
     }
 
-    def buildR[G[_], X, End]: Run[G, X, F[CallRun[G, X, F[End]]]] =
-      TheBuildR.asInstanceOf[Run[G, X, F[CallRun[G, X, F[End]]]]]
+    def buildR[X, End]: Run[X, F[CallRun[X, F[End]]]] =
+      TheBuildR.asInstanceOf[Run[X, F[CallRun[X, F[End]]]]]
 
     def go[X, End](
-        runner: Run[F, X, F[End]],
+        runner: Run[X, F[End]],
         stream: Pull[F, X, Unit]
     ): F[End] = {
 
       def goErr(err: Throwable, view: Cont[Nothing, F, X]): F[End] =
         go(runner, view(Fail(err)))
 
-      abstract class StepRunR[Y, S](view: Cont[Option[S], F, X]) extends Run[F, Y, F[End]] {
+      abstract class StepRunR[Y, S](view: Cont[Option[S], F, X]) extends Run[Y, F[End]] {
         def done: F[End] =
           go(runner, view(Succeeded(None)))
 
@@ -916,8 +916,7 @@ object Pull extends PullLowPriority {
           }
       }
 
-      class FlatMapR[Y](view: Cont[Unit, F, X], fun: Y => Pull[F, X, Unit])
-          extends Run[F, Y, F[End]] {
+      class FlatMapR[Y](view: Cont[Unit, F, X], fun: Y => Pull[F, X, Unit]) extends Run[Y, F[End]] {
         private[this] def unconsed(chunk: Chunk[Y], tail: Pull[F, Y, Unit]): Pull[F, X, Unit] =
           if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
@@ -968,7 +967,7 @@ object Pull extends PullLowPriority {
         case u: Uncons[F, y] @unchecked =>
           val v = getCont[Option[(Chunk[y], Pull[F, y, Unit])], F, X]
           // a Uncons is run on the same scope, without shifting.
-          val runr = buildR[F, y, End]
+          val runr = buildR[y, End]
           F.unit >> go(runr, u.stream).attempt
             .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
@@ -986,7 +985,7 @@ object Pull extends PullLowPriority {
       }
     }
 
-    object OuterRun extends Run[F, O, F[Chunk[O]]] { self =>
+    object OuterRun extends Run[O, F[Chunk[O]]] { self =>
       private[this] var accB: Chunk[O] = Chunk.empty
 
       override def done: F[Chunk[O]] = F.pure(accB)
