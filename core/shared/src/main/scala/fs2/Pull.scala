@@ -844,12 +844,13 @@ object Pull extends PullLowPriority {
    * Unlike interruption of an `F[_]: MonadCancelThrow` type (e.g. `IO`), stream interruption
    * needs to find the recovery point where stream evaluation continues.
    */
-  def compileChunk[F[_], O](
+  def compileChunk[O](
       stream: Pull[Nought, O, Unit],
       limit: Int
-  )(implicit
-      F: MonadError[F, Throwable]
-  ): F[Chunk[O]] = {
+  ): Chunk[O] = {
+    type F[A] = cats.Eval[A]
+    val F = Applicative[cats.Eval]
+
     var contP: ContP[Nothing, Nought, Any, Unit] = null
 
     def getCont[Y, X]: Cont[Y, Nought, X] = contP.asInstanceOf[Cont[Y, Nought, X]]
@@ -972,8 +973,8 @@ object Pull extends PullLowPriority {
           val v = getCont[Option[(Chunk[y], Pull[Nought, y, Unit])], X]
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[y, End]
-          F.unit >> go(runr, u.stream, limit).attempt
-            .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
+          F.unit >> go(runr, u.stream, limit)
+            .flatMap(_.apply(new UnconsRunR(v)))
 
         case _: StepLeg[_, _]    => runner.done
         case _: GetScope[_]      => runner.done
@@ -994,7 +995,7 @@ object Pull extends PullLowPriority {
 
       override def done: F[Chunk[O]] = F.pure(accB)
 
-      override def fail(e: Throwable): F[Chunk[O]] = F.raiseError(e)
+      override def fail(e: Throwable): F[Chunk[O]] = F.pure(accB) //F.raiseError(e)
 
       override def out(head: Chunk[O], tail: Pull[Nought, O, Unit], limit: Int): F[Chunk[O]] = {
         accB = accB ++ head
@@ -1002,7 +1003,7 @@ object Pull extends PullLowPriority {
       }
     }
 
-    go(OuterRun, stream, limit)
+    go(OuterRun, stream, limit).value
   }
 
   /* Left-folds the output of a stream in to a single value of type `B`.

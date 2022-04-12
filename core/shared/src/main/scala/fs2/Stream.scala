@@ -149,8 +149,8 @@ import fs2.internal._
   */
 final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F, O, Unit]) {
 
-  def force(limit: Int): Either[Throwable, Chunk[O]] =
-    Pull.compileChunk[Either[Throwable, *], O](underlying, limit)
+  def force(limit: Int): Chunk[O] =
+    Pull.compileChunk(underlying, limit)
 
   /** Appends `s2` to the end of this stream.
     *
