@@ -874,7 +874,6 @@ object Pull extends PullLowPriority {
     trait Run[-G[_], -X, +End] {
       def done: End
       def out(head: Chunk[X], tail: Pull[G, X, Unit]): End
-      def interrupted(inter: Interrupted): End
       def fail(e: Throwable): End
     }
     type CallRun[+G[_], +X, End] = Run[G, X, End] => End
@@ -886,8 +885,6 @@ object Pull extends PullLowPriority {
         F.pure((cont: TheRun) => cont.done)
       def out(head: Chunk[Nothing], tail: Pull[Pure, Nothing, Unit]) =
         F.pure((cont: TheRun) => cont.out(head, tail))
-      def interrupted(i: Interrupted) =
-        F.pure((cont: TheRun) => cont.interrupted(i))
     }
 
     def buildR[G[_], X, End]: Run[G, X, F[CallRun[G, X, F[End]]]] =
@@ -904,9 +901,6 @@ object Pull extends PullLowPriority {
       abstract class StepRunR[Y, S](view: Cont[Option[S], F, X]) extends Run[F, Y, F[End]] {
         def done: F[End] =
           go(runner, view(Succeeded(None)))
-
-        def interrupted(inter: Interrupted): F[End] =
-          go(runner, view(inter))
 
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
@@ -956,9 +950,6 @@ object Pull extends PullLowPriority {
           go(runner, next)
         }
 
-        def interrupted(inter: Interrupted): F[End] =
-          go(runner, view(inter))
-
         def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
@@ -989,9 +980,9 @@ object Pull extends PullLowPriority {
         case _: InterruptWhen[_] => runner.done
         case _: CloseScope       => runner.done
 
-        case _: Succeeded[_]  => runner.done
-        case failed: Fail     => runner.fail(failed.error)
-        case int: Interrupted => runner.interrupted(int)
+        case _: Succeeded[_] => runner.done
+        case failed: Fail    => runner.fail(failed.error)
+        case _: Interrupted  => runner.done
       }
     }
 
@@ -1001,9 +992,6 @@ object Pull extends PullLowPriority {
       override def done: F[Chunk[O]] = F.pure(accB)
 
       override def fail(e: Throwable): F[Chunk[O]] = F.raiseError(e)
-
-      override def interrupted(inter: Interrupted): F[Chunk[O]] =
-        inter.deferredError.fold(F.pure(accB))(F.raiseError)
 
       override def out(head: Chunk[O], tail: Pull[F, O, Unit]): F[Chunk[O]] =
         try {
