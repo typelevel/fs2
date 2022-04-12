@@ -847,7 +847,7 @@ object Pull extends PullLowPriority {
   def compileChunk[O](
       stream: Pull[Nought, O, Unit],
       limit: Int
-  ): Chunk[O] = {
+  ): (Chunk[O], Option[ExitCase]) = {
     type F[A] = cats.Eval[A]
     val F = Applicative[cats.Eval]
 
@@ -990,14 +990,14 @@ object Pull extends PullLowPriority {
       }
     }
 
-    object OuterRun extends Run[O, F[Chunk[O]]] { self =>
+    object OuterRun extends Run[O, F[(Chunk[O], Option[ExitCase])]] { self =>
       private[this] var accB: Chunk[O] = Chunk.empty
 
-      override def done: F[Chunk[O]] = F.pure(accB)
+      override def done: F[(Chunk[O], Option[ExitCase])] = F.pure(accB -> Some(ExitCase.Succeeded))
 
-      override def fail(e: Throwable): F[Chunk[O]] = F.pure(accB) //F.raiseError(e)
+      override def fail(e: Throwable): F[(Chunk[O], Option[ExitCase])] = F.pure(accB -> Some(ExitCase.Errored(e)))
 
-      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit], limit: Int): F[Chunk[O]] = {
+      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit], limit: Int): F[(Chunk[O], Option[ExitCase])] = {
         accB = accB ++ head
         go(self, tail, limit - head.size)
       }
