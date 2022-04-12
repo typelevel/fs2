@@ -871,30 +871,6 @@ object Pull extends PullLowPriority {
         case r: Terminal[Unit] => r
       }
 
-    /* Inject interruption to the tail used in `flatMap`. Assures that close of the scope
-     * is invoked if at the flatMap tail, otherwise switches evaluation to `interrupted` path. */
-    def interruptBoundary[G[_], X](
-        stream: Pull[G, X, Unit],
-        interruption: Interrupted
-    ): Pull[G, X, Unit] =
-      viewL(stream) match {
-        case cs: CloseScope =>
-          // Inner scope is getting closed b/c a parent was interrupted
-          val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
-          transformWith(cl)(getCont[Unit, G, X])
-        case _: Action[G, X, y] =>
-          // all other actions, roll the interruption forwards
-          getCont[Unit, G, X](interruption)
-        case interrupted: Interrupted => interrupted // impossible
-        case _: Succeeded[_]          => interruption
-        case failed: Fail =>
-          val mixed = CompositeFailure
-            .fromList(interruption.deferredError.toList :+ failed.error)
-            .getOrElse(failed.error)
-          Fail(mixed)
-
-      }
-
     trait Run[-G[_], -X, +End] {
       def done: End
       def out(head: Chunk[X], tail: Pull[G, X, Unit]): End
@@ -962,10 +938,9 @@ object Pull extends PullLowPriority {
               else {
                 try
                   transformWith(fun(chunk(idx))) {
-                    case Succeeded(_) => go(idx + 1)
-                    case Fail(err)    => Fail(err)
-                    case interruption @ Interrupted(_, _) =>
-                      flatMapOutput[F, F, Y, X](interruptBoundary(tail, interruption), fun)
+                    case Succeeded(_)      => go(idx + 1)
+                    case Fail(err)         => Fail(err)
+                    case Interrupted(_, _) => ???
                   }
                 catch { case NonFatal(e) => Fail(e) }
               }
