@@ -1259,8 +1259,7 @@ object Pull extends PullLowPriority {
           case NonFatal(e) =>
             viewL(tail) match {
               case _: Action[F, O, _] =>
-                val v = getCont()
-                go(scope, None, initFk, self, v(Fail(e)))
+                go(scope, None, initFk, self, getCont()(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
               case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
