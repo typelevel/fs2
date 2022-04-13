@@ -836,14 +836,6 @@ object Pull extends PullLowPriority {
 
   private[this] type Nought[A] = Any
 
-  /* Left-folds the output of a stream in to a single value of type `B`.
-   *
-   * === Interruption ===
-   *
-   * Interruption of the stream is implemented cooperatively between `Pull` and `Scope`.
-   * Unlike interruption of an `F[_]: MonadCancelThrow` type (e.g. `IO`), stream interruption
-   * needs to find the recovery point where stream evaluation continues.
-   */
   def compileChunk[O](
       stream: Pull[Nought, O, Unit],
       limit: Int
