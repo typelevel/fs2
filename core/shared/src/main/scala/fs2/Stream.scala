@@ -32,7 +32,6 @@ import cats.effect.kernel.implicits._
 import cats.effect.std.{Console, Queue, QueueSink, QueueSource, Semaphore}
 import cats.effect.Resource.ExitCase
 import cats.syntax.all._
-import fs2.Pull.Nought
 import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
@@ -150,10 +149,8 @@ import fs2.internal._
   */
 final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F, O, Unit]) {
 
-  def force(limit: Int): (Chunk[O], Either[ExitCase, Stream[Nought, O]]) =
-    Pull.compileChunk(underlying, limit) match {
-      case (chunk, oc) => chunk -> oc.map(_.stream)
-    }
+  def force(limit: Int): (Chunk[O], Option[ExitCase]) =
+    Pull.compileChunk(underlying, limit)
 
   /** Appends `s2` to the end of this stream.
     *
