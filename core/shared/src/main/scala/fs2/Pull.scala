@@ -987,9 +987,14 @@ object Pull extends PullLowPriority {
 
       override def done: F[(Chunk[O], Option[ExitCase])] = F.pure(accB -> Some(ExitCase.Succeeded))
 
-      override def fail(e: Throwable): F[(Chunk[O], Option[ExitCase])] = F.pure(accB -> Some(ExitCase.Errored(e)))
+      override def fail(e: Throwable): F[(Chunk[O], Option[ExitCase])] =
+        F.pure(accB -> Some(ExitCase.Errored(e)))
 
-      override def out(head: Chunk[O], tail: Pull[Nought, O, Unit], limit: Int): F[(Chunk[O], Option[ExitCase])] = {
+      override def out(
+          head: Chunk[O],
+          tail: Pull[Nought, O, Unit],
+          limit: Int
+      ): F[(Chunk[O], Option[ExitCase])] = {
         accB = accB ++ head
         go(self, tail, limit - head.size)
       }
