@@ -854,7 +854,7 @@ object Pull extends PullLowPriority {
   ): F[B] = {
     var contP: ContP[Nothing, Nought, Any, Unit] = null
 
-    def getCont[Y, G[_], X]: Cont[Y, G, X] = contP.asInstanceOf[Cont[Y, G, X]]
+    def getCont(): Cont[Any, Nothing, Nothing] = contP.asInstanceOf[Cont[Any, Nothing, Nothing]]
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
@@ -884,10 +884,10 @@ object Pull extends PullLowPriority {
         case cs: CloseScope =>
           // Inner scope is getting closed b/c a parent was interrupted
           val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
-          transformWith(cl)(getCont)
+          transformWith(cl)(getCont())
         case _: Action[G, X, y] =>
           // all other actions, roll the interruption forwards
-          getCont(interruption)
+          getCont()(interruption)
         case interrupted: Interrupted => interrupted // impossible
         case _: Succeeded[_]          => interruption
         case failed: Fail =>
@@ -1194,29 +1194,29 @@ object Pull extends PullLowPriority {
 
       (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
         case tst: Translate[h, G, _] @unchecked => // y = Unit
-          val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont)
+          val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont())
           val composed: h ~> F = translation.compose(tst.fk)
           go(scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
         case output: Output[_] =>
-          val view = getCont
+          val view = getCont()
           interruptGuard(scope, view)(
             runner.out(output.values, scope, view(unit))
           )
 
         case fmout: FlatMapOutput[G, z, _] => // y = Unit
-          val fmrunr = new FlatMapR(getCont, fmout.fun)
+          val fmrunr = new FlatMapR(getCont(), fmout.fun)
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
         case u: Uncons[G, y] @unchecked =>
-          val v = getCont
+          val v = getCont()
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[G, y, End]
           F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
             .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
         case s: StepLeg[G, y] @unchecked =>
-          val v = getCont
+          val v = getCont()
           val runr = buildR[G, y, End]
           scope
             .shiftScope(s.scope, s.toString)
@@ -1224,14 +1224,14 @@ object Pull extends PullLowPriority {
             .flatMap(_.fold(goErr(_, v), _.apply(new StepLegRunR(v))))
 
         case _: GetScope[_] =>
-          go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(scope)))
-        case eval: Eval[G, r]       => goEval[r](eval, getCont)
-        case acquire: Acquire[G, _] => goAcquire(acquire, getCont)
+          go(scope, extendedTopLevelScope, translation, runner, getCont()(Succeeded(scope)))
+        case eval: Eval[G, r]       => goEval[r](eval, getCont())
+        case acquire: Acquire[G, _] => goAcquire(acquire, getCont())
         case inScope: InScope[G, _] =>
-          goInScope(inScope.stream, inScope.useInterruption, getCont)
+          goInScope(inScope.stream, inScope.useInterruption, getCont())
         case int: InterruptWhen[G] =>
-          goInterruptWhen(translation(int.haltOnSignal), getCont)
-        case close: CloseScope => goCloseScope(close, getCont)
+          goInterruptWhen(translation(int.haltOnSignal), getCont())
+        case close: CloseScope => goCloseScope(close, getCont())
 
         case _: Succeeded[_]  => runner.done(scope)
         case failed: Fail     => runner.fail(failed.error)
@@ -1259,7 +1259,7 @@ object Pull extends PullLowPriority {
           case NonFatal(e) =>
             viewL(tail) match {
               case _: Action[F, O, _] =>
-                val v = getCont
+                val v = getCont()
                 go(scope, None, initFk, self, v(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
