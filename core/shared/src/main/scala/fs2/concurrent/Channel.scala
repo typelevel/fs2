@@ -145,11 +145,19 @@ object Channel {
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
-            .evalMap(send)
-            .takeWhile(_.isRight)
+          (in ++ Stream.exec(close.void)).chunks
+            .evalMap(sendChunk(_, 0))
+            .takeWhile(x => x)
             .drain
         }
+
+        private def sendChunk(ch: Chunk[A], ix: Int): F[Boolean] =
+          if (ix == ch.size) F.pure(true)
+          else
+            send(ch(ix)).flatMap {
+              case Right(_) => sendChunk(ch, ix + 1)
+              case Left(_)  => F.pure(false)
+            }
 
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
