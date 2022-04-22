@@ -219,6 +219,7 @@ lazy val coreJS = core.js
 lazy val node = crossProject(JSPlatform)
   .in(file("node"))
   .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
+  .disablePlugins(DoctestPlugin)
   .settings(
     name := "fs2-node",
     mimaPreviousArtifacts := Set.empty,
