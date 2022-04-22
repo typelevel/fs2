@@ -25,12 +25,13 @@ import cats.Eq
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
-import org.scalacheck.{Arbitrary, Cogen, Gen}
+import org.scalacheck.{Arbitrary, Cogen, Gen, Test}
 import org.scalacheck.Prop.forAll
+
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
-  override def scalaCheckTestParameters =
+  override def scalaCheckTestParameters: Test.Parameters =
     super.scalaCheckTestParameters
       .withMinSuccessfulTests(if (isJVM) 100 else 25)
       .withWorkers(1)
@@ -210,6 +211,13 @@ class ChunkSuite extends Fs2Suite {
   test("ArraySlice toArray - regression #1745") {
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
+  }
+
+  test("ArraySlice does not copy when chunk is already an ArraySlice instance") {
+    val chunk: Chunk[Int] = Chunk.ArraySlice(Array(0))
+    assert(chunk eq chunk.toArraySlice)
+    val chunk2: Chunk[Any] = Chunk.ArraySlice(Array(new Object))
+    assert(chunk2 eq chunk2.toArraySlice)
   }
 
   test("compactUntagged - regression #2679") {

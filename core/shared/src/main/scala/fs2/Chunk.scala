@@ -296,7 +296,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Converts this chunk to a `Chunk.ArraySlice`. */
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     this match {
-      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
+      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.values.getClass =>
         as.asInstanceOf[Chunk.ArraySlice[O2]]
       case _ => Chunk.ArraySlice(toArray, 0, size)
     }
