@@ -546,8 +546,12 @@ private[compression] trait CompressionCompanionPlatform {
           headerCrc32: CRC32,
           contentCrc32: CRC32,
           inflater: Inflater
-      ) =
-        (mandatoryHeaderChunk.size, mandatoryHeaderChunk.toArraySlice.values) match {
+      ) = {
+        val mandatoryHeaderSlice = mandatoryHeaderChunk.toArraySlice
+        val mandatoryHeaderBytes =
+          if (mandatoryHeaderSlice.offset == 0) mandatoryHeaderSlice.values
+          else mandatoryHeaderSlice.compact.values
+        (mandatoryHeaderChunk.size, mandatoryHeaderBytes) match {
           case (
                 `gzipHeaderBytes`,
                 Array(
@@ -555,11 +559,7 @@ private[compression] trait CompressionCompanionPlatform {
                   `gzipMagicSecondByte`,
                   gzipCompressionMethod.DEFLATE,
                   flags,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _
+                  _*
                 )
               ) if gzipFlag.reserved5(flags) =>
             Pull.output1(
@@ -576,11 +576,7 @@ private[compression] trait CompressionCompanionPlatform {
                   `gzipMagicSecondByte`,
                   gzipCompressionMethod.DEFLATE,
                   flags,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _
+                  _*
                 )
               ) if gzipFlag.reserved6(flags) =>
             Pull.output1(
@@ -597,11 +593,7 @@ private[compression] trait CompressionCompanionPlatform {
                   `gzipMagicSecondByte`,
                   gzipCompressionMethod.DEFLATE,
                   flags,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _
+                  _*
                 )
               ) if gzipFlag.reserved7(flags) =>
             Pull.output1(
@@ -618,12 +610,7 @@ private[compression] trait CompressionCompanionPlatform {
                   `gzipMagicSecondByte`,
                   gzipCompressionMethod.DEFLATE,
                   flags,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _
+                  _*
                 )
               ) =>
             headerCrc32.update(header)
@@ -650,13 +637,7 @@ private[compression] trait CompressionCompanionPlatform {
                   `gzipMagicFirstByte`,
                   `gzipMagicSecondByte`,
                   compressionMethod,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _,
-                  _
+                  _*
                 )
               ) =>
             Pull.output1(
@@ -673,6 +654,7 @@ private[compression] trait CompressionCompanionPlatform {
               GunzipResult(Stream.raiseError(new ZipException("Not in gzip format")))
             )
         }
+      }
 
       private def _gunzip_readOptionalHeader(
           inflateParams: InflateParams,
