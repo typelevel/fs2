@@ -4049,15 +4049,22 @@ object Stream extends StreamLowPriority {
                       .compile
                       .drain
                       .guaranteeCase(oc =>
-                        lease.cancel
-                          .flatMap(onOutcome(oc, _)) >> available.release >> decrementRunning
+                        lease.cancel.rethrow
+                          .guaranteeCase {
+                            case Outcome.Succeeded(fu) =>
+                              onOutcome(oc <* Outcome.succeeded(fu), Either.unit)
+
+                            case Outcome.Errored(e) =>
+                              onOutcome(oc, Either.right(e))
+
+                            case _ =>
+                              F.unit
+                          }
+                          .forceR(available.release >> decrementRunning)
                       )
-                      .handleError(_ => ())
                   }.void
                 }
             }
-
-          val RightUnit = Right(())
 
           def runOuter: F[Unit] =
             F.uncancelable { _ =>
@@ -4071,7 +4078,7 @@ object Stream extends StreamLowPriority {
                 .interruptWhen(done.map(_.nonEmpty))
                 .compile
                 .drain
-                .guaranteeCase(onOutcome(_, RightUnit) >> decrementRunning)
+                .guaranteeCase(onOutcome(_, Either.unit) >> decrementRunning)
                 .handleError(_ => ())
             }
 
