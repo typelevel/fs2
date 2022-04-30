@@ -210,15 +210,21 @@ class StreamParJoinSuite extends Fs2Suite {
         }
     }
 
-    test("do not block while evaluating a stream in EitherT[IO, Throwable, *] with multiple parJoins") {
+    test(
+      "do not block while evaluating a stream in EitherT[IO, Throwable, *] with multiple parJoins"
+    ) {
       case object TestException extends Throwable with NoStackTrace
       type F[A] = EitherT[IO, Throwable, A]
 
-      Stream.range(1, 64).covary[F]
-        .map(i => Stream.eval[F, Unit](
-          if (i == 7) EitherT.leftT(TestException)
-          else EitherT.right(IO.unit)
-        ))
+      Stream
+        .range(1, 64)
+        .covary[F]
+        .map(i =>
+          Stream.eval[F, Unit](
+            if (i == 7) EitherT.leftT(TestException)
+            else EitherT.right(IO.unit)
+          )
+        )
         .parJoin(4)
         .map(_ => Stream.eval[F, Unit](EitherT.right(IO.unit)))
         .parJoin(4)
