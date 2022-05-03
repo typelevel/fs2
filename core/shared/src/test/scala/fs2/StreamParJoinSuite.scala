@@ -231,9 +231,7 @@ class StreamParJoinSuite extends Fs2Suite {
         .compile
         .drain
         .value
-        .flatMap { actual =>
-          IO(assertEquals(actual, Left(TestException)))
-        }
+        .assertEquals(Left(TestException))
     }
 
     test("do not block while evaluating an EitherT.left outer stream") {
