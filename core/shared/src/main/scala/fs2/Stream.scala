@@ -4048,18 +4048,7 @@ object Stream extends StreamLowPriority {
                       .interruptWhen(done.map(_.nonEmpty))
                       .compile
                       .drain
-                      .guaranteeCase(oc =>
-                        lease.cancel.rethrow.guaranteeCase {
-                          case Outcome.Succeeded(fu) =>
-                            onOutcome(oc <* Outcome.succeeded(fu), Either.unit)
-
-                          case Outcome.Errored(e) =>
-                            onOutcome(oc, Either.left(e))
-
-                          case _ =>
-                            F.unit
-                        }
-                      )
+                      .guaranteeCase(oc => lease.cancel.flatMap(onOutcome(oc, _)))
                       .forceR(available.release >> decrementRunning)
                   }.void
                 }
@@ -4104,16 +4093,15 @@ object Stream extends StreamLowPriority {
             }
 
           Stream
-            .bracket(F.start(runOuter) >> F.start(outcomeJoiner)) { fiber =>
+            .bracket(F.start(runOuter) >> F.start(outcomeJoiner)) { _ =>
               stop(None) >>
                 // in case of short-circuiting, the `fiberJoiner` would not have had a chance
                 // to wait until all fibers have been joined, so we need to do it manually
                 // by waiting on the counter
-                running.waitUntil(_ == 0) >>
-                signalResult(fiber)
+                running.waitUntil(_ == 0)
             }
-            .flatMap { _ =>
-              output.stream.flatMap(Stream.chunk(_).covary[F])
+            .flatMap { fiber =>
+              output.stream.flatMap(Stream.chunk(_).covary[F]) ++ Stream.exec(signalResult(fiber))
             }
         }
 
