@@ -4104,15 +4104,16 @@ object Stream extends StreamLowPriority {
             }
 
           Stream
-            .bracket(F.start(runOuter) >> F.start(outcomeJoiner)) { _ =>
+            .bracket(F.start(runOuter) >> F.start(outcomeJoiner)) { fiber =>
               stop(None) >>
                 // in case of short-circuiting, the `fiberJoiner` would not have had a chance
                 // to wait until all fibers have been joined, so we need to do it manually
                 // by waiting on the counter
-                running.waitUntil(_ == 0)
+                running.waitUntil(_ == 0) >>
+                signalResult(fiber)
             }
-            .flatMap { fiber =>
-              output.stream.flatMap(Stream.chunk) ++ Stream.exec(signalResult(fiber))
+            .flatMap { _ =>
+              output.stream.flatMap(Stream.chunk)
             }
         }
 
