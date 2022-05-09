@@ -418,6 +418,8 @@ Stream("Alice","Bob","Carol").intersperse("|").toList
 Stream.range(1,10).scan(0)(_ + _).toList // running sum
 ```
 
+Click [here](https://gist.github.com/DeamonDev/8652800151aaaa435ffa984c661a07dc) to see the solutions. 
+
 ### Concurrency
 
 FS2 comes with lots of concurrent operations. The `merge` function runs two streams concurrently, combining their outputs. It halts when both inputs have halted:
