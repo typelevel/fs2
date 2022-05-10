@@ -4048,19 +4048,21 @@ object Stream extends StreamLowPriority {
                       .interruptWhen(done.map(_.nonEmpty))
                       .compile
                       .drain
-                      .guaranteeCase(oc =>
-                        lease.cancel.rethrow.guaranteeCase {
-                          case Outcome.Succeeded(fu) =>
-                            onOutcome(oc <* Outcome.succeeded(fu), Either.unit)
+                      .guaranteeCase { oc =>
+                        lease.cancel.rethrow
+                          .guaranteeCase {
+                            case Outcome.Succeeded(fu) =>
+                              onOutcome(oc <* Outcome.succeeded(fu), Either.unit)
 
-                          case Outcome.Errored(e) =>
-                            onOutcome(oc, Either.left(e))
+                            case Outcome.Errored(e) =>
+                              onOutcome(oc, Either.left(e))
 
-                          case _ =>
-                            F.unit
-                        }
-                      )
-                      .forceR(available.release >> decrementRunning)
+                            case _ =>
+                              F.unit
+                          }
+                          .forceR(available.release >> decrementRunning)
+                      }
+                      .handleError(_ => ())
                   }.void
                 }
             }
