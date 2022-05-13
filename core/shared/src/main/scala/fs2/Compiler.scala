@@ -24,6 +24,7 @@ package fs2
 import cats.{Id, Monad}
 import cats.effect.SyncIO
 import cats.effect.kernel.{
+  Async,
   CancelScope,
   Concurrent,
   MonadCancelThrow,
@@ -168,7 +169,7 @@ object Compiler extends CompilerLowPriority {
     def rootCancelScope: CancelScope = F.rootCancelScope
   }
 
-  private[fs2] trait TargetLowPriority {
+  private[fs2] trait TargetLowPriority { self: Target.type =>
 
     private final class SyncTarget[F[_]](implicit F0: Sync[F]) extends Target[F] {
       protected implicit val F: MonadCancelThrow[F] = F0
@@ -177,8 +178,10 @@ object Compiler extends CompilerLowPriority {
       private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = None
     }
 
-    implicit def forSync[F[_]: Sync]: Target[F] =
-      new SyncTarget
+    implicit def forSync[F[_]](implicit F: Sync[F]): Target[F] = F match {
+      case async: Async[F @unchecked] => forConcurrent(async)
+      case _                          => new SyncTarget
+    }
   }
 
   object Target extends TargetLowPriority {
