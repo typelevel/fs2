@@ -71,7 +71,7 @@ final class StreamSubscriber[F[_], A](
 
   def stream(subscribe: F[Unit]): Stream[F, A] = sub.stream(subscribe)
 
-  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
+  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException
 }
 
 object StreamSubscriber {

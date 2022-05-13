@@ -65,8 +65,8 @@ final class StreamEncoder[A] private (private val step: StreamEncoder.Step[A]) {
         encoder: StreamEncoder[A]
     ): Pull[F, BitVector, Option[(Stream[F, A], StreamEncoder[A])]] =
       encoder.step[F](s).flatMap {
-        case Some((s, next)) => loop(s, next)
-        case None            => Pull.pure(None)
+        case Some(s, next) => loop(s, next)
+        case None          => Pull.pure(None)
       }
     loop(in, this)
   }
@@ -137,7 +137,7 @@ object StreamEncoder {
       ): Pull[F, BitVector, Option[(Stream[F, A], StreamEncoder[A])]] =
         s.pull.uncons1.flatMap {
           case None => Pull.pure(None)
-          case Some((a, s1)) =>
+          case Some(a, s1) =>
             encoder
               .encode(a)
               .fold(
@@ -160,7 +160,7 @@ object StreamEncoder {
       ): Pull[F, BitVector, Option[(Stream[F, A], StreamEncoder[A])]] =
         s.pull.uncons1.flatMap {
           case None => Pull.pure(None)
-          case Some((a, s1)) =>
+          case Some(a, s1) =>
             encoder
               .encode(a)
               .fold(

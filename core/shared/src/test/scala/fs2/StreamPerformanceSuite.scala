@@ -176,8 +176,8 @@ class StreamPerformanceSuite extends Fs2Suite {
           .chunk(Chunk.seq(0 until N))
           .repeatPull {
             _.uncons1.flatMap {
-              case None           => Pull.pure(None)
-              case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+              case None         => Pull.pure(None)
+              case Some(hd, tl) => Pull.output1(hd).as(Some(tl))
             }
           }
         assertEquals(s.toVector, Vector.range(0, N))

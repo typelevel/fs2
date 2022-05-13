@@ -62,7 +62,7 @@ object ConditionalAccessTable {
       sections: Vector[ConditionalAccessDescriptor]
   ): Vector[Vector[ConditionalAccessDescriptor]] = {
     val MaxBitsLeft = (1024 - 12) * 8L
-    def sizeOf(c: ConditionalAccessDescriptor): Long = (6 * 8) + c.privateData.size
+    def sizeOf(c: ConditionalAccessDescriptor): Long = 6 * 8 + c.privateData.size
     @annotation.tailrec
     def go(
         remaining: Vector[ConditionalAccessDescriptor],
@@ -73,7 +73,7 @@ object ConditionalAccessTable {
       if (remaining.isEmpty) acc :+ cur
       else {
         val next = remaining.head
-        val bitsNeeded = (6 * 8) + sizeOf(next)
+        val bitsNeeded = 6 * 8 + sizeOf(next)
         val newBitsLeft = bitsLeft - bitsNeeded
         if (newBitsLeft >= 0) go(remaining.tail, cur :+ next, newBitsLeft, acc)
         else {

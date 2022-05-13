@@ -37,8 +37,8 @@ class PullBenchmark {
       .chunk(Chunk.seq(0 to 2560))
       .repeatPull { s =>
         s.unconsN(n).flatMap {
-          case Some((h, t)) => Pull.output(h).as(Some(t))
-          case None         => Pull.pure(None)
+          case Some(h, t) => Pull.output(h).as(Some(t))
+          case None       => Pull.pure(None)
         }
       }
     s

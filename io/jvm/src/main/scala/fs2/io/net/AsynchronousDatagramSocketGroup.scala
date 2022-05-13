@@ -65,9 +65,8 @@ private[net] object AsynchronousDatagramSocketGroup {
   def unsafe(threadFactory: ThreadFactory): AsynchronousDatagramSocketGroup =
     new AsynchronousDatagramSocketGroup {
       private class Attachment(
-          readers: ArrayDeque[(Long, Either[Throwable, Datagram] => Unit)] = new ArrayDeque(),
-          writers: ArrayDeque[(Long, (WriterDatagram, Option[Throwable] => Unit))] =
-            new ArrayDeque()
+          readers: ArrayDeque[(Long, Either[Throwable, Datagram] => Unit)] = new ArrayDeque,
+          writers: ArrayDeque[(Long, (WriterDatagram, Option[Throwable] => Unit))] = new ArrayDeque
       ) {
         def hasReaders: Boolean = !readers.isEmpty
 
@@ -151,7 +150,7 @@ private[net] object AsynchronousDatagramSocketGroup {
       private val closeLock = new Object
       @volatile private var closed = false
       private val pendingThunks: ConcurrentLinkedQueue[() => Unit] =
-        new ConcurrentLinkedQueue()
+        new ConcurrentLinkedQueue
       private val readBuffer = ByteBuffer.allocate(1 << 16)
 
       override def register(channel: DatagramChannel): Context = {
@@ -159,12 +158,12 @@ private[net] object AsynchronousDatagramSocketGroup {
         val latch = new CountDownLatch(1)
         onSelectorThread {
           channel.configureBlocking(false)
-          val attachment = new Attachment()
+          val attachment = new Attachment
           key = channel.register(selector, 0, attachment)
           latch.countDown
         }(latch.countDown)
         latch.await
-        if (key eq null) throw new ClosedChannelException()
+        if (key eq null) throw new ClosedChannelException
         key
       }
 

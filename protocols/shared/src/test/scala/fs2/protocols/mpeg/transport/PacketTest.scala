@@ -44,7 +44,7 @@ class PacketTest extends Fs2Suite {
           Pid(0),
           ContinuityCounter(0),
           Some(0),
-          a ++ b ++ c ++ BitVector.fill((183 * 8) - a.size - b.size - c.size)(true)
+          a ++ b ++ c ++ BitVector.fill(183 * 8 - a.size - b.size - c.size)(true)
         )
       )
     )
@@ -56,7 +56,7 @@ class PacketTest extends Fs2Suite {
     val packets = Packet.packetizeMany(Pid(0), ContinuityCounter(0), sections)
 
     packets.zipWithIndex.foreach { case (_, idx) =>
-      val payloadOffset = if (idx == 0) 0 else 10 * ((idx * 183) / 10 + 1) - (idx * 183)
+      val payloadOffset = if (idx == 0) 0 else 10 * (idx * 183 / 10 + 1) - idx * 183
       val offset = 183L * 8 * idx
       assertEquals(
         packets(idx),

@@ -268,7 +268,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .map { result =>
         assertEquals(result.size, 1)
         val head = result.head
-        assert(head.toMillis >= (delay.toMillis - 5))
+        assert(head.toMillis >= delay.toMillis - 5)
       }
   }
 
@@ -486,7 +486,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       def go(lastTrue: FiniteDuration, s: Stream[F, BD]): Pull[F, BD, Unit] =
         s.pull.uncons1.flatMap {
           case None => Pull.done
-          case Some((pair, tl)) =>
+          case Some(pair, tl) =>
             pair match {
               case (true, d) =>
                 Pull.output1((true, d - lastTrue)) >> go(d, tl)

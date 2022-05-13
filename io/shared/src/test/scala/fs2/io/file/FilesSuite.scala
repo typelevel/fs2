@@ -521,7 +521,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       .resource(tempDirectory)
       .flatMap { dir =>
         Stream.eval(IO.ref(0)).flatMap { counter =>
-          val path = counter.modify(i => (i + 1) -> dir.resolve(i.toString))
+          val path = counter.modify(i => i + 1 -> dir.resolve(i.toString))
 
           val write = Stream(0x42.toByte).repeat
             .buffer(bufferSize)

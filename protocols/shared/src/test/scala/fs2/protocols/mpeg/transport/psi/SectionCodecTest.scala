@@ -118,7 +118,7 @@ class SectionCodecTest extends Fs2Suite {
       implicit val sfc: SectionFragmentCodec[SmallSection] =
         SectionFragmentCodec.nonExtended[SmallSection, Int](
           0,
-          _ => (constant(bin"0") ~> uint(7)),
+          _ => constant(bin"0") ~> uint(7),
           (_, i) => SmallSection(i),
           ss => (bin"010", ss.x)
         )
@@ -159,7 +159,7 @@ class SectionCodecTest extends Fs2Suite {
         )
         .head
       val pasEnc = sectionCodec.encode(pas).require
-      val corruptedSection = pasEnc.dropRight(32) ++ (~pasEnc.takeRight(32))
+      val corruptedSection = pasEnc.dropRight(32) ++ ~pasEnc.takeRight(32)
       val packet = Packet.payload(Pid(0), ContinuityCounter(0), Some(0), corruptedSection)
       val p = Stream.emit(packet).through(Demultiplexer.demultiplex(sectionCodec).toPipe)
       assertEquals(
@@ -187,7 +187,7 @@ class SectionCodecTest extends Fs2Suite {
         )
         .head
       val pasEnc = sectionCodec.encode(pas).require
-      val corruptedSection = pasEnc.dropRight(32) ++ (~pasEnc.dropRight(32))
+      val corruptedSection = pasEnc.dropRight(32) ++ ~pasEnc.dropRight(32)
       val packet = Packet.payload(Pid(0), ContinuityCounter(0), Some(0), corruptedSection)
       val p = Stream.emit(packet).through(Demultiplexer.demultiplex(sectionCodec).toPipe)
       assertEquals(

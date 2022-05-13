@@ -51,5 +51,5 @@ final class StreamUnicastPublisherSpec
     StreamUnicastPublisher(s, dispatcher)
   }
 
-  def createFailedPublisher(): FailedPublisher = new FailedPublisher()
+  def createFailedPublisher(): FailedPublisher = new FailedPublisher
 }

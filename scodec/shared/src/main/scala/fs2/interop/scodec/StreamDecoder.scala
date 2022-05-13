@@ -81,7 +81,7 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
             s: Stream[F, BitVector]
         ): Pull[F, A, Option[Stream[F, BitVector]]] =
           s.pull.uncons1.flatMap {
-            case Some((hd, tl)) =>
+            case Some(hd, tl) =>
               val buffer = carry ++ hd
               decoder(buffer) match {
                 case Attempt.Successful(DecodeResult(value, remainder)) =>
@@ -112,7 +112,7 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
             s: Stream[F, BitVector]
         ): Pull[F, A, Option[Stream[F, BitVector]]] =
           s.pull.uncons1.flatMap {
-            case Some((hd, tl)) =>
+            case Some(hd, tl) =>
               val (buffer, remainder) = (carry ++ hd).splitAt(bits)
               if (buffer.size == bits)
                 decoder[F](Stream(buffer)) >> Pull.pure(Some(tl.cons1(remainder)))

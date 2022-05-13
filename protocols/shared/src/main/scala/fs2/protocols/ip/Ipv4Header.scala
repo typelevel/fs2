@@ -77,7 +77,7 @@ object Ipv4Header {
       def encode(header: Ipv4Header) = {
         val optionWords = (header.options.size.toInt + 31) / 32
         val options = header.options.padRight((optionWords * 32).toLong)
-        val totalLength = header.dataLength + 20 + (optionWords * 4)
+        val totalLength = header.dataLength + 20 + optionWords * 4
         for {
           encoded <- componentCodec.encode(
             (5 + optionWords) *: totalLength *: header.id *: header.ttl *: header.protocol *: BitVector
@@ -90,7 +90,7 @@ object Ipv4Header {
       def decode(bits: BitVector) =
         componentCodec.decode(bits).map {
           _.map { t =>
-            Ipv4Header(t(1) - (t(0) * 4), t(2), t(3), t(4), t(6), t(7), t(8))
+            Ipv4Header(t(1) - t(0) * 4, t(2), t(3), t(4), t(6), t(7), t(8))
           }
         }
     }

@@ -36,7 +36,7 @@ import scodec.bits.ByteVector
 class JvmCompressionSuite extends CompressionSuite {
 
   def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] = {
-    val byteArrayStream = new ByteArrayOutputStream()
+    val byteArrayStream = new ByteArrayOutputStream
     val deflater = new Deflater(level, nowrap)
     deflater.setStrategy(strategy)
     val deflaterStream = new DeflaterOutputStream(byteArrayStream, deflater)
@@ -46,7 +46,7 @@ class JvmCompressionSuite extends CompressionSuite {
   }
 
   def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
-    val byteArrayStream = new ByteArrayOutputStream()
+    val byteArrayStream = new ByteArrayOutputStream
     val inflaterStream =
       new InflaterOutputStream(byteArrayStream, new Inflater(nowrap))
     inflaterStream.write(b)
@@ -378,7 +378,7 @@ class JvmCompressionSuite extends CompressionSuite {
       s.pull
         .unconsN(2, allowFewer = true)
         .flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             if (hd == Chunk[Byte](0x1f, 0x8b.toByte))
               Compression[F].gunzip(128)(tl.cons(hd)).flatMap(_.content).pull.echo
             else tl.cons(hd).pull.echo

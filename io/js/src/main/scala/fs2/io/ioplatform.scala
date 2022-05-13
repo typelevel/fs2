@@ -160,7 +160,7 @@ private[fs2] trait ioplatform {
           def go(
               s: Stream[F, Byte]
           ): Pull[F, Nothing, Unit] = s.pull.uncons.flatMap {
-            case Some((head, tail)) =>
+            case Some(head, tail) =>
               Pull.eval {
                 F.async_[Unit] { cb =>
                   writable.write(

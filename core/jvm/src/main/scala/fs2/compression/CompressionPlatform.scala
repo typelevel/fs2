@@ -206,7 +206,7 @@ private[compression] trait CompressionCompanionPlatform {
         crc32.foreach(_.update(bytesChunk.values, bytesChunk.offset, bytesChunk.length))
 
         def isDone: Boolean =
-          (isFinalChunk && deflater.finished) || (!isFinalChunk && deflater.needsInput)
+          isFinalChunk && deflater.finished || !isFinalChunk && deflater.needsInput
 
         def runDeflate(): Int =
           if (isDone) 0
@@ -236,7 +236,7 @@ private[compression] trait CompressionCompanionPlatform {
           deflatedBuffer: Array[Byte]
       ): Stream[F, Byte] => Pull[F, Byte, Unit] =
         _.pull.uncons.flatMap {
-          case Some((inflatedChunk, inflatedStream)) =>
+          case Some(inflatedChunk, inflatedStream) =>
             _deflate_chunk(
               deflateParams,
               deflater,
@@ -280,7 +280,7 @@ private[compression] trait CompressionCompanionPlatform {
           Pull.suspend {
             val inflatedBuffer = new Array[Byte](inflateParams.bufferSizeOrMinimum)
             in.pull.uncons.flatMap {
-              case Some((deflatedChunk, deflatedStream)) =>
+              case Some(deflatedChunk, deflatedStream) =>
                 _inflate_chunk(
                   inflater,
                   crc32,
@@ -365,7 +365,7 @@ private[compression] trait CompressionCompanionPlatform {
           inflatedBuffer: Array[Byte]
       ): Stream[F, Byte] => Pull[F, Byte, Unit] =
         _.pull.uncons.flatMap {
-          case Some((deflatedChunk, deflatedStream)) =>
+          case Some(deflatedChunk, deflatedStream) =>
             _inflate_chunk(
               inflater,
               crc32,
@@ -398,7 +398,7 @@ private[compression] trait CompressionCompanionPlatform {
                   F.delay {
                     val deflater = new Deflater(params.level.juzDeflaterLevel, true)
                     deflater.setStrategy(params.strategy.juzDeflaterStrategy)
-                    (deflater, new CRC32())
+                    (deflater, new CRC32)
                   }
                 ) { case (deflater, _) => F.delay(deflater.end()) }
                 .flatMap { case (deflater, crc32) =>
@@ -442,9 +442,9 @@ private[compression] trait CompressionCompanionPlatform {
             fileName.map(_ => gzipFlag.FNAME).getOrElse(zeroByte) + // FLG: File name
             comment.map(_ => gzipFlag.FCOMMENT).getOrElse(zeroByte)).toByte, // FLG: Comment
           (secondsSince197001010000 & 0xff).toByte, // MTIME: Modification Time
-          ((secondsSince197001010000 >> 8) & 0xff).toByte,
-          ((secondsSince197001010000 >> 16) & 0xff).toByte,
-          ((secondsSince197001010000 >> 24) & 0xff).toByte,
+          (secondsSince197001010000 >> 8 & 0xff).toByte,
+          (secondsSince197001010000 >> 16 & 0xff).toByte,
+          (secondsSince197001010000 >> 24 & 0xff).toByte,
           deflateLevel match { // XFL: Extra flags
             case Deflater.BEST_COMPRESSION => gzipExtraFlag.DEFLATE_MAX_COMPRESSION_SLOWEST_ALGO
             case Deflater.BEST_SPEED       => gzipExtraFlag.DEFLATE_FASTEST_ALGO
@@ -452,7 +452,7 @@ private[compression] trait CompressionCompanionPlatform {
           },
           gzipOperatingSystem.THIS
         ) // OS: Operating System
-        val crc32 = new CRC32()
+        val crc32 = new CRC32
         crc32.update(header)
         val fileNameEncoded = fileName.map { string =>
           val bytes = string.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1)
@@ -472,7 +472,7 @@ private[compression] trait CompressionCompanionPlatform {
           if (fhCrcEnabled)
             Array[Byte](
               (crc32Value & 0xff).toByte,
-              ((crc32Value >> 8) & 0xff).toByte
+              (crc32Value >> 8 & 0xff).toByte
             )
           else
             Array.emptyByteArray
@@ -493,13 +493,13 @@ private[compression] trait CompressionCompanionPlatform {
         val bytesIn = deflater.getTotalIn
         val trailer = Array[Byte](
           (crc32Value & 0xff).toByte, // CRC-32: Cyclic Redundancy Check
-          ((crc32Value >> 8) & 0xff).toByte,
-          ((crc32Value >> 16) & 0xff).toByte,
-          ((crc32Value >> 24) & 0xff).toByte,
+          (crc32Value >> 8 & 0xff).toByte,
+          (crc32Value >> 16 & 0xff).toByte,
+          (crc32Value >> 24 & 0xff).toByte,
           (bytesIn & 0xff).toByte, // ISIZE: Input size
-          ((bytesIn >> 8) & 0xff).toByte,
-          ((bytesIn >> 16) & 0xff).toByte,
-          ((bytesIn >> 24) & 0xff).toByte
+          (bytesIn >> 8 & 0xff).toByte,
+          (bytesIn >> 16 & 0xff).toByte,
+          (bytesIn >> 24 & 0xff).toByte
         )
         Stream.chunk(moveAsChunkBytes(trailer))
       }
@@ -510,12 +510,12 @@ private[compression] trait CompressionCompanionPlatform {
             case params: InflateParams if params.header == ZLibParams.Header.GZIP =>
               Pull
                 .bracketCase[F, GunzipResult[F], (Inflater, CRC32, CRC32), Unit](
-                  Pull.eval(F.delay((new Inflater(true), new CRC32(), new CRC32()))),
+                  Pull.eval(F.delay((new Inflater(true), new CRC32, new CRC32))),
                   { case (inflater, headerCrc32, contentCrc32) =>
                     stream.pull
                       .unconsN(gzipHeaderBytes)
                       .flatMap {
-                        case Some((mandatoryHeaderChunk, streamAfterMandatoryHeader)) =>
+                        case Some(mandatoryHeaderChunk, streamAfterMandatoryHeader) =>
                           _gunzip_matchMandatoryHeader(
                             params,
                             mandatoryHeaderChunk,
@@ -525,7 +525,7 @@ private[compression] trait CompressionCompanionPlatform {
                             inflater
                           )
                         case None =>
-                          Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
+                          Pull.output1(GunzipResult(Stream.raiseError(new EOFException)))
                       }
                   },
                   { case ((inflater, _, _), _) => Pull.eval(F.delay(inflater.end())) }
@@ -626,10 +626,10 @@ private[compression] trait CompressionCompanionPlatform {
               inflater
             ).pull.uncons1
               .flatMap {
-                case Some((gunzipResult, _)) =>
+                case Some(gunzipResult, _) =>
                   Pull.output1(gunzipResult)
                 case None =>
-                  Pull.output1(GunzipResult(Stream.raiseError(new EOFException())))
+                  Pull.output1(GunzipResult(Stream.raiseError(new EOFException)))
               }
           case (
                 `gzipHeaderBytes`,
@@ -723,7 +723,7 @@ private[compression] trait CompressionCompanionPlatform {
             stream.pull
               .unconsN(gzipOptionalExtraFieldLengthBytes)
               .flatMap {
-                case Some((optionalExtraFieldLengthChunk, streamAfterOptionalExtraFieldLength)) =>
+                case Some(optionalExtraFieldLengthChunk, streamAfterOptionalExtraFieldLength) =>
                   (
                     optionalExtraFieldLengthChunk.size,
                     optionalExtraFieldLengthChunk.toArraySlice.values
@@ -737,7 +737,7 @@ private[compression] trait CompressionCompanionPlatform {
                       streamAfterOptionalExtraFieldLength.pull
                         .unconsN(optionalExtraFieldLength)
                         .flatMap {
-                          case Some((optionalExtraFieldChunk, streamAfterOptionalExtraField)) =>
+                          case Some(optionalExtraFieldChunk, streamAfterOptionalExtraField) =>
                             val fieldBytes = optionalExtraFieldChunk.toArraySlice
                             crc32.update(fieldBytes.values, fieldBytes.offset, fieldBytes.length)
                             Pull.output1(streamAfterOptionalExtraField)
@@ -752,7 +752,7 @@ private[compression] trait CompressionCompanionPlatform {
                       )
                   }
                 case None =>
-                  Pull.raiseError(new EOFException())
+                  Pull.raiseError(new EOFException)
               }
               .stream
               .flatten
@@ -769,7 +769,7 @@ private[compression] trait CompressionCompanionPlatform {
             unconsUntil[Byte](_ == zeroByte, fieldBytesSoftLimit)
               .apply(stream)
               .flatMap {
-                case Some((chunk, rest)) =>
+                case Some(chunk, rest) =>
                   Pull.output1(
                     (
                       if (chunk.isEmpty)
@@ -815,7 +815,7 @@ private[compression] trait CompressionCompanionPlatform {
             stream.pull
               .unconsN(gzipHeaderCrcBytes)
               .flatMap {
-                case Some((headerCrcChunk, streamAfterHeaderCrc)) =>
+                case Some(headerCrcChunk, streamAfterHeaderCrc) =>
                   val expectedHeaderCrc16 = unsignedToInt(headerCrcChunk(0), headerCrcChunk(1))
                   val actualHeaderCrc16 = crc32.getValue & 0xffff
                   if (expectedHeaderCrc16 != actualHeaderCrc16)
@@ -855,7 +855,7 @@ private[compression] trait CompressionCompanionPlatform {
             def streamUntilTrailer(last: Chunk[Byte]): Stream[F, Byte] => Pull[F, Byte, Unit] =
               _.pull.uncons
                 .flatMap {
-                  case Some((next, rest)) =>
+                  case Some(next, rest) =>
                     if (inflater.finished())
                       if (next.size >= gzipTrailerBytes)
                         if (last.nonEmpty) Pull.output(last) >> streamUntilTrailer(next)(rest)
@@ -896,7 +896,7 @@ private[compression] trait CompressionCompanionPlatform {
             rest.pull.uncons.flatMap {
               case None =>
                 Pull.pure(None)
-              case Some((hd, tl)) =>
+              case Some(hd, tl) =>
                 hd.indexWhere(predicate) match {
                   case Some(i) =>
                     val (pfx, sfx) = hd.splitAt(i)
@@ -997,9 +997,9 @@ private[compression] trait CompressionCompanionPlatform {
         } else Chunk.empty[Byte]
 
       private def unsignedToInt(lsb: Byte, msb: Byte): Int =
-        ((msb & 0xff) << 8) | (lsb & 0xff)
+        (msb & 0xff) << 8 | lsb & 0xff
 
       private def unsignedToLong(lsb: Byte, byte2: Byte, byte3: Byte, msb: Byte): Long =
-        ((msb.toLong & 0xff) << 24) | ((byte3 & 0xff) << 16) | ((byte2 & 0xff) << 8) | (lsb & 0xff)
+        (msb.toLong & 0xff) << 24 | (byte3 & 0xff) << 16 | (byte2 & 0xff) << 8 | lsb & 0xff
     }
 }

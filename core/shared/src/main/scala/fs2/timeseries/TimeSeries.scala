@@ -98,9 +98,9 @@ object TimeSeries {
         nextTick: FiniteDuration,
         s: Stream[F, TimeStamped[A]]
     ): Pull[F, TimeStamped[Option[A]], Unit] = {
-      def tickTime(x: Int) = nextTick + (x * tickPeriod)
+      def tickTime(x: Int) = nextTick + x * tickPeriod
       s.pull.uncons.flatMap {
-        case Some((hd, tl)) =>
+        case Some(hd, tl) =>
           hd.indexWhere(_.time >= nextTick) match {
             case None =>
               Pull.output(hd.map(_.map(Some(_)))) >> go(nextTick, tl)
@@ -121,7 +121,7 @@ object TimeSeries {
     }
     in =>
       in.pull.uncons1.flatMap {
-        case Some((hd, tl)) =>
+        case Some(hd, tl) =>
           Pull.output1(hd.map(Some(_))) >> go(hd.time + tickPeriod, tl)
         case None => Pull.done
       }.stream

@@ -529,7 +529,7 @@ object Files extends FilesCompanionPlatform {
       ): Pull[F, Unit, Unit] = {
         val toWrite = (limit - acc).min(Int.MaxValue.toLong).toInt
         s.pull.unconsLimit(toWrite).flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             val newAcc = acc + hd.size
             cursor.writePull(hd).flatMap { nc =>
               if (newAcc >= limit)

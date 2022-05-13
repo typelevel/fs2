@@ -112,7 +112,7 @@ class StreamSuite extends Fs2Suite {
           val n = (n0 % 20).abs + 1
           val chunkedV = s.chunkN(n, false).toVector
           val unchunkedV = s.toVector
-          val expectedSize = unchunkedV.size - (unchunkedV.size % n)
+          val expectedSize = unchunkedV.size - unchunkedV.size % n
           // All lists have n0 values
           assert(chunkedV.forall(_.size == n))
           // Flattened sequence is equal to vector without chunking, minus "left over" values that could not fit in a chunk
@@ -609,21 +609,21 @@ class StreamSuite extends Fs2Suite {
         closed = true
     }
 
-    Stream.fromAutoCloseable(IO(new Auto())).compile.toList.flatMap {
+    Stream.fromAutoCloseable(IO(new Auto)).compile.toList.flatMap {
       case h :: Nil => IO(assert(h.closed))
       case _        => IO(fail("Did not close AutoClosable"))
     }
   }
 
   test("fromAutoCloseableWeak") {
-    val counter = new AtomicInteger()
+    val counter = new AtomicInteger
     class Auto(var i: Int = 0) extends AutoCloseable {
       override def close(): Unit =
         i = counter.incrementAndGet()
     }
 
-    (Stream.fromAutoCloseableWeak(IO(new Auto()))
-      ++ Stream.fromAutoCloseable(IO(new Auto()))).compile.toList.flatMap {
+    (Stream.fromAutoCloseableWeak(IO(new Auto))
+      ++ Stream.fromAutoCloseable(IO(new Auto))).compile.toList.flatMap {
       case x :: y :: Nil => IO(assertEquals(x.i, 2)) >> IO(assertEquals(y.i, 1))
       case _             => IO(fail("Did not close AutoClosable"))
     }

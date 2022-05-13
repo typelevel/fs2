@@ -67,8 +67,8 @@ private[net] trait SocketCompanionPlatform {
     ): F[Option[Chunk[Byte]]] =
       readStream
         .getAndUpdate(Kleisli(f).flatMapF {
-          case Some((chunk, tail)) => Pull.output1(chunk).as(tail)
-          case None                => Pull.pure(Stream.empty)
+          case Some(chunk, tail) => Pull.output1(chunk).as(tail)
+          case None              => Pull.pure(Stream.empty)
         }.run)
         .compile
         .last

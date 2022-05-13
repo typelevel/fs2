@@ -237,9 +237,9 @@ class BracketSuite extends Fs2Suite {
         IO(scala.util.Random.nextInt(50).millis).flatMap(IO.sleep).whenA(nondet)
 
       bracketCase {
-        wait >> state.update { case (l, ecs) => (l + 1) -> ecs }
+        wait >> state.update { case (l, ecs) => l + 1 -> ecs }
       } { (_, ec) =>
-        state.update { case (l, ecs) => (l - 1) -> (ecs :+ ec) }
+        state.update { case (l, ecs) => l - 1 -> (ecs :+ ec) }
       }
     }
 
@@ -336,7 +336,7 @@ class BracketSuite extends Fs2Suite {
       .pull
       .uncons
       .flatMap {
-        case Some((_, tl)) =>
+        case Some(_, tl) =>
           Stream
             .bracket(Ref.of[IO, Boolean](true))(_.set(false))
             .flatMap { r =>

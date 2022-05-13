@@ -30,22 +30,22 @@ import org.scalacheck.effect.PropF.forAllF
 
 class StreamTranslateSuite extends Fs2Suite {
 
-  val thunkToIO: Function0 ~> IO = new (Function0 ~> IO) {
+  val thunkToIO: Function0 ~> IO = new Function0 ~> IO {
     def apply[A](thunk: Function0[A]): IO[A] = IO(thunk())
   }
 
-  val thunkToSome: Function0 ~> Some = new (Function0 ~> Some) {
+  val thunkToSome: Function0 ~> Some = new Function0 ~> Some {
     def apply[A](thunk: Function0[A]): Some[A] = Some(thunk())
   }
 
-  val someToIO: Some ~> IO = new (Some ~> IO) {
+  val someToIO: Some ~> IO = new Some ~> IO {
     def apply[A](some: Some[A]): IO[A] = IO.pure(some.get)
   }
 
-  val ioToIdTio: IO ~> IdT[IO, *] = new (IO ~> IdT[IO, *]) {
+  val ioToIdTio: IO ~> IdT[IO, *] = new IO ~> IdT[IO, *] {
     def apply[A](io: IO[A]): IdT[IO, A] = IdT(io)
   }
-  val idTioToIo: IdT[IO, *] ~> IO = new (IdT[IO, *] ~> IO) {
+  val idTioToIo: IdT[IO, *] ~> IO = new IdT[IO, *] ~> IO {
     def apply[A](io: IdT[IO, A]): IO[A] = io.value
   }
 
@@ -145,7 +145,7 @@ class StreamTranslateSuite extends Fs2Suite {
   test("stack safety") {
     Stream
       .repeatEval(IO(0))
-      .translate(new (IO ~> IO) { def apply[X](x: IO[X]) = IO.defer(x) })
+      .translate(new IO ~> IO { def apply[X](x: IO[X]) = IO.defer(x) })
       .take(if (isJVM) 1000000 else 10000)
       .compile
       .drain
@@ -154,7 +154,7 @@ class StreamTranslateSuite extends Fs2Suite {
   test("Interruption - Translate does not suppress interruptions in inner stream") {
     type Eff[A] = cats.data.EitherT[IO, String, A]
     val Eff = Async[Eff]
-    val effToIO: Eff ~> IO = new (Eff ~> IO) {
+    val effToIO: Eff ~> IO = new Eff ~> IO {
       def apply[X](eff: Eff[X]): IO[X] = eff.value.flatMap {
         case Left(t)  => IO.raiseError(new RuntimeException(t))
         case Right(x) => IO.pure(x)

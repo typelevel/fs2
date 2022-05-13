@@ -332,7 +332,7 @@ private[fs2] final class Scope[F[_]] private (
     def go(scopes: Chain[Scope[F]]): F[Option[Scope[F]]] =
       scopes.uncons match {
         case None => F.pure(None)
-        case Some((scope, tail)) =>
+        case Some(scope, tail) =>
           if (scope.id == scopeId) F.pure(Some(scope))
           else
             scope.state.get.flatMap {
@@ -514,8 +514,8 @@ private[fs2] object Scope {
         extends State[F] { self =>
       def unregisterChild(id: Unique.Token): State[F] =
         self.children.deleteFirst(_.id == id) match {
-          case Some((_, newChildren)) => self.copy(children = newChildren)
-          case None                   => self
+          case Some(_, newChildren) => self.copy(children = newChildren)
+          case None                 => self
         }
     }
     case class Closed[F[_]]() extends State[F]

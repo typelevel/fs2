@@ -144,7 +144,7 @@ object TimeStamped {
                 acc2 = B.empty
                 e2 = e2 + over
               }
-              bldr += (tsa.map(Right.apply))
+              bldr += tsa.map(Right.apply)
               ((Some(e2), f(tsa.value)), Chunk.seq(bldr.result()))
             }
           case None => ((Some(tsa.time + over), f(tsa.value)), Chunk(tsa.map(Right.apply)))
@@ -220,7 +220,7 @@ object TimeStamped {
             }
           } else {
             val tl = ticks.setHead(ticks.head.drop(1))
-            val newUpto = upto + ((1000 / ticksPerSecond) * throttlingFactor).toLong.millis
+            val newUpto = upto + (1000 / ticksPerSecond * throttlingFactor).toLong.millis
             val (toOutput, stillPending) = takeUpto(pending, newUpto)
             Pull.output(toOutput) >> {
               if (stillPending.isEmpty) read(newUpto)(src, tl)
@@ -244,7 +244,7 @@ object TimeStamped {
         }.stream
     }
 
-    source => (source.through2(Stream.awakeEvery[F](tickResolution).as(())))(doThrottle)
+    source => source.through2(Stream.awakeEvery[F](tickResolution).as(()))(doThrottle)
   }
 
   /** Scan that filters the specified timestamped values to ensure
@@ -322,7 +322,7 @@ object TimeStamped {
         s: Stream[F, TimeStamped[A]]
     ): Pull[F, TimeStamped[A], Unit] =
       s.pull.uncons.flatMap {
-        case Some((hd, tl)) =>
+        case Some(hd, tl) =>
           val all = Chain.fromSeq(hd.toList).foldLeft(buffered) { (acc, tsa) =>
             val k = tsa.time
             acc.updated(k, acc.getOrElse(k, Chain.empty) :+ tsa)

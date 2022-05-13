@@ -213,7 +213,7 @@ lazy val coreJS = core.js
   .disablePlugins(DoctestPlugin)
   .settings(
     Test / scalaJSStage := FastOptStage,
-    jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
+    jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 

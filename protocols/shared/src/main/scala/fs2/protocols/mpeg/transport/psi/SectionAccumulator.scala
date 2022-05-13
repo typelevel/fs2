@@ -55,7 +55,7 @@ private[psi] class SectionAccumulator[A <: ExtendedSection] private (
   }
 
   def complete: Option[GroupedSections[A]] =
-    if (sectionByNumber.size == (sections.head.extension.lastSectionNumber + 1)) Some(sections)
+    if (sectionByNumber.size == sections.head.extension.lastSectionNumber + 1) Some(sections)
     else None
 }
 

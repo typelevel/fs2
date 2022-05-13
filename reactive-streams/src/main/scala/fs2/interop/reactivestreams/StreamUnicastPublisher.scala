@@ -52,7 +52,7 @@ final class StreamUnicastPublisher[F[_]: Async, A](
     }
   }
 
-  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException()
+  private def nonNull[B](b: B): Unit = if (b == null) throw new NullPointerException
 }
 
 object StreamUnicastPublisher {

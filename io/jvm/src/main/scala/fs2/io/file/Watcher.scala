@@ -207,7 +207,7 @@ object Watcher {
             val cleanup = if (s.contains(r)) r.cleanup else F.unit
             val cancelKey =
               if (filtered.forall(_.key != r.key)) F.blocking(r.key.cancel) else F.unit
-            filtered -> (cancelKey *> cleanup)
+            filtered -> cancelKey *> cleanup
           }.flatten
         }
 

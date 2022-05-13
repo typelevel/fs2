@@ -543,7 +543,7 @@ object Chunk
   final class Singleton[O](val value: O) extends Chunk[O] {
     def size: Int = 1
     def apply(i: Int): O =
-      if (i == 0) value else throw new IndexOutOfBoundsException()
+      if (i == 0) value else throw new IndexOutOfBoundsException
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = value
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       sys.error("impossible")
@@ -678,7 +678,7 @@ object Chunk
 
     def size = length
     def apply(i: Int) =
-      if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
+      if (i < 0 || i >= size) throw new IndexOutOfBoundsException
       else values(offset + i)
 
     override def compact[O2 >: O](implicit ct: ClassTag[O2]): ArraySlice[O2] =
@@ -976,7 +976,7 @@ object Chunk
       if (c.isEmpty) this else new Queue(chunks :+ c, size + c.size)
 
     def apply(i: Int): O = {
-      if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
+      if (i < 0 || i >= size) throw new IndexOutOfBoundsException
       if (i == 0) chunks.head(0)
       else if (i == size - 1) chunks.last.last.get
       else {
@@ -1152,7 +1152,7 @@ object Chunk
                   buf += b
                   go()
                 case Left(a) =>
-                  state = (f(a).iterator) :: h :: tail
+                  state = f(a).iterator :: h :: tail
                   go()
               }
           }

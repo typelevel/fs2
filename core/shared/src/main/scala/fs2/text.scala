@@ -132,7 +132,7 @@ object text {
 
       def doPull(buf: Chunk[Byte], s: Stream[F, Chunk[Byte]]): Pull[F, String, Unit] =
         s.pull.uncons.flatMap {
-          case Some((byteChunks, tail)) =>
+          case Some(byteChunks, tail) =>
             // use local and private mutability here
             var idx = 0
             val size = byteChunks.size
@@ -155,7 +155,7 @@ object text {
           s: Stream[F, Chunk[Byte]]
       ): Pull[F, String, Unit] =
         s.pull.uncons1.flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             val newBuffer0 =
               if (buffer ne null) buffer
               else Chunk.Queue.empty[Byte]
@@ -204,8 +204,8 @@ object text {
     ): Pull[F, String, Unit] =
       s.pull.uncons1.flatMap { r =>
         val toDecode = r match {
-          case Some((c, _)) => acc ++ c
-          case None         => acc
+          case Some(c, _) => acc ++ c
+          case None       => acc
         }
 
         val isLast = r.isEmpty
@@ -226,15 +226,15 @@ object text {
           if (inBuffer.remaining() > 0) Chunk.byteBuffer(inBuffer.slice) else Chunk.empty
 
         val rest = r match {
-          case Some((_, tail)) => tail
-          case None            => Stream.empty
+          case Some(_, tail) => tail
+          case None          => Stream.empty
         }
 
         if (result.isError)
           Pull.raiseError(
             if (result.isMalformed) new MalformedInputException(result.length())
             else if (result.isUnmappable) new UnmappableCharacterException(result.length())
-            else new CharacterCodingException()
+            else new CharacterCodingException
           )
         // output generated from decoder
         else if (out.remaining() > 0)
@@ -388,14 +388,14 @@ object text {
               )
             else Pull.output1(result)
           }
-        case Some((chunk, stream)) =>
+        case Some(chunk, stream) =>
           val linesBuffer = ArrayBuffer.empty[String]
           chunk.foreach { string =>
             fillBuffers(stringBuilder, linesBuffer, string)
           }
 
           maxLineLength match {
-            case Some((max, raiseThrowable)) if stringBuilder.length > max =>
+            case Some(max, raiseThrowable) if stringBuilder.length > max =>
               Pull.raiseError[F](
                 new LineTooLongException(stringBuilder.length, max)
               )(raiseThrowable)
@@ -404,7 +404,7 @@ object text {
           }
       }
 
-    s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
+    s => Stream.suspend(go(s, new StringBuilder, first = true).stream)
   }
 
   class LineTooLongException(val length: Int, val max: Int)
@@ -479,10 +479,10 @@ object text {
                   buffer = cidx & 0x3f
                   mod += 1
                 case 1 | 2 =>
-                  buffer = (buffer << 6) | (cidx & 0x3f)
+                  buffer = buffer << 6 | cidx & 0x3f
                   mod += 1
                 case 3 =>
-                  buffer = (buffer << 6) | (cidx & 0x3f)
+                  buffer = buffer << 6 | cidx & 0x3f
                   mod = 0
                   acc(bidx) = (buffer >> 16).toByte
                   acc(bidx + 1) = (buffer >> 8).toByte
@@ -518,9 +518,9 @@ object text {
 
       def go(state: State, s: Stream[F, String]): Pull[F, Byte, Unit] =
         s.pull.uncons1.flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             decode(state, hd) match {
-              case Right((newState, out)) =>
+              case Right(newState, out) =>
                 Pull.output(out) >> go(newState, tl)
               case Left(err) => Pull.raiseError(new IllegalArgumentException(err))
             }
@@ -547,13 +547,13 @@ object text {
       // Adapted from scodec-bits, licensed under 3-clause BSD
       def encode(c: ByteVector): (String, ByteVector) = {
         val bytes = c.toArray
-        val bldr = CharBuffer.allocate(((bytes.length + 2) / 3) * 4)
+        val bldr = CharBuffer.allocate((bytes.length + 2) / 3 * 4)
         var idx = 0
         val mod = bytes.length % 3
         while (idx < bytes.length - mod) {
-          var buffer = ((bytes(idx) & 0xff) << 16) | ((bytes(idx + 1) & 0xff) << 8) | (bytes(
+          var buffer = (bytes(idx) & 0xff) << 16 | (bytes(idx + 1) & 0xff) << 8 | bytes(
             idx + 2
-          ) & 0xff)
+          ) & 0xff
           val fourth = buffer & 0x3f
           buffer = buffer >> 6
           val third = buffer & 0x3f
@@ -580,7 +580,7 @@ object text {
 
       def go(carry: ByteVector, s: Stream[F, Byte]): Pull[F, String, Unit] =
         s.pull.uncons.flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             val (out, newCarry) = encode(carry ++ hd.toByteVector)
             Pull.output1(out) >> go(newCarry, tl)
           case None =>
@@ -596,7 +596,7 @@ object text {
                 )
                 Pull.output1(out)
               case 2 =>
-                var buffer = ((carry(0) & 0xff) << 10) | ((carry(1) & 0xff) << 2)
+                var buffer = (carry(0) & 0xff) << 10 | (carry(1) & 0xff) << 2
                 val third = buffer & 0x3f
                 buffer = buffer >> 6
                 val second = buffer & 0x3f
@@ -667,7 +667,7 @@ object text {
       }
       def dropPrefix(s: Stream[F, String], acc: String): Pull[F, Byte, Unit] =
         s.pull.uncons1.flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             if (acc.size + hd.size < 2) dropPrefix(tl, acc + hd)
             else {
               val str = acc + hd
@@ -680,7 +680,7 @@ object text {
         }
       def go(s: Stream[F, String], hi: Int, midByte: Boolean): Pull[F, Byte, Unit] =
         s.pull.uncons1.flatMap {
-          case Some((hd, tl)) =>
+          case Some(hd, tl) =>
             val (out, newHi, newMidByte) = decode1(hd, hi, midByte)
             Pull.output(out) >> go(tl, newHi, newMidByte)
           case None =>

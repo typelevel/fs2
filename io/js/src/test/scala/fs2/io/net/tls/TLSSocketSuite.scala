@@ -116,7 +116,7 @@ class TLSSocketSuite extends TLSSuite {
               .clientBuilder(_)
               .withParameters(
                 TLSParameters(checkServerIdentity =
-                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException))
                 )
               )
               .build
@@ -155,7 +155,7 @@ class TLSSocketSuite extends TLSSuite {
               .clientBuilder(_)
               .withParameters(
                 TLSParameters(checkServerIdentity =
-                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException))
                 )
               )
               .build

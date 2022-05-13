@@ -23,7 +23,7 @@ package fs2.compat
 
 // Scala 2 port of https://github.com/dotty-staging/dotty/blob/3217bc14a309718a79a4d7a99553664974a8d754/library/src-bootstrapped/scala/util/Not.scala
 
-final class NotGiven[+A] private ()
+final class NotGiven[+A] private
 
 private[compat] trait NotGivenLowPriority {
   implicit def default[A]: NotGiven[A] = NotGiven.value

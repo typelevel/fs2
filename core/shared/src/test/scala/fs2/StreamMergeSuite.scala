@@ -179,8 +179,8 @@ class StreamMergeSuite extends Fs2Suite {
       val s2List = s2.toList
       s1.covary[IO].map(Left(_)).mergeHaltBoth(s2.map(Right(_))).compile.toList.map { result =>
         assert(
-          (result.collect { case Left(a) => a } == s1List) ||
-            (result.collect { case Right(a) => a } == s2List)
+          result.collect { case Left(a) => a } == s1List ||
+            result.collect { case Right(a) => a } == s2List
         )
       }
     }

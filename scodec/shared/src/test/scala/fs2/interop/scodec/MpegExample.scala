@@ -159,7 +159,7 @@ object PcapCodec {
       includedLength: Long,
       originalLength: Long
   ) {
-    def timestamp: Double = timestampSeconds + (timestampMicros / (1.second.toMicros.toDouble))
+    def timestamp: Double = timestampSeconds + timestampMicros / 1.second.toMicros.toDouble
   }
 
   implicit def pcapRecordHeader(implicit ordering: ByteOrdering): Codec[PcapRecordHeader] = {

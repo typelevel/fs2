@@ -45,7 +45,7 @@ final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
     with UnsafeTestNGSuite {
 
-  private val counter = new AtomicInteger()
+  private val counter = new AtomicInteger
 
   def createSubscriber(
       p: SubscriberWhiteboxVerification.WhiteboxSubscriberProbe[Int]
@@ -92,14 +92,14 @@ final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with UnsafeTestNGSuite {
 
-  private val counter = new AtomicInteger()
+  private val counter = new AtomicInteger
 
   def createSubscriber(): StreamSubscriber[IO, Int] =
     StreamSubscriber[IO, Int](bufferSize = 1).unsafeRunSync()
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
-    (Stream.eval(IO.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
+    Stream.eval(IO.sleep(100.milliseconds) >> req).compile.drain.unsafeRunAsync(_ => ())
   }
 
   def createElement(i: Int): Int = counter.incrementAndGet()

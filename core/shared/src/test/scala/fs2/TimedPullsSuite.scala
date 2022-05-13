@@ -40,9 +40,9 @@ class TimedPullsSuite extends Fs2Suite {
           .timed { tp =>
             def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
               tp.uncons.flatMap {
-                case None                   => Pull.done
-                case Some((Right(c), next)) => Pull.output(c) >> loop(next)
-                case Some((Left(_), _))     => fail("unexpected timeout")
+                case None                 => Pull.done
+                case Some(Right(c), next) => Pull.output(c) >> loop(next)
+                case Some(Left(_), _)     => fail("unexpected timeout")
               }
 
             loop(tp)
@@ -65,9 +65,9 @@ class TimedPullsSuite extends Fs2Suite {
           .timed { tp =>
             def loop(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
               tp.uncons.flatMap {
-                case None                   => Pull.done
-                case Some((Right(c), next)) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
-                case Some((Left(_), _))     => fail("unexpected timeout")
+                case None                 => Pull.done
+                case Some(Right(c), next) => Pull.output(c) >> tp.timeout(timeout) >> loop(next)
+                case Some(Left(_), _)     => fail("unexpected timeout")
               }
 
             tp.timeout(timeout) >> loop(tp)
@@ -87,8 +87,8 @@ class TimedPullsSuite extends Fs2Suite {
       .timed { tp =>
         tp.timeout(100.millis) >>
           tp.uncons.flatMap {
-            case Some((Left(_), _)) => Pull.done
-            case _                  => fail("timeout expected")
+            case Some(Left(_), _) => Pull.done
+            case _                => fail("timeout expected")
           }
       }
       .stream
@@ -110,9 +110,9 @@ class TimedPullsSuite extends Fs2Suite {
       .timed { tp =>
         def go(tp: Pull.Timed[IO, Int]): Pull[IO, Int, Unit] =
           tp.uncons.flatMap {
-            case Some((Right(c), n)) => Pull.output(c) >> go(n)
-            case Some((Left(_), _))  => Pull.done
-            case None                => fail("Unexpected end of input")
+            case Some(Right(c), n) => Pull.output(c) >> go(n)
+            case Some(Left(_), _)  => Pull.done
+            case None              => fail("Unexpected end of input")
           }
 
         tp.timeout(timeout) >> go(tp)
@@ -136,9 +136,9 @@ class TimedPullsSuite extends Fs2Suite {
           def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
             tp.uncons.flatMap {
               case None => Pull.done
-              case Some((Right(_), next)) =>
+              case Some(Right(_), next) =>
                 Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
-              case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
+              case Some(Left(_), next) => Pull.output1("timeout") >> go(next)
             }
 
           tp.timeout(timeout) >> go(tp)
@@ -162,12 +162,12 @@ class TimedPullsSuite extends Fs2Suite {
       s.pull
         .timed { one =>
           one.timeout(900.millis) >> one.uncons.flatMap {
-            case Some((Right(_), two)) =>
+            case Some(Right(_), two) =>
               two.timeout(1100.millis) >> two.uncons.flatMap {
-                case Some((Right(_), three)) =>
+                case Some(Right(_), three) =>
                   three.uncons.flatMap {
-                    case Some((Left(_), _)) => Pull.done
-                    case _                  => fail(s"Expected timeout third, received element")
+                    case Some(Left(_), _) => Pull.done
+                    case _                => fail(s"Expected timeout third, received element")
                   }
                 case _ => fail(s"Expected element second, received timeout")
               }
@@ -192,10 +192,10 @@ class TimedPullsSuite extends Fs2Suite {
       s.pull
         .timed { one =>
           one.timeout(2.seconds) >> one.uncons.flatMap {
-            case Some((Right(_), two)) =>
+            case Some(Right(_), two) =>
               two.timeout(900.millis) >> two.uncons.flatMap {
-                case Some((Left(_), _)) => Pull.done
-                case _                  => fail(s"Expected timeout second, received element")
+                case Some(Left(_), _) => Pull.done
+                case _                => fail(s"Expected timeout second, received element")
               }
             case _ => fail(s"Expected element first, received timeout")
           }
@@ -214,10 +214,10 @@ class TimedPullsSuite extends Fs2Suite {
       s.pull
         .timed { one =>
           one.timeout(t) >> one.uncons.flatMap {
-            case Some((Right(_), two)) =>
+            case Some(Right(_), two) =>
               two.timeout(0.millis) >>
                 two.uncons.flatMap {
-                  case Some((Right(_), three)) =>
+                  case Some(Right(_), three) =>
                     three.uncons.flatMap {
                       case None => Pull.done
                       case v    => fail(s"Expected end of stream, received $v")
@@ -243,11 +243,11 @@ class TimedPullsSuite extends Fs2Suite {
           def go(tp: Pull.Timed[IO, Unit]): Pull[IO, String, Unit] =
             tp.uncons.flatMap {
               case None => Pull.done
-              case Some((Right(_), n)) =>
+              case Some(Right(_), n) =>
                 Pull.output1("elem") >>
                   tp.timeout(0.millis) >> // cancel old timeout without starting a new one
                   go(n)
-              case Some((Left(_), n)) =>
+              case Some(Left(_), n) =>
                 Pull.output1("timeout") >> go(n)
             }
 
@@ -298,9 +298,9 @@ class TimedPullsSuite extends Fs2Suite {
             // before uncons would cause a timeout to be emitted
             timedPullPause >>
             tp.uncons.flatMap {
-              case Some((Right(_), _)) =>
+              case Some(Right(_), _) =>
                 Pull.done
-              case Some((Left(_), _)) =>
+              case Some(Left(_), _) =>
                 fail("Unexpected timeout")
               case None =>
                 fail("Unexpected end of stream")
@@ -329,20 +329,20 @@ class TimedPullsSuite extends Fs2Suite {
             // before uncons would cause a timeout to be emitted
             timedPullPause >>
             tp.uncons.flatMap {
-              case Some((Right(_), tp)) =>
+              case Some(Right(_), tp) =>
                 tp.timeout(timeout) >>
                   // The timeout starts immediately, so this pause
                   // before uncons causes a timeout
                   timedPullPause >>
                   tp.uncons.flatMap {
-                    case Some((Left(_), _)) =>
+                    case Some(Left(_), _) =>
                       Pull.done
-                    case Some((Right(_), _)) =>
+                    case Some(Right(_), _) =>
                       fail("Unexpected element, expected timeout")
                     case None =>
                       fail("Unexpected end of stream")
                   }
-              case Some((Left(_), _)) =>
+              case Some(Left(_), _) =>
                 fail("Unexpected timeout")
               case None =>
                 fail("Unexpected end of stream")

@@ -147,8 +147,8 @@ class MemoryLeakSpec extends FunSuite {
     def id[F[_], A]: Pipe[F, A, A] =
       _.repeatPull {
         _.uncons1.flatMap {
-          case Some((h, t)) => Pull.output1(h).as(Some(t))
-          case None         => Pull.pure(None)
+          case Some(h, t) => Pull.output1(h).as(Some(t))
+          case None       => Pull.pure(None)
         }
       }
     Stream.constant(1).covary[IO].through(id[IO, Int])
@@ -158,7 +158,7 @@ class MemoryLeakSpec extends FunSuite {
     def id[F[_], A]: Pipe[F, A, A] = {
       def go(s: Stream[F, A]): Pull[F, A, Unit] =
         s.pull.uncons1.flatMap {
-          case Some((h, t)) => Pull.output1(h) >> go(t); case None => Pull.done
+          case Some(h, t) => Pull.output1(h) >> go(t); case None => Pull.done
         }
       in => go(in).stream
     }
@@ -274,7 +274,7 @@ class MemoryLeakSpec extends FunSuite {
   }
 
   leakTest("map, flatMap, translate") {
-    val fk = new (Pure ~> IO) {
+    val fk = new Pure ~> IO {
       def apply[A](pa: Pure[A]): IO[A] = IO.pure(pa)
     }
     Stream.constant(1).translate(fk).flatMap(s => Stream(s, s).flatMap(s => Stream(s))).drain

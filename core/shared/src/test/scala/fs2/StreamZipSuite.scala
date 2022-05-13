@@ -157,9 +157,9 @@ class StreamZipSuite extends Fs2Suite {
       def brokenZip[F[_], A, B](s1: Stream[F, A], s2: Stream[F, B]): Stream[F, (A, B)] = {
         def go(s1: Stream[F, A], s2: Stream[F, B]): Pull[F, (A, B), Unit] =
           s1.pull.uncons1.flatMap {
-            case Some((hd1, tl1)) =>
+            case Some(hd1, tl1) =>
               s2.pull.uncons1.flatMap {
-                case Some((hd2, tl2)) =>
+                case Some(hd2, tl2) =>
                   Pull.output1((hd1, hd2)) >> go(tl1, tl2)
                 case None => Pull.done
               }
@@ -419,7 +419,7 @@ class StreamZipSuite extends Fs2Suite {
       val stream = Stream(1).as(1).scope ++ Stream(2)
       val zippedPull =
         stream.pull.uncons1.flatMap {
-          case Some((_, s)) =>
+          case Some(_, s) =>
             s.zipWith(Stream(3))((_, _)).pull.echo
           case None => Pull.done
         }
@@ -431,7 +431,7 @@ class StreamZipSuite extends Fs2Suite {
       val stream = Stream(1).as(1) ++ Stream(2)
       val zippedPull =
         stream.pull.uncons1.flatMap {
-          case Some((_, s)) =>
+          case Some(_, s) =>
             s.zipWith(Stream(3))((_, _)).pull.echo
           case None => Pull.done
         }

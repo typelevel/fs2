@@ -589,7 +589,7 @@ object Pull extends PullLowPriority {
     * }}}
     */
   implicit def functionKInstance[F[_]]: F ~> Pull[F, Nothing, *] =
-    new (F ~> Pull[F, Nothing, *]) {
+    new F ~> Pull[F, Nothing, *] {
       def apply[X](fx: F[X]) = Pull.eval(fx)
     }
 
@@ -645,7 +645,7 @@ object Pull extends PullLowPriority {
     override def map[R](f: Nothing => R): Terminal[R] = this
   }
 
-  private sealed trait ContP[-Y, +F[_], +O, +X] extends (Terminal[Y] => Pull[F, O, X]) {
+  private sealed trait ContP[-Y, +F[_], +O, +X] extends Terminal[Y] => Pull[F, O, X] {
     def apply(r: Terminal[Y]): Pull[F, O, X] = cont(r)
     protected def cont(r: Terminal[Y]): Pull[F, O, X]
   }
@@ -1303,8 +1303,8 @@ object Pull extends PullLowPriority {
   ): Pull[F, P, Unit] = {
     def go(s: Stream[F, O]): Pull[F, P, Unit] =
       s.pull.uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output(hd.map(f)) >> go(tl)
+        case None         => Pull.done
+        case Some(hd, tl) => Pull.output(hd.map(f)) >> go(tl)
       }
     go(s)
   }
@@ -1327,7 +1327,7 @@ object Pull extends PullLowPriority {
   /** Provides syntax for pure pulls based on `cats.Id`. */
   implicit final class IdOps[O](private val self: Pull[Id, O, Unit]) extends AnyVal {
     private def idToApplicative[F[_]: Applicative]: Id ~> F =
-      new (Id ~> F) { def apply[A](a: Id[A]) = a.pure[F] }
+      new Id ~> F { def apply[A](a: Id[A]) = a.pure[F] }
 
     def covaryId[F[_]: Applicative]: Pull[F, O, Unit] = Pull.translate(self, idToApplicative[F])
   }

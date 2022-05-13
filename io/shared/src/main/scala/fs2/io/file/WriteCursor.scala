@@ -60,8 +60,8 @@ final case class WriteCursor[F[_]](file: FileHandle[F], offset: Long) {
     */
   def writeAll(s: Stream[F, Byte]): Pull[F, Nothing, WriteCursor[F]] =
     s.pull.uncons.flatMap {
-      case Some((hd, tl)) => writePull(hd).flatMap(_.writeAll(tl))
-      case None           => Pull.pure(this)
+      case Some(hd, tl) => writePull(hd).flatMap(_.writeAll(tl))
+      case None         => Pull.pure(this)
     }
 }
 

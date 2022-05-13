@@ -168,7 +168,7 @@ object PesPacketHeader {
         base * 300 + ext
       },
       l => {
-        val base = (l / 300) % (2L << 32)
+        val base = l / 300 % (2L << 32)
         val b = BitVector.fromLong(base).drop(31)
         val ext = (l % 300).toInt
         b.take(3) *: b.drop(3).take(15) *: b.drop(18) *: ext *: EmptyTuple

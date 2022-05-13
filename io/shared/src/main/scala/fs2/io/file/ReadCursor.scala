@@ -64,8 +64,8 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     */
   def readAll(chunkSize: Int): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
-      case Some((next, chunk)) => Pull.output(chunk) >> next.readAll(chunkSize)
-      case None                => Pull.pure(this)
+      case Some(next, chunk) => Pull.output(chunk) >> next.readAll(chunkSize)
+      case None              => Pull.pure(this)
     }
 
   /** Reads chunks until the specified end position in the file. Returns a pull that outputs
@@ -76,8 +76,8 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     if (offset < end) {
       val toRead = ((end - offset).min(Int.MaxValue).toInt).min(chunkSize)
       readPull(toRead).flatMap {
-        case Some((next, chunk)) => Pull.output(chunk) >> next.readUntil(chunkSize, end)
-        case None                => Pull.pure(this)
+        case Some(next, chunk) => Pull.output(chunk) >> next.readUntil(chunkSize, end)
+        case None              => Pull.pure(this)
       }
     } else Pull.pure(this)
 
@@ -94,8 +94,8 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
       t: Temporal[F]
   ): Pull[F, Byte, ReadCursor[F]] =
     readPull(chunkSize).flatMap {
-      case Some((next, chunk)) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)
-      case None                => Pull.eval(t.sleep(pollDelay)) >> tail(chunkSize, pollDelay)
+      case Some(next, chunk) => Pull.output(chunk) >> next.tail(chunkSize, pollDelay)
+      case None              => Pull.eval(t.sleep(pollDelay)) >> tail(chunkSize, pollDelay)
     }
 }
 

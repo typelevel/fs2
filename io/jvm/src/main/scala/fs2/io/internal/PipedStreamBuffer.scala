@@ -49,8 +49,8 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
 
   private[this] var closed: Boolean = false
 
-  private[this] val readerPermit: Synchronizer = new Synchronizer()
-  private[this] val writerPermit: Synchronizer = new Synchronizer()
+  private[this] val readerPermit: Synchronizer = new Synchronizer
+  private[this] val writerPermit: Synchronizer = new Synchronizer
 
   val inputStream: InputStream = new InputStream {
     def read(): Int = {
@@ -59,7 +59,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       try readerPermit.acquire()
       catch {
         case _: InterruptedException =>
-          throw new InterruptedIOException()
+          throw new InterruptedIOException
       }
 
       while (true) {
@@ -88,7 +88,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         try readerPermit.acquire()
         catch {
           case _: InterruptedException =>
-            throw new InterruptedIOException()
+            throw new InterruptedIOException
         }
       }
 
@@ -112,7 +112,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       try readerPermit.acquire()
       catch {
         case _: InterruptedException =>
-          throw new InterruptedIOException()
+          throw new InterruptedIOException
       }
 
       // Variables used to track the progress of the reading. It can happen that
@@ -170,7 +170,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
           try readerPermit.acquire()
           catch {
             case _: InterruptedException =>
-              throw new InterruptedIOException()
+              throw new InterruptedIOException
           }
         }
       }
@@ -230,7 +230,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       try writerPermit.acquire()
       catch {
         case _: InterruptedException =>
-          throw new InterruptedIOException()
+          throw new InterruptedIOException
       }
 
       while (true) {
@@ -258,7 +258,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
         try writerPermit.acquire()
         catch {
           case _: InterruptedException =>
-            throw new InterruptedIOException()
+            throw new InterruptedIOException
         }
       }
     }
@@ -280,7 +280,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
       try writerPermit.acquire()
       catch {
         case _: InterruptedException =>
-          throw new InterruptedIOException()
+          throw new InterruptedIOException
       }
 
       // Variables used to track the progress of the writing. It can happen that
@@ -329,7 +329,7 @@ private[io] final class PipedStreamBuffer(private[this] val capacity: Int) { sel
           try writerPermit.acquire()
           catch {
             case _: InterruptedException =>
-              throw new InterruptedIOException()
+              throw new InterruptedIOException
           }
         }
       }

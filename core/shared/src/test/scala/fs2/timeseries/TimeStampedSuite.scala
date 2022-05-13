@@ -39,7 +39,7 @@ class TimeStampedSuite extends Fs2Suite {
   def assertEqualsEpsilon(actual: Double, expected: Double, epsilon: Double)(implicit
       loc: Location
   ): Unit =
-    assert((actual >= expected - epsilon) && (actual <= expected + epsilon))
+    assert(actual >= expected - epsilon && actual <= expected + epsilon)
 
   def assertEqualsEpsilon(actual: Long, expected: Long, epsilon: Long)(implicit
       loc: Location
@@ -100,7 +100,7 @@ class TimeStampedSuite extends Fs2Suite {
       val zero = Average(0, 0)
       val combineAverages = (x: Average, y: Average) => {
         val totalSamples = x.samples + y.samples
-        val avg = ((x.samples * x.value) + (y.samples * y.value)) / totalSamples
+        val avg = (x.samples * x.value + y.samples * y.value) / totalSamples
         Average(totalSamples, avg)
       }
 
@@ -157,7 +157,7 @@ class TimeStampedSuite extends Fs2Suite {
     test("drops values that appear outside the buffer time") {
       // Create mostly ordered data with clumps of values around each second that are unordered
       val events = Stream.emits(1 to 10).flatMap { x =>
-        val local = (-10 to 10).map(y => ts((x * 1000) + (y * 10)))
+        val local = (-10 to 10).map(y => ts(x * 1000 + y * 10))
         Stream.emits(scala.util.Random.shuffle(local))
       }
       val reordered200ms = events.through(TimeStamped.reorderLocally(200.milliseconds))
@@ -169,11 +169,11 @@ class TimeStampedSuite extends Fs2Suite {
 
     test("emits values with the same timestamp in insertion order") {
       val onTheSecondBumped = onTheSecond.map(_.map(_ + 1))
-      val inOrder = (onTheSecond
-        .interleave(onTheQuarterPast))
+      val inOrder = onTheSecond
+        .interleave(onTheQuarterPast)
         .interleave(onTheSecondBumped.interleave(onTheQuarterPast))
-      val outOfOrder = (onTheQuarterPast
-        .interleave(onTheSecond))
+      val outOfOrder = onTheQuarterPast
+        .interleave(onTheSecond)
         .interleave(onTheQuarterPast.interleave(onTheSecondBumped))
       val reordered = outOfOrder.through(TimeStamped.reorderLocally(1.second))
       assertEquals(reordered.toList, inOrder.toList)

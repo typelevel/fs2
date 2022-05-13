@@ -116,7 +116,7 @@ class StreamRetrySuite extends Fs2Suite {
                 .toList
             }
             val job = IO.monotonic.flatMap { t =>
-              delays.update(_ :+ (t - start)) >> IO.raiseError(RetryErr())
+              delays.update(_ :+ t - start) >> IO.raiseError(RetryErr())
             }
             val expected = List.range(1, maxTries).map(_.millis)
 
