@@ -169,7 +169,7 @@ object Compiler extends CompilerLowPriority {
     def rootCancelScope: CancelScope = F.rootCancelScope
   }
 
-  private[fs2] trait TargetLowPriority { self: Target.type =>
+  private[fs2] trait TargetLowPriority {
 
     private final class SyncTarget[F[_]](implicit F0: Sync[F]) extends Target[F] {
       protected implicit val F: MonadCancelThrow[F] = F0
@@ -179,7 +179,7 @@ object Compiler extends CompilerLowPriority {
     }
 
     implicit def forSync[F[_]](implicit F: Sync[F]): Target[F] = F match {
-      case async: Async[F @unchecked] => forConcurrent(async)
+      case async: Async[F @unchecked] => Target.forConcurrent(async)
       case _                          => new SyncTarget
     }
 
