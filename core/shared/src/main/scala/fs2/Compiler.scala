@@ -182,6 +182,8 @@ object Compiler extends CompilerLowPriority {
       case async: Async[F @unchecked] => forConcurrent(async)
       case _                          => new SyncTarget
     }
+
+    private[fs2] def mkSyncTarget[F[_]: Sync]: Target[F] = new SyncTarget
   }
 
   object Target extends TargetLowPriority {
