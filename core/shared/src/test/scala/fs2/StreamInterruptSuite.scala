@@ -358,7 +358,7 @@ class StreamInterruptSuite extends Fs2Suite {
   }
 
   def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = {
-    implicit val target = Compiler.Target.mkSyncTarget
+    implicit val target: Compiler.Target[F] = Compiler.Target.mkSyncTarget
     s.compile
   }
 
