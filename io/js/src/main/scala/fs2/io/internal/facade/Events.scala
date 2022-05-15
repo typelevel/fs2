@@ -32,23 +32,26 @@ import cats.syntax.all._
 @nowarn
 private[io] trait EventEmitter extends js.Object {
 
-  protected[io] def on[E](eventName: String, listener: js.Function1[E, Unit]): Unit = js.native
+  protected[io] def on[E](eventName: String, listener: js.Function1[E, Unit]): this.type = js.native
 
-  protected[io] def removeListener(eventName: String, listener: js.Function1[Nothing, Unit]): Unit =
+  protected[io] def removeListener(
+      eventName: String,
+      listener: js.Function1[Nothing, Unit]
+  ): this.type =
     js.native
 
 }
 
 private[io] object EventEmitter {
-  implicit class ops(val emitter: EventEmitter) extends AnyVal {
+  implicit class ops(val eventTarget: EventEmitter) extends AnyVal {
     def registerListener[F[_], E](eventName: String, dispatcher: Dispatcher[F])(
         listener: E => F[Unit]
     )(implicit F: Sync[F]): Resource[F, Unit] = Resource
       .make(F.delay {
         val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
-        emitter.on(eventName, fn)
+        eventTarget.on(eventName, fn)
         fn
-      })(fn => F.delay(emitter.removeListener(eventName, fn)))
+      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
       .void
   }
 }

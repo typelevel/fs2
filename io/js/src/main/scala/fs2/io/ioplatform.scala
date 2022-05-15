@@ -79,9 +79,9 @@ private[fs2] trait ioplatform {
             else
               F.unit
         }
-        _ <- readable.registerListener[F, Unit]("readable", dispatcher)(_ => queue.offer(Some(())))
-        _ <- readable.registerListener[F, Unit]("end", dispatcher)(_ => queue.offer(None))
-        _ <- readable.registerListener[F, Unit]("close", dispatcher)(_ => queue.offer(None))
+        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => queue.offer(Some(())))
+        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => queue.offer(None))
+        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => queue.offer(None))
         _ <- readable.registerListener[F, js.Error]("error", dispatcher) { e =>
           error.complete(js.JavaScriptException(e)).void
         }
