@@ -202,9 +202,9 @@ private[fs2] trait ioplatform {
           new facade.Duplex(
             new facade.DuplexOptions {
 
-              autoDestroy = false
+              var autoDestroy = false
 
-              read = { readable =>
+              var read = { readable =>
                 dispatcher.unsafeRunAndForget(
                   readQueue.take.flatMap { chunk =>
                     F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
@@ -212,17 +212,17 @@ private[fs2] trait ioplatform {
                 )
               }
 
-              write = { (_, chunk, _, cb) =>
+              var write = { (_, chunk, _, cb) =>
                 dispatcher.unsafeRunAndForget(
                   writeQueue.offer(Some(Chunk.uint8Array(chunk))) *> F.delay(cb(null))
                 )
               }
 
-              `final` = { (_, cb) =>
+              var `final` = { (_, cb) =>
                 dispatcher.unsafeRunAndForget(F.delay(cb(null)))
               }
 
-              destroy = { (_, err, cb) =>
+              var destroy = { (_, err, cb) =>
                 dispatcher.unsafeRunAndForget {
                   error
                     .complete(

@@ -25,26 +25,26 @@ import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-private[io] trait DuplexOptions {
+private[io] trait DuplexOptions extends js.Object {
 
-  var autoDestroy: js.UndefOr[Boolean] = js.undefined
+  var autoDestroy: Boolean
 
-  var read: js.Function1[fs2.io.Readable, Unit] = null
+  var read: js.ThisFunction0[fs2.io.Readable, Unit]
 
-  var write: js.Function4[fs2.io.Writable, js.typedarray.Uint8Array, String, js.Function1[
+  var write: js.ThisFunction3[fs2.io.Writable, js.typedarray.Uint8Array, String, js.Function1[
     js.Error,
     Unit
-  ], Unit] = null
+  ], Unit]
 
-  var `final`: js.Function2[fs2.io.Duplex, js.Function1[
+  var `final`: js.ThisFunction1[fs2.io.Duplex, js.Function1[
     js.Error,
     Unit
-  ], Unit] = null
+  ], Unit]
 
-  var destroy: js.Function3[fs2.io.Duplex, js.Error, js.Function1[
+  var destroy: js.ThisFunction2[fs2.io.Duplex, js.Error, js.Function1[
     js.Error,
     Unit
-  ], Unit] = null
+  ], Unit]
 
 }
 
