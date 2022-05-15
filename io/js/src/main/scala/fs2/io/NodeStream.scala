@@ -21,24 +21,56 @@
 
 package fs2.io
 
+import fs2.io.internal.facade.EventEmitter
+
+import scala.annotation.nowarn
 import scala.scalajs.js
 
 /** A facade for Node.js `stream.Readable`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-trait Readable extends js.Object
+@nowarn
+trait Readable extends EventEmitter {
+
+  protected[io] def read(): js.typedarray.Uint8Array = js.native
+
+  protected[io] def destroy(): this.type = js.native
+
+  protected[io] def destroy(error: js.Error): this.type = js.native
+
+  protected[io] def push(chunk: js.typedarray.Uint8Array): Boolean = js.native
+
+  protected[io] def readableEnded: Boolean = js.native
+
+}
 
 /** A facade for Node.js `stream.Writable`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-trait Writable extends js.Object
+@nowarn
+trait Writable extends EventEmitter {
+
+  protected[io] def destroy(error: js.Error): this.type = js.native
+
+  protected[io] def write(
+      chunk: js.typedarray.Uint8Array,
+      cb: js.Function1[js.UndefOr[js.Error], Unit]
+  ): Boolean = js.native
+
+  protected[io] def end(cb: js.Function1[js.UndefOr[js.Error], Unit]): this.type = js.native
+
+  protected[io] def writableEnded: Boolean = js.native
+
+}
 
 /** A facade for Node.js `stream.Duplex`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-trait Duplex extends js.Object with Readable with Writable
+trait Duplex extends Readable with Writable {
+  protected[io] override def destroy(error: js.Error): this.type = js.native
+}
 
 final class StreamDestroyedException private[io] () extends IOException
