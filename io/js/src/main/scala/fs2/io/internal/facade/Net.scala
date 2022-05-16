@@ -77,7 +77,9 @@ private[io] trait SocketOptions extends js.Object {
 @JSImport("net", "Socket")
 @js.native
 @nowarn
-private[io] class Socket(options: SocketOptions) extends fs2.io.Duplex {
+private[io] class Socket extends fs2.io.Duplex {
+
+  def this(options: SocketOptions) = this()
 
   def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
 
