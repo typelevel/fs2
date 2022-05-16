@@ -26,10 +26,32 @@ import scala.scalajs.js
 import scala.scalajs.js.|
 import scala.scalajs.js.annotation.JSImport
 
+@nowarn
+private[io] object tls {
+  @js.native
+  @JSImport("tls", "connect")
+  def connect(options: TLSConnectOptions): TLSSocket =
+    js.native
+}
+
+private[io] trait TLSConnectOptions extends js.Object {
+  var socket: js.UndefOr[fs2.io.Duplex] = js.undefined
+}
+
+private[io] trait TLSSocketOptions extends js.Object {
+
+  var enableTrace: js.UndefOr[Boolean] = js.undefined
+  
+  var isServer: js.UndefOr[Boolean] = js.undefined
+
+}
+
 @JSImport("tls", "TLSSocket")
 @js.native
 @nowarn
 private[io] class TLSSocket extends Socket {
+
+  def this(socket: fs2.io.Duplex, options: TLSSocketOptions) = this()
 
   def alpnProtocol: String | Boolean = js.native
 
