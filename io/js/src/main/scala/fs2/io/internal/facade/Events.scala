@@ -21,12 +21,13 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
-import scala.scalajs.js
-import cats.effect.std.Dispatcher
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
+import cats.effect.std.Dispatcher
 import cats.syntax.all._
+
+import scala.annotation.nowarn
+import scala.scalajs.js
 
 @js.native
 @nowarn
