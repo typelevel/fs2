@@ -47,6 +47,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             )
             _ <- F.async_[Unit] { cb =>
               socket.connect(address.path, () => cb(Right(())))
+              ()
             }
           } yield socket)
           .flatMap(Socket.forAsync[F])
