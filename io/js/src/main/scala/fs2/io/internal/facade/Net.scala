@@ -67,6 +67,20 @@ private[io] trait SocketOptions extends js.Object {
 @nowarn
 private[io] class Socket(options: SocketOptions) extends fs2.io.Duplex {
 
-  def connect(path: String, connectListener: js.Function0[Unit]): this.type = js.native
+  def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
+
+  def destroyed: Boolean = js.native
+
+  def readyState: String = js.native
+
+  def localAddress: js.UndefOr[String] = js.native
+
+  def localPort: js.UndefOr[Int] = js.native
+
+  def remoteAddress: js.UndefOr[String] = js.native
+
+  def remotePort: js.UndefOr[Int] = js.native
+
+  def end(): Socket = js.native
 
 }
