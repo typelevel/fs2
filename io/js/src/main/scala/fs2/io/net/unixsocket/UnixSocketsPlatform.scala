@@ -93,6 +93,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           _ <- Stream.eval(
             F.async_[Unit] { cb =>
               server.listen(address.path, () => cb(Right(())))
+              ()
             }
           )
           socket <- Stream

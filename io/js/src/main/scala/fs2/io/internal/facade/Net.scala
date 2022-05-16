@@ -37,12 +37,24 @@ private[io] object net {
 @nowarn
 private[io] trait Server extends EventEmitter {
 
+  def address(): ServerAddress = js.native
+
   def listening: Boolean = js.native
 
   def close(cb: js.Function1[js.UndefOr[js.Error], Unit]): Server = js.native
 
-  def listen(path: String, cb: js.Function0[Unit]): Unit = js.native
+  def listen(path: String, cb: js.Function0[Unit]): Server = js.native
 
+  def listen(port: Int, connectListener: js.Function0[Unit]): Server = js.native
+
+  def listen(port: Int, host: String, connectListener: js.Function0[Unit]): Server = js.native
+
+}
+
+@js.native
+private[io] trait ServerAddress extends js.Object {
+  def address: String = js.native
+  def port: Int = js.native
 }
 
 private[io] trait ServerOptions extends js.Object {
@@ -68,6 +80,8 @@ private[io] trait SocketOptions extends js.Object {
 private[io] class Socket(options: SocketOptions) extends fs2.io.Duplex {
 
   def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
+
+  def connect(port: Int, host: String, connectListener: js.Function0[Unit]): Socket = js.native
 
   def destroyed: Boolean = js.native
 
