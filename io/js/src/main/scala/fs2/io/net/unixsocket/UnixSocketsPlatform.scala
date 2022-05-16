@@ -24,15 +24,17 @@ package io.net.unixsocket
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import fs2.io.net.Socket
-import fs2.internal.jsdeps.node.netMod
-import cats.syntax.all._
-import scala.scalajs.js
 import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
+import cats.syntax.all._
+import fs2.internal.jsdeps.node.netMod
 import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.file.Files
+import fs2.io.file.Path
 import fs2.io.internal.EventEmitterOps._
-import fs2.io.file.{Files, Path}
+import fs2.io.net.Socket
+
+import scala.scalajs.js
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
 
