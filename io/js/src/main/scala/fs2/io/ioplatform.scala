@@ -30,7 +30,6 @@ import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.processMod
 import fs2.io.internal.MicrotaskExecutor
 import fs2.io.internal.ThrowableOps._
 import fs2.io.internal.facade
@@ -256,7 +255,7 @@ private[fs2] trait ioplatform {
 
   private def stdinAsync[F[_]: Async]: Stream[F, Byte] =
     Stream
-      .resource(suspendReadableAndRead(false, false)(processMod.stdin.asInstanceOf[Readable]))
+      .resource(suspendReadableAndRead(false, false)(facade.process.stdin))
       .flatMap(_._2)
 
   /** Stream of bytes read asynchronously from standard input.
@@ -269,11 +268,11 @@ private[fs2] trait ioplatform {
   def stdout[F[_]: Async]: Pipe[F, Byte, Nothing] = stdoutAsync
 
   private def stdoutAsync[F[_]: Async]: Pipe[F, Byte, Nothing] =
-    writeWritable(processMod.stdout.asInstanceOf[Writable].pure, false)
+    writeWritable(facade.process.stdout.pure, false)
 
   /** Pipe of bytes that writes emitted values to standard error asynchronously. */
   def stderr[F[_]: Async]: Pipe[F, Byte, Nothing] =
-    writeWritable(processMod.stderr.asInstanceOf[Writable].pure, false)
+    writeWritable(facade.process.stderr.pure, false)
 
   /** Writes this stream to standard output asynchronously, converting each element to
     * a sequence of bytes via `Show` and the given `Charset`.
@@ -297,31 +296,31 @@ private[fs2] trait ioplatform {
   // Copied JVM implementations, for bincompat
 
   /** Stream of bytes read asynchronously from standard input. */
-  private[fs2] def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] = stdinSync(bufSize)
+  private[io] def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] = stdinSync(bufSize)
 
   private def stdinSync[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
     readInputStream(Sync[F].blocking(System.in), bufSize, false)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  private[fs2] def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] = stdoutSync
+  private[io] def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] = stdoutSync
 
   private def stdoutSync[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
 
   /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  private[fs2] def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
+  private[io] def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.err), false)
 
   /** Writes this stream to standard output asynchronously, converting each element to
     * a sequence of bytes via `Show` and the given `Charset`.
     */
-  private[fs2] def stdoutLines[F[_]: Sync, O: Show](
+  private[io] def stdoutLines[F[_]: Sync, O: Show](
       charset: Charset
   ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdoutSync)
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  private[fs2] def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
+  private[io] def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
     stdinSync(bufSize).through(text.utf8.decode)
 
 }
