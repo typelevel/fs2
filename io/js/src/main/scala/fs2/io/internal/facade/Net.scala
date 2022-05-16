@@ -83,4 +83,12 @@ private[io] class Socket(options: SocketOptions) extends fs2.io.Duplex {
 
   def end(): Socket = js.native
 
+  def setEncoding(encoding: String): Socket = js.native
+
+  def setKeepAlive(enable: Boolean): Socket = js.native
+
+  def setNoDelay(noDelay: Boolean): Socket = js.native
+
+  def setTimeout(timeout: Double): Socket = js.native
+
 }
