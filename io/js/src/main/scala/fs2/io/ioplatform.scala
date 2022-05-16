@@ -219,7 +219,9 @@ private[fs2] trait ioplatform {
               }
 
               var `final` = { (_, cb) =>
-                dispatcher.unsafeRunAndForget(F.delay(cb(null)))
+                dispatcher.unsafeRunAndForget(
+                  writeQueue.offer(None) *> F.delay(cb(null))
+                )
               }
 
               var destroy = { (_, err, cb) =>
