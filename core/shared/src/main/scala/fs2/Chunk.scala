@@ -1129,6 +1129,7 @@ object Chunk
           else b
         go(0)
       }
+      override def size[A](fa: Chunk[A]): Long = fa.size.toLong
       override def toList[A](fa: Chunk[A]): List[A] = fa.toList
       override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
       override def empty[A]: Chunk[A] = Chunk.empty
