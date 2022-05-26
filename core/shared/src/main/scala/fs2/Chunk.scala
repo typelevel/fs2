@@ -371,11 +371,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     }
 
   /** Converts this chunk to a scodec-bits BitVector. */
-  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector =
-    this match {
-      case c: Chunk.ByteVectorChunk => c.toByteVector.bits
-      case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
-    }
+  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = c.toByteVector.bits
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])
