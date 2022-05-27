@@ -24,8 +24,11 @@ The fs2-core as well as fs2-io and fs2-scodec libraries are also supported on Sc
 
 ```
 libraryDependencies += "co.fs2" %%% "fs2-core" % "3.2.7"
-libraryDependencies += "co.fs2" %%% "fs2-io" % "3.2.7" // Node.js only
 libraryDependencies += "co.fs2" %%% "fs2-scodec" % "3.2.7"
+
+// Node.js only, and requires module support to be enabled
+libraryDependencies += "co.fs2" %%% "fs2-io" % "3.2.7"
+scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)) 
 ```
 
 Release notes for each release are available on [Github](https://github.com/typelevel/fs2/releases/).
