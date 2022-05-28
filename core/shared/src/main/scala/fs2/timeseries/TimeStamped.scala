@@ -244,7 +244,7 @@ object TimeStamped {
         }.stream
     }
 
-    source => (source.through2(Stream.awakeEvery[F](tickResolution).as(())))(doThrottle)
+    source => source.through2(Stream.awakeEvery[F](tickResolution).as(()))(doThrottle)
   }
 
   /** Scan that filters the specified timestamped values to ensure
