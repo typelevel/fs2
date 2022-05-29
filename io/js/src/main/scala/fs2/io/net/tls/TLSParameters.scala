@@ -53,26 +53,26 @@ sealed trait TLSParameters { outer =>
   private[tls] def toTLSSocketOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
   ): facade.TLSSocketOptions = new facade.TLSSocketOptions {
-    requestCert = outer.requestCert.orUndefined
-    rejectUnauthorized = outer.rejectUnauthorized.orUndefined
-    ALPNProtocols = alpnProtocols.map(_.toJSArray).orUndefined
-    SNICallback = sniCallback.map(_.toJS(dispatcher)).orUndefined
-    session = outer.session.map(_.raw.toUint8Array).orUndefined
-    requestOCSP = outer.requestOCSP.orUndefined
+    outer.requestCert.foreach(requestCert = _)
+    outer.rejectUnauthorized.foreach(rejectUnauthorized = _)
+    alpnProtocols.map(_.toJSArray).foreach(ALPNProtocols = _)
+    sniCallback.map(_.toJS(dispatcher)).foreach(SNICallback = _)
+    outer.session.map(_.raw.toUint8Array).foreach(session = _)
+    outer.requestOCSP.foreach(requestOCSP = _)
   }
 
   private[tls] def toTLSConnectOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
   ): facade.TLSConnectOptions = new facade.TLSConnectOptions {
-    requestCert = outer.requestCert.orUndefined
-    rejectUnauthorized = outer.rejectUnauthorized.orUndefined
-    ALPNProtocols = alpnProtocols.map(_.toJSArray).orUndefined
-    SNICallback = sniCallback.map(_.toJS(dispatcher)).orUndefined
-    session = outer.session.map(_.raw.toUint8Array).orUndefined
-    pskCallback = outer.pskCallback.map(_.toJS).orUndefined
-    servername = outer.servername.orUndefined
-    checkServerIdentity = outer.checkServerIdentity.map(_.toJS).orUndefined
-    minDHSize = outer.minDHSize.orUndefined
+    outer.requestCert.foreach(requestCert = _)
+    outer.rejectUnauthorized.foreach(rejectUnauthorized = _)
+    alpnProtocols.map(_.toJSArray).foreach(ALPNProtocols = _)
+    sniCallback.map(_.toJS(dispatcher)).foreach(SNICallback = _)
+    outer.session.map(_.raw.toUint8Array).foreach(session = _)
+    outer.pskCallback.map(_.toJS).foreach(pskCallback = _)
+    outer.servername.foreach(servername = _)
+    outer.checkServerIdentity.map(_.toJS).foreach(checkServerIdentity = _)
+    outer.minDHSize.foreach(minDHSize = _)
   }
 }
 

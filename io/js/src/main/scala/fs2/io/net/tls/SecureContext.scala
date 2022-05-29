@@ -64,26 +64,26 @@ object SecureContext {
   ): SecureContext = {
     val options = new facade.SecureContextOptions {}
 
-    options.ca = ca.map(toJS).orUndefined
-    options.cert = cert.map(toJS).orUndefined
-    options.ciphers = ciphers.orUndefined
-    options.clientCertEngine = clientCertEngine.orUndefined
-    options.crl = crl.map(toJS).orUndefined
-    options.dhparam = dhparam.map(toJS).orUndefined
-    options.ecdhCurve = ecdhCurve.orUndefined
-    options.honorCipherOrder = honorCipherOrder.orUndefined
-    options.key = key.map(_.view.map(_.toJS).toJSArray).orUndefined
-    options.maxVersion = maxVersion.map(_.toJS).orUndefined
-    options.minVersion = minVersion.map(_.toJS).orUndefined
-    options.passphrase = passphrase.orUndefined
-    options.pfx = pfx.map(_.view.map(_.toJS).toJSArray).orUndefined
-    options.privateKeyEngine = privateKeyEngine.orUndefined
-    options.privateKeyIdentifier = privateKeyIdentifier.orUndefined
-    options.secureOptions = secureOptions.map(_.toDouble).orUndefined
-    options.sessionIdContext = sessionIdContext.orUndefined
-    options.sessionTimeout = sessionTimeout.map(_.toSeconds.toDouble).orUndefined
-    options.sigalgs = sigalgs.orUndefined
-    options.ticketKeys = ticketKeys.map(_.toUint8Array).orUndefined
+    ca.map(toJS).foreach(options.ca = _)
+    cert.map(toJS).foreach(options.cert = _)
+    ciphers.foreach(options.ciphers = _)
+    clientCertEngine.foreach(options.clientCertEngine = _)
+    crl.map(toJS).foreach(options.crl = _)
+    dhparam.map(toJS).foreach(options.dhparam = _)
+    ecdhCurve.foreach(options.ecdhCurve = _)
+    honorCipherOrder.foreach(options.honorCipherOrder = _)
+    key.map(_.view.map(_.toJS).toJSArray).foreach(options.key = _)
+    maxVersion.map(_.toJS).foreach(options.maxVersion = _)
+    minVersion.map(_.toJS).foreach(options.minVersion = _)
+    passphrase.foreach(options.passphrase = _)
+    pfx.map(_.view.map(_.toJS).toJSArray).foreach(options.pfx = _)
+    privateKeyEngine.foreach(options.privateKeyEngine = _)
+    privateKeyIdentifier.foreach(options.privateKeyIdentifier = _)
+    secureOptions.map(_.toDouble).foreach(options.secureOptions = _)
+    sessionIdContext.foreach(options.sessionIdContext = _)
+    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.sessionTimeout = _)
+    sigalgs.foreach(options.sigalgs = _)
+    ticketKeys.map(_.toUint8Array).foreach(options.ticketKeys = _)
 
     facade.tls.createSecureContext(options)
   }
@@ -112,7 +112,7 @@ object SecureContext {
     outer =>
     private[SecureContext] def toJS = new facade.Key {
       val pem = SecureContext.toJS(outer.pem)
-      passphrase = outer.passphrase.orUndefined
+      outer.passphrase.foreach(passphrase = _)
     }
   }
 
@@ -120,7 +120,7 @@ object SecureContext {
     outer =>
     private[SecureContext] def toJS = new facade.Pfx {
       val buf = SecureContext.toJS(outer.buf)
-      passphrase = outer.passphrase.orUndefined
+      outer.passphrase.foreach(passphrase = _)
     }
   }
 
