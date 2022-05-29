@@ -365,15 +365,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
     this match {
       case c: Chunk.ByteVectorChunk => c.toByteVector
-      case other                    => ByteVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
+      case other =>
+        val slice = other.asInstanceOf[Chunk[Byte]].toArraySlice
+        ByteVector.view(slice.values, slice.offset, slice.length)
     }
 
   /** Converts this chunk to a scodec-bits BitVector. */
-  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector =
-    this match {
-      case c: Chunk.ByteVectorChunk => c.toByteVector.bits
-      case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
-    }
+  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = toByteVector[B].bits
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])
