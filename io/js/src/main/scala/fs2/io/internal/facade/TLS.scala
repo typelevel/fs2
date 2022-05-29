@@ -25,9 +25,9 @@ import fs2.io.net.tls.SecureContext
 
 import scala.annotation.nowarn
 import scala.scalajs.js
-import scala.scalajs.js.|
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
+import scala.scalajs.js.|
 
 @nowarn
 private[io] object tls {
@@ -104,20 +104,76 @@ private[io] trait Pfx extends js.Object {
 }
 
 private[io] trait TLSConnectOptions extends js.Object {
+
+  var secureContext: js.UndefOr[SecureContext] = js.undefined
+
+  var enableTrace: js.UndefOr[Boolean] = js.undefined
+
   var socket: js.UndefOr[fs2.io.Duplex] = js.undefined
+
+  var requestCert: js.UndefOr[Boolean] = js.undefined
+
+  var rejectUnauthorized: js.UndefOr[Boolean] = js.undefined
+
+  var ALPNProtocols: js.UndefOr[js.Array[String]] = js.undefined
+
+  var SNICallback: js.UndefOr[js.Function2[String, js.Function2[js.Error, js.UndefOr[
+    SecureContext
+  ], Unit], Unit]] = js.undefined
+
+  var session: js.UndefOr[Uint8Array] = js.undefined
+
+  var pskCallback: js.UndefOr[js.Function1[String, PSKCallbackNegotation]] = js.undefined
+
+  var servername: js.UndefOr[String] = js.undefined
+
+  var checkServerIdentity: js.UndefOr[js.Function2[String, PeerCertificate, js.UndefOr[js.Error]]] = js.undefined
+
+  var minDHSize: js.UndefOr[Int] = js.undefined
+
+}
+
+private[io] trait PSKCallbackNegotation extends js.Object {
+  
+  var psk: js.UndefOr[Uint8Array] = js.undefined
+
+  var identity: js.UndefOr[String] = js.undefined
+  
+}
+
+@js.native
+private[io] trait PeerCertificate extends js.Object {
+
+  def raw: Uint8Array = js.native
+
 }
 
 private[io] trait TLSSocketOptions extends js.Object {
+
+  var secureContext: js.UndefOr[SecureContext] = js.undefined
 
   var enableTrace: js.UndefOr[Boolean] = js.undefined
 
   var isServer: js.UndefOr[Boolean] = js.undefined
 
+  var session: js.UndefOr[Uint8Array] = js.undefined
+
+  var requestOCSP: js.UndefOr[Boolean] = js.undefined
+
+  var requestCert: js.UndefOr[Boolean] = js.undefined
+
+  var rejectUnauthorized: js.UndefOr[Boolean] = js.undefined
+
+  var ALPNProtocols: js.UndefOr[js.Array[String]] = js.undefined
+
+  var SNICallback: js.UndefOr[js.Function2[String, js.Function2[js.Error, js.UndefOr[
+    SecureContext
+  ], Unit], Unit]] = js.undefined
+
 }
 
 @JSImport("tls", "TLSSocket")
 @js.native
-@nowarn
 private[io] class TLSSocket extends Socket {
 
   def this(socket: fs2.io.Duplex, options: TLSSocketOptions) = this()

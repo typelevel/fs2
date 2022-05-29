@@ -24,21 +24,19 @@ package io
 package net
 package tls
 
-import fs2.io.internal.ByteChunkOps._
-import fs2.io.internal.ThrowableOps._
-import fs2.internal.jsdeps.node.tlsMod
-import scala.scalajs.js.JSConverters._
-import scala.scalajs.js.typedarray.Uint8Array
-import scala.scalajs.js
-import scala.scalajs.js.|
-import cats.syntax.all._
 import cats.effect.kernel.Async
 import cats.effect.std.Dispatcher
+import cats.syntax.all._
+import fs2.io.internal.ThrowableOps._
+import fs2.io.internal.facade
+
+import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
 
 /** Parameters used in creation of a TLS session.
   * See [[https://nodejs.org/api/tls.html]] for detailed documentation on each parameter.
   */
-sealed trait TLSParameters {
+sealed trait TLSParameters { outer =>
   val requestCert: Option[Boolean]
   val rejectUnauthorized: Option[Boolean]
   val alpnProtocols: Option[List[String]]
@@ -54,37 +52,27 @@ sealed trait TLSParameters {
 
   private[tls] def toTLSSocketOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): tlsMod.TLSSocketOptions = {
-    val options = tlsMod.TLSSocketOptions()
-    setCommonOptions(options, dispatcher)
-    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession(_))
-    requestOCSP.foreach(options.setRequestOCSP(_))
-    options
+  ): facade.TLSSocketOptions = new facade.TLSSocketOptions {
+    requestCert = outer.requestCert.orUndefined
+    rejectUnauthorized = outer.rejectUnauthorized.orUndefined
+    ALPNProtocols = alpnProtocols.map(_.toJSArray).orUndefined
+    SNICallback = sniCallback.map(_.toJS(dispatcher)).orUndefined
+    session = outer.session.map(_.raw.toUint8Array).orUndefined
+    requestOCSP = outer.requestOCSP.orUndefined
   }
 
-  private[tls] def toConnectionOptions[F[_]: Async](
+  private[tls] def toTLSConnectOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): tlsMod.ConnectionOptions = {
-    val options = tlsMod.ConnectionOptions()
-    setCommonOptions(options, dispatcher)
-    session.map(s => Chunk.byteVector(s.raw).toBuffer).foreach(options.setSession(_))
-    pskCallback.map(_.toJS).foreach(options.setPskCallback(_))
-    servername.foreach(options.setServername(_))
-    checkServerIdentity.map(_.toJS).foreach(options.setCheckServerIdentity(_))
-    minDHSize.map(_.toDouble).foreach(options.setMinDHSize(_))
-    options
-  }
-
-  private def setCommonOptions[F[_]: Async](
-      options: tlsMod.CommonConnectionOptions,
-      dispatcher: Dispatcher[F]
-  ): Unit = {
-    requestCert.foreach(options.setRequestCert(_))
-    rejectUnauthorized.foreach(options.setRejectUnauthorized(_))
-    alpnProtocols
-      .map(_.map(x => x: String | Uint8Array).toJSArray)
-      .foreach(options.setALPNProtocols(_))
-    sniCallback.map(_.toJS(dispatcher)).foreach(options.setSNICallback(_))
+  ): facade.TLSConnectOptions = new facade.TLSConnectOptions {
+    requestCert = outer.requestCert.orUndefined
+    rejectUnauthorized = outer.rejectUnauthorized.orUndefined
+    ALPNProtocols = alpnProtocols.map(_.toJSArray).orUndefined
+    SNICallback = sniCallback.map(_.toJS(dispatcher)).orUndefined
+    session = outer.session.map(_.raw.toUint8Array).orUndefined
+    pskCallback = outer.pskCallback.map(_.toJS).orUndefined
+    servername = outer.servername.orUndefined
+    checkServerIdentity = outer.checkServerIdentity.map(_.toJS).orUndefined
+    minDHSize = outer.minDHSize.orUndefined
   }
 }
 
@@ -132,14 +120,13 @@ object TLSParameters {
     def apply[F[_]: Async](servername: String): F[Either[Throwable, Option[SecureContext]]]
     private[TLSParameters] def toJS[F[_]](dispatcher: Dispatcher[F])(implicit
         F: Async[F]
-    ): js.Function2[String, js.Function2[js.Error | Null, js.UndefOr[
-      tlsMod.SecureContext
+    ): js.Function2[String, js.Function2[js.Error, js.UndefOr[
+      SecureContext
     ], Unit], Unit] = { (servername, cb) =>
       dispatcher.unsafeRunAndForget {
-        import SecureContext.ops
         apply(servername).flatMap {
           case Left(ex)         => F.delay(cb(ex.toJSError, null))
-          case Right(Some(ctx)) => F.delay(cb(null, ctx.toJS))
+          case Right(Some(ctx)) => F.delay(cb(null, ctx))
           case Right(None)      => F.delay(cb(null, null))
         }
       }
@@ -149,23 +136,24 @@ object TLSParameters {
   trait PSKCallback {
     def apply(hint: Option[String]): Option[PSKCallbackNegotation]
 
-    private[TLSParameters] def toJS
-        : js.Function1[String | Null, tlsMod.PSKCallbackNegotation | Null] = { hint =>
-      apply(Option(hint.asInstanceOf[String])).map(_.toJS).getOrElse(null)
-    }
+    private[TLSParameters] def toJS: js.Function1[String, facade.PSKCallbackNegotation] =
+      hint => apply(Option(hint)).map(_.toJS).orNull
   }
 
-  final case class PSKCallbackNegotation(psk: Chunk[Byte], identity: String) {
-    private[TLSParameters] def toJS = tlsMod.PSKCallbackNegotation(identity, psk.toNodeUint8Array)
+  final case class PSKCallbackNegotation(psk: Chunk[Byte], identity: String) { outer =>
+    private[TLSParameters] def toJS = new facade.PSKCallbackNegotation {
+      psk = outer.psk.toUint8Array
+      identity = outer.identity
+    }
   }
 
   trait CheckServerIdentity {
     def apply(servername: String, cert: Chunk[Byte]): Either[Throwable, Unit]
 
     private[TLSParameters] def toJS
-        : js.Function2[String, tlsMod.PeerCertificate, js.UndefOr[js.Error]] = {
+        : js.Function2[String, facade.PeerCertificate, js.UndefOr[js.Error]] = {
       (servername, cert) =>
-        apply(servername, cert.raw.toChunk) match {
+        apply(servername, Chunk.uint8Array(cert.raw)) match {
           case Left(ex) => ex.toJSError
           case _        => ()
         }
