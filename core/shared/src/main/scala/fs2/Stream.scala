@@ -1042,16 +1042,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     (Pull.output1(z) >> go(z, this)).stream
   }
 
-  /** Like `observe` but observes with a function `O => F[O2]` instead of a pipe.
-    * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
+  /** Like `observe` but observes with a function `O => F[_]` instead of a pipe.
+    * Not as powerful as `observe` since not all pipes can be represented by `O => F[_]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
+  def evalTap[F2[x] >: F[x]: Functor](f: O => F2[_]): Stream[F2, O] =
     evalMap(o => f(o).as(o))
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
-  def evalTapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O] =
+  def evalTapChunk[F2[x] >: F[x]: Applicative](f: O => F2[_]): Stream[F2, O] =
     evalMapChunk(o => f(o).as(o))
 
   /** Emits `true` as soon as a matching element is received, else `false` if no input matches.
