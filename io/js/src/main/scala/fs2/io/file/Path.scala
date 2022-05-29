@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import fs2.internal.jsdeps.node.pathMod
+import fs2.io.internal.facade
 
 import scala.annotation.tailrec
 
@@ -33,7 +33,7 @@ final case class Path private (override val toString: String) extends PathApi {
     if (toString.isEmpty & name.isEmpty)
       Path.instances.empty // Special case to satisfy Monoid laws
     else
-      Path(pathMod.join(toString, name))
+      Path(facade.path.join(toString, name))
 
   def /(path: Path): Path = this / path.toString
 
@@ -43,13 +43,13 @@ final case class Path private (override val toString: String) extends PathApi {
   def resolveSibling(name: String): Path = resolveSibling(Path(name))
   def resolveSibling(path: Path): Path = parent.fold(path)(_.resolve(path))
 
-  def relativize(path: Path): Path = Path(pathMod.relative(toString, path.toString))
+  def relativize(path: Path): Path = Path(facade.path.relative(toString, path.toString))
 
-  def normalize: Path = new Path(pathMod.normalize(toString))
+  def normalize: Path = new Path(facade.path.normalize(toString))
 
-  def isAbsolute: Boolean = pathMod.isAbsolute(toString)
+  def isAbsolute: Boolean = facade.path.isAbsolute(toString)
 
-  def absolute: Path = Path(pathMod.resolve(toString))
+  def absolute: Path = Path(facade.path.resolve(toString))
 
   def names: Seq[Path] = {
     @tailrec
@@ -62,12 +62,12 @@ final case class Path private (override val toString: String) extends PathApi {
     go(this, Nil)
   }
 
-  def fileName: Path = Path(pathMod.basename(toString))
+  def fileName: Path = Path(facade.path.basename(toString))
 
-  def extName: String = pathMod.extname(toString)
+  def extName: String = facade.path.extname(toString)
 
   def parent: Option[Path] = {
-    val parsed = pathMod.parse(toString)
+    val parsed = facade.path.parse(toString)
     if (parsed.dir.isEmpty || parsed.base.isEmpty)
       None
     else
@@ -96,7 +96,7 @@ final case class Path private (override val toString: String) extends PathApi {
 }
 
 object Path extends PathCompanionApi {
-  private[file] val sep = pathMod.sep
+  private[file] val sep = facade.path.sep
 
   def apply(path: String): Path =
     if (path.endsWith(sep))
