@@ -38,4 +38,8 @@ private[io] object process {
   @JSImport("process", "stdin")
   def stdin: fs2.io.Readable = js.native
 
+  @js.native
+  @JSImport("process", "cwd")
+  def cwd(): String = js.native
+
 }

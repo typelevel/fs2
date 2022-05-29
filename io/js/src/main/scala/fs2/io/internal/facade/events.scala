@@ -44,6 +44,8 @@ private[io] trait EventEmitter extends js.Object {
   ): this.type =
     js.native
 
+  protected[io] def removeAllListeners(): this.type = js.native
+
 }
 
 private[io] object EventEmitter {

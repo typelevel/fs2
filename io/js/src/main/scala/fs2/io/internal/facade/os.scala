@@ -19,31 +19,20 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.internal.facade
 
-import cats.kernel.Monoid
-import fs2.io.internal.facade
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
 
-final class CopyFlag private (private val bits: Long) extends AnyVal {
-  def jsBits: Long = bits ^ CopyFlag.ReplaceExisting.bits // Toggle the inverted bit
+private[io] object os {
+
+  @js.native
+  @JSImport("os", "tmpdir")
+  def tmpdir(): String = js.native
+
+  @js.native
+  @JSImport("os", "homedir")
+  def homedir(): String = js.native
+
 }
 
-object CopyFlag extends CopyFlagCompanionApi {
-  private def apply(bits: Long): CopyFlag = new CopyFlag(bits)
-  private def apply(bits: Double): CopyFlag = CopyFlag(bits.toLong)
-
-  val ReplaceExisting = CopyFlag(
-    facade.fs.constants.COPYFILE_EXCL
-  ) // Reuse this bit with inverted semantics
-  val Reflink = CopyFlag(facade.fs.constants.COPYFILE_FICLONE)
-  val ReflinkOrFail = CopyFlag(facade.fs.constants.COPYFILE_FICLONE_FORCE)
-
-  private[file] implicit val monoid: Monoid[CopyFlag] = new Monoid[CopyFlag] {
-    override def combine(x: CopyFlag, y: CopyFlag): CopyFlag = CopyFlag(x.bits | y.bits)
-    override def empty: CopyFlag = CopyFlag(0)
-  }
-}
-
-private[file] trait CopyFlagsCompanionPlatform {}
