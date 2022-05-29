@@ -127,18 +127,19 @@ private[io] trait TLSConnectOptions extends js.Object {
 
   var servername: js.UndefOr[String] = js.undefined
 
-  var checkServerIdentity: js.UndefOr[js.Function2[String, PeerCertificate, js.UndefOr[js.Error]]] = js.undefined
+  var checkServerIdentity: js.UndefOr[js.Function2[String, PeerCertificate, js.UndefOr[js.Error]]] =
+    js.undefined
 
   var minDHSize: js.UndefOr[Int] = js.undefined
 
 }
 
 private[io] trait PSKCallbackNegotation extends js.Object {
-  
+
   var psk: js.UndefOr[Uint8Array] = js.undefined
 
   var identity: js.UndefOr[String] = js.undefined
-  
+
 }
 
 @js.native
