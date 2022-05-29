@@ -34,5 +34,8 @@ private[io] object os {
   @JSImport("os", "homedir")
   def homedir(): String = js.native
 
-}
+  @js.native
+  @JSImport("os", "type")
+  def `type`(): String = js.native
 
+}

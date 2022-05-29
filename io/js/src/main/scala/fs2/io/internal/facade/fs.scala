@@ -81,6 +81,22 @@ private[io] trait FsConstants extends js.Object {
 
   val X_OK: Double = js.native
 
+  val O_RDONLY: Double = js.native
+
+  val O_WRONLY: Double = js.native
+
+  val O_APPEND: Double = js.native
+
+  val O_TRUNC: Double = js.native
+
+  val O_CREAT: Double = js.native
+
+  val O_EXCL: Double = js.native
+
+  val O_SYNC: Double = js.native
+
+  val O_DSYNC: Double = js.native
+
 }
 
 @js.native
