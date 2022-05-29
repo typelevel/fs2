@@ -21,17 +21,86 @@
 
 package fs2.io.internal.facade
 
+import fs2.io.net.tls.SecureContext
+
 import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.|
 import scala.scalajs.js.annotation.JSImport
+import scala.scalajs.js.typedarray.Uint8Array
 
 @nowarn
 private[io] object tls {
+
   @js.native
   @JSImport("tls", "connect")
   def connect(options: TLSConnectOptions): TLSSocket =
     js.native
+
+  @js.native
+  @JSImport("tls", "createSecureContext")
+  def createSecureContext(options: SecureContextOptions = js.native): SecureContext =
+    js.native
+}
+
+private[io] trait SecureContextOptions extends js.Object {
+
+  var ca: js.UndefOr[js.Array[String | Uint8Array]] = js.undefined
+
+  var cert: js.UndefOr[js.Array[String | Uint8Array]] = js.undefined
+
+  var sigalgs: js.UndefOr[String] = js.undefined
+
+  var ciphers: js.UndefOr[String] = js.undefined
+
+  var clientCertEngine: js.UndefOr[String] = js.undefined
+
+  var crl: js.UndefOr[js.Array[String | Uint8Array]] = js.undefined
+
+  var dhparam: js.UndefOr[String | Uint8Array] = js.undefined
+
+  var ecdhCurve: js.UndefOr[String] = js.undefined
+
+  var honorCipherOrder: js.UndefOr[Boolean] = js.undefined
+
+  var key: js.UndefOr[js.Array[Key]] = js.undefined
+
+  var privateKeyEngine: js.UndefOr[String] = js.undefined
+
+  var privateKeyIdentifier: js.UndefOr[String] = js.undefined
+
+  var maxVersion: js.UndefOr[String] = js.undefined
+
+  var minVersion: js.UndefOr[String] = js.undefined
+
+  var passphrase: js.UndefOr[String] = js.undefined
+
+  var pfx: js.UndefOr[js.Array[Pfx]] = js.undefined
+
+  var secureOptions: js.UndefOr[Double] = js.undefined
+
+  var sessionIdContext: js.UndefOr[String] = js.undefined
+
+  var ticketKeys: js.UndefOr[Uint8Array] = js.undefined
+
+  var sessionTimeout: js.UndefOr[Double] = js.undefined
+
+}
+
+private[io] trait Key extends js.Object {
+
+  val pem: String | Uint8Array
+
+  var passphrase: js.UndefOr[String] = js.undefined
+
+}
+
+private[io] trait Pfx extends js.Object {
+
+  val buf: String | Uint8Array
+
+  var passphrase: js.UndefOr[String] = js.undefined
+
 }
 
 private[io] trait TLSConnectOptions extends js.Object {
@@ -41,7 +110,7 @@ private[io] trait TLSConnectOptions extends js.Object {
 private[io] trait TLSSocketOptions extends js.Object {
 
   var enableTrace: js.UndefOr[Boolean] = js.undefined
-  
+
   var isServer: js.UndefOr[Boolean] = js.undefined
 
 }
