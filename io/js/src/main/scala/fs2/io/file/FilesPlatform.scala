@@ -327,7 +327,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       readStream(path, chunkSize, Flags.Read) { options =>
         options.start = start.toDouble
-        options.end = end.toDouble
+        options.end = (end - 1).toDouble
         options
       }
 
