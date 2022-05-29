@@ -28,7 +28,7 @@ import scala.scalajs.js.annotation.JSImport
 @nowarn
 private[io] object net {
   @js.native
-  @JSImport("net", "stdout")
+  @JSImport("net", "createServer")
   def createServer(options: ServerOptions, connectionListener: js.Function1[Socket, Unit]): Server =
     js.native
 }
