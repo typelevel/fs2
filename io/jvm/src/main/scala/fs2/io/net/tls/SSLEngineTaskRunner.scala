@@ -24,9 +24,11 @@ package io
 package net
 package tls
 
-import javax.net.ssl.SSLEngine
+import cats.effect.Async
+import cats.effect.implicits._
+import cats.syntax.all._
 
-import cats.effect.Sync
+import javax.net.ssl.SSLEngine
 
 private[tls] trait SSLEngineTaskRunner[F[_]] {
   def runDelegatedTasks: F[Unit]
@@ -35,15 +37,13 @@ private[tls] trait SSLEngineTaskRunner[F[_]] {
 private[tls] object SSLEngineTaskRunner {
   def apply[F[_]](
       engine: SSLEngine
-  )(implicit F: Sync[F]): SSLEngineTaskRunner[F] =
+  )(implicit F: Async[F]): SSLEngineTaskRunner[F] =
     new SSLEngineTaskRunner[F] {
       def runDelegatedTasks: F[Unit] =
-        F.blocking {
-          while ({
-            val task = engine.getDelegatedTask
-            if (task ne null) task.run
-            task ne null
-          }) {}
+        F.delay(engine.getDelegatedTask()).flatMap { task =>
+          if (task ne null)
+            F.blocking(task.run) &> runDelegatedTasks
+          else F.unit
         }
     }
 }
