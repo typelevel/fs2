@@ -42,7 +42,7 @@ private[tls] object SSLEngineTaskRunner {
       def runDelegatedTasks: F[Unit] =
         F.delay(engine.getDelegatedTask()).flatMap { task =>
           if (task ne null)
-            F.blocking(task.run) &> runDelegatedTasks
+            F.blocking(task.run()) &> runDelegatedTasks
           else F.unit
         }
     }
