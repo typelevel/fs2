@@ -311,8 +311,8 @@ lazy val reactiveStreams = project
   .settings(
     name := "fs2-reactive-streams",
     libraryDependencies ++= Seq(
-      "org.reactivestreams" % "reactive-streams" % "1.0.3",
-      "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
+      "org.reactivestreams" % "reactive-streams" % "1.0.4",
+      "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
       "org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test"
     ),
     tlJdkRelease := Some(8),
