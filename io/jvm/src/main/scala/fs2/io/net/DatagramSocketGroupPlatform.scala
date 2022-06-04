@@ -80,7 +80,7 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
             Async[F].async[Datagram] { cb =>
               Async[F].delay {
                 val cancel = adsg.read(ctx, result => cb(result))
-                Some(Async[F].delay((cancel())))
+                Some(Async[F].delay(cancel()))
               }
             }
 
