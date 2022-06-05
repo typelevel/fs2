@@ -246,6 +246,28 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.JavaScriptUnknownException"),
       ProblemFilters.exclude[DirectMissingMethodProblem](
         "fs2.io.net.tls.TLSSocketCompanionPlatform#AsyncTLSSocket.this"
+      ),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.file.FileHandle.make"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.DatagramSocket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem](
+        "fs2.io.net.DatagramSocketCompanionPlatform#AsyncDatagramSocket.this"
+      ),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocketOption#Key.set"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.Socket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.SocketOption.encoding"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.SocketOptionCompanionPlatform#Key.set"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.SecureContext#SecureVersion.toJS"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops"),
+      ProblemFilters.exclude[Problem]("fs2.io.net.tls.SecureContext.ops"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops$"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toTLSSocketOptions"
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toConnectionOptions"
       )
     )
   )
