@@ -1,7 +1,6 @@
 import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
-Global / stQuiet := true
 
 ThisBuild / tlBaseVersion := "3.2"
 
@@ -166,7 +165,6 @@ lazy val root = tlCrossRootProject
   .aggregate(
     core,
     io,
-    node,
     scodec,
     protocols,
     reactiveStreams,
@@ -217,29 +215,8 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val node = crossProject(JSPlatform)
-  .in(file("node"))
-  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
-  .disablePlugins(DoctestPlugin)
-  .settings(
-    name := "fs2-node",
-    mimaPreviousArtifacts := Set.empty,
-    scalacOptions += "-nowarn",
-    Compile / doc / sources := Nil,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDevDependencies += "@types/node" -> "16.11.7",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile",
-    stOutputPackage := "fs2.internal.jsdeps",
-    stPrivateWithin := Some("fs2"),
-    stStdlib := List("es2020"),
-    stUseScalaJsDom := false,
-    stIncludeDev := true
-  )
-
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2",
@@ -254,13 +231,9 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Test / npmDevDependencies += "jks-js" -> "1.0.1",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile"
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
   .dependsOn(core % "compile->compile;test->test")
-  .jsConfigure(_.dependsOn(node.js))
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
