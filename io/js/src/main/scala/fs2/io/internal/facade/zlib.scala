@@ -24,6 +24,7 @@ package fs2.io.internal.facade
 import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
+import scala.scalajs.js.typedarray.Uint8Array
 
 package object zlib {
 
@@ -33,9 +34,19 @@ package object zlib {
   private[io] def createDeflate(options: Options): Zlib = js.native
 
   @js.native
+  @JSImport("zlib", "deflateSync")
+  @nowarn
+  private[io] def deflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+
+  @js.native
   @JSImport("zlib", "createGzip")
   @nowarn
   private[io] def createGzip(options: Options): Zlib = js.native
+
+  @js.native
+  @JSImport("zlib", "gzipSync")
+  @nowarn
+  private[io] def gzipSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createGunzip")
@@ -43,9 +54,19 @@ package object zlib {
   private[io] def createGunzip(options: Options): Zlib = js.native
 
   @js.native
+  @JSImport("zlib", "gunzipSync")
+  @nowarn
+  private[io] def gunzipSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+
+  @js.native
   @JSImport("zlib", "createInflate")
   @nowarn
   private[io] def createInflate(options: Options): Zlib = js.native
+
+  @js.native
+  @JSImport("zlib", "inflateSync")
+  @nowarn
+  private[io] def inflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
 }
 

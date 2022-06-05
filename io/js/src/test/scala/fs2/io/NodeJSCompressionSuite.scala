@@ -23,9 +23,8 @@ package fs2
 package io
 
 import fs2.CompressionSuite
-import fs2.internal.jsdeps.node.zlibMod
 import fs2.io.compression._
-import fs2.io.internal.ByteChunkOps._
+import fs2.io.internal.facade
 
 class NodeJSCompressionSuite extends CompressionSuite {
 
@@ -35,28 +34,27 @@ class NodeJSCompressionSuite extends CompressionSuite {
       strategy: Int,
       nowrap: Boolean
   ): Array[Byte] = {
-    val in = Chunk.array(b).toNodeUint8Array
-    val options = zlibMod
-      .ZlibOptions()
-      .setLevel(level.toDouble)
-      .setStrategy(strategy.toDouble)
+    val in = Chunk.array(b).toUint8Array
+    val options = new facade.zlib.Options {}
+    options.level = level
+    options.strategy = strategy
     val out =
       if (nowrap)
-        zlibMod.gzipSync(in, options)
+        facade.zlib.gzipSync(in, options)
       else
-        zlibMod.deflateSync(in, options)
-    out.toChunk.toArray
+        facade.zlib.deflateSync(in, options)
+    Chunk.uint8Array(out).toArray
   }
 
   override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
-    val in = Chunk.array(b).toNodeUint8Array
-    val options = zlibMod.ZlibOptions()
+    val in = Chunk.array(b).toUint8Array
+    val options = new facade.zlib.Options {}
     val out =
       if (nowrap)
-        zlibMod.gunzipSync(in, options)
+        facade.zlib.gunzipSync(in, options)
       else
-        zlibMod.inflateSync(in, options)
-    out.toChunk.toArray
+        facade.zlib.inflateSync(in, options)
+    Chunk.uint8Array(out).toArray
   }
 
 }
