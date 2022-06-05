@@ -39,7 +39,7 @@ private[io] object tls {
 
   @js.native
   @JSImport("tls", "createSecureContext")
-  def createSecureContext(options: SecureContextOptions = js.native): SecureContext =
+  def createSecureContext(options: js.UndefOr[SecureContextOptions] = js.undefined): SecureContext =
     js.native
 }
 

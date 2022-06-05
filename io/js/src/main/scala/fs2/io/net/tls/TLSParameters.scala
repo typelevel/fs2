@@ -52,27 +52,31 @@ sealed trait TLSParameters { outer =>
 
   private[tls] def toTLSSocketOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): facade.TLSSocketOptions = new facade.TLSSocketOptions {
-    outer.requestCert.foreach(requestCert = _)
-    outer.rejectUnauthorized.foreach(rejectUnauthorized = _)
-    alpnProtocols.map(_.toJSArray).foreach(ALPNProtocols = _)
-    sniCallback.map(_.toJS(dispatcher)).foreach(SNICallback = _)
-    outer.session.map(_.raw.toUint8Array).foreach(session = _)
-    outer.requestOCSP.foreach(requestOCSP = _)
+  ): facade.TLSSocketOptions = {
+    val options = new facade.TLSSocketOptions {}
+    outer.requestCert.foreach(options.requestCert = _)
+    outer.rejectUnauthorized.foreach(options.rejectUnauthorized = _)
+    alpnProtocols.map(_.toJSArray).foreach(options.ALPNProtocols = _)
+    sniCallback.map(_.toJS(dispatcher)).foreach(options.SNICallback = _)
+    outer.session.map(_.raw.toUint8Array).foreach(options.session = _)
+    outer.requestOCSP.foreach(options.requestOCSP = _)
+    options
   }
 
   private[tls] def toTLSConnectOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): facade.TLSConnectOptions = new facade.TLSConnectOptions {
-    outer.requestCert.foreach(requestCert = _)
-    outer.rejectUnauthorized.foreach(rejectUnauthorized = _)
-    alpnProtocols.map(_.toJSArray).foreach(ALPNProtocols = _)
-    sniCallback.map(_.toJS(dispatcher)).foreach(SNICallback = _)
-    outer.session.map(_.raw.toUint8Array).foreach(session = _)
-    outer.pskCallback.map(_.toJS).foreach(pskCallback = _)
-    outer.servername.foreach(servername = _)
-    outer.checkServerIdentity.map(_.toJS).foreach(checkServerIdentity = _)
-    outer.minDHSize.foreach(minDHSize = _)
+  ): facade.TLSConnectOptions = {
+    val options = new facade.TLSConnectOptions {}
+    outer.requestCert.foreach(options.requestCert = _)
+    outer.rejectUnauthorized.foreach(options.rejectUnauthorized = _)
+    alpnProtocols.map(_.toJSArray).foreach(options.ALPNProtocols = _)
+    sniCallback.map(_.toJS(dispatcher)).foreach(options.SNICallback = _)
+    outer.session.map(_.raw.toUint8Array).foreach(options.session = _)
+    outer.pskCallback.map(_.toJS).foreach(options.pskCallback = _)
+    outer.servername.foreach(options.servername = _)
+    outer.checkServerIdentity.map(_.toJS).foreach(options.checkServerIdentity = _)
+    outer.minDHSize.foreach(options.minDHSize = _)
+    options
   }
 }
 
@@ -141,9 +145,11 @@ object TLSParameters {
   }
 
   final case class PSKCallbackNegotation(psk: Chunk[Byte], identity: String) { outer =>
-    private[TLSParameters] def toJS = new facade.PSKCallbackNegotation {
-      psk = outer.psk.toUint8Array
-      identity = outer.identity
+    private[TLSParameters] def toJS = {
+      val pskcbn = new facade.PSKCallbackNegotation {}
+      pskcbn.psk = outer.psk.toUint8Array
+      pskcbn.identity = outer.identity
+      pskcbn
     }
   }
 
