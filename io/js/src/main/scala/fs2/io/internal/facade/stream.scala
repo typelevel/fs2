@@ -19,7 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2.io.internal.facade.stream
 
 import scala.annotation.nowarn
 import scala.scalajs.js

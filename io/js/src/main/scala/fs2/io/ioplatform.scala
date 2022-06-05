@@ -198,8 +198,8 @@ private[fs2] trait ioplatform {
       error <- F.deferred[Throwable].toResource
       duplex <- Resource.make {
         F.delay {
-          new facade.Duplex(
-            new facade.DuplexOptions {
+          new facade.stream.Duplex(
+            new facade.stream.DuplexOptions {
 
               var autoDestroy = false
 
