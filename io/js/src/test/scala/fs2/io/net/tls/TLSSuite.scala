@@ -26,19 +26,18 @@ package tls
 
 import cats.effect.IO
 import cats.syntax.all._
-import scala.scalajs.js
-import scala.scalajs.js.annotation._
-import fs2.internal.jsdeps.node.bufferMod
-import fs2.internal.jsdeps.node.fsPromisesMod
+import fs2.io.file.Files
+import fs2.io.file.Path
 
-import scala.annotation.nowarn
+import scala.scalajs.js
 
 abstract class TLSSuite extends Fs2Suite {
-  def testTlsContext: IO[TLSContext[IO]] = IO
-    .fromPromise(
-      IO(fsPromisesMod.readFile("io/shared/src/test/resources/keystore.jks"))
-    )
-    .map(JKS.toPem(_, "password")("server"))
+  def testTlsContext: IO[TLSContext[IO]] = Files[IO]
+    .readAll(Path("io/shared/src/test/resources/keystore.json"))
+    .through(text.utf8.decode)
+    .compile
+    .string
+    .flatMap(s => IO(js.JSON.parse(s).asInstanceOf[js.Dictionary[CertKey]]("server")))
     .map { certKey =>
       Network[IO].tlsContext.fromSecureContext(
         SecureContext(
@@ -55,16 +54,7 @@ abstract class TLSSuite extends Fs2Suite {
 }
 
 @js.native
-@JSImport("jks-js", JSImport.Namespace)
-object JKS extends js.Any {
-
-  @js.native
-  trait CertKey extends js.Any {
-    def cert: String = js.native
-    def key: String = js.native
-  }
-
-  @nowarn("msg=never used")
-  def toPem(buffer: bufferMod.global.Buffer, password: String): js.Dictionary[CertKey] = js.native
-
+trait CertKey extends js.Object {
+  def cert: String = js.native
+  def key: String = js.native
 }
