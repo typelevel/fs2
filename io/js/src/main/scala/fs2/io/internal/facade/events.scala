@@ -35,12 +35,15 @@ private[io] trait EventEmitter extends js.Object {
 
   protected[io] def on[E](eventName: String, listener: js.Function1[E, Unit]): this.type = js.native
 
+  protected[io] def on[E, F](eventName: String, listener: js.Function2[E, F, Unit]): this.type =
+    js.native
+
   protected[io] def once[E](eventName: String, listener: js.Function1[E, Unit]): this.type =
     js.native
 
   protected[io] def removeListener(
       eventName: String,
-      listener: js.Function1[Nothing, Unit]
+      listener: js.Function
   ): this.type =
     js.native
 
@@ -56,6 +59,16 @@ private[io] object EventEmitter {
     )(implicit F: Sync[F]): Resource[F, Unit] = Resource
       .make(F.delay {
         val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
+        eventTarget.on(eventName, fn)
+        fn
+      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
+      .void
+
+    def registerListener2[F[_], E, A](eventName: String, dispatcher: Dispatcher[F])(
+        listener: (E, A) => F[Unit]
+    )(implicit F: Sync[F]): Resource[F, Unit] = Resource
+      .make(F.delay {
+        val fn: js.Function2[E, A, Unit] = (e, a) => dispatcher.unsafeRunAndForget(listener(e, a))
         eventTarget.on(eventName, fn)
         fn
       })(fn => F.delay(eventTarget.removeListener(eventName, fn)))

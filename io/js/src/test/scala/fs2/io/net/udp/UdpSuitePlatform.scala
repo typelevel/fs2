@@ -26,27 +26,18 @@ package udp
 
 import cats.syntax.all._
 
-import fs2.internal.jsdeps.node.osMod
-
-import fs2.internal.jsdeps.node.dgramMod
-
-import scala.scalajs.js
-import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.internal.facade
 
 trait UdpSuitePlatform extends Fs2Suite {
 
-  val v4Interfaces = osMod
+  val v4Interfaces = facade.os
     .networkInterfaces()
     .toMap
     .collect {
-      case (k, v)
-          if v.toOption.toList
-            .flatMap(_.toList)
-            .exists(_.asInstanceOf[js.Dynamic].family == nodeStrings.IPv4) =>
-        k
+      case (k, v) if v.exists(_.family == 4) => k
     }
     .toList
 
-  val v4ProtocolFamily = dgramMod.SocketType.udp4
+  val v4ProtocolFamily = "udp4"
 
 }

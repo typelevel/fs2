@@ -24,18 +24,31 @@ package fs2.io.internal.facade
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-private[io] object os {
+package object os {
 
   @js.native
   @JSImport("os", "tmpdir")
-  def tmpdir(): String = js.native
+  private[io] def tmpdir(): String = js.native
 
   @js.native
   @JSImport("os", "homedir")
-  def homedir(): String = js.native
+  private[io] def homedir(): String = js.native
 
   @js.native
   @JSImport("os", "type")
-  def `type`(): String = js.native
+  private[io] def `type`(): String = js.native
+
+  @js.native
+  @JSImport("os", "networkInterfaces")
+  private[io] def networkInterfaces(): js.Dictionary[js.Array[NetworkInterfaceInfo]] = js.native
+
+}
+
+package os {
+
+  @js.native
+  private[io] trait NetworkInterfaceInfo extends js.Object {
+    def family: Int = js.native
+  }
 
 }
