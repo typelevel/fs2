@@ -31,7 +31,7 @@ import events.EventEmitter
 package object dgram {
 
   @js.native
-  @JSImport("dgram", "connect")
+  @JSImport("dgram", "createSocket")
   @nowarn
   private[io] def createSocket(`type`: String): Socket =
     js.native

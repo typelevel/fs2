@@ -48,7 +48,7 @@ package os {
 
   @js.native
   private[io] trait NetworkInterfaceInfo extends js.Object {
-    def family: Int = js.native
+    def family: String = js.native
   }
 
 }

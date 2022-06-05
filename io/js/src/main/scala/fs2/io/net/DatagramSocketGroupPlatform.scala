@@ -65,7 +65,7 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
           }
           sock.once[js.Error]("error", errorListener)
           val options = new facade.dgram.BindOptions {}
-          options.address = address.toString
+          address.map(_.toString).foreach(options.address = _)
           port.map(_.value).foreach(options.port = _)
           sock.bind(
             options,

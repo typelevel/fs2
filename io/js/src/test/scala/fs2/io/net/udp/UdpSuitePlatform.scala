@@ -34,7 +34,7 @@ trait UdpSuitePlatform extends Fs2Suite {
     .networkInterfaces()
     .toMap
     .collect {
-      case (k, v) if v.exists(_.family == 4) => k
+      case (k, v) if v.exists(_.family == "IPv4") => k
     }
     .toList
 
