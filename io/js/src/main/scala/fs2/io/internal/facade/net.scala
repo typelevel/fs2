@@ -25,86 +25,95 @@ import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-@nowarn
-private[io] object net {
+import events.EventEmitter
+
+package object net {
   @js.native
   @JSImport("net", "createServer")
-  def createServer(options: ServerOptions, connectionListener: js.Function1[Socket, Unit]): Server =
+  @nowarn
+  private[io] def createServer(
+      options: ServerOptions,
+      connectionListener: js.Function1[Socket, Unit]
+  ): Server =
     js.native
 }
 
-@js.native
-@nowarn
-private[io] trait Server extends EventEmitter {
+package net {
 
-  def address(): ServerAddress = js.native
+  @js.native
+  @nowarn
+  private[io] trait Server extends EventEmitter {
 
-  def listening: Boolean = js.native
+    def address(): ServerAddress = js.native
 
-  def close(cb: js.Function1[js.UndefOr[js.Error], Unit]): Server = js.native
+    def listening: Boolean = js.native
 
-  def listen(path: String, cb: js.Function0[Unit]): Server = js.native
+    def close(cb: js.Function1[js.UndefOr[js.Error], Unit]): Server = js.native
 
-  def listen(port: Int, connectListener: js.Function0[Unit]): Server = js.native
+    def listen(path: String, cb: js.Function0[Unit]): Server = js.native
 
-  def listen(port: Int, host: String, connectListener: js.Function0[Unit]): Server = js.native
+    def listen(port: Int, connectListener: js.Function0[Unit]): Server = js.native
 
-}
+    def listen(port: Int, host: String, connectListener: js.Function0[Unit]): Server = js.native
 
-@js.native
-private[io] trait ServerAddress extends js.Object {
-  def address: String = js.native
-  def port: Int = js.native
-}
+  }
 
-private[io] trait ServerOptions extends js.Object {
+  @js.native
+  private[io] trait ServerAddress extends js.Object {
+    def address: String = js.native
+    def port: Int = js.native
+  }
 
-  var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
+  private[io] trait ServerOptions extends js.Object {
 
-  var pauseOnConnect: js.UndefOr[Boolean] = js.undefined
-}
+    var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
 
-private[io] trait ListenOptions extends js.Object {
-  var path: js.UndefOr[String] = js.undefined
-}
+    var pauseOnConnect: js.UndefOr[Boolean] = js.undefined
+  }
 
-private[io] trait SocketOptions extends js.Object {
+  private[io] trait ListenOptions extends js.Object {
+    var path: js.UndefOr[String] = js.undefined
+  }
 
-  var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
+  private[io] trait SocketOptions extends js.Object {
 
-}
+    var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
 
-@JSImport("net", "Socket")
-@js.native
-@nowarn
-private[io] class Socket extends fs2.io.Duplex {
+  }
 
-  def this(options: SocketOptions) = this()
+  @JSImport("net", "Socket")
+  @js.native
+  @nowarn
+  private[io] class Socket extends fs2.io.Duplex {
 
-  def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
+    def this(options: SocketOptions) = this()
 
-  def connect(port: Int, host: String, connectListener: js.Function0[Unit]): Socket = js.native
+    def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
 
-  def destroyed: Boolean = js.native
+    def connect(port: Int, host: String, connectListener: js.Function0[Unit]): Socket = js.native
 
-  def readyState: String = js.native
+    def destroyed: Boolean = js.native
 
-  def localAddress: js.UndefOr[String] = js.native
+    def readyState: String = js.native
 
-  def localPort: js.UndefOr[Int] = js.native
+    def localAddress: js.UndefOr[String] = js.native
 
-  def remoteAddress: js.UndefOr[String] = js.native
+    def localPort: js.UndefOr[Int] = js.native
 
-  def remotePort: js.UndefOr[Int] = js.native
+    def remoteAddress: js.UndefOr[String] = js.native
 
-  def end(): Socket = js.native
+    def remotePort: js.UndefOr[Int] = js.native
 
-  def setEncoding(encoding: String): Socket = js.native
+    def end(): Socket = js.native
 
-  def setKeepAlive(enable: Boolean): Socket = js.native
+    def setEncoding(encoding: String): Socket = js.native
 
-  def setNoDelay(noDelay: Boolean): Socket = js.native
+    def setKeepAlive(enable: Boolean): Socket = js.native
 
-  def setTimeout(timeout: Double): Socket = js.native
+    def setNoDelay(noDelay: Boolean): Socket = js.native
+
+    def setTimeout(timeout: Double): Socket = js.native
+
+  }
 
 }

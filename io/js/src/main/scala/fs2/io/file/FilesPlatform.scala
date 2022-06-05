@@ -58,7 +58,7 @@ private[fs2] trait FilesCompanionPlatform {
         F.delay(
           facade.fs.promises.mkdir(
             path.toString,
-            new facade.MkdirOptions {
+            new facade.fs.MkdirOptions {
               recursive = _recursive
               permissions.collect { case PosixPermissions(value) =>
                 mode = value.toDouble
@@ -159,7 +159,7 @@ private[fs2] trait FilesCompanionPlatform {
           F.delay(
             facade.fs.promises.rm(
               path.toString,
-              new facade.RmOptions {
+              new facade.fs.RmOptions {
                 force = true
                 recursive = true
               }
@@ -177,7 +177,7 @@ private[fs2] trait FilesCompanionPlatform {
         .as(true)
         .recover { case _ => false }
 
-    private def stat(path: Path, followLinks: Boolean = false): F[facade.Stats] =
+    private def stat(path: Path, followLinks: Boolean = false): F[facade.fs.Stats] =
       F.fromPromise {
         F.delay {
           if (followLinks)
@@ -307,13 +307,13 @@ private[fs2] trait FilesCompanionPlatform {
       .adaptError { case IOException(ex) => ex }
 
     private def readStream(path: Path, chunkSize: Int, _flags: Flags)(
-        f: facade.ReadStreamOptions => facade.ReadStreamOptions
+        f: facade.fs.ReadStreamOptions => facade.fs.ReadStreamOptions
     ): Stream[F, Byte] =
       Stream
         .resource(suspendReadableAndRead() {
           facade.fs.createReadStream(
             path.toString,
-            f(new facade.ReadStreamOptions {
+            f(new facade.fs.ReadStreamOptions {
               flags = combineFlags(_flags)
               highWaterMark = chunkSize
             })
@@ -371,7 +371,7 @@ private[fs2] trait FilesCompanionPlatform {
               val ws = facade.fs
                 .createWriteStream(
                   path.toString,
-                  new facade.WriteStreamOptions {
+                  new facade.fs.WriteStreamOptions {
                     flags = combineFlags(_flags)
                   }
                 )

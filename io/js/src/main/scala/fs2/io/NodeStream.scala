@@ -21,7 +21,7 @@
 
 package fs2.io
 
-import fs2.io.internal.facade.EventEmitter
+import fs2.io.internal.facade.events.EventEmitter
 
 import scala.annotation.nowarn
 import scala.scalajs.js

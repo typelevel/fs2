@@ -44,7 +44,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
   private[net] final class AsyncSocketGroup[F[_]](implicit F: Async[F])
       extends AbstractAsyncSocketGroup[F] {
 
-    private def setSocketOptions(options: List[SocketOption])(socket: facade.Socket): F[Unit] =
+    private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
       options.traverse_(option => option.key.set(socket, option.value))
 
     override def client(
@@ -54,7 +54,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
       (for {
         sock <- F
           .delay(
-            new facade.Socket(new facade.SocketOptions { allowHalfOpen = true })
+            new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
           )
           .flatTap(setSocketOptions(options))
           .toResource
@@ -78,12 +78,12 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       (for {
         dispatcher <- Dispatcher[F]
-        queue <- Queue.unbounded[F, Option[facade.Socket]].toResource
+        queue <- Queue.unbounded[F, Option[facade.net.Socket]].toResource
         server <- Resource.make(
           F
             .delay(
               facade.net.createServer(
-                new facade.ServerOptions {
+                new facade.net.ServerOptions {
                   pauseOnConnect = true
                   allowHalfOpen = true
                 },

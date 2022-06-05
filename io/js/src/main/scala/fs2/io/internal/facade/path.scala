@@ -25,52 +25,61 @@ import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-@nowarn
-private[io] object path {
+package object path {
 
   @js.native
   @JSImport("path", "sep")
-  def sep: String = js.native
+  private[io] def sep: String = js.native
 
   @js.native
   @JSImport("path", "join")
-  def join(paths: String*): String = js.native
+  @nowarn
+  private[io] def join(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "resolve")
-  def resolve(paths: String*): String = js.native
+  @nowarn
+  private[io] def resolve(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "relative")
-  def relative(from: String, to: String): String = js.native
+  @nowarn
+  private[io] def relative(from: String, to: String): String = js.native
 
   @js.native
   @JSImport("path", "normalize")
-  def normalize(path: String): String = js.native
+  @nowarn
+  private[io] def normalize(path: String): String = js.native
 
   @js.native
   @JSImport("path", "isAbsolute")
-  def isAbsolute(path: String): Boolean = js.native
+  @nowarn
+  private[io] def isAbsolute(path: String): Boolean = js.native
 
   @js.native
   @JSImport("path", "basename")
-  def basename(path: String): String = js.native
+  @nowarn
+  private[io] def basename(path: String): String = js.native
 
   @js.native
   @JSImport("path", "extname")
-  def extname(path: String): String = js.native
+  @nowarn
+  private[io] def extname(path: String): String = js.native
 
   @js.native
   @JSImport("path", "parse")
-  def parse(path: String): ParsedPath = js.native
+  @nowarn
+  private[io] def parse(path: String): ParsedPath = js.native
 
 }
 
-@js.native
-private[io] trait ParsedPath extends js.Object {
-  def dir: String = js.native
-  def root: String = js.native
-  def base: String = js.native
-  def name: String = js.native
-  def ext: String = js.native
+package path {
+  @js.native
+  private[io] trait ParsedPath extends js.Object {
+    def dir: String = js.native
+    def root: String = js.native
+    def base: String = js.native
+    def name: String = js.native
+    def ext: String = js.native
+  }
 }

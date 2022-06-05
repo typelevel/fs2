@@ -19,7 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2.io.internal.facade.events
 
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync

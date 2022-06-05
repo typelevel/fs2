@@ -52,8 +52,8 @@ sealed trait TLSParameters { outer =>
 
   private[tls] def toTLSSocketOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): facade.TLSSocketOptions = {
-    val options = new facade.TLSSocketOptions {}
+  ): facade.tls.TLSSocketOptions = {
+    val options = new facade.tls.TLSSocketOptions {}
     outer.requestCert.foreach(options.requestCert = _)
     outer.rejectUnauthorized.foreach(options.rejectUnauthorized = _)
     alpnProtocols.map(_.toJSArray).foreach(options.ALPNProtocols = _)
@@ -65,8 +65,8 @@ sealed trait TLSParameters { outer =>
 
   private[tls] def toTLSConnectOptions[F[_]: Async](
       dispatcher: Dispatcher[F]
-  ): facade.TLSConnectOptions = {
-    val options = new facade.TLSConnectOptions {}
+  ): facade.tls.TLSConnectOptions = {
+    val options = new facade.tls.TLSConnectOptions {}
     outer.requestCert.foreach(options.requestCert = _)
     outer.rejectUnauthorized.foreach(options.rejectUnauthorized = _)
     alpnProtocols.map(_.toJSArray).foreach(options.ALPNProtocols = _)
@@ -140,13 +140,13 @@ object TLSParameters {
   trait PSKCallback {
     def apply(hint: Option[String]): Option[PSKCallbackNegotation]
 
-    private[TLSParameters] def toJS: js.Function1[String, facade.PSKCallbackNegotation] =
+    private[TLSParameters] def toJS: js.Function1[String, facade.tls.PSKCallbackNegotation] =
       hint => apply(Option(hint)).map(_.toJS).orNull
   }
 
   final case class PSKCallbackNegotation(psk: Chunk[Byte], identity: String) { outer =>
     private[TLSParameters] def toJS = {
-      val pskcbn = new facade.PSKCallbackNegotation {}
+      val pskcbn = new facade.tls.PSKCallbackNegotation {}
       pskcbn.psk = outer.psk.toUint8Array
       pskcbn.identity = outer.identity
       pskcbn
@@ -157,7 +157,7 @@ object TLSParameters {
     def apply(servername: String, cert: Chunk[Byte]): Either[Throwable, Unit]
 
     private[TLSParameters] def toJS
-        : js.Function2[String, facade.PeerCertificate, js.UndefOr[js.Error]] = {
+        : js.Function2[String, facade.tls.PeerCertificate, js.UndefOr[js.Error]] = {
       (servername, cert) =>
         apply(servername, Chunk.uint8Array(cert.raw)) match {
           case Left(ex) => ex.toJSError

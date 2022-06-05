@@ -43,7 +43,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         Resource
           .eval(for {
             socket <- F.delay(
-              new facade.Socket(new facade.SocketOptions { allowHalfOpen = true })
+              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
             )
             _ <- F.async_[Unit] { cb =>
               socket.connect(address.path, () => cb(Right(())))
@@ -59,12 +59,12 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       ): fs2.Stream[F, Socket[F]] =
         for {
           dispatcher <- Stream.resource(Dispatcher[F])
-          queue <- Stream.eval(Queue.unbounded[F, facade.Socket])
+          queue <- Stream.eval(Queue.unbounded[F, facade.net.Socket])
           errored <- Stream.eval(F.deferred[js.JavaScriptException])
           server <- Stream.bracket(
             F.delay {
               facade.net.createServer(
-                new facade.ServerOptions {
+                new facade.net.ServerOptions {
                   pauseOnConnect = true
                   allowHalfOpen = true
                 },

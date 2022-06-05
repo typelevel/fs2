@@ -33,7 +33,7 @@ private[file] trait FileHandlePlatform[F[_]]
 
 private[file] trait FileHandleCompanionPlatform {
   private[file] def make[F[_]](
-      fd: facade.FileHandle
+      fd: facade.fs.FileHandle
   )(implicit F: Async[F]): FileHandle[F] =
     new FileHandle[F] {
 

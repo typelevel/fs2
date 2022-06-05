@@ -42,7 +42,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      upgrade: fs2.io.Duplex => facade.TLSSocket
+      upgrade: fs2.io.Duplex => facade.tls.TLSSocket
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
       dispatcher <- Dispatcher[F]
@@ -99,7 +99,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
     )
 
   private[tls] final class AsyncTLSSocket[F[_]: Async](
-      sock: facade.TLSSocket,
+      sock: facade.tls.TLSSocket,
       readStream: SuspendedStream[F, Byte],
       val session: F[SSLSession],
       val applicationProtocol: F[String]

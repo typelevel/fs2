@@ -28,11 +28,11 @@ import scala.concurrent.duration.FiniteDuration
 
 private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   sealed trait Key[A] {
-    private[net] def set[F[_]: Sync](sock: facade.Socket, value: A): F[Unit]
+    private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: A): F[Unit]
   }
 
   private object Encoding extends Key[String] {
-    override private[net] def set[F[_]: Sync](sock: facade.Socket, value: String): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: String): F[Unit] =
       Sync[F].delay {
         sock.setEncoding(value)
         ()
@@ -40,7 +40,7 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   }
 
   private object KeepAlive extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: facade.Socket, value: Boolean): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: Boolean): F[Unit] =
       Sync[F].delay {
         sock.setKeepAlive(value)
         ()
@@ -48,7 +48,7 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   }
 
   private object NoDelay extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: facade.Socket, value: Boolean): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: Boolean): F[Unit] =
       Sync[F].delay {
         sock.setNoDelay(value)
         ()
@@ -56,7 +56,10 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   }
 
   private object Timeout extends Key[FiniteDuration] {
-    override private[net] def set[F[_]: Sync](sock: facade.Socket, value: FiniteDuration): F[Unit] =
+    override private[net] def set[F[_]: Sync](
+        sock: facade.net.Socket,
+        value: FiniteDuration
+    ): F[Unit] =
       Sync[F].delay {
         sock.setTimeout(value.toMillis.toDouble)
         ()

@@ -62,7 +62,7 @@ object SecureContext {
       sigalgs: Option[String] = None,
       ticketKeys: Option[Chunk[Byte]] = None
   ): SecureContext = {
-    val options = new facade.SecureContextOptions {}
+    val options = new facade.tls.SecureContextOptions {}
 
     ca.map(toJS).foreach(options.ca = _)
     cert.map(toJS).foreach(options.cert = _)
@@ -111,7 +111,7 @@ object SecureContext {
   final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
     outer =>
     private[SecureContext] def toJS = {
-      val key = new facade.Key {
+      val key = new facade.tls.Key {
         val pem = SecureContext.toJS(outer.pem)
       }
       outer.passphrase.foreach(key.passphrase = _)
@@ -122,7 +122,7 @@ object SecureContext {
   final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
     outer =>
     private[SecureContext] def toJS = {
-      val pfx = new facade.Pfx {
+      val pfx = new facade.tls.Pfx {
         val buf = SecureContext.toJS(outer.buf)
       }
       outer.passphrase.foreach(pfx.passphrase = _)

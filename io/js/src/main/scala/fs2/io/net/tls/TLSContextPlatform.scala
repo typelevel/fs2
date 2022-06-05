@@ -75,7 +75,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                 options.isServer = true
                 TLSSocket.forAsync(
                   socket,
-                  sock => new facade.TLSSocket(sock, options)
+                  sock => new facade.tls.TLSSocket(sock, options)
                 )
               }
             }

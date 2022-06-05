@@ -37,7 +37,7 @@ import fs2.io.internal.facade
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
-      sock: facade.Socket
+      sock: facade.net.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     suspendReadableAndRead(
       destroyIfNotEnded = false,
@@ -54,7 +54,7 @@ private[net] trait SocketCompanionPlatform {
       }
 
   private[net] class AsyncSocket[F[_]](
-      sock: facade.Socket,
+      sock: facade.net.Socket,
       readStream: SuspendedStream[F, Byte]
   )(implicit F: Async[F])
       extends Socket[F] {
