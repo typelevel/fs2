@@ -21,37 +21,52 @@
 
 package fs2.io.net
 
-import fs2.internal.jsdeps.node.bufferMod.global.BufferEncoding
-import fs2.internal.jsdeps.node.netMod
-import scala.concurrent.duration.FiniteDuration
 import cats.effect.kernel.Sync
+import fs2.io.internal.facade
+
+import scala.concurrent.duration.FiniteDuration
 
 private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   sealed trait Key[A] {
-    private[net] def set[F[_]: Sync](sock: netMod.Socket, value: A): F[Unit]
+    private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: A): F[Unit]
   }
 
-  private object Encoding extends Key[BufferEncoding] {
-    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: BufferEncoding): F[Unit] =
-      Sync[F].delay(sock.setEncoding(value))
+  private object Encoding extends Key[String] {
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: String): F[Unit] =
+      Sync[F].delay {
+        sock.setEncoding(value)
+        ()
+      }
   }
 
   private object KeepAlive extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: Boolean): F[Unit] =
-      Sync[F].delay(sock.setKeepAlive(value))
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay {
+        sock.setKeepAlive(value)
+        ()
+      }
   }
 
   private object NoDelay extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: Boolean): F[Unit] =
-      Sync[F].delay(sock.setNoDelay(value))
+    override private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay {
+        sock.setNoDelay(value)
+        ()
+      }
   }
 
   private object Timeout extends Key[FiniteDuration] {
-    override private[net] def set[F[_]: Sync](sock: netMod.Socket, value: FiniteDuration): F[Unit] =
-      Sync[F].delay(sock.setTimeout(value.toMillis.toDouble))
+    override private[net] def set[F[_]: Sync](
+        sock: facade.net.Socket,
+        value: FiniteDuration
+    ): F[Unit] =
+      Sync[F].delay {
+        sock.setTimeout(value.toMillis.toDouble)
+        ()
+      }
   }
 
-  def encoding(value: BufferEncoding): SocketOption = apply(Encoding, value)
+  def encoding(value: String): SocketOption = apply(Encoding, value)
   def keepAlive(value: Boolean): SocketOption = apply(KeepAlive, value)
   def noDelay(value: Boolean): SocketOption = apply(NoDelay, value)
   def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)

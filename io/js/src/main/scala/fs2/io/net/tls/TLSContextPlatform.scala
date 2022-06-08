@@ -28,8 +28,7 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.nodeNetMod
-import fs2.internal.jsdeps.node.tlsMod
+import fs2.io.internal.facade
 
 private[tls] trait TLSContextPlatform[F[_]]
 
@@ -58,26 +57,25 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] = Dispatcher[F]
             .flatMap { dispatcher =>
-              import SecureContext.ops
-
               if (clientMode) {
-                val options = params
-                  .toConnectionOptions(dispatcher)
-                  .setSecureContext(context.toJS)
-                  .setEnableTrace(logger != TLSLogger.Disabled)
                 TLSSocket.forAsync(
                   socket,
-                  sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[nodeNetMod.Socket]))
+                  sock => {
+                    val options = params.toTLSConnectOptions(dispatcher)
+                    options.secureContext = context
+                    options.enableTrace = logger != TLSLogger.Disabled
+                    options.socket = sock
+                    facade.tls.connect(options)
+                  }
                 )
               } else {
-                val options = params
-                  .toTLSSocketOptions(dispatcher)
-                  .setSecureContext(context.toJS)
-                  .setEnableTrace(logger != TLSLogger.Disabled)
-                  .setIsServer(true)
+                val options = params.toTLSSocketOptions(dispatcher)
+                options.secureContext = context
+                options.enableTrace = logger != TLSLogger.Disabled
+                options.isServer = true
                 TLSSocket.forAsync(
                   socket,
-                  sock => new tlsMod.TLSSocket(sock.asInstanceOf[nodeNetMod.Socket], options)
+                  sock => new facade.tls.TLSSocket(sock, options)
                 )
               }
             }

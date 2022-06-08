@@ -23,8 +23,8 @@ package fs2
 package io
 package net
 
-import fs2.internal.jsdeps.node.dgramMod
 import cats.effect.kernel.Sync
+import fs2.io.internal.facade
 
 /** Specifies a socket option on a TCP/UDP socket.
   *
@@ -40,7 +40,7 @@ sealed trait DatagramSocketOption {
 
 object DatagramSocketOption {
   sealed trait Key[A] {
-    private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: A): F[Unit]
+    private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: A): F[Unit]
   }
 
   def apply[A](key0: Key[A], value0: A): DatagramSocketOption = new DatagramSocketOption {
@@ -50,17 +50,17 @@ object DatagramSocketOption {
   }
 
   private object Broadcast extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Boolean): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
       Sync[F].delay(sock.setBroadcast(value))
   }
 
   private object MulticastInterface extends Key[String] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: String): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
       Sync[F].delay(sock.setMulticastInterface(value))
   }
 
   private object MulticastLoopback extends Key[Boolean] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Boolean): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
       Sync[F].delay {
         sock.setMulticastLoopback(value)
         ()
@@ -68,27 +68,27 @@ object DatagramSocketOption {
   }
 
   private object MulticastTtl extends Key[Int] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay {
-        sock.setMulticastTTL(value.toDouble)
+        sock.setMulticastTTL(value)
         ()
       }
   }
 
   private object ReceiveBufferSize extends Key[Int] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
-      Sync[F].delay(sock.setRecvBufferSize(value.toDouble))
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay(sock.setRecvBufferSize(value))
   }
 
   private object SendBufferSize extends Key[Int] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
-      Sync[F].delay(sock.setSendBufferSize(value.toDouble))
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay(sock.setSendBufferSize(value))
   }
 
   private object Ttl extends Key[Int] {
-    override private[net] def set[F[_]: Sync](sock: dgramMod.Socket, value: Int): F[Unit] =
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay {
-        sock.setTTL(value.toDouble)
+        sock.setTTL(value)
         ()
       }
   }

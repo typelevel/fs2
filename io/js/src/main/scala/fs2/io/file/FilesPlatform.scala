@@ -26,13 +26,8 @@ package file
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.eventsMod
-import fs2.internal.jsdeps.node.fsMod
-import fs2.internal.jsdeps.node.fsPromisesMod
-import fs2.internal.jsdeps.node.nodeStrings
-import fs2.internal.jsdeps.node.osMod
-import fs2.internal.jsdeps.node.processMod
 import fs2.io.file.Files.UnsealedFiles
+import fs2.io.internal.facade
 
 import scala.concurrent.duration._
 import scala.scalajs.js
@@ -50,7 +45,7 @@ private[fs2] trait FilesCompanionPlatform {
     override def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       F.fromPromise(
         F.delay(
-          fsPromisesMod.copyFile(
+          facade.fs.promises.copyFile(
             source.toString,
             target.toString,
             CopyFlag.monoid.combineAll(flags.value).jsBits.toDouble
@@ -58,17 +53,17 @@ private[fs2] trait FilesCompanionPlatform {
         )
       ).adaptError { case IOException(ex) => ex }
 
-    private def mkdir(path: Path, permissions: Option[Permissions], recursive: Boolean): F[Unit] =
+    private def mkdir(path: Path, permissions: Option[Permissions], _recursive: Boolean): F[Unit] =
       F.fromPromise(
         F.delay(
-          fsPromisesMod.mkdir(
+          facade.fs.promises.mkdir(
             path.toString,
-            permissions
-              .collect { case PosixPermissions(value) =>
-                value.toDouble
+            new facade.fs.MkdirOptions {
+              recursive = _recursive
+              permissions.collect { case PosixPermissions(value) =>
+                mode = value.toDouble
               }
-              .fold(fsMod.MakeDirectoryOptions())(fsMod.MakeDirectoryOptions().setMode(_))
-              .setRecursive(recursive)
+            }
           )
         )
       ).void
@@ -89,10 +84,10 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Unit] =
       (F.fromPromise(
-        F.delay(fsPromisesMod.symlink(target.toString, link.toString))
+        F.delay(facade.fs.promises.symlink(target.toString, link.toString))
       ) >> (permissions match {
         case Some(PosixPermissions(value)) =>
-          F.fromPromise(F.delay(fsPromisesMod.lchmod(link.toString, value)))
+          F.fromPromise(F.delay(facade.fs.promises.lchmod(link.toString, value.toDouble)))
         case _ => F.unit
       })).adaptError { case IOException(ex) => ex }
 
@@ -102,7 +97,9 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Path] =
       F.fromPromise(
-        F.delay(fsPromisesMod.mkdtemp(dir.fold(osMod.tmpdir())(_.toString) + Path.sep + prefix))
+        F.delay(
+          facade.fs.promises.mkdtemp(dir.fold(facade.os.tmpdir())(_.toString) + Path.sep + prefix)
+        )
       ).map(Path(_))
         .flatTap { path =>
           permissions
@@ -130,15 +127,15 @@ private[fs2] trait FilesCompanionPlatform {
 
     private def rmMaybeDir(path: Path): F[Unit] =
       F.ifM(isDirectory(path))(
-        F.fromPromise(F.delay(fsPromisesMod.rmdir(path.toString))),
-        F.fromPromise(F.delay(fsPromisesMod.rm(path.toString)))
+        F.fromPromise(F.delay(facade.fs.promises.rmdir(path.toString))),
+        F.fromPromise(F.delay(facade.fs.promises.rm(path.toString)))
       ).adaptError { case IOException(ex) => ex }
 
     def currentWorkingDirectory: F[Path] =
-      F.delay(Path(processMod.cwd()))
+      F.delay(Path(facade.process.cwd()))
 
     def userHome: F[Path] =
-      F.delay(Path(osMod.homedir()))
+      F.delay(Path(facade.os.homedir()))
 
     override def delete(path: Path): F[Unit] =
       rmMaybeDir(path)
@@ -160,32 +157,39 @@ private[fs2] trait FilesCompanionPlatform {
       if (!followLinks)
         F.fromPromise(
           F.delay(
-            fsPromisesMod.rm(path.toString, fsMod.RmOptions().setRecursive(true).setForce(true))
+            facade.fs.promises.rm(
+              path.toString,
+              new facade.fs.RmOptions {
+                force = true
+                recursive = true
+              }
+            )
           )
         ).adaptError { case IOException(ex) => ex }
       else
         walk(path, Int.MaxValue, true).evalTap(deleteIfExists).compile.drain
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] =
-      F.ifM(F.pure(followLinks))(
-        F.fromPromise(F.delay(fsPromisesMod.access(path.toString))).void,
-        F.fromPromise(F.delay(fsPromisesMod.lstat(path.toString))).void
-      ).as(true)
+      (if (followLinks)
+         F.fromPromise(F.delay(facade.fs.promises.access(path.toString)))
+       else
+         F.fromPromise(F.delay(facade.fs.promises.lstat(path.toString))))
+        .as(true)
         .recover { case _ => false }
 
-    private def stat(path: Path, followLinks: Boolean = false): F[fsMod.Stats] =
+    private def stat(path: Path, followLinks: Boolean = false): F[facade.fs.Stats] =
       F.fromPromise {
         F.delay {
           if (followLinks)
-            fsPromisesMod.stat(path.toString)
+            facade.fs.promises.stat(path.toString)
           else
-            fsPromisesMod.lstat(path.toString)
+            facade.fs.promises.lstat(path.toString)
         }
       }.adaptError { case IOException(ex) => ex }
         .widen
 
     private def access(path: Path, mode: Double): F[Boolean] =
-      F.fromPromise(F.delay(fsPromisesMod.access(path.toString, mode)))
+      F.fromPromise(F.delay(facade.fs.promises.access(path.toString, mode)))
         .as(true)
         .recover { case _ =>
           false
@@ -227,7 +231,7 @@ private[fs2] trait FilesCompanionPlatform {
       stat(path, followLinks).map(_.isDirectory()).recover { case _: NoSuchFileException => false }
 
     override def isExecutable(path: Path): F[Boolean] =
-      access(path, fsMod.constants.X_OK)
+      access(path, facade.fs.constants.X_OK)
 
     override def isHidden(path: Path): F[Boolean] = F.pure {
       val fileName = path.fileName.toString
@@ -235,7 +239,7 @@ private[fs2] trait FilesCompanionPlatform {
     }
 
     override def isReadable(path: Path): F[Boolean] =
-      access(path, fsMod.constants.R_OK)
+      access(path, facade.fs.constants.R_OK)
 
     override def isRegularFile(path: Path, followLinks: Boolean): F[Boolean] =
       stat(path, followLinks).map(_.isFile()).recover { case _: NoSuchFileException => false }
@@ -244,14 +248,14 @@ private[fs2] trait FilesCompanionPlatform {
       stat(path).map(_.isSymbolicLink()).recover { case _: NoSuchFileException => false }
 
     override def isWritable(path: Path): F[Boolean] =
-      access(path, fsMod.constants.W_OK)
+      access(path, facade.fs.constants.W_OK)
 
     override def isSameFile(path1: Path, path2: Path): F[Boolean] =
       F.pure(path1.absolute == path2.absolute)
 
     override def list(path: Path): Stream[F, Path] =
       Stream
-        .bracket(F.fromPromise(F.delay(fsPromisesMod.opendir(path.toString))))(dir =>
+        .bracket(F.fromPromise(F.delay(facade.fs.promises.opendir(path.toString))))(dir =>
           F.fromPromise(F.delay(dir.close()))
         )
         .flatMap { dir =>
@@ -259,18 +263,18 @@ private[fs2] trait FilesCompanionPlatform {
             .repeatEval(F.fromPromise(F.delay(dir.read())))
             .map(Option(_))
             .unNoneTerminate
-            .map(entry => path / Path(entry.asInstanceOf[fsMod.Dirent].name))
+            .map(entry => path / Path(entry.name))
         }
         .adaptError { case IOException(ex) => ex }
 
     override def move(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       F.ifM(
-        F.ifM(F.pure(flags.contains(CopyFlag.ReplaceExisting)))(
-          F.pure(true),
+        if (flags.contains(CopyFlag.ReplaceExisting))
+          F.pure(true)
+        else
           exists(target).map(!_)
-        )
       )(
-        F.fromPromise(F.delay(fsPromisesMod.rename(source.toString, target.toString))),
+        F.fromPromise(F.delay(facade.fs.promises.rename(source.toString, target.toString))),
         F.raiseError(new FileAlreadyExistsException)
       ).adaptError { case IOException(ex) => ex }
 
@@ -290,10 +294,10 @@ private[fs2] trait FilesCompanionPlatform {
                 value.toDouble
               }
               .fold(
-                fsPromisesMod
+                facade.fs.promises
                   .open(path.toString, combineFlags(flags))
               )(
-                fsPromisesMod
+                facade.fs.promises
                   .open(path.toString, combineFlags(flags), _)
               )
           )
@@ -302,22 +306,18 @@ private[fs2] trait FilesCompanionPlatform {
       .map(FileHandle.make[F])
       .adaptError { case IOException(ex) => ex }
 
-    private def readStream(path: Path, chunkSize: Int, flags: Flags)(
-        f: fsMod.ReadStreamOptions => fsMod.ReadStreamOptions
+    private def readStream(path: Path, chunkSize: Int, _flags: Flags)(
+        f: facade.fs.ReadStreamOptions => facade.fs.ReadStreamOptions
     ): Stream[F, Byte] =
       Stream
         .resource(suspendReadableAndRead() {
-          fsMod
-            .createReadStream(
-              path.toString,
-              f(
-                js.Dynamic
-                  .literal(flags = combineFlags(flags))
-                  .asInstanceOf[fsMod.ReadStreamOptions]
-                  .setHighWaterMark(chunkSize.toDouble)
-              )
-            )
-            .asInstanceOf[Readable]
+          facade.fs.createReadStream(
+            path.toString,
+            f(new facade.fs.ReadStreamOptions {
+              flags = combineFlags(_flags)
+              highWaterMark = chunkSize
+            })
+          )
         })
         .flatMap(_._2)
 
@@ -325,10 +325,14 @@ private[fs2] trait FilesCompanionPlatform {
       readStream(path, chunkSize, flags)(identity)
 
     override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      readStream(path, chunkSize, Flags.Read)(_.setStart(start.toDouble).setEnd((end - 1).toDouble))
+      readStream(path, chunkSize, Flags.Read) { options =>
+        options.start = start.toDouble
+        options.end = (end - 1).toDouble
+        options
+      }
 
     def realPath(path: Path): F[Path] =
-      F.fromPromise(F.delay(fsPromisesMod.realpath(path.toString))).map(Path(_)).adaptError {
+      F.fromPromise(F.delay(facade.fs.promises.realpath(path.toString))).map(Path(_)).adaptError {
         case NoSuchFileException(e) => e
       }
 
@@ -342,7 +346,7 @@ private[fs2] trait FilesCompanionPlatform {
       .flatMap { stats =>
         F.fromPromise(
           F.delay(
-            fsPromisesMod.utimes(
+            facade.fs.promises.utimes(
               path.toString,
               lastAccess.fold(stats.atimeMs)(_.toMillis.toDouble),
               lastModified.fold(stats.mtimeMs)(_.toMillis.toDouble)
@@ -353,38 +357,39 @@ private[fs2] trait FilesCompanionPlatform {
       .adaptError { case IOException(ex) => ex }
 
     override def setPosixPermissions(path: Path, permissions: PosixPermissions): F[Unit] =
-      F.fromPromise(F.delay(fsPromisesMod.chmod(path.toString, permissions.value.toDouble)))
+      F.fromPromise(F.delay(facade.fs.promises.chmod(path.toString, permissions.value.toDouble)))
         .adaptError { case IOException(ex) => ex }
 
     override def size(path: Path): F[Long] =
       stat(path).map(_.size.toLong)
 
-    override def writeAll(path: Path, flags: Flags): Pipe[F, Byte, Nothing] =
+    override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
         in.through {
           writeWritable(
             F.async_[Writable] { cb =>
-              val ws = fsMod
+              val ws = facade.fs
                 .createWriteStream(
                   path.toString,
-                  js.Dynamic
-                    .literal(flags = combineFlags(flags))
-                    .asInstanceOf[fsMod.StreamOptions]
+                  new facade.fs.WriteStreamOptions {
+                    flags = combineFlags(_flags)
+                  }
                 )
-              ws.once_ready(
-                nodeStrings.ready,
-                () => {
-                  ws.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
-                  cb(Right(ws.asInstanceOf[Writable]))
+              ws.once[Unit](
+                "ready",
+                _ => {
+                  ws.removeAllListeners()
+                  cb(Right(ws))
                 }
               )
-              ws.once_error(
-                nodeStrings.error,
+              ws.once[js.Error](
+                "error",
                 error => {
-                  ws.asInstanceOf[eventsMod.EventEmitter].removeAllListeners()
+                  ws.removeAllListeners()
                   cb(Left(js.JavaScriptException(error)))
                 }
               )
+              ()
             }
           )
         }
