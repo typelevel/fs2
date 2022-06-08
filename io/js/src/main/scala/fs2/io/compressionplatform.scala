@@ -45,10 +45,10 @@ private[io] trait compressionplatform {
 
         Stream
           .resource(suspendReadableAndRead() {
-            (deflateParams.header match {
+            deflateParams.header match {
               case ZLibParams.Header.GZIP => facade.zlib.createGzip(options)
               case ZLibParams.Header.ZLIB => facade.zlib.createDeflate(options)
-            })
+            }
           })
           .flatMap { case (deflate, out) =>
             out
@@ -66,10 +66,10 @@ private[io] trait compressionplatform {
 
         Stream
           .resource(suspendReadableAndRead() {
-            (inflateParams.header match {
+            inflateParams.header match {
               case ZLibParams.Header.GZIP => facade.zlib.createGunzip(options)
               case ZLibParams.Header.ZLIB => facade.zlib.createInflate(options)
-            })
+            }
           })
           .flatMap { case (inflate, out) =>
             out
