@@ -74,12 +74,12 @@ class TimeStampedSuite extends Fs2Suite {
       assertEquals(
         data.through(TimeStamped.withRate(1.second)(identity[Int]).toPipe).toVector,
         Vector(
-          Right(1) at 0.seconds,
-          Left(1) at 1.second,
-          Left(0) at 2.seconds,
-          Left(0) at 3.seconds,
-          Right(2) at 3.3.seconds,
-          Left(2) at 4.seconds
+          Right(1).at(0.seconds),
+          Left(1).at(1.second),
+          Left(0).at(2.seconds),
+          Left(0).at(3.seconds),
+          Right(2).at(3.3.seconds),
+          Left(2).at(4.seconds)
         )
       )
     }
@@ -204,23 +204,23 @@ class TimeStampedSuite extends Fs2Suite {
     "support lifting a Scan[S, TimeStamped[A], TimeStamped[B]] in to a Scan[S, TimeStamped[Either[A, C]], TimeStamped[Either[B, C]]]"
   ) {
     val source = Stream(
-      Left(1) at 1.millis,
-      Right(2) at 2.millis,
-      Right(3) at 3.millis,
-      Left(4) at 4.millis,
-      Left(5) at 5.millis,
-      Right(6) at 6.millis
+      Left(1).at(1.millis),
+      Right(2).at(2.millis),
+      Right(3).at(3.millis),
+      Left(4).at(4.millis),
+      Left(5).at(5.millis),
+      Right(6).at(6.millis)
     )
     val square: Scan[Unit, TimeStamped[Int], TimeStamped[Int]] = Scan.lift(_.map(x => x * x))
     assertEquals(
       source.through(TimeStamped.left(square).toPipe).toVector,
       Vector(
-        Left(1) at 1.millis,
-        Right(2) at 2.millis,
-        Right(3) at 3.millis,
-        Left(16) at 4.millis,
-        Left(25) at 5.millis,
-        Right(6) at 6.millis
+        Left(1).at(1.millis),
+        Right(2).at(2.millis),
+        Right(3).at(3.millis),
+        Left(16).at(4.millis),
+        Left(25).at(5.millis),
+        Right(6).at(6.millis)
       )
     )
   }
