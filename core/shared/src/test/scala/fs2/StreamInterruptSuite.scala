@@ -357,7 +357,10 @@ class StreamInterruptSuite extends Fs2Suite {
       .assertEmits(List(2))
   }
 
-  def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = s.compile
+  def compileWithSync[F[_]: Sync, A](s: Stream[F, A]) = {
+    implicit val target: Compiler.Target[F] = Compiler.Target.mkSyncTarget
+    s.compile
+  }
 
   test("23 - sync compiler interruption - succeeds when interrupted never") {
     val ioNever = IO.never[Either[Throwable, Unit]]
