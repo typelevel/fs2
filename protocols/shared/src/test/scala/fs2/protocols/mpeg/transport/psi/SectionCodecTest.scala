@@ -118,7 +118,7 @@ class SectionCodecTest extends Fs2Suite {
       implicit val sfc: SectionFragmentCodec[SmallSection] =
         SectionFragmentCodec.nonExtended[SmallSection, Int](
           0,
-          _ => (constant(bin"0") ~> uint(7)),
+          _ => constant(bin"0") ~> uint(7),
           (_, i) => SmallSection(i),
           ss => (bin"010", ss.x)
         )

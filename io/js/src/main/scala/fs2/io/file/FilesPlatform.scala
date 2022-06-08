@@ -102,7 +102,7 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Path] =
       F.fromPromise(
-        F.delay(fsPromisesMod.mkdtemp((dir.fold(osMod.tmpdir())(_.toString) + Path.sep + prefix)))
+        F.delay(fsPromisesMod.mkdtemp(dir.fold(osMod.tmpdir())(_.toString) + Path.sep + prefix))
       ).map(Path(_))
         .flatTap { path =>
           permissions

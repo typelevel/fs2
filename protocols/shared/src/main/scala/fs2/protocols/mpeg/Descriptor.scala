@@ -142,7 +142,7 @@ case class RegistrationDescriptor(
     with ProgramStreamDescriptor
 object RegistrationDescriptor {
   val codec: Codec[RegistrationDescriptor] = {
-    (("format_identifier" | bytes(4)) :: bytes)
+    ("format_identifier" | bytes(4)) :: bytes
   }.as[RegistrationDescriptor]
 }
 
@@ -171,7 +171,7 @@ case class DataStreamAlignmentDescriptor(alignmentType: AlignmentType)
     with ProgramStreamDescriptor
 object DataStreamAlignmentDescriptor {
   val codec: Codec[DataStreamAlignmentDescriptor] = {
-    ("alignment_type" | Codec[AlignmentType])
+    "alignment_type" | Codec[AlignmentType]
   }.as[DataStreamAlignmentDescriptor]
 }
 
@@ -300,7 +300,7 @@ case class PrivateDataIndicatorDescriptor(privateDataIndicator: ByteVector)
     with ProgramStreamDescriptor
 object PrivateDataIndicatorDescriptor {
   val codec: Codec[PrivateDataIndicatorDescriptor] = {
-    ("private_data_indicator" | bytes(4))
+    "private_data_indicator" | bytes(4)
   }.as[PrivateDataIndicatorDescriptor]
 }
 
@@ -340,7 +340,7 @@ case class Mpeg4VideoDescriptor(mpeg4VisualProfileAndLevel: Byte)
     with ProgramStreamDescriptor
 object Mpeg4VideoDescriptor {
   val codec: Codec[Mpeg4VideoDescriptor] = {
-    ("MPEG-4_visual_profile_and_level" | byte)
+    "MPEG-4_visual_profile_and_level" | byte
   }.as[Mpeg4VideoDescriptor]
 }
 
@@ -349,7 +349,7 @@ case class Mpeg4AudioDescriptor(mpeg4AudioProfileAndLevel: Byte)
     with ProgramStreamDescriptor
 object Mpeg4AudioDescriptor {
   val codec: Codec[Mpeg4AudioDescriptor] = {
-    ("MPEG-4_audio_profile_and_level" | byte)
+    "MPEG-4_audio_profile_and_level" | byte
   }.as[Mpeg4AudioDescriptor]
 }
 
@@ -367,7 +367,7 @@ object IodDescriptor {
 case class SlDescriptor(esId: Int) extends TransportStreamDescriptor
 object SlDescriptor {
   val codec: Codec[SlDescriptor] = {
-    ("ES_ID" | uint16)
+    "ES_ID" | uint16
   }.as[SlDescriptor]
 }
 
@@ -392,7 +392,7 @@ case class ExternalEsIdDescriptor(esternalEsId: Int)
     with ProgramStreamDescriptor
 object ExternalEsIdDescriptor {
   val codec: Codec[ExternalEsIdDescriptor] = {
-    ("External_ES_ID" | uint16)
+    "External_ES_ID" | uint16
   }.as[ExternalEsIdDescriptor]
 }
 
