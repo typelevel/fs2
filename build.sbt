@@ -188,10 +188,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.7.0",
       "org.typelevel" %%% "cats-laws" % "2.7.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.11",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.11" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.11" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.31",
+      "org.typelevel" %%% "cats-effect" % "3.3.12",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.12" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.12" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.4" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
@@ -219,7 +219,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
   )
   .jvmSettings(

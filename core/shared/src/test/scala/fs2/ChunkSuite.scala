@@ -107,7 +107,7 @@ class ChunkSuite extends Fs2Suite {
           val arr = new Array[A](c.size * 2)
           c.copyToArray(arr, 0)
           c.copyToArray(arr, c.size)
-          assertEquals(arr.toVector, (c.toVector ++ c.toVector))
+          assertEquals(arr.toVector, c.toVector ++ c.toVector)
         }
       }
       property("concat") {
@@ -115,7 +115,7 @@ class ChunkSuite extends Fs2Suite {
           val result = Chunk
             .concat(List(Chunk.empty, c1, Chunk.empty, c2))
             .toVector
-          assertEquals(result, (c1.toVector ++ c2.toVector))
+          assertEquals(result, c1.toVector ++ c2.toVector)
         }
       }
       test("concat empty") {
@@ -124,7 +124,7 @@ class ChunkSuite extends Fs2Suite {
       property("scanLeft") {
         forAll { (c: Chunk[A]) =>
           def step(acc: List[A], item: A) = acc :+ item
-          assertEquals(c.scanLeft(List[A]())(step).toList, (c.toList.scanLeft(List[A]())(step)))
+          assertEquals(c.scanLeft(List[A]())(step).toList, c.toList.scanLeft(List[A]())(step))
         }
       }
       property("scanLeftCarry") {

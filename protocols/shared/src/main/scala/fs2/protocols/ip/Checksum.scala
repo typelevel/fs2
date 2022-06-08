@@ -36,6 +36,6 @@ object Checksum {
     }
     while ((sum >> 16) != 0)
       sum = (0xffff & sum) + (sum >> 16)
-    ~(BitVector.fromInt(sum).drop(16))
+    ~BitVector.fromInt(sum).drop(16)
   }
 }

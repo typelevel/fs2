@@ -169,11 +169,11 @@ class TimeStampedSuite extends Fs2Suite {
 
     test("emits values with the same timestamp in insertion order") {
       val onTheSecondBumped = onTheSecond.map(_.map(_ + 1))
-      val inOrder = (onTheSecond
-        .interleave(onTheQuarterPast))
+      val inOrder = onTheSecond
+        .interleave(onTheQuarterPast)
         .interleave(onTheSecondBumped.interleave(onTheQuarterPast))
-      val outOfOrder = (onTheQuarterPast
-        .interleave(onTheSecond))
+      val outOfOrder = onTheQuarterPast
+        .interleave(onTheSecond)
         .interleave(onTheQuarterPast.interleave(onTheSecondBumped))
       val reordered = outOfOrder.through(TimeStamped.reorderLocally(1.second))
       assertEquals(reordered.toList, inOrder.toList)

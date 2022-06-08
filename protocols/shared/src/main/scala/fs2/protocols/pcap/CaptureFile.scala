@@ -71,7 +71,7 @@ object CaptureFile {
     }
 
   def streamDecoder[A](
-      f: GlobalHeader => Either[Err, (RecordHeader => StreamDecoder[A])]
+      f: GlobalHeader => Either[Err, RecordHeader => StreamDecoder[A]]
   ): StreamDecoder[A] = for {
     global <- StreamDecoder.once(GlobalHeader.codec)
     decoderFn <- f(global).fold(StreamDecoder.raiseError, StreamDecoder.emit)

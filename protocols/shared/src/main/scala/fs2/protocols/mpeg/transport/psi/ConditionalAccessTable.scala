@@ -98,10 +98,10 @@ object ConditionalAccessTable {
       ConditionalAccessTable(
         version,
         current,
-        (for {
+        for {
           section <- sections.list
           descriptor <- section.descriptors
-        } yield descriptor)
+        } yield descriptor
       )
     }
   }

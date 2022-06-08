@@ -98,7 +98,7 @@ private[fs2] trait FilesCompanionPlatform {
     ): F[Path] =
       F.fromPromise(
         F.delay(
-          facade.fs.promises.mkdtemp((dir.fold(facade.os.tmpdir())(_.toString) + Path.sep + prefix))
+          facade.fs.promises.mkdtemp(dir.fold(facade.os.tmpdir())(_.toString) + Path.sep + prefix)
         )
       ).map(Path(_))
         .flatTap { path =>
