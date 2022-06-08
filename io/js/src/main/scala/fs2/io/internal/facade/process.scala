@@ -19,34 +19,27 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.internal.facade
 
-import cats.kernel.Monoid
-import fs2.io.internal.facade
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
 
-final class Flag private (private[file] val bits: Long) extends AnyVal
+private[io] object process {
 
-object Flag extends FlagCompanionApi {
-  private def apply(bits: Long): Flag = new Flag(bits)
-  private def apply(bits: Double): Flag = Flag(bits.toLong)
+  @js.native
+  @JSImport("process", "stdout")
+  def stdout: fs2.io.Writable = js.native
 
-  val Read = Flag(facade.fs.constants.O_RDONLY)
-  val Write = Flag(facade.fs.constants.O_WRONLY)
-  val Append = Flag(facade.fs.constants.O_APPEND)
+  @js.native
+  @JSImport("process", "stdout")
+  def stderr: fs2.io.Writable = js.native
 
-  val Truncate = Flag(facade.fs.constants.O_TRUNC)
-  val Create = Flag(facade.fs.constants.O_CREAT)
-  val CreateNew = Flag(facade.fs.constants.O_CREAT.toLong | facade.fs.constants.O_EXCL.toLong)
+  @js.native
+  @JSImport("process", "stdin")
+  def stdin: fs2.io.Readable = js.native
 
-  val Sync = Flag(facade.fs.constants.O_SYNC)
-  val Dsync = Flag(facade.fs.constants.O_DSYNC)
+  @js.native
+  @JSImport("process", "cwd")
+  def cwd(): String = js.native
 
-  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
-    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
-    override def empty: Flag = Flag(0)
-  }
 }
-
-private[file] trait FlagsCompanionPlatform {}

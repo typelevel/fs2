@@ -24,7 +24,7 @@ package io
 package file
 
 import cats.kernel.Monoid
-import fs2.internal.jsdeps.node.fsMod
+import fs2.io.internal.facade
 
 final class CopyFlag private (private val bits: Long) extends AnyVal {
   def jsBits: Long = bits ^ CopyFlag.ReplaceExisting.bits // Toggle the inverted bit
@@ -35,10 +35,10 @@ object CopyFlag extends CopyFlagCompanionApi {
   private def apply(bits: Double): CopyFlag = CopyFlag(bits.toLong)
 
   val ReplaceExisting = CopyFlag(
-    fsMod.constants.COPYFILE_EXCL
+    facade.fs.constants.COPYFILE_EXCL
   ) // Reuse this bit with inverted semantics
-  val Reflink = CopyFlag(fsMod.constants.COPYFILE_FICLONE)
-  val ReflinkOrFail = CopyFlag(fsMod.constants.COPYFILE_FICLONE_FORCE)
+  val Reflink = CopyFlag(facade.fs.constants.COPYFILE_FICLONE)
+  val ReflinkOrFail = CopyFlag(facade.fs.constants.COPYFILE_FICLONE_FORCE)
 
   private[file] implicit val monoid: Monoid[CopyFlag] = new Monoid[CopyFlag] {
     override def combine(x: CopyFlag, y: CopyFlag): CopyFlag = CopyFlag(x.bits | y.bits)

@@ -19,34 +19,22 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.internal
 
-import cats.kernel.Monoid
-import fs2.io.internal.facade
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSGlobal
+import scala.concurrent.ExecutionContext
+import scala.annotation.nowarn
 
-final class Flag private (private[file] val bits: Long) extends AnyVal
+private[io] object MicrotaskExecutor extends ExecutionContext {
 
-object Flag extends FlagCompanionApi {
-  private def apply(bits: Long): Flag = new Flag(bits)
-  private def apply(bits: Double): Flag = Flag(bits.toLong)
+  def execute(runnable: Runnable): Unit = queueMicrotask(() => runnable.run())
 
-  val Read = Flag(facade.fs.constants.O_RDONLY)
-  val Write = Flag(facade.fs.constants.O_WRONLY)
-  val Append = Flag(facade.fs.constants.O_APPEND)
+  def reportFailure(cause: Throwable): Unit = cause.printStackTrace()
 
-  val Truncate = Flag(facade.fs.constants.O_TRUNC)
-  val Create = Flag(facade.fs.constants.O_CREAT)
-  val CreateNew = Flag(facade.fs.constants.O_CREAT.toLong | facade.fs.constants.O_EXCL.toLong)
+  @JSGlobal("queueMicrotask")
+  @js.native
+  @nowarn
+  private def queueMicrotask(function: js.Function0[Any]): Unit = js.native
 
-  val Sync = Flag(facade.fs.constants.O_SYNC)
-  val Dsync = Flag(facade.fs.constants.O_DSYNC)
-
-  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
-    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
-    override def empty: Flag = Flag(0)
-  }
 }
-
-private[file] trait FlagsCompanionPlatform {}

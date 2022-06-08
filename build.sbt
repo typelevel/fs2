@@ -1,7 +1,6 @@
 import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
-Global / stQuiet := true
 
 ThisBuild / tlBaseVersion := "3.2"
 
@@ -166,7 +165,6 @@ lazy val root = tlCrossRootProject
   .aggregate(
     core,
     io,
-    node,
     scodec,
     protocols,
     reactiveStreams,
@@ -193,7 +191,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect" % "3.3.12",
       "org.typelevel" %%% "cats-effect-laws" % "3.3.12" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.3.12" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.31",
+      "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.4" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
       "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
@@ -217,29 +215,8 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val node = crossProject(JSPlatform)
-  .in(file("node"))
-  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
-  .disablePlugins(DoctestPlugin)
-  .settings(
-    name := "fs2-node",
-    mimaPreviousArtifacts := Set.empty,
-    scalacOptions += "-nowarn",
-    Compile / doc / sources := Nil,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDevDependencies += "@types/node" -> "16.11.7",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile",
-    stOutputPackage := "fs2.internal.jsdeps",
-    stPrivateWithin := Some("fs2"),
-    stStdlib := List("es2020"),
-    stUseScalaJsDom := false,
-    stIncludeDev := true
-  )
-
 lazy val io = crossProject(JVMPlatform, JSPlatform)
   .in(file("io"))
-  .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
     libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3",
@@ -254,13 +231,9 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Test / npmDevDependencies += "jks-js" -> "1.0.1",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile"
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
   .dependsOn(core % "compile->compile;test->test")
-  .jsConfigure(_.dependsOn(node.js))
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
@@ -273,6 +246,37 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.JavaScriptUnknownException"),
       ProblemFilters.exclude[DirectMissingMethodProblem](
         "fs2.io.net.tls.TLSSocketCompanionPlatform#AsyncTLSSocket.this"
+      ),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.file.FileHandle.make"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.DatagramSocket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem](
+        "fs2.io.net.DatagramSocketCompanionPlatform#AsyncDatagramSocket.this"
+      ),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocketOption#Key.set"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.Socket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.SocketOption.encoding"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.SocketOptionCompanionPlatform#Key.set"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.SecureContext#SecureVersion.toJS"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops"),
+      ProblemFilters.exclude[Problem]("fs2.io.net.tls.SecureContext.ops"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops$"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toTLSSocketOptions"
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toConnectionOptions"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.1.toJS"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.2.toJS"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
       )
     )
   )

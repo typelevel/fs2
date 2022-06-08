@@ -67,8 +67,8 @@ object ThisModuleShouldCompile {
     case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd)
     case None          => Pull.done
   }.stream
-  (Stream(1, 2, 3).evalMap(IO(_))): Stream[IO, Int]
-  (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
+  Stream(1, 2, 3).evalMap(IO(_)): Stream[IO, Int]
+  Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i))): Stream[IO, Int]
 
   val s: Stream[IO, Int] = if (true) Stream(1, 2, 3) else Stream.eval(IO(10))
 
@@ -92,7 +92,7 @@ object ThisModuleShouldCompile {
     import cats.syntax.all._
     1 |+| 1 // Mask unused warning from cats.syntax.all._ import
     Stream(1, 2, 3).flatMap(i => Stream.eval(IO.pure(i)))
-    (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
+    Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i))): Stream[IO, Int]
   }
 
   // Join a pure stream of effectful streams without type annotations

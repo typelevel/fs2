@@ -74,7 +74,7 @@ final case class ReadCursor[F[_]](file: FileHandle[F], offset: Long) {
     */
   def readUntil(chunkSize: Int, end: Long): Pull[F, Byte, ReadCursor[F]] =
     if (offset < end) {
-      val toRead = ((end - offset).min(Int.MaxValue).toInt).min(chunkSize)
+      val toRead = (end - offset).min(Int.MaxValue).toInt.min(chunkSize)
       readPull(toRead).flatMap {
         case Some((next, chunk)) => Pull.output(chunk) >> next.readUntil(chunkSize, end)
         case None                => Pull.pure(this)

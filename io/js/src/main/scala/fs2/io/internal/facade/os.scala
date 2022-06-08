@@ -19,30 +19,36 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal
+package fs2.io.internal.facade
 
-import fs2.Chunk
-import fs2.internal.jsdeps.node.bufferMod
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
 
-import scala.scalajs.js.typedarray.{ArrayBuffer, TypedArrayBuffer, Uint8Array}
+package object os {
 
-private[fs2] object ByteChunkOps {
-  implicit def toByteChunkOps(chunk: Chunk[Byte]): ByteChunkOps = new ByteChunkOps(chunk)
-  implicit def toBufferOps(buffer: bufferMod.global.Buffer): BufferOps = new BufferOps(buffer)
+  @js.native
+  @JSImport("os", "tmpdir")
+  private[io] def tmpdir(): String = js.native
 
-  private[fs2] final class ByteChunkOps(val chunk: Chunk[Byte]) extends AnyVal {
-    def toBuffer: bufferMod.global.Buffer = bufferMod.Buffer.from(toNodeUint8Array)
-    def toNodeUint8Array: Uint8Array = chunk.toUint8Array.asInstanceOf[Uint8Array]
+  @js.native
+  @JSImport("os", "homedir")
+  private[io] def homedir(): String = js.native
+
+  @js.native
+  @JSImport("os", "type")
+  private[io] def `type`(): String = js.native
+
+  @js.native
+  @JSImport("os", "networkInterfaces")
+  private[io] def networkInterfaces(): js.Dictionary[js.Array[NetworkInterfaceInfo]] = js.native
+
+}
+
+package os {
+
+  @js.native
+  private[io] trait NetworkInterfaceInfo extends js.Object {
+    def family: String = js.native
   }
 
-  private[fs2] final class BufferOps(val buffer: bufferMod.global.Buffer) extends AnyVal {
-    def toChunk: Chunk[Byte] = Chunk.byteBuffer(
-      TypedArrayBuffer
-        .wrap(
-          buffer.buffer.asInstanceOf[ArrayBuffer],
-          buffer.byteOffset.toInt,
-          buffer.byteLength.toInt
-        )
-    )
-  }
 }

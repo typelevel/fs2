@@ -29,14 +29,12 @@ import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.Port
-import fs2.internal.jsdeps.node.dgramMod
-import fs2.internal.jsdeps.node.eventsMod
-import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.internal.facade
 
 import scala.scalajs.js
 
 private[net] trait DatagramSocketGroupCompanionPlatform {
-  type ProtocolFamily = dgramMod.SocketType
+  type ProtocolFamily = String
 
   private[net] def forAsync[F[_]: Async]: DatagramSocketGroup[F] =
     new AsyncDatagramSocketGroup[F]
@@ -45,7 +43,7 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
       extends DatagramSocketGroup[F] {
 
     private def setSocketOptions(options: List[DatagramSocketOption])(
-        socket: dgramMod.Socket
+        socket: facade.dgram.Socket
     ): F[Unit] =
       options.traverse(option => option.key.set(socket, option.value)).void
 
@@ -56,7 +54,7 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
         protocolFamily: Option[ProtocolFamily]
     ): Resource[F, DatagramSocket[F]] = for {
       sock <- F
-        .delay(dgramMod.createSocket(protocolFamily.getOrElse(dgramMod.SocketType.udp4)))
+        .delay(facade.dgram.createSocket(protocolFamily.getOrElse("udp4")))
         .flatTap(setSocketOptions(options))
         .toResource
       socket <- DatagramSocket.forAsync[F](sock)
@@ -65,16 +63,14 @@ private[net] trait DatagramSocketGroupCompanionPlatform {
           val errorListener: js.Function1[js.Error, Unit] = { error =>
             cb(Left(js.JavaScriptException(error)))
           }
-          sock.once_error(nodeStrings.error, errorListener)
-          val options = port.foldLeft(
-            address.foldLeft(dgramMod.BindOptions())((opt, addr) => opt.setAddress(addr.toString))
-          )((opt, port) => opt.setPort(port.value.toDouble))
+          sock.once[js.Error]("error", errorListener)
+          val options = new facade.dgram.BindOptions {}
+          address.map(_.toString).foreach(options.address = _)
+          port.map(_.value).foreach(options.port = _)
           sock.bind(
             options,
             { () =>
-              sock
-                .asInstanceOf[eventsMod.EventEmitter]
-                .removeListener("error", errorListener.asInstanceOf[js.Function1[Any, Unit]])
+              sock.removeListener("error", errorListener)
               cb(Right(()))
             }
           )

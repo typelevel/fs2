@@ -43,7 +43,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         Network[IO].client(bindAddress, options = setupOptionsPlatform)
       )
       .repeat
-  } yield (server -> clients)
+  } yield server -> clients
 
   group("tcp") {
     test("echo requests - each concurrent client gets back what it sent") {

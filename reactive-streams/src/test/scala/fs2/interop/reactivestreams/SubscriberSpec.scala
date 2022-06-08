@@ -99,7 +99,7 @@ final class SubscriberBlackboxSpec
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
-    (Stream.eval(IO.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
+    Stream.eval(IO.sleep(100.milliseconds) >> req).compile.drain.unsafeRunAsync(_ => ())
   }
 
   def createElement(i: Int): Int = counter.incrementAndGet()
