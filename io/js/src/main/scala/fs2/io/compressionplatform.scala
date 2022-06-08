@@ -28,7 +28,7 @@ import fs2.compression.Compression
 import fs2.compression.DeflateParams
 import fs2.compression.InflateParams
 import fs2.compression.ZLibParams
-import fs2.internal.jsdeps.node.zlibMod
+import fs2.io.internal.facade
 
 private[io] trait compressionplatform {
 
@@ -36,45 +36,46 @@ private[io] trait compressionplatform {
     new Compression.UnsealedCompression[F] {
 
       override def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte] = in => {
-        val options = zlibMod
-          .ZlibOptions()
-          .setChunkSize(deflateParams.bufferSizeOrMinimum.toDouble)
-          .setLevel(deflateParams.level.juzDeflaterLevel.toDouble)
-          .setStrategy(deflateParams.strategy.juzDeflaterStrategy.toDouble)
-          .setFlush(deflateParams.flushMode.juzDeflaterFlushMode.toDouble)
+        val options = new facade.zlib.Options {
+          chunkSize = deflateParams.bufferSizeOrMinimum
+          level = deflateParams.level.juzDeflaterLevel
+          strategy = deflateParams.strategy.juzDeflaterStrategy
+          flush = deflateParams.flushMode.juzDeflaterFlushMode
+        }
 
         Stream
           .resource(suspendReadableAndRead() {
             (deflateParams.header match {
-              case ZLibParams.Header.GZIP => zlibMod.createGzip(options)
-              case ZLibParams.Header.ZLIB => zlibMod.createDeflate(options)
-            }).asInstanceOf[Duplex]
+              case ZLibParams.Header.GZIP => facade.zlib.createGzip(options)
+              case ZLibParams.Header.ZLIB => facade.zlib.createDeflate(options)
+            })
           })
           .flatMap { case (deflate, out) =>
             out
               .concurrently(in.through(writeWritable[F](deflate.pure.widen)))
               .onFinalize(
-                F.async_[Unit](cb => deflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(()))))
+                F.async_[Unit](cb => deflate.close(() => cb(Right(()))))
               )
           }
       }
 
       override def inflate(inflateParams: InflateParams): Pipe[F, Byte, Byte] = in => {
-        val options = zlibMod
-          .ZlibOptions()
-          .setChunkSize(inflateParams.bufferSizeOrMinimum.toDouble)
+        val options = new facade.zlib.Options {
+          chunkSize = inflateParams.bufferSizeOrMinimum
+        }
+
         Stream
           .resource(suspendReadableAndRead() {
             (inflateParams.header match {
-              case ZLibParams.Header.GZIP => zlibMod.createGunzip(options)
-              case ZLibParams.Header.ZLIB => zlibMod.createInflate(options)
-            }).asInstanceOf[Duplex]
+              case ZLibParams.Header.GZIP => facade.zlib.createGunzip(options)
+              case ZLibParams.Header.ZLIB => facade.zlib.createInflate(options)
+            })
           })
           .flatMap { case (inflate, out) =>
             out
               .concurrently(in.through(writeWritable[F](inflate.pure.widen)))
               .onFinalize(
-                F.async_[Unit](cb => inflate.asInstanceOf[zlibMod.Zlib].close(() => cb(Right(()))))
+                F.async_[Unit](cb => inflate.close(() => cb(Right(()))))
               )
           }
       }

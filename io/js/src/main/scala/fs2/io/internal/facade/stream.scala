@@ -19,34 +19,36 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.internal.facade.stream
 
-import cats.kernel.Monoid
-import fs2.io.internal.facade
+import scala.annotation.nowarn
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
 
-final class Flag private (private[file] val bits: Long) extends AnyVal
+private[io] trait DuplexOptions extends js.Object {
 
-object Flag extends FlagCompanionApi {
-  private def apply(bits: Long): Flag = new Flag(bits)
-  private def apply(bits: Double): Flag = Flag(bits.toLong)
+  var autoDestroy: Boolean
 
-  val Read = Flag(facade.fs.constants.O_RDONLY)
-  val Write = Flag(facade.fs.constants.O_WRONLY)
-  val Append = Flag(facade.fs.constants.O_APPEND)
+  var read: js.ThisFunction0[fs2.io.Readable, Unit]
 
-  val Truncate = Flag(facade.fs.constants.O_TRUNC)
-  val Create = Flag(facade.fs.constants.O_CREAT)
-  val CreateNew = Flag(facade.fs.constants.O_CREAT.toLong | facade.fs.constants.O_EXCL.toLong)
+  var write: js.ThisFunction3[fs2.io.Writable, js.typedarray.Uint8Array, String, js.Function1[
+    js.Error,
+    Unit
+  ], Unit]
 
-  val Sync = Flag(facade.fs.constants.O_SYNC)
-  val Dsync = Flag(facade.fs.constants.O_DSYNC)
+  var `final`: js.ThisFunction1[fs2.io.Duplex, js.Function1[
+    js.Error,
+    Unit
+  ], Unit]
 
-  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
-    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
-    override def empty: Flag = Flag(0)
-  }
+  var destroy: js.ThisFunction2[fs2.io.Duplex, js.Error, js.Function1[
+    js.Error,
+    Unit
+  ], Unit]
+
 }
 
-private[file] trait FlagsCompanionPlatform {}
+@JSImport("stream", "Duplex")
+@js.native
+@nowarn
+private[io] class Duplex(options: DuplexOptions) extends fs2.io.Duplex
