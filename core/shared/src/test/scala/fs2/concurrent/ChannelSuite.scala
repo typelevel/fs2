@@ -136,7 +136,6 @@ class ChannelSuite extends Fs2Suite {
   test("Channel.synchronous respects fifo") {
     val l = for {
       chan <- Channel.synchronous[IO, Int]
-      _ <- chan.send(0).start
       _ <- (0 until 5).toList.traverse_ { i =>
         val f = for {
           _ <- IO.sleep(i.second)
