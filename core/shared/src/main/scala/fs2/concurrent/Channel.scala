@@ -218,19 +218,19 @@ object Channel {
                   else (state.copy(waiting = waiting.some), state)
                 }
                 .flatMap {
-                  case s @ State(values, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
+                  case s @ State(initValues, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
                     if (shouldEmit(s)) {
                       var size = stateSize
-                      val moreValues = List.newBuilder[A]
+                      val tailValues = List.newBuilder[A]
                       var unblock = F.unit
 
                       producers.foreach { case (value, producer) =>
                         size += 1
-                        moreValues += value
+                        tailValues += value
                         unblock = unblock <* producer.complete(())
                       }
 
-                      val toEmit = makeChunk(values, moreValues.result(), size)
+                      val toEmit = makeChunk(initValues, tailValues.result(), size)
 
                       unblock.as(Pull.output(toEmit) >> consumeLoop)
                     } else {
