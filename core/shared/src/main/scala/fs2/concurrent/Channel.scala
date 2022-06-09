@@ -218,7 +218,13 @@ object Channel {
                   else (state.copy(waiting = waiting.some), state)
                 }
                 .flatMap {
-                  case s @ State(initValues, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
+                  case s @ State(
+                        initValues,
+                        stateSize,
+                        ignorePreviousWaiting @ _,
+                        producers,
+                        closed
+                      ) =>
                     if (shouldEmit(s)) {
                       var size = stateSize
                       val tailValues = List.newBuilder[A]
