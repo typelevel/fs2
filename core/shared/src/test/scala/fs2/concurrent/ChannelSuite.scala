@@ -144,7 +144,7 @@ class ChannelSuite extends Fs2Suite {
         } yield ()
         f.start
       }
-      result <- IO.sleep(5.seconds) *> chan.stream.compile.toList.flatTap(IO.println)
+      result <- IO.sleep(5.seconds) *> chan.stream.compile.toList
     } yield result
 
     TestControl.executeEmbed(l).assertEquals((0 until 5).toList)
