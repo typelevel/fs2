@@ -2,7 +2,7 @@
 
 ### FS2 @VERSION@ (Cats Effect 3)
 
-* [fs2-core, fs2-io, fs2-reactive-streams, fs2-scodec][@API_URL@]
+* [fs2-core, fs2-io, fs2-reactive-streams, fs2-scodec](@API_URL@)
 
 ### FS2 2.5.11 (Cats Effect 2)
 
