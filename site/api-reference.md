@@ -1,6 +1,6 @@
 # API Reference
 
-### FS2 3.2.0 (Cats Effect 3)
+### FS2 @VERSION@ (Cats Effect 3)
 
 * [fs2-core, fs2-io, fs2-reactive-streams, fs2-scodec][@API_URL@]
 
