@@ -1,6 +1,6 @@
 # Install
 
-The latest version for Cats Effect 3 is `3.2.7`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
+The latest version for Cats Effect 3 is `3.2.8`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
 
 The latest version for Cats Effect 2 is `2.5.10`, which supports Cats Effect 2 and is similarly cross built for various Scala versions.
 
@@ -8,26 +8,26 @@ The latest version for Cats Effect 2 is `2.5.10`, which supports Cats Effect 2 a
 
 ```
 // available for 2.12, 2.13, 3.0
-libraryDependencies += "co.fs2" %% "fs2-core" % "3.2.7"
+libraryDependencies += "co.fs2" %% "fs2-core" % "3.2.8"
 
 // optional I/O library
-libraryDependencies += "co.fs2" %% "fs2-io" % "3.2.7"
+libraryDependencies += "co.fs2" %% "fs2-io" % "3.2.8"
 
 // optional reactive streams interop
-libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "3.2.7"
+libraryDependencies += "co.fs2" %% "fs2-reactive-streams" % "3.2.8"
 
 // optional scodec interop
-libraryDependencies += "co.fs2" %% "fs2-scodec" % "3.2.7"
+libraryDependencies += "co.fs2" %% "fs2-scodec" % "3.2.8"
 ```
 
 The fs2-core as well as fs2-io and fs2-scodec libraries are also supported on Scala.js:
 
 ```
-libraryDependencies += "co.fs2" %%% "fs2-core" % "3.2.7"
-libraryDependencies += "co.fs2" %%% "fs2-scodec" % "3.2.7"
+libraryDependencies += "co.fs2" %%% "fs2-core" % "3.2.8"
+libraryDependencies += "co.fs2" %%% "fs2-scodec" % "3.2.8"
 
 // Node.js only, and requires module support to be enabled
-libraryDependencies += "co.fs2" %%% "fs2-io" % "3.2.7"
+libraryDependencies += "co.fs2" %%% "fs2-io" % "3.2.8"
 scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)) 
 ```
 
