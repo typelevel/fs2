@@ -357,7 +357,8 @@ lazy val microsite = project
       sbt.IO.copyDirectory(mdocOut.value, (laikaSite / target).value)
       Set.empty
     },
-    tlFatalWarningsInCi := false
+    tlFatalWarningsInCi := false,
+    tlSiteApiPackage := Some("fs2")
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(TypelevelSitePlugin)
