@@ -228,6 +228,7 @@ class IoPlatformSuite extends Fs2Suite {
         }
 
       (s >> Stream.raiseError[IO](new RuntimeException("boom"))).compile.drain
+        .intercept[RuntimeException]
     }
   }
 
