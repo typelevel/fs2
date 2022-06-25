@@ -3300,6 +3300,7 @@ object Stream extends StreamLowPriority {
       private val blocking: Boolean
   ) extends AnyVal {
     def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] =
+      // use boolean for backwards-compatibility
       apply(iterator, chunkSize, if (blocking) Sync.Type.Blocking else Sync.Type.Delay)
 
     def apply[A](iterator: Iterator[A], chunkSize: Int, hint: Sync.Type)(implicit
