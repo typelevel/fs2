@@ -4872,7 +4872,7 @@ object Stream extends StreamLowPriority {
           pull(toTimedPull(output))
         }
 
-    /** Transforms this pull with the function `f` whenever an element is not omitted within
+    /** Transforms this pull with the function `f` whenever an element is not emitted within
       * the duration `t`.
       * @example {{{
       * scala> import cats.effect.IO
