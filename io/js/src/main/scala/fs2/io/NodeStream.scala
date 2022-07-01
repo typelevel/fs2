@@ -37,8 +37,6 @@ trait Readable extends EventEmitter {
 
   protected[io] def destroy(): this.type = js.native
 
-  protected[io] def destroy(error: js.Error): this.type = js.native
-
   protected[io] def push(chunk: js.typedarray.Uint8Array): Boolean = js.native
 
   protected[io] def readableEnded: Boolean = js.native
@@ -52,7 +50,7 @@ trait Readable extends EventEmitter {
 @nowarn
 trait Writable extends EventEmitter {
 
-  protected[io] def destroy(error: js.Error): this.type = js.native
+  protected[io] def destroy(): this.type = js.native
 
   protected[io] def write(
       chunk: js.typedarray.Uint8Array,
@@ -70,7 +68,7 @@ trait Writable extends EventEmitter {
   */
 @js.native
 trait Duplex extends Readable with Writable {
-  protected[io] override def destroy(error: js.Error): this.type = js.native
+  protected[io] override def destroy(): this.type = js.native
 }
 
 final class StreamDestroyedException private[io] () extends IOException
