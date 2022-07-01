@@ -100,7 +100,7 @@ private class JavaScriptUnknownHostException(host: String, cause: js.JavaScriptE
     extends UnknownHostException(s"$host: ${UnknownHostException.message}", cause)
     with NoStackTrace
 object UnknownHostException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
+  private[io] def unapply(cause: js.JavaScriptException): Option[ip4s.UnknownHostException] =
     cause.exception match {
       case error: js.Error =>
         pattern.findFirstMatchIn(error.message).collect { case Regex.Groups(addr) =>
