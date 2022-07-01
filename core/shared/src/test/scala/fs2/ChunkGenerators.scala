@@ -46,11 +46,14 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
         .map(as => Chunk.chain(Chain.fromSeq(as))) // TODO Add variety in Chain
     )
 
-    Gen.frequency(
-      20 -> Gen.resize(20, gen),
-      5 -> gen,
-      2 -> Gen.resize(300, gen)
-    )
+    Gen.sized { size => // never exceeds 100
+      val maxSize = 3 * size
+      Gen.frequency(
+        20 -> Gen.resize(20.min(maxSize), gen),
+        5 -> gen,
+        2 -> Gen.resize(300.min(maxSize), gen)
+      )
+    }
   }
 }
 
