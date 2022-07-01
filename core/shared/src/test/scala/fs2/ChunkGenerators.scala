@@ -47,11 +47,10 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
     )
 
     Gen.sized { size => // never exceeds 100
-      val maxSize = 3 * size
       Gen.frequency(
-        20 -> Gen.resize(20.min(maxSize), gen),
+        20 -> Gen.resize((size / 5).max(5), gen),
         5 -> gen,
-        2 -> Gen.resize(300.min(maxSize), gen)
+        2 -> Gen.resize(3 * size, gen)
       )
     }
   }
