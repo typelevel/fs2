@@ -3299,11 +3299,16 @@ object Stream extends StreamLowPriority {
   private[fs2] final class PartiallyAppliedFromIterator[F[_]](
       private val blocking: Boolean
   ) extends AnyVal {
-    def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] = {
-      def eff[B](thunk: => B) = if (blocking) F.blocking(thunk) else F.delay(thunk)
+    def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] =
+      // use boolean for backwards-compatibility
+      apply(iterator, chunkSize, if (blocking) Sync.Type.Blocking else Sync.Type.Delay)
+
+    def apply[A](iterator: Iterator[A], chunkSize: Int, hint: Sync.Type)(implicit
+        F: Sync[F]
+    ): Stream[F, A] = {
 
       def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
-        eff {
+        F.suspend(hint) {
           for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
         }.map { s =>
           if (s.isEmpty) None else Some((Chunk.seq(s), i))
@@ -3313,6 +3318,13 @@ object Stream extends StreamLowPriority {
     }
   }
 
+  private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
+      private val blocking: Boolean
+  ) extends AnyVal {
+    def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] =
+      new PartiallyAppliedFromIterator(blocking).apply(iterator, chunkSize)
+  }
+
   /** Lifts an iterator into a Stream.
     */
   def fromIterator[F[_]]: PartiallyAppliedFromIterator[F] =
@@ -3320,8 +3332,8 @@ object Stream extends StreamLowPriority {
 
   /** Lifts an iterator into a Stream, shifting any interaction with the iterator to the blocking pool.
     */
-  def fromBlockingIterator[F[_]]: PartiallyAppliedFromIterator[F] =
-    new PartiallyAppliedFromIterator(blocking = true)
+  def fromBlockingIterator[F[_]]: PartiallyAppliedFromBlockingIterator[F] =
+    new PartiallyAppliedFromBlockingIterator(blocking = true)
 
   /** Returns a stream of elements from the supplied queue.
     *

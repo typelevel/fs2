@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.8"
 
-ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.15", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.16", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
@@ -186,11 +186,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.7.0",
-      "org.typelevel" %%% "cats-laws" % "2.7.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.13",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.13" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.13" % Test,
+      "org.typelevel" %%% "cats-core" % "2.8.0",
+      "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.3.12",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.12" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.12" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.4" % Test,
       "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,

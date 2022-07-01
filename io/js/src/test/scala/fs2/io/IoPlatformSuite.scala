@@ -24,6 +24,7 @@ package io
 
 import cats.effect.IO
 import fs2.Fs2Suite
+import fs2.io.internal.facade
 import org.scalacheck.effect.PropF.forAllF
 
 class IoPlatformSuite extends Fs2Suite {
@@ -67,6 +68,28 @@ class IoPlatformSuite extends Fs2Suite {
         .toVector
         .assertEquals(bytes2.compile.toVector)
     }
+  }
+
+  test("Doesn't cause an unhandled error event") {
+    suspendReadableAndRead[IO, Readable]()(
+      facade.fs.createReadStream(
+        "README.md",
+        new facade.fs.ReadStreamOptions {
+          highWaterMark = 1
+        }
+      )
+    ).use { case (_, stream) =>
+      IO.deferred[Unit].flatMap { gate =>
+        stream
+          .evalTap(_ => gate.complete(()) *> IO.never)
+          .compile
+          .drain
+          .background
+          .use { _ =>
+            gate.get *> IO.raiseError(new Exception("too hot to handle!"))
+          }
+      }
+    }.attempt
   }
 
 }

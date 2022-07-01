@@ -31,7 +31,6 @@ import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.io.internal.MicrotaskExecutor
-import fs2.io.internal.ThrowableOps._
 import fs2.io.internal.facade
 
 import java.nio.charset.Charset
@@ -70,8 +69,10 @@ private[fs2] trait ioplatform {
               if (!readable.readableEnded & destroyIfNotEnded)
                 readable.destroy()
             }
-          case (readable, Resource.ExitCase.Errored(ex)) =>
-            F.delay(readable.destroy(ex.toJSError))
+          case (readable, Resource.ExitCase.Errored(_)) =>
+            // tempting, but don't propagate the error!
+            // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+            F.delay(readable.destroy())
           case (readable, Resource.ExitCase.Canceled) =>
             if (destroyIfCanceled)
               F.delay(readable.destroy())
@@ -154,20 +155,21 @@ private[fs2] trait ioplatform {
                   ()
                 }
               } >> go(tail)
-            case None =>
-              if (endAfterUse)
-                Pull.eval(
-                  F.async_[Unit] { cb =>
-                    writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
-                  }
-                )
-              else
-                Pull.done
+            case None => Pull.done
           }
 
-          go(in).stream.handleErrorWith { ex =>
-            Stream.eval(F.delay(writable.destroy(ex.toJSError)))
-          }.drain
+          go(in).stream.onFinalizeCase[F] {
+            case Resource.ExitCase.Succeeded =>
+              if (endAfterUse)
+                F.async_[Unit] { cb =>
+                  writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                }
+              else F.unit
+            case Resource.ExitCase.Errored(_) | Resource.ExitCase.Canceled =>
+              // tempting, but don't propagate the error!
+              // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+              F.delay(writable.destroy())
+          }
         }
         .adaptError { case IOException(ex) => ex }
 
@@ -238,7 +240,7 @@ private[fs2] trait ioplatform {
       } { duplex =>
         F.delay {
           if (!duplex.readableEnded | !duplex.writableEnded)
-            duplex.destroy(null)
+            duplex.destroy()
         }
       }
       drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
