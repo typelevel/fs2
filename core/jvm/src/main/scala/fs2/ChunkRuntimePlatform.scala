@@ -21,6 +21,6 @@
 
 package fs2
 
-trait ChunkRuntimePlatform[+O]
+private[fs2] trait ChunkRuntimePlatform[+O]
 
-trait ChunkCompanionRuntimePlatform
+private[fs2] trait ChunkCompanionRuntimePlatform
