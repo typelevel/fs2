@@ -23,11 +23,11 @@ Quick links:
 * [Microsite][microsite]
 * [About the library](#about)
 * [How to get latest version](https://fs2.io/#/getstarted/install)
-* API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api]
+* [API docs][api]
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.13/3.1.0/fs2-core_2.13-3.1.0-javadoc.jar/!/fs2/index.html
+[api]: https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/latest/fs2/index.html
 [io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.13/3.1.0/fs2-io_2.13-3.1.0-javadoc.jar/!/fs2/io/index.html
 [rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.13/3.1.0/fs2-reactive-streams_2.13-3.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
 
