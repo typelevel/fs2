@@ -3318,16 +3318,7 @@ object Stream extends StreamLowPriority {
     }
   }
 
-  object PartiallyAppliedFromIterator {
-    @deprecated("bincompat", "3.2.10")
-    private[fs2] def `apply$extension`[F[_], A](
-        dummy: Boolean,
-        iterator: Iterator[A],
-        chunkSize: Int,
-        F: Sync[F]
-    ): Stream[F, A] =
-      new PartiallyAppliedFromIterator(dummy).apply(iterator, chunkSize)(F)
-  }
+  object PartiallyAppliedFromIterator extends PartiallyAppliedFromBlockingIteratorCrossCompat
 
   final class PartiallyAppliedFromBlockingIterator[F[_]] private[fs2] (
       private val blocking: Boolean
