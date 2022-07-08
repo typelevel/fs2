@@ -3296,7 +3296,7 @@ object Stream extends StreamLowPriority {
   def fromEither[F[_]]: PartiallyAppliedFromEither[F] =
     new PartiallyAppliedFromEither(dummy = true)
 
-  private[fs2] final class PartiallyAppliedFromIterator[F[_]](
+  final class PartiallyAppliedFromIterator[F[_]] private[fs2] (
       private val blocking: Boolean
   ) extends AnyVal {
     def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] =
@@ -3318,7 +3318,9 @@ object Stream extends StreamLowPriority {
     }
   }
 
-  private[fs2] final class PartiallyAppliedFromBlockingIterator[F[_]](
+  object PartiallyAppliedFromIterator extends PartiallyAppliedFromBlockingIteratorCrossCompat
+
+  final class PartiallyAppliedFromBlockingIterator[F[_]] private[fs2] (
       private val blocking: Boolean
   ) extends AnyVal {
     def apply[A](iterator: Iterator[A], chunkSize: Int)(implicit F: Sync[F]): Stream[F, A] =
