@@ -5,14 +5,14 @@ Docs are based on:
 - `docsify`, a _dynamic_, markdown-based generator.
 - `mdoc`, type-checked scala/markdown compiler
 
-The source for the docs is in `yourProject/docs`, the website in `fs2/target/website`. The currently deployed website is in the `gh-pages` branch.
+The source for the docs is in `site`, the website in `mdoc/target/mdoc`. The currently deployed website is in the `gh-pages` branch.
 
 You can build the site and preview it locally.
 
 ## With Nix
 
 1. Run `nix-shell --run "sbt 'microsite/mdoc --watch'"`.
-2. Run `nix-shell --run "node_modules/docsify-cli/bin/docsify serve target/website/"` in a different terminal.
+2. Run `nix-shell --run "node_modules/docsify-cli/bin/docsify serve mdoc/target/mdoc"` in a different terminal.
 
 ## Without Nix
 
@@ -31,7 +31,7 @@ sbt microsite/mdoc --watch
 and docsify in a shell session:
 
 ```
-docsify serve target/website/
+docsify serve mdoc/target/mdoc
 ```
 
 and you'll get an updating preview.
