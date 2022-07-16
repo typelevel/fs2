@@ -11,6 +11,7 @@ Here's a (non-exhaustive) list of companies that use FS2 in production. Don't se
 * [Deutsche Bank AG](https://www.db.com/)
 * [Formedix](https://www.formedix.com/)
 * [HiFi](https://hi.fi/)
+* [Hireproof](https://hireproof.io/)
 * [ITV](https://itv.com/)
 * [Kaluza](https://www.kaluza.com)
 * [OVO Energy](https://www.ovoenergy.com)
