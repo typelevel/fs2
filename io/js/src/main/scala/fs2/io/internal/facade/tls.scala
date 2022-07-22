@@ -189,6 +189,13 @@ package tls {
 
     def alpnProtocol: String | Boolean = js.native
 
+    def ssl: SSL = js.native
+
+  }
+
+  @js.native
+  private[io] trait SSL extends js.Object {
+    def verifyError(): String = js.native
   }
 
 }

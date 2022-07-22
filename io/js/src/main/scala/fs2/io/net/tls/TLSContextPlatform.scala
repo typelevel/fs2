@@ -69,16 +69,29 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   }
                 )
               } else {
-                TLSSocket.forAsync(
-                  socket,
-                  sock => {
-                    val options = params.toTLSSocketOptions(dispatcher)
-                    options.secureContext = context
-                    options.enableTrace = logger != TLSLogger.Disabled
-                    options.isServer = true
-                    new facade.tls.TLSSocket(sock, options)
-                  }
-                )
+                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
+                  TLSSocket
+                    .forAsync(
+                      socket,
+                      sock => {
+                        val options = params.toTLSSocketOptions(dispatcher)
+                        options.secureContext = context
+                        options.enableTrace = logger != TLSLogger.Disabled
+                        options.isServer = true
+                        val tlsSock = new facade.tls.TLSSocket(sock, options)
+                        tlsSock.once[facade.tls.TLSSocket](
+                          "secure",
+                          { s =>
+                            val result =
+                              Option(s.ssl.verifyError()).map(new SSLException(_)).toLeft(())
+                            dispatcher.unsafeRunAndForget(verifyError.complete(result))
+                          }
+                        )
+                        tlsSock
+                      }
+                    )
+                    .evalTap(_ => verifyError.get.rethrow)
+                }
               }
             }
             .adaptError { case IOException(ex) => ex }
