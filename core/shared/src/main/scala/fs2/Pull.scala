@@ -951,8 +951,8 @@ object Pull extends PullLowPriority {
           def outLoop(acc: Pull[G, X, Unit], pred: Run[G, X, F[End]]): F[End] =
             // bit of an ugly hack to avoid a stack overflow when these accummulate
             pred match {
-              case vrun: ViewRunner => outLoop(bindView(acc, vrun.view), vrun.prevRunner)
-              case _                => pred.out(head, scope, acc)
+              case vrun: ViewRunner @unchecked => outLoop(bindView(acc, vrun.view), vrun.prevRunner)
+              case _                           => pred.out(head, scope, acc)
             }
           outLoop(tail, this)
         }
