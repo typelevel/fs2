@@ -79,11 +79,11 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.isServer = true
                         val tlsSock = new facade.tls.TLSSocket(sock, options)
-                        tlsSock.once[facade.tls.TLSSocket](
+                        tlsSock.once(
                           "secure",
-                          { s =>
+                          { () =>
                             val result =
-                              Option(s.ssl.verifyError()).map(new SSLException(_)).toLeft(())
+                              Option(tlsSock.ssl.verifyError()).map(new SSLException(_)).toLeft(())
                             dispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )

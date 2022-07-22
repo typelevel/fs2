@@ -38,6 +38,9 @@ private[io] trait EventEmitter extends js.Object {
   protected[io] def on[E, F](eventName: String, listener: js.Function2[E, F, Unit]): this.type =
     js.native
 
+  protected[io] def once(eventName: String, listener: js.Function0[Unit]): this.type =
+    js.native
+
   protected[io] def once[E](eventName: String, listener: js.Function1[E, Unit]): this.type =
     js.native
 
