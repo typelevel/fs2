@@ -195,7 +195,7 @@ package tls {
 
   @js.native
   private[io] trait SSL extends js.Object {
-    def verifyError(): String = js.native
+    def verifyError(): js.Error = js.native
   }
 
 }

@@ -30,6 +30,8 @@ import cats.effect.std.Dispatcher
 import cats.syntax.all._
 import fs2.io.internal.facade
 
+import scala.scalajs.js
+
 private[tls] trait TLSContextPlatform[F[_]]
 
 private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
@@ -82,8 +84,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         tlsSock.once(
                           "secure",
                           { () =>
-                            val result =
-                              Option(tlsSock.ssl.verifyError()).map(new SSLException(_)).toLeft(())
+                            val result = Option(tlsSock.ssl.verifyError())
+                              .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
+                              .toLeft(())
                             dispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )
