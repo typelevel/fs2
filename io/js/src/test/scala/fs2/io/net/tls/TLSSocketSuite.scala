@@ -106,7 +106,7 @@ class TLSSocketSuite extends TLSSuite {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
-        tlsContext <- Resource.eval(testTlsContext)
+        tlsContext <- Resource.eval(testTlsContext(true))
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
         client <- Network[IO]
@@ -161,6 +161,53 @@ class TLSSocketSuite extends TLSSuite {
               .build
           )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
+
+          val client =
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .intercept[SSLException]
+    }
+
+    test("mTLS client verification".only) { // GHSA-2cpx-6pqp-wf35
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+
+      val setup = for {
+        serverContext <- Resource.eval(testTlsContext(true))
+        clientContext <- Resource.eval(testTlsContext(false))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client <- Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            clientContext
+              .clientBuilder(_)
+              .withParameters(
+                TLSParameters(checkServerIdentity =
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                )
+              )
+              .build
+          )
+      } yield server.flatMap(s =>
+        Stream.resource(
+          serverContext
+            .serverBuilder(s)
+            .withParameters(TLSParameters(requestCert = true.some)) // mTLS
+            .build
+        )
+      ) -> client
 
       Stream
         .resource(setup)
