@@ -18,5 +18,6 @@ Here's a (non-exhaustive) list of companies that use FS2 in production. Don't se
 * [Ocado Technology](https://www.ocadogroup.com/technology/technology-pioneers)
 * [On Air Entertainment](https://onairentertainment.com/)
 * [Permutive](https://permutive.com/)
+* [Spinoco](https://www.spinoco.com/)
 * [Teikametrics](https://www.teikametrics.com)
 * [IntentHQ](https://www.intenthq.com)
