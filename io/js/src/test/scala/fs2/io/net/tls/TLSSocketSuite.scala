@@ -180,7 +180,7 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    test("mTLS client verification".only) { // GHSA-2cpx-6pqp-wf35
+    test("mTLS client verification") { // GHSA-2cpx-6pqp-wf35
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
