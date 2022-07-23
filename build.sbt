@@ -174,7 +174,9 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val core = crossProject(JVMPlatform, JSPlatform)
+ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
+
+lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
@@ -188,18 +190,19 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.14",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.14" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14" % Test,
+      "com.armanbilge" %%% "cats-effect" % "3.4-f28b163-SNAPSHOT",
+      "com.armanbilge" %%% "cats-effect-laws" % "3.4-f28b163-SNAPSHOT" % Test,
+      "com.armanbilge" %%% "cats-effect-testkit" % "3.4-f28b163-SNAPSHOT" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.4" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
-      "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-1a82a3d-SNAPSHOT" % Test,
+      "com.armanbilge" %%% "munit-cats-effect" % "2.0-4e051ab-SNAPSHOT" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
     tlJdkRelease := Some(8),
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
+  .nativeConfigure(_.disablePlugins(DoctestPlugin))
 
 lazy val coreJVM = core.jvm
   .settings(
