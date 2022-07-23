@@ -84,9 +84,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         tlsSock.once(
                           "secure",
                           { () =>
-                            val result = Option(tlsSock.ssl.verifyError())
-                              .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
-                              .toLeft(())
+                            val requestCert = options.requestCert.getOrElse(false)
+                            val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
+                            val result =
+                              if (requestCert && rejectUnauthorized)
+                                Option(tlsSock.ssl.verifyError())
+                                  .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
+                                  .toLeft(())
+                              else Right(())
                             dispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )
