@@ -215,11 +215,7 @@ object Watcher {
         path: Path,
         types: Seq[Watcher.EventType] = Nil,
         modifiers: Seq[WatchEvent.Modifier] = Nil
-    ): F[F[Unit]] =
-      Files[F].isDirectory(path).flatMap { dir =>
-        if (dir) watchDirectory(path, types, modifiers)
-        else watchFile(path, types, modifiers)
-      }
+    ): F[F[Unit]] = ???
 
     private def watchDirectory(
         path: Path,
@@ -336,9 +332,9 @@ object Watcher {
                     ).flatMap { cancel =>
                       val events: F[List[Event]] = F.blocking {
                         var evs: List[Event.Created] = Nil
-                        JFiles
-                          .list(p.toNioPath)
-                          .forEach(d => evs = Event.Created(Path.fromNioPath(d), 1) :: evs)
+                        // JFiles
+                        //   .list(p.toNioPath)
+                        //   .forEach(d => evs = Event.Created(Path.fromNioPath(d), 1) :: evs)
                         evs
                       }
                       events.map(cancel -> _)

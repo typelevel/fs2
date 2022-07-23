@@ -218,12 +218,14 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val io = crossProject(JVMPlatform, JSPlatform)
+lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
+  )
+  .platformsSettings(JVMPlatform, JSPlatform)(
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3"
   )
   .jvmSettings(
     Test / fork := true,
@@ -282,6 +284,9 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
         "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
       )
     )
+  )
+  .nativeSettings(
+    nativeConfig ~= { _.withEmbedResources(true) }
   )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform)
