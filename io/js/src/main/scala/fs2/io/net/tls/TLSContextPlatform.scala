@@ -91,7 +91,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                                 Option(tlsSock.ssl.verifyError())
                                   .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
                                   .toLeft(())
-                              else Right(())
+                              else Either.unit
                             dispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )
