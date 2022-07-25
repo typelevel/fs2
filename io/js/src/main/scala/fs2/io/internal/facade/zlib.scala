@@ -34,6 +34,11 @@ package object zlib {
   private[io] def createDeflate(options: Options): Zlib = js.native
 
   @js.native
+  @JSImport("zlib", "createDeflateRaw")
+  @nowarn
+  private[io] def createDeflateRaw(options: Options): Zlib = js.native
+
+  @js.native
   @JSImport("zlib", "deflateSync")
   @nowarn
   private[io] def deflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
@@ -62,6 +67,11 @@ package object zlib {
   @JSImport("zlib", "createInflate")
   @nowarn
   private[io] def createInflate(options: Options): Zlib = js.native
+
+  @js.native
+  @JSImport("zlib", "createInflateRaw")
+  @nowarn
+  private[io] def createInflateRaw(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "inflateSync")
