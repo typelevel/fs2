@@ -19,8 +19,26 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
+package compression
 
-object compression extends compressionplatform {
-  type ZipException = java.util.zip.ZipException
-}
+/** Gunzip decompression results including file properties and
+  * decompressed content stream, used as follows:
+  *   stream
+  *     .through(gunzip[IO]())
+  *     .flatMap { gunzipResult =>
+  *       // Access properties here.
+  *       gunzipResult.content
+  *     }
+  *
+  * @param content Uncompressed content stream.
+  * @param modificationTime Modification time of compressed file.
+  * @param fileName File name.
+  * @param comment File comment.
+  */
+case class GunzipResult[F[_]](
+    content: Stream[F, Byte],
+    modificationTime: Option[Nothing] = None,
+    fileName: Option[Nothing] = None,
+    comment: Option[Nothing] = None
+)
