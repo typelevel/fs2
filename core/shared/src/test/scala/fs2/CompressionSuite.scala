@@ -82,6 +82,36 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
     )
   )
 
+  test("inflate please wrap") {
+    Stream
+      .chunk[IO, Byte](
+        Chunk.array(
+          Array[Byte](120, -100, -53, -52, 75, -53, 73, 44, 73, 85, 40, -56, 73, 77, 44, 78, 85, 40,
+            47, 74, 44, 0, 0, 73, -20, 7, 88)
+        )
+      )
+      .through(Compression[IO].inflate(InflateParams.DEFAULT))
+      .through(text.utf8.decode)
+      .compile
+      .string
+      .assertEquals("inflate please wrap")
+  }
+
+  test("inflate please nowrap") {
+    Stream
+      .chunk[IO, Byte](
+        Chunk.array(
+          Array[Byte](-53, -52, 75, -53, 73, 44, 73, 85, 40, -56, 73, 77, 44, 78, 85, -56, -53, 47,
+            47, 74, 44, 0, 0)
+        )
+      )
+      .through(Compression[IO].inflate(InflateParams(header = ZLibParams.Header.GZIP)))
+      .through(text.utf8.decode)
+      .compile
+      .string
+      .assertEquals("inflate please nowrap")
+  }
+
   test("deflate input") {
     forAllF { (s: String, level0: Int, strategy0: Int, nowrap: Boolean) =>
       val level = (level0 % 10).abs
