@@ -30,6 +30,8 @@ import cats.effect.std.Dispatcher
 import cats.syntax.all._
 import fs2.io.internal.facade
 
+import scala.scalajs.js
+
 private[tls] trait TLSContextPlatform[F[_]]
 
 private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
@@ -69,14 +71,35 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   }
                 )
               } else {
-                val options = params.toTLSSocketOptions(dispatcher)
-                options.secureContext = context
-                options.enableTrace = logger != TLSLogger.Disabled
-                options.isServer = true
-                TLSSocket.forAsync(
-                  socket,
-                  sock => new facade.tls.TLSSocket(sock, options)
-                )
+                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
+                  TLSSocket
+                    .forAsync(
+                      socket,
+                      sock => {
+                        val options = params.toTLSSocketOptions(dispatcher)
+                        options.secureContext = context
+                        options.enableTrace = logger != TLSLogger.Disabled
+                        options.isServer = true
+                        val tlsSock = new facade.tls.TLSSocket(sock, options)
+                        tlsSock.once(
+                          "secure",
+                          { () =>
+                            val requestCert = options.requestCert.getOrElse(false)
+                            val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
+                            val result =
+                              if (requestCert && rejectUnauthorized)
+                                Option(tlsSock.ssl.verifyError())
+                                  .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
+                                  .toLeft(())
+                              else Either.unit
+                            dispatcher.unsafeRunAndForget(verifyError.complete(result))
+                          }
+                        )
+                        tlsSock
+                      }
+                    )
+                    .evalTap(_ => verifyError.get.rethrow)
+                }
               }
             }
             .adaptError { case IOException(ex) => ex }
