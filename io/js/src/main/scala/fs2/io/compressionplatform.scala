@@ -60,6 +60,7 @@ private[io] trait compressionplatform {
           comment: Option[Nothing],
           deflateParams: DeflateParams
       ): Pipe[F, Byte, Byte] = deflateImpl(deflateParams) { options =>
+        require(!deflateParams.fhCrcEnabled, "FHCRC is not supported on Node.js")
         deflateParams.header match {
           case ZLibParams.Header.GZIP => facade.zlib.createGzip(options)
           case ZLibParams.Header.ZLIB =>
