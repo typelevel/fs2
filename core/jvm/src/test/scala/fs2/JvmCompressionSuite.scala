@@ -233,21 +233,6 @@ class JvmCompressionSuite extends CompressionSuite {
     }
   }
 
-  test("gzip.compresses input") {
-    val uncompressed =
-      getBytes(""""
-                   |"A type system is a tractable syntactic method for proving the absence
-                   |of certain program behaviors by classifying phrases according to the
-                   |kinds of values they compute."
-                   |-- Pierce, Benjamin C. (2002). Types and Programming Languages""")
-    Stream
-      .chunk[IO, Byte](Chunk.array(uncompressed))
-      .through(Compression[IO].gzip(2048))
-      .compile
-      .toVector
-      .map(compressed => assert(compressed.length < uncompressed.length))
-  }
-
   test("gzip.compresses input, with FLG.FHCRC set") {
     Stream
       .chunk[IO, Byte](Chunk.array(getBytes("Foo")))
@@ -335,30 +320,6 @@ class JvmCompressionSuite extends CompressionSuite {
       .toVector
       .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
       .assertEquals(expectedContent)
-  }
-
-  test("gzip and gunzip are reusable") {
-    val bytesIn: Int = 1024 * 1024
-    val chunkSize = 1024
-    val gzipStream = Compression[IO].gzip(bufferSize = chunkSize)
-    val gunzipStream = Compression[IO].gunzip(bufferSize = chunkSize)
-    val stream = Stream
-      .chunk[IO, Byte](Chunk.array(1.to(bytesIn).map(_.toByte).toArray))
-      .through(gzipStream)
-      .through(gunzipStream)
-      .flatMap(_.content)
-    for {
-      first <-
-        stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-      second <-
-        stream
-          .fold(Vector.empty[Byte]) { case (vector, byte) => vector :+ byte }
-          .compile
-          .last
-    } yield assertEquals(first, second)
   }
 
   def toEncodableFileName(fileName: String): String =

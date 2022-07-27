@@ -78,6 +78,12 @@ package object zlib {
   @nowarn
   private[io] def inflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
+  @js.native
+  @JSImport("zlib", "gunzipSync")
+  @nowarn
+  private[io] def gunzipSync(buffer: Uint8Array): Uint8Array = js.native
+
+
 }
 
 package zlib {
