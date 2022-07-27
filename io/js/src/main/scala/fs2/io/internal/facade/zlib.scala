@@ -49,9 +49,9 @@ package object zlib {
   private[io] def createGzip(options: Options): Zlib = js.native
 
   @js.native
-  @JSImport("zlib", "gzipSync")
+  @JSImport("zlib", "deflateRawSync")
   @nowarn
-  private[io] def gzipSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  private[io] def deflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createGunzip")
@@ -59,9 +59,9 @@ package object zlib {
   private[io] def createGunzip(options: Options): Zlib = js.native
 
   @js.native
-  @JSImport("zlib", "gunzipSync")
+  @JSImport("zlib", "inflateRawSync")
   @nowarn
-  private[io] def gunzipSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  private[io] def inflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createInflate")

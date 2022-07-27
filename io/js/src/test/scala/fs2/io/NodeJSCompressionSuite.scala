@@ -28,7 +28,7 @@ import fs2.io.internal.facade
 
 class NodeJSCompressionSuite extends CompressionSuite {
 
-  override def deflateStream(
+  def deflateStream(
       b: Array[Byte],
       level: Int,
       strategy: Int,
@@ -40,18 +40,18 @@ class NodeJSCompressionSuite extends CompressionSuite {
     options.strategy = strategy
     val out =
       if (nowrap)
-        facade.zlib.gzipSync(in, options)
+        facade.zlib.deflateRawSync(in, options)
       else
         facade.zlib.deflateSync(in, options)
     Chunk.uint8Array(out).toArray
   }
 
-  override def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
+  def inflateStream(b: Array[Byte], nowrap: Boolean): Array[Byte] = {
     val in = Chunk.array(b).toUint8Array
     val options = new facade.zlib.Options {}
     val out =
       if (nowrap)
-        facade.zlib.gunzipSync(in, options)
+        facade.zlib.inflateRawSync(in, options)
       else
         facade.zlib.inflateSync(in, options)
     Chunk.uint8Array(out).toArray
