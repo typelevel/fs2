@@ -87,19 +87,18 @@ object CaptureFile {
   import fs2.protocols.ip.IpHeader
   import fs2.protocols.ip.udp.DatagramHeader
   case class DatagramRecord(
-    ethernet: EthernetFrameHeader,
-    ip: IpHeader,
-    udp: DatagramHeader,
-    payload: Chunk[Byte]
+      ethernet: EthernetFrameHeader,
+      ip: IpHeader,
+      udp: DatagramHeader,
+      payload: Chunk[Byte]
   )
   def udpDatagrams: StreamDecoder[TimeStamped[DatagramRecord]] =
-    CaptureFile.payloadStreamDecoderPF {
-      case LinkType.Ethernet =>
-        for {
-          ethernetHeader <- EthernetFrameHeader.sdecoder
-          ipHeader <- IpHeader.sdecoder(ethernetHeader)
-          udpHeader <- DatagramHeader.sdecoder(ipHeader.protocol)
-          payload <- StreamDecoder.once(scodec.codecs.bytes)
-        } yield DatagramRecord(ethernetHeader, ipHeader, udpHeader, Chunk.byteVector(payload))
+    CaptureFile.payloadStreamDecoderPF { case LinkType.Ethernet =>
+      for {
+        ethernetHeader <- EthernetFrameHeader.sdecoder
+        ipHeader <- IpHeader.sdecoder(ethernetHeader)
+        udpHeader <- DatagramHeader.sdecoder(ipHeader.protocol)
+        payload <- StreamDecoder.once(scodec.codecs.bytes)
+      } yield DatagramRecord(ethernetHeader, ipHeader, udpHeader, Chunk.byteVector(payload))
     }
 }
