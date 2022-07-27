@@ -83,7 +83,6 @@ package object zlib {
   @nowarn
   private[io] def gunzipSync(buffer: Uint8Array): Uint8Array = js.native
 
-
 }
 
 package zlib {
