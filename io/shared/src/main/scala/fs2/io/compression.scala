@@ -21,6 +21,4 @@
 
 package fs2.io
 
-object compression extends compressionplatform {
-  type ZipException = java.util.zip.ZipException
-}
+object compression extends compressionplatform

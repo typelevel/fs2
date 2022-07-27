@@ -26,5 +26,8 @@ import cats.effect.kernel.Sync
 import fs2.compression.Compression
 
 private[io] trait compressionplatform {
+
+  type ZipException = java.util.zip.ZipException
+
   implicit def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
 }
