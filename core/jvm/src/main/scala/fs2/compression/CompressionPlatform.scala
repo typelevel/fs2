@@ -115,44 +115,6 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
       deflateParams: DeflateParams
   ): Pipe[F, Byte, Byte]
 
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
-    *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
-    *
-    * @param bufferSize The bounding size of the input buffer. This should roughly
-    *                   match the size of the largest chunk in the input stream.
-    *                   This will also be the chunk size in the output stream.
-    *                    Default size is 32 KB.
-    * @return See [[compression.GunzipResult]]
-    */
-  def gunzip(bufferSize: Int = 1024 * 32): Stream[F, Byte] => Stream[F, GunzipResult[F]] =
-    gunzip(
-      InflateParams(
-        bufferSize = bufferSize,
-        header = ZLibParams.Header.GZIP
-      )
-    )
-
-  /** Returns a pipe that incrementally decompresses input according to the GZIP
-    * format as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Any
-    * errors in decompression will be sequenced as exceptions into the output
-    * stream. Decompression is handled in a streaming and async fashion without
-    * any thread blockage.
-    *
-    * The chunk size here is actually really important. Matching the input stream
-    * largest chunk size, or roughly 8 KB (whichever is larger) is a good rule of
-    * thumb.
-    *
-    * @param inflateParams See [[compression.InflateParams]]
-    * @return See [[compression.GunzipResult]]
-    */
-  def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]]
 }
 
 private[compression] trait CompressionCompanionPlatform {
