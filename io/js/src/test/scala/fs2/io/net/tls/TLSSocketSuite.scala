@@ -227,14 +227,14 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    test("applicationProtocol and session") {
+    test("applicationProtocol and session".only) {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext(true))
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
-        client <- Network[IO]
+        client = Network[IO]
           .client(serverAddress)
           .flatMap(
             tlsContext
@@ -268,11 +268,12 @@ class TLSSocketSuite extends TLSSuite {
             }
             .parJoinUnbounded
 
-          val client =
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
             Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
               // Stream.exec(clientSocket.session.void) ++
               Stream.exec(clientSocket.write(msg)) ++
               clientSocket.reads.take(msg.size.toLong)
+          }
 
           client.concurrently(echoServer)
         }
