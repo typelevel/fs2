@@ -31,6 +31,8 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
+import SecureContext.SecureVersion._
+
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
@@ -95,7 +97,6 @@ class TLSSocketSuite extends TLSSuite {
             .assertEquals(httpOk)
         }
 
-      import SecureContext.SecureVersion._
       List(TLSv1, `TLSv1.1`, `TLSv1.2`, `TLSv1.3`).foreach { protocol =>
         writesBeforeReading(protocol)
         readsBeforeWriting(protocol)
@@ -227,58 +228,61 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    test("applicationProtocol and session".only) {
-      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+    List(TLSv1, `TLSv1.1`, `TLSv1.2`, `TLSv1.3`).foreach { protocol =>
+      test(s"$protocol - applicationProtocol and session".only) {
+        val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
-      val setup = for {
-        tlsContext <- Resource.eval(testTlsContext(true))
-        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-        (serverAddress, server) = addressAndConnections
-        client = Network[IO]
-          .client(serverAddress)
-          .flatMap(
-            tlsContext
-              .clientBuilder(_)
-              .withParameters(
-                TLSParameters(
-                  checkServerIdentity =
-                    Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException())),
-                  alpnProtocols = Some(List("h2"))
+        val setup = for {
+          tlsContext <- Resource.eval(testTlsContext(true, Some(protocol)))
+          addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+          (serverAddress, server) = addressAndConnections
+          client = Network[IO]
+            .client(serverAddress)
+            .flatMap(
+              tlsContext
+                .clientBuilder(_)
+                .withParameters(
+                  TLSParameters(
+                    checkServerIdentity =
+                      Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException())),
+                    alpnProtocols = Some(List("h2"))
+                  )
                 )
-              )
+                .build
+            )
+        } yield server.flatMap(s =>
+          Stream.resource(
+            tlsContext
+              .serverBuilder(s)
+              .withParameters(TLSParameters(alpnProtocols = Some(List("h2"))))
               .build
           )
-      } yield server.flatMap(s =>
-        Stream.resource(
-          tlsContext
-            .serverBuilder(s)
-            .withParameters(TLSParameters(alpnProtocols = Some(List("h2"))))
-            .build
-        )
-      ) -> client
+        ) -> client
 
-      Stream
-        .resource(setup)
-        .flatMap { case (server, clientSocket) =>
-          val echoServer = server
-            .evalTap(s => s.applicationProtocol.assertEquals("h2"))
-            .map { socket =>
-              socket.reads.chunks.foreach(socket.write(_)) ++ Stream.exec(socket.session.void)
+        Stream
+          .resource(setup)
+          .flatMap { case (server, clientSocket) =>
+            val echoServer = server
+              .evalTap(s => s.applicationProtocol.assertEquals("h2"))
+              .map { socket =>
+                socket.reads.chunks.foreach(socket.write(_)) ++ Stream.exec(socket.session.void)
+              }
+              .parJoinUnbounded
+
+            val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+              Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
+                Stream.exec(clientSocket.session.void) ++
+                Stream.exec(clientSocket.write(msg)) ++
+                clientSocket.reads.take(msg.size.toLong)
             }
-            .parJoinUnbounded
 
-          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
-            Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
-              Stream.exec(clientSocket.session.void) ++
-              Stream.exec(clientSocket.write(msg)) ++
-              clientSocket.reads.take(msg.size.toLong)
+            client.concurrently(echoServer)
           }
-
-          client.concurrently(echoServer)
-        }
-        .compile
-        .to(Chunk)
-        .assertEquals(msg)
+          .compile
+          .to(Chunk)
+          .assertEquals(msg)
+      }
     }
+
   }
 }
