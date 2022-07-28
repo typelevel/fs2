@@ -60,7 +60,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           ): Resource[F, TLSSocket[F]] = Dispatcher[F]
             .flatMap { dispatcher =>
               if (clientMode) {
-                Resource.eval(F.deferred[Unit]).flatMap { handshook =>
+                Resource.eval(F.deferred[Unit]).flatMap { handshake =>
                   TLSSocket
                     .forAsync(
                       socket,
@@ -72,12 +72,12 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         val tlsSock = facade.tls.connect(options)
                         tlsSock.once(
                           "secureConnect",
-                          () => dispatcher.unsafeRunAndForget(handshook.complete(()))
+                          () => dispatcher.unsafeRunAndForget(handshake.complete(()))
                         )
                         tlsSock
                       }
                     )
-                    .evalTap(_ => handshook.get)
+                    .evalTap(_ => handshake.get)
                 }
               } else {
                 Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
