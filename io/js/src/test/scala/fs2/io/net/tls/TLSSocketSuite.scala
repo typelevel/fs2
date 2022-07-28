@@ -227,7 +227,7 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    test("applicationProtocol and session".only) {
+    test("applicationProtocol and session") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {

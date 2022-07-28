@@ -60,16 +60,25 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           ): Resource[F, TLSSocket[F]] = Dispatcher[F]
             .flatMap { dispatcher =>
               if (clientMode) {
-                TLSSocket.forAsync(
-                  socket,
-                  sock => {
-                    val options = params.toTLSConnectOptions(dispatcher)
-                    options.secureContext = context
-                    options.enableTrace = logger != TLSLogger.Disabled
-                    options.socket = sock
-                    facade.tls.connect(options)
-                  }
-                )
+                Resource.eval(F.deferred[Unit]).flatMap { handshook =>
+                  TLSSocket
+                    .forAsync(
+                      socket,
+                      sock => {
+                        val options = params.toTLSConnectOptions(dispatcher)
+                        options.secureContext = context
+                        options.enableTrace = logger != TLSLogger.Disabled
+                        options.socket = sock
+                        val tlsSock = facade.tls.connect(options)
+                        tlsSock.once(
+                          "secureConnect",
+                          () => dispatcher.unsafeRunAndForget(handshook.complete(()))
+                        )
+                        tlsSock
+                      }
+                    )
+                    .evalTap(_ => handshook.get)
+                }
               } else {
                 Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
                   TLSSocket
