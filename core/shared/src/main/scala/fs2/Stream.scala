@@ -685,7 +685,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Provides the same functionality as [[metered]] but begins immediately instead of waiting for `rate`
     */
   def meteredStartImmediately[F2[x] >: F[x]: Temporal](rate: FiniteDuration): Stream[F2, O] =
-    (Stream.emit(()) ++ Stream.fixedRate[F2](rate)).zipRight(this)
+    Stream.fixedRateStartImmediately[F2](rate).zipRight(this)
 
   /** Waits the specified `delay` between each event.
     *
@@ -3232,6 +3232,29 @@ object Stream extends StreamLowPriority {
       F: Temporal[F]
   ): Stream[F, Unit] =
     Stream.eval(F.monotonic).flatMap(t => fixedRate_(period, t, dampen))
+
+  /** Discrete stream that emits a unit every `d`, with missed period ticks dampened.
+    *
+    * Unlike [[fixedRate]], it doesn't wait for `d` before emitting the first unit.
+    *
+    * @param period duration between emits of the resulting stream
+    */
+  def fixedRateStartImmediately[F[_]](period: FiniteDuration)(implicit
+      F: Temporal[F]
+  ): Stream[F, Unit] =
+    fixedRateStartImmediately(period, true)
+
+  /** Discrete stream that emits a unit every `d`.
+    *
+    * Unlike [[fixedRate]], it doesn't wait for `d` before emitting the first unit.
+    *
+    * @param period duration between emits of the resulting stream
+    * @param dampen true if a single unit should be emitted when multiple periods have passed since last execution, false if a unit for each period should be emitted
+    */
+  def fixedRateStartImmediately[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
+      F: Temporal[F]
+  ): Stream[F, Unit] =
+    Stream.eval(F.monotonic).flatMap(t => Stream.emit(()) ++ fixedRate_(period, t, dampen))
 
   private def fixedRate_[F[_]: Temporal](
       period: FiniteDuration,

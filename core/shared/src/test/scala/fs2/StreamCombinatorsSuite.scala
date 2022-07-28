@@ -1003,6 +1003,17 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .map(results => assert(results.size == 3))
   }
 
+  test("meteredStartImmediately should not wait between events that last longer than the rate") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .meteredStartImmediately(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 4))
+  }
+
   test("spaced should wait between events") {
     Stream
       .eval[IO, Int](IO.sleep(1.second).as(1))
