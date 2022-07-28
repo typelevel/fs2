@@ -365,6 +365,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
     this match {
       case c: Chunk.ByteVectorChunk => c.toByteVector
+      case c: Chunk.ByteBuffer      =>
+        // if c is a view, position/limit of underlying buffer may have changed
+        val bb = c.buf.asReadOnlyBuffer()
+        bb.position(c.offset)
+        bb.limit(c.offset + c.size)
+        ByteVector.view(bb)
       case other =>
         val slice = other.asInstanceOf[Chunk[Byte]].toArraySlice
         ByteVector.view(slice.values, slice.offset, slice.length)

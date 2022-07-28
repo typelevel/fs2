@@ -137,7 +137,7 @@ class ChunkSuite extends Fs2Suite {
         }
       }
 
-      if (implicitly[ClassTag[A]] == ClassTag.Byte)
+      if (implicitly[ClassTag[A]] == ClassTag.Byte) {
         property("toByteBuffer.byte") {
           forAll { (c: Chunk[A]) =>
             implicit val ev: A =:= Byte = null
@@ -147,6 +147,14 @@ class ChunkSuite extends Fs2Suite {
             assertEquals[Any, Any](arr.toVector, c.toArray.toVector)
           }
         }
+
+        property("toByteVector") {
+          forAll { (c: Chunk[A]) =>
+            implicit val ev: A =:= Byte = null
+            assertEquals[Any, Any](c.toByteVector.toArray.toVector, c.toArray.toVector)
+          }
+        }
+      }
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll("Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
