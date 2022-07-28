@@ -227,5 +227,58 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
+    test("applicationProtocol and session".only) {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+
+      val setup = for {
+        tlsContext <- Resource.eval(testTlsContext(true))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client <- Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(
+                TLSParameters(
+                  checkServerIdentity =
+                    Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException())),
+                  alpnProtocols = Some(List("h2"))
+                )
+              )
+              .build
+          )
+      } yield server.flatMap(s =>
+        Stream.resource(
+          tlsContext
+            .serverBuilder(s)
+            .withParameters(TLSParameters(alpnProtocols = Some(List("h2"))))
+            .build
+        )
+      ) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server
+            .evalTap(s => s.applicationProtocol.assertEquals("h2"))
+            // .evalTap(s => s.session.void)
+            .map { socket =>
+              socket.reads.chunks.foreach(socket.write(_))
+            }
+            .parJoinUnbounded
+
+          val client =
+            Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
+              // Stream.exec(clientSocket.session.void) ++
+              Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .assertEquals(msg)
+    }
   }
 }
