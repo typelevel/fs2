@@ -84,6 +84,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         readable
       ).race(errorDef.get.flatMap(F.raiseError[SuspendedStream[F, Byte]]).toResource)
         .map(_.merge)
+      _ <- errorDef.tryGet.map(_.toLeft(())).rethrow.toResource
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
