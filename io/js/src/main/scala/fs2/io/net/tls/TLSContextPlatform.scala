@@ -45,7 +45,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
       def fromSecureContext(
           context: SecureContext,
-          neverRejectUnauthorized: Boolean
+          insecure: Boolean
       ): TLSContext[F] =
         new UnsealedTLSContext[F] {
 
@@ -70,7 +70,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                       sock => {
                         val options = params.toTLSConnectOptions(dispatcher)
                         options.secureContext = context
-                        if (neverRejectUnauthorized)
+                        if (insecure)
                           options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.socket = sock
@@ -92,7 +92,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                       sock => {
                         val options = params.toTLSSocketOptions(dispatcher)
                         options.secureContext = context
-                        if (neverRejectUnauthorized)
+                        if (insecure)
                           options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.isServer = true
@@ -122,13 +122,13 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
         }
 
       def fromSecureContext(context: SecureContext): TLSContext[F] =
-        fromSecureContext(context, neverRejectUnauthorized = false)
+        fromSecureContext(context, insecure = false)
 
       def system: F[TLSContext[F]] =
         Async[F].delay(fromSecureContext(SecureContext.default))
 
       def insecure: F[TLSContext[F]] =
-        Async[F].delay(fromSecureContext(SecureContext.default, neverRejectUnauthorized = true))
+        Async[F].delay(fromSecureContext(SecureContext.default, insecure = true))
     }
   }
 }
