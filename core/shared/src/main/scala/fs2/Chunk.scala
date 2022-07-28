@@ -700,7 +700,9 @@ object Chunk
       }
 
     override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
-      ByteVector.view(values.asInstanceOf[Array[Byte]], offset, length)
+      if (values.isInstanceOf[Array[Byte]])
+        ByteVector.view(values.asInstanceOf[Array[Byte]], offset, length)
+      else ByteVector.view(this.asInstanceOf[ArraySlice[Byte]].toArray)
 
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       ArraySlice(values, offset, n) -> ArraySlice(values, offset + n, length - n)
