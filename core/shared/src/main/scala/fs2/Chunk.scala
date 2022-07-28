@@ -362,7 +362,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     }
 
   /** Converts this chunk to a scodec-bits ByteVector. */
-  def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector
+  def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+    ByteVector.viewAt(i => apply(i.toInt), size.toLong)
 
   /** Converts this chunk to a scodec-bits BitVector. */
   def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = toByteVector[B].bits
@@ -870,22 +871,25 @@ object Chunk
     override def drop(n: Int): Chunk[Byte] =
       if (n <= 0) this
       else if (n >= size) Chunk.empty
-      else ByteVectorChunk(toByteVector.drop(n.toLong))
+      else ByteVectorChunk(bv.drop(n.toLong))
 
     override def take(n: Int): Chunk[Byte] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
-      else ByteVectorChunk(toByteVector.take(n.toLong))
+      else ByteVectorChunk(bv.take(n.toLong))
 
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
-      val (before, after) = toByteVector.splitAt(n.toLong)
+      val (before, after) = bv.splitAt(n.toLong)
       (ByteVectorChunk(before), ByteVectorChunk(after))
     }
 
     override def map[O2](f: Byte => O2): Chunk[O2] =
-      Chunk.indexedSeq(toByteVector.toIndexedSeq.map(f))
+      Chunk.indexedSeq(bv.toIndexedSeq.map(f))
 
     override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = bv
+
+    @deprecated("Retained for bincompat", "3.2.12")
+    def toByteVector() = bv
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
