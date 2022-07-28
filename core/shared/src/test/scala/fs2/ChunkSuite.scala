@@ -221,6 +221,10 @@ class ChunkSuite extends Fs2Suite {
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
   }
 
+  test("ArraySlice toByteVector") {
+    Chunk.ArraySlice(Array[Any](0.toByte)).asInstanceOf[Chunk[Byte]].toByteVector
+  }
+
   test("ArraySlice does not copy when chunk is already an ArraySlice instance") {
     val chunk: Chunk[Int] = Chunk.ArraySlice(Array(0))
     assert(chunk eq chunk.toArraySlice)
