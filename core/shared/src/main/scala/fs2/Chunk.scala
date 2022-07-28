@@ -564,7 +564,7 @@ object Chunk
     }
 
     override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
-      ByteVector.viewAt(idx => apply(idx.toInt), size.toLong)
+      ByteVector.viewAt(idx => s(idx.toInt), s.length.toLong)
 
     override def toVector = s.toVector
 
