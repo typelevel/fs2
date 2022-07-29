@@ -429,7 +429,7 @@ object Files extends FilesCompanionPlatform {
     def readUtf8(path: Path): Stream[F, String] =
       readAll(path).through(text.utf8.decode)
 
-    def readUtf8Lines(path: Path): Stream[F,String] = 
+    def readUtf8Lines(path: Path): Stream[F, String] =
       readUtf8(path).through(text.lines)
 
     def tail(
