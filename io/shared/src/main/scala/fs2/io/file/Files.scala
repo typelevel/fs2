@@ -274,8 +274,11 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
-  /** Reads all bytes from the file specified and decodes them as a utf8 string */
-  def readUtf8(path: Path): F[String]
+  /** Reads all bytes from the file specified and decodes them as a utf8 string. */
+  def readUtf8(path: Path): Stream[F, String]
+
+  /** Reads all bytes from the file specified and decodes them as utf8 lines. */
+  def readUtf8Lines(path: Path): Stream[F, String]
 
   /** Returns the real path i.e. the actual location of `path`.
     * The precise definition of this method is implementation dependent but in general
@@ -423,8 +426,11 @@ object Files extends FilesCompanionPlatform {
         cursor.seek(start).readUntil(chunkSize, end).void.stream
       }
 
-    def readUtf8(path: Path): F[String] =
-      readAll(path).through(text.utf8.decode).compile.lastOrError
+    def readUtf8(path: Path): Stream[F, String] =
+      readAll(path).through(text.utf8.decode)
+
+    def readUtf8Lines(path: Path): Stream[F,String] = 
+      readUtf8(path).through(text.lines)
 
     def tail(
         path: Path,
