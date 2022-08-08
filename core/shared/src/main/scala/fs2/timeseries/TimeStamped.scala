@@ -38,10 +38,21 @@ case class TimeStamped[+A](time: FiniteDuration, value: A) {
 
 object TimeStamped {
 
-  def unsafeNow[A](a: A): TimeStamped[A] = TimeStamped(System.currentTimeMillis().millis, a)
+  @deprecated("Use unsafeRealTime or unsafeMonotonic", "3.2.10")
+  def unsafeNow[A](a: A): TimeStamped[A] = unsafeRealTime(a)
 
-  def now[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] =
+  @deprecated("Use realTime or monotonic", "3.2.10")
+  def now[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] = realTime[F, A](a)
+
+  def unsafeRealTime[A](a: A): TimeStamped[A] = TimeStamped(System.currentTimeMillis().millis, a)
+
+  def realTime[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] =
     Clock[F].realTime.map(TimeStamped(_, a))
+
+  def unsafeMonotonic[A](a: A): TimeStamped[A] = TimeStamped(System.nanoTime().nanos, a)
+
+  def monotonic[F[_]: Functor: Clock, A](a: A): F[TimeStamped[A]] =
+    Clock[F].monotonic.map(TimeStamped(_, a))
 
   def tick(time: FiniteDuration): TimeStamped[Option[Nothing]] = TimeStamped(time, None)
 
