@@ -19,42 +19,27 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-// Adapted from scodec-protocols, licensed under 3-clause BSD
-
 package fs2.protocols
 package ip
 
-import scodec._
-import scodec.bits._
-import scodec.codecs._
-import fs2.interop.scodec._
-import fs2.protocols.ethernet.{EtherType, EthernetFrameHeader}
-import com.comcast.ip4s.Ipv6Address
+import fs2.interop.scodec.StreamDecoder
+import fs2.protocols.ethernet.{EthernetFrameHeader, EtherType}
 
-/** Simplified model of an IPv6 header -- extension headers are not directly supported. */
-case class Ipv6Header(
-    trafficClass: Int,
-    flowLabel: Int,
-    payloadLength: Int,
-    protocol: Int,
-    hopLimit: Int,
-    sourceIp: Ipv6Address,
-    destinationIp: Ipv6Address
-) extends UnsealedIpHeader
+import com.comcast.ip4s.IpAddress
 
-object Ipv6Header {
-  implicit val codec: Codec[Ipv6Header] = {
-    ("version" | constant(bin"0110")) ~>
-      ("traffic_class" | uint8) ::
-      ("flow_label" | uint(20)) ::
-      ("payload_length" | uint(16)) ::
-      ("next_header" | uint8) ::
-      ("hop_limit" | uint8) ::
-      ("source_address" | Ip4sCodecs.ipv6) ::
-      ("destination_address" | Ip4sCodecs.ipv6)
-  }.as[Ipv6Header]
-
-  def sdecoder(ethernetHeader: EthernetFrameHeader): StreamDecoder[Ipv6Header] =
-    if (ethernetHeader.ethertype == Some(EtherType.IPv6)) StreamDecoder.once(codec)
-    else StreamDecoder.empty
+sealed trait IpHeader {
+  def protocol: Int
+  def sourceIp: IpAddress
+  def destinationIp: IpAddress
 }
+
+object IpHeader {
+  def sdecoder(ethernetHeader: EthernetFrameHeader): StreamDecoder[IpHeader] =
+    ethernetHeader.ethertype match {
+      case Some(EtherType.IPv4) => StreamDecoder.once(Ipv4Header.codec)
+      case Some(EtherType.IPv6) => StreamDecoder.once(Ipv6Header.codec)
+      case _                    => StreamDecoder.empty
+    }
+}
+
+private[ip] trait UnsealedIpHeader extends IpHeader
