@@ -43,7 +43,10 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   private[tls] trait BuilderCompanionPlatform {
     private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
 
-      def fromSecureContext(context: SecureContext): TLSContext[F] =
+      def fromSecureContext(
+          context: SecureContext,
+          insecure: Boolean
+      ): TLSContext[F] =
         new UnsealedTLSContext[F] {
 
           override def clientBuilder(socket: Socket[F]): SocketBuilder[F, TLSSocket] =
@@ -67,6 +70,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                       sock => {
                         val options = params.toTLSConnectOptions(dispatcher)
                         options.secureContext = context
+                        if (insecure)
+                          options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.socket = sock
                         val tlsSock = facade.tls.connect(options)
@@ -87,6 +92,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                       sock => {
                         val options = params.toTLSSocketOptions(dispatcher)
                         options.secureContext = context
+                        if (insecure)
+                          options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.isServer = true
                         val tlsSock = new facade.tls.TLSSocket(sock, options)
@@ -114,7 +121,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
             .adaptError { case IOException(ex) => ex }
         }
 
-      def system: F[TLSContext[F]] = Async[F].delay(fromSecureContext(SecureContext.default))
+      def fromSecureContext(context: SecureContext): TLSContext[F] =
+        fromSecureContext(context, insecure = false)
+
+      def system: F[TLSContext[F]] =
+        Async[F].delay(fromSecureContext(SecureContext.default))
+
+      def insecure: F[TLSContext[F]] =
+        Async[F].delay(fromSecureContext(SecureContext.default, insecure = true))
     }
   }
 }
