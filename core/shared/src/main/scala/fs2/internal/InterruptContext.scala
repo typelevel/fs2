@@ -25,7 +25,7 @@ import cats.{Applicative, Id}
 import cats.effect.kernel.{Concurrent, Deferred, Fiber, Outcome, Ref, Unique}
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
-import InterruptContext.InterruptionOutcome
+import InterruptContext.{InterruptionOutcome, canceledError}
 
 /** A context of interruption status. This is shared from the parent that was created as interruptible to all
   * its children. It assures consistent view of the interruption through the stack
@@ -88,14 +88,17 @@ final private[fs2] case class InterruptContext[F[_]](
     ref.get.flatMap {
       case Some(outcome) => F.pure(Left(outcome))
       case None =>
-        F.race(deferred.get, fa.attempt).map {
-          case Right(result) => result.leftMap(Outcome.Errored(_))
-          case Left(other)   => Left(other)
+        F.raceOutcome(deferred.get, fa.attempt).flatMap {
+          case Right(oc) =>
+            oc.embed(F.canceled.as(canceledError)).map(_.leftMap(Outcome.Errored(_)))
+          case Left(oc) => oc.embedNever.map(Left(_))
         }
     }
 }
 
 private[fs2] object InterruptContext {
+
+  val canceledError = Left(new RuntimeException("Unreachable"))
 
   type InterruptionOutcome = Outcome[Id, Throwable, Unique.Token]
 
