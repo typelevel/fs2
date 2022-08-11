@@ -24,8 +24,9 @@ package fs2
 import scala.concurrent.duration._
 
 import cats.effect.{IO, Sync}
-import cats.effect.kernel.Deferred
+import cats.effect.kernel.{Deferred, Outcome}
 import cats.effect.std.Semaphore
+import fs2.concurrent.SignallingRef
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamInterruptSuite extends Fs2Suite {
@@ -372,4 +373,13 @@ class StreamInterruptSuite extends Fs2Suite {
     val interrupt = IO.sleep(250.millis)
     IO.race(compileWithSync(s).drain, interrupt).map(_.isRight).assert
   }
+
+  test("25 - interaction of interruptWhen and eval(canceled)") {
+    SignallingRef[IO, Boolean](false)
+      .flatMap { sig =>
+        Stream.eval(IO.canceled).interruptWhen(sig).compile.drain.start.flatMap(_.join)
+      }
+      .assertEquals(Outcome.Canceled[IO, Throwable, Unit]())
+  }
+
 }
