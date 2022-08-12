@@ -88,9 +88,15 @@ final private[fs2] case class InterruptContext[F[_]](
     ref.get.flatMap {
       case Some(outcome) => F.pure(Left(outcome))
       case None =>
-        F.race(deferred.get, fa.attempt).map {
-          case Right(result) => result.leftMap(Outcome.Errored(_))
-          case Left(other)   => Left(other)
+        F.raceOutcome(deferred.get, fa.attempt).flatMap {
+          case Right(oc) =>
+            oc.fold(
+              F.canceled.as(Left(Outcome.Canceled())),
+              e => F.raiseError(e),
+              x => x.map(_.leftMap(Outcome.Errored(_)))
+            )
+          case Left(oc) =>
+            oc.embedNever.map(Left(_))
         }
     }
 }
