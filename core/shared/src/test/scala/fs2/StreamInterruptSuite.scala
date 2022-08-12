@@ -374,6 +374,7 @@ class StreamInterruptSuite extends Fs2Suite {
     IO.race(compileWithSync(s).drain, interrupt).map(_.isRight).assert
   }
 
+  // https://github.com/typelevel/fs2/issues/2963
   test("25 - interaction of interruptWhen and eval(canceled)") {
     SignallingRef[IO, Boolean](false)
       .flatMap { sig =>
