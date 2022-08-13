@@ -279,7 +279,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ),
       ProblemFilters.exclude[IncompatibleResultTypeProblem](
         "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
-      )
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
 
