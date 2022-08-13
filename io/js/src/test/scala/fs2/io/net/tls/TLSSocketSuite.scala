@@ -323,7 +323,7 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    test("do not hang on SSL connect failure".only) {
+    test("do not hang on SSL connect failure") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
@@ -356,7 +356,7 @@ class TLSSocketSuite extends TLSSuite {
         }
         .compile
         .to(Chunk)
-        .assertEquals(msg)
+        .intercept[SSLException]
     }
   }
 }

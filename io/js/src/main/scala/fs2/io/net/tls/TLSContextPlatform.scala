@@ -63,7 +63,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           ): Resource[F, TLSSocket[F]] = Dispatcher[F]
             .flatMap { dispatcher =>
               if (clientMode) {
-                Resource.eval(F.deferred[Unit]).flatMap { handshake =>
+                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
                   TLSSocket
                     .forAsync(
                       socket,
@@ -77,12 +77,20 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         val tlsSock = facade.tls.connect(options)
                         tlsSock.once(
                           "secureConnect",
-                          () => dispatcher.unsafeRunAndForget(handshake.complete(()))
+                          () => dispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
+                        )
+                        tlsSock.once[js.Error](
+                          "error",
+                          e =>
+                            dispatcher.unsafeRunAndForget(
+                              handshake.complete(Left(new js.JavaScriptException(e)))
+                            )
                         )
                         tlsSock
-                      }
+                      },
+                      dispatcher
                     )
-                    .evalTap(_ => handshake.get)
+                    .evalTap(_ => handshake.get.rethrow)
                 }
               } else {
                 Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
@@ -111,8 +119,16 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                             dispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )
+                        tlsSock.once[js.Error](
+                          "error",
+                          e =>
+                            dispatcher.unsafeRunAndForget(
+                              verifyError.complete(Left(new js.JavaScriptException(e)))
+                            )
+                        )
                         tlsSock
-                      }
+                      },
+                      dispatcher
                     )
                     .evalTap(_ => verifyError.get.rethrow)
                 }
