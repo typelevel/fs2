@@ -38,14 +38,14 @@ class StreamSpawnSuite extends Fs2Suite {
 
   test("when background stream terminates, overall stream continues") {
     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
-      s1.delayBy[IO](25.millis).spawning(s2).assertEmitsSameAs(s1)
+      s1.delayBy[IO](25.millis).spawning[IO](s2).assertEmitsSameAs(s1)
     }
   }
 
   test("when background stream fails, overall stream fails") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.delayBy[IO](25.millis)
-        .spawning(Stream.raiseError[IO](new Err))
+        .spawning[IO](Stream.raiseError[IO](new Err))
         .intercept[Err]
         .void
     }
@@ -57,7 +57,7 @@ class StreamSpawnSuite extends Fs2Suite {
       .flatMap { semaphore =>
         val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
         val fg = Stream.raiseError[IO](new Err).delayBy(25.millis)
-        fg.spawning(bg).onFinalize(semaphore.acquire)
+        fg.spawning[IO](bg).onFinalize(semaphore.acquire)
       }
       .intercept[Err]
   }
@@ -69,7 +69,7 @@ class StreamSpawnSuite extends Fs2Suite {
         .flatMap { semaphore =>
           val bg = Stream.repeatEval(IO(1) *> IO.sleep(50.millis)).onFinalize(semaphore.release)
           val fg = s.delayBy[IO](25.millis)
-          fg.spawning(bg).onFinalize(semaphore.acquire)
+          fg.spawning[IO](bg).onFinalize(semaphore.acquire)
         }
         .compile
         .drain
@@ -84,7 +84,7 @@ class StreamSpawnSuite extends Fs2Suite {
           Stream(1)
             .delayBy[IO](25.millis)
             .append(s)
-            .spawning(Stream.raiseError[IO](new Err))
+            .spawning[IO](Stream.raiseError[IO](new Err))
             .evalTap(_ => gate.get)
         }
         .intercept[Err]
