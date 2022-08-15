@@ -287,7 +287,7 @@ class TLSSocketSuite extends TLSSuite {
       }
     }
 
-    test("echo insecure client with Endpoint verification") {
+    test("echo insecure client") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
@@ -321,6 +321,42 @@ class TLSSocketSuite extends TLSSuite {
         .compile
         .to(Chunk)
         .assertEquals(msg)
+    }
+
+    test("do not hang on SSL connect failure") {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+
+      val setup = for {
+        clientContext <- Resource.eval(Network[IO].tlsContext.system)
+        tlsContext <- Resource.eval(testTlsContext(true))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(s =>
+            clientContext
+              .clientBuilder(s)
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
+
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+          }
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .intercept[SSLException]
     }
   }
 }
