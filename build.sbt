@@ -222,8 +222,10 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
-    tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.1-177-8abd977-SNAPSHOT"
+    tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
+  )
+  .platformsSettings(JVMPlatform, JSPlatform)(
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3"
   )
   .jvmSettings(
     Test / fork := true,
@@ -287,7 +289,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     nativeConfig ~= { _.withEmbedResources(true) }
   )
 
-lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   .in(file("scodec"))
   .settings(
     name := "fs2-scodec",
@@ -295,7 +297,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
                                                                scalaVersion.value.startsWith("2.")
                                                              )
                                                                "1.11.9"
-                                                             else "2.2.0"),
+                                                             else "2.1.0"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )
@@ -304,7 +306,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
-lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
