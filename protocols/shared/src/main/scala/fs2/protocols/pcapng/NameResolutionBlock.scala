@@ -30,9 +30,9 @@ case class NameResolutionBlock(length: Length, bytes: ByteVector) extends BodyBl
 
 object NameResolutionBlock {
 
+  def codec(implicit ord: ByteOrdering): Codec[NameResolutionBlock] =
+    "NRB" | Block.codecIgnored(hexConstant).as[NameResolutionBlock]
+
   private def hexConstant(implicit ord: ByteOrdering) =
     orderDependent(hex"00000004", hex"04000000")
-
-  def codec(implicit ord: ByteOrdering): Codec[NameResolutionBlock] =
-    "NRB" | Block.ignoredCodec(hexConstant).as[NameResolutionBlock]
 }

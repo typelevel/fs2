@@ -29,9 +29,9 @@ case class SimplePacketBlock(length: Length, bytes: ByteVector) extends BodyBloc
 
 object SimplePacketBlock {
 
+  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
+    "SPB" | Block.codecIgnored(hexConstant).as[ProcessInformationBlock]
+
   private def hexConstant(implicit ord: ByteOrdering) =
     orderDependent(hex"00000003", hex"03000000")
-
-  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
-    "SPB" | Block.ignoredCodec(hexConstant).as[ProcessInformationBlock]
 }

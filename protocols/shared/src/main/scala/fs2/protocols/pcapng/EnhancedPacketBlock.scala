@@ -40,29 +40,27 @@ case class EnhancedPacketBlock(
 
 object EnhancedPacketBlock {
 
-  def hexConstant(implicit ord: ByteOrdering): ByteVector =
-    orderDependent(hex"00000006", hex"06000000")
+  // format: off
+  def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
+    "EPB" | Block.codecByLength(hexConstant, epbCodec).dropUnits.as[EnhancedPacketBlock]
 
-  private def optionLength(length: Length, packetLength: Int)(implicit ord: ByteOrdering): Int =
-    length.toLong.toInt - 32 - packetLength - padTo32Bits(packetLength)
+  private def epbCodec(implicit ord: ByteOrdering) =
+    ("Interface ID"           | guint32                                            ) ::
+    ("Timestamp (High)"       | guint32                                            ) ::
+    ("Timestamp (Low)"        | guint32                                            ) ::
+    ("Captured Packet Length" | guint32                                            ).flatPrepend { packetLength =>
+    ("Original Packet Length" | guint32                                            ) ::
+    ("Packet Data"            | bytes(packetLength.toInt)                          ) ::
+    ("Packet padding"         | ignore(padTo32Bits(packetLength.toInt) * 8)        ) ::
+    ("Options"                | bytes                                              )}
+  // format: on
+
+  private def hexConstant(implicit ord: ByteOrdering): ByteVector =
+    orderDependent(hex"00000006", hex"06000000")
 
   private def padTo32Bits(length: Int) = {
     val rem = length % 4
     if (rem == 0) 0
     else 4 - rem
   }
-
-  // format: off
-  def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
-    "EPB" | Block.codec(hexConstant) { length =>
-      ("Interface ID"           | guint32                                            ) ::
-      ("Timestamp (High)"       | guint32                                            ) ::
-      ("Timestamp (Low)"        | guint32                                            ) ::
-      ("Captured Packet Length" | guint32                                            ).flatPrepend { packetLength =>
-      ("Original Packet Length" | guint32                                            ) ::
-      ("Packet Data"            | bytes(packetLength.toInt)                          ) ::
-      ("Packet padding"         | ignore(padTo32Bits(packetLength.toInt) * 8)        ) ::
-      ("Options"                | bytes(optionLength(length, packetLength.toInt))    )}
-    }.dropUnits.as[EnhancedPacketBlock]
-  // format: on
 }

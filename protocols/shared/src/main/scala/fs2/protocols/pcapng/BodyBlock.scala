@@ -35,6 +35,7 @@ object BodyBlock {
       EnhancedPacketBlock.codec,
       NameResolutionBlock.codec,
       InterfaceStatisticsBlock.codec,
-      ProcessInformationBlock.codec
+      ProcessInformationBlock.codec,
+      UnrecognizedBlock.codec,
     )
 }

@@ -33,20 +33,44 @@ trait Block
 object Block {
 
   // format: off
-  def codec[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
+  private def codec[A, L <: HList, LB <: HList](blockType: Codec[A])(f: Length => Codec[L])(
     implicit
     prepend: Prepend.Aux[L, Unit :: HNil, LB],
     init: Init.Aux[LB, L],
     last: Last.Aux[LB, Unit]
-  ): Codec[Unit :: Length :: LB] =
-    ("Block Type"             | constant(hexConstant)               ) ::
+  ): Codec[A :: Length :: LB] =
+    ("Block Type"             | blockType                           ) ::
     ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+
     ("Block Total Length"     | constant(length.bv)                 )}
-
-  def ignoredCodec(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
-    Block.codec(hexConstant) { length =>
-      ("Block Bytes"    | fixedSizeBytes(length.toLong - 12, bytes)) :: Codec.deriveHNil
-    }.dropUnits
   // format: on
+
+  def codecByHex[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
+    implicit
+    prepend: Prepend.Aux[L, Unit :: HNil, LB],
+    init: Init.Aux[LB, L],
+    last: Last.Aux[LB, Unit]
+  ): Codec[Unit :: Length :: LB] = codec(constant(hexConstant))(f)
+
+  def codecByLength[L <: HList, LB <: HList](hexConstant: ByteVector, c: Codec[L])(
+    implicit
+    prepend: Prepend.Aux[L, Unit :: HNil, LB],
+    init: Init.Aux[LB, L],
+    last: Last.Aux[LB, Unit],
+    ord: ByteOrdering,
+  ): Codec[Unit :: Length :: LB] = codecByHex(hexConstant)(length => fixedSizeBytes(length.toLong - 12, c))
+
+  def codecIgnored(
+    hexConstant: ByteVector
+  )(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
+    codecByHex(hexConstant) { length =>
+      fixedSizeBytes(length.toLong - 12, bytes) :: Codec.deriveHNil
+    }.dropUnits
+
+  def codecUnrecognized(
+    implicit ord: ByteOrdering
+  ): Codec[ByteVector :: Length :: ByteVector :: HNil] =
+    codec(bytes(4)) { length =>
+      fixedSizeBytes(length.toLong - 12, bytes) :: Codec.deriveHNil
+    }.dropUnits
 }

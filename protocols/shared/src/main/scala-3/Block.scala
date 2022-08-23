@@ -31,17 +31,36 @@ trait Block
 object Block {
 
   // format: off
-  inline def codec[L <: Tuple](
-    hexConstant: ByteVector
-  )(f: Length => Codec[L]): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
-    ("Block Type"             | constant(hexConstant)               ) ::
+  inline def codec[A, L <: Tuple](
+    blockType: Codec[A]
+  )(f: Length => Codec[L]): Codec[Tuple.Concat[A *: Length *: L, Unit *: EmptyTuple]] =
+    ("Block Type"             | blockType                           ) ::
     ("Block Total Length"     | bytes(4).xmapc(Length(_))(_.bv)     ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+
     ("Block Total Length"     | constant(length.bv)                 )}
-
-  def ignoredCodec(hexConstant: ByteVector)(implicit ord: ByteOrdering): Codec[Length *: ByteVector *: EmptyTuple]  =
-    codec(hexConstant) { length =>
-      ("Block Bytes"    | (fixedSizeBytes(length.toLong - 12, bytes))).tuple
-    }.dropUnits
   // format: on
+
+  inline def codecByHex[L <: Tuple](
+    hexConstant: ByteVector
+  )(f: Length => Codec[L]): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
+    codec(constant(hexConstant))(f)
+
+  inline def codecByLength[L <: Tuple](hexConstant: ByteVector, c: Codec[L])(
+    implicit ord: ByteOrdering,
+  ): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
+    codecByHex(hexConstant)(length => fixedSizeBytes(length.toLong - 12, c))
+
+  def codecIgnored(
+    hexConstant: ByteVector
+  )(implicit ord: ByteOrdering): Codec[Length *: ByteVector *: EmptyTuple] =
+    codecByHex(hexConstant) { length =>
+      fixedSizeBytes(length.toLong - 12, bytes).tuple
+    }.dropUnits
+
+  def codecUnrecognized(
+    implicit ord: ByteOrdering
+  ): Codec[ByteVector *: Length *: ByteVector *: EmptyTuple] =
+    codec(bytes(4)) { length =>
+      fixedSizeBytes(length.toLong - 12, bytes).tuple
+    }.dropUnits
 }

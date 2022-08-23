@@ -30,9 +30,9 @@ case class ProcessInformationBlock(length: Length, bytes: ByteVector) extends Bo
 
 object ProcessInformationBlock {
 
+  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
+    "PIB" | Block.codecIgnored(hexConstant).as[ProcessInformationBlock]
+
   private def hexConstant(implicit ord: ByteOrdering) =
     orderDependent(hex"80000001", hex"01000080")
-
-  def codec(implicit ord: ByteOrdering): Codec[ProcessInformationBlock] =
-    "PIB" | Block.ignoredCodec(hexConstant).as[ProcessInformationBlock]
 }

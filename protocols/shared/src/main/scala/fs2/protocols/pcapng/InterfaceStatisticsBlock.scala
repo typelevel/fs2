@@ -30,9 +30,9 @@ case class InterfaceStatisticsBlock(length: Length, bytes: ByteVector) extends B
 
 object InterfaceStatisticsBlock {
 
+  def codec(implicit ord: ByteOrdering): Codec[InterfaceStatisticsBlock] =
+    "ISB" | Block.codecIgnored(hexConstant).as[InterfaceStatisticsBlock]
+
   private def hexConstant(implicit ord: ByteOrdering) =
     orderDependent(hex"00000005", hex"05000000")
-
-  def codec(implicit ord: ByteOrdering): Codec[InterfaceStatisticsBlock] =
-    "ISB" | Block.ignoredCodec(hexConstant).as[InterfaceStatisticsBlock]
 }
