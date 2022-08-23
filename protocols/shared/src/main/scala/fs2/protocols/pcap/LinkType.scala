@@ -42,7 +42,7 @@ object LinkType {
   case class Unknown(value: Long) extends LinkType
 
   def fromInt(l: Int): LinkType =
-    fromLong(l)
+    fromLong(l.toLong)
 
   def toInt(lt: LinkType): Int = lt match {
     case Null           => 0
@@ -64,7 +64,7 @@ object LinkType {
     case other => Unknown(other)
   }
 
-  def toLong(lt: LinkType): Long = toInt(lt)
+  def toLong(lt: LinkType): Long = toInt(lt).toLong
 
   implicit def codec(implicit bo: ByteOrdering): Codec[LinkType] =
     guint32.xmap[LinkType](fromLong, toLong)

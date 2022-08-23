@@ -25,10 +25,6 @@ import scodec.bits.{ByteOrdering, ByteVector}
 
 package object pcapng {
 
-  case class Length(bv: ByteVector) extends AnyVal {
-    def toLong(implicit ord: ByteOrdering): Long = bv.toLong(signed = false, ord)
-  }
-
   def orderDependent[T](
       big: ByteVector,
       little: ByteVector

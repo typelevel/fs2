@@ -23,30 +23,19 @@ package fs2
 package protocols
 
 import cats.effect.{IO, IOApp}
-import cats.syntax.all._
+import cats.syntax.foldable._
+import cats.syntax.option._
 import fs2.io.file.{Files, Path}
 import fs2.protocols.pcap.LinkType
-import fs2.protocols.pcapng.{CaptureFile, DummyBlock}
+import fs2.protocols.pcapng.CaptureFile
 
 object PcapNgExample extends IOApp.Simple {
 
   def run: IO[Unit] =
-    output.compile.toList.flatMap(x => IO.println(x.length)) // _.traverse_(IO.println)
+    output.compile.toList.flatMap(_.traverse_(IO.println))
 
   private def byteStream: Stream[IO, Byte] =
-    Files[IO].readAll(Path("/Users/anikiforov/pcapng/many_interfaces.pcapng"))
-
-  private def revealFailed =
-    byteStream
-      .through(CaptureFile.streamDecoder.toPipeByte)
-      .flatMap {
-        case dummy: DummyBlock => Stream.emit(dummy)
-        case _                 => Stream.empty
-      }
-      .debug()
-
-  private def decode =
-    byteStream.through(CaptureFile.streamDecoder.toPipeByte)
+    Files[IO].readAll(Path("/path/to/pcapng"))
 
   private def output =
     byteStream.through(

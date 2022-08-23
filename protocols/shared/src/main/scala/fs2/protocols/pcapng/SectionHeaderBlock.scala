@@ -33,7 +33,7 @@ case class SectionHeaderBlock(
     majorVersion: Int,
     minorVersion: Int,
     bytes: ByteVector
-) extends Block
+)
 
 object SectionHeaderBlock {
 
@@ -41,8 +41,8 @@ object SectionHeaderBlock {
 
   // format: off
   val codec: Codec[SectionHeaderBlock] =
-    "SHB" | Block.codecByHex(hexConstant) { length =>
-      ("Byte-Order Magic"     | ByteOrderMagic                    ).flatPrepend { implicit ord =>
+    "SHB" | BlockCodec.unknownByteOrder(hexConstant) { length =>
+      ("Byte-Order Magic"     | ByteOrderMagic                    ).flatPrepend { implicit byteOrder =>
       ("Major Version"        | guint16                           ) ::
       ("Minor Version"        | guint16                           ) ::
       ("Block Bytes"          | bytes(length.toLong.toInt - 20)   )

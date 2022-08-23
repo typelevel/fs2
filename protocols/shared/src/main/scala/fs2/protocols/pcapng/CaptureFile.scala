@@ -40,7 +40,7 @@ object CaptureFile {
   ): Pipe[F, Byte, TimeStamped[A]] = { bytes =>
     def go(
         idbs: Vector[InterfaceDescriptionBlock],
-        blocks: Stream[F, BodyBlock],
+        blocks: Stream[F, BodyBlock]
     ): Pull[F, TimeStamped[A], Unit] =
       blocks.pull.uncons1.flatMap {
         case Some((idb: InterfaceDescriptionBlock, tail)) =>

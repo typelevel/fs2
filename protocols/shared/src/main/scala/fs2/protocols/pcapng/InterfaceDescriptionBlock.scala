@@ -45,7 +45,7 @@ object InterfaceDescriptionBlock {
 
   // format: off
   def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
-    "IDB" | Block.codecByLength(hexConstant, idbCodec).dropUnits.as[InterfaceDescriptionBlock]
+    "IDB" | BlockCodec.byBlockBytesCodec(hexConstant, idbCodec).dropUnits.as[InterfaceDescriptionBlock]
 
   private def idbCodec(implicit ord: ByteOrdering) =
     ("LinkType"    | guint16.xmap[LinkType](LinkType.fromInt, LinkType.toInt) ) ::

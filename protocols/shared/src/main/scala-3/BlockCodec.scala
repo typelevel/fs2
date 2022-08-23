@@ -26,12 +26,10 @@ import scodec.Codec
 import scodec.bits._
 import scodec.codecs._
 
-trait Block
-
-object Block {
+object BlockCodec {
 
   // format: off
-  inline def codec[A, L <: Tuple](
+  private inline def commonStructure[A, L <: Tuple](
     blockType: Codec[A]
   )(f: Length => Codec[L]): Codec[Tuple.Concat[A *: Length *: L, Unit *: EmptyTuple]] =
     ("Block Type"             | blockType                           ) ::
@@ -40,27 +38,27 @@ object Block {
     ("Block Total Length"     | constant(length.bv)                 )}
   // format: on
 
-  inline def codecByHex[L <: Tuple](
-    hexConstant: ByteVector
+  inline def unknownByteOrder[L <: Tuple](
+      hexConstant: ByteVector
   )(f: Length => Codec[L]): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
-    codec(constant(hexConstant))(f)
+    commonStructure(constant(hexConstant))(f)
 
-  inline def codecByLength[L <: Tuple](hexConstant: ByteVector, c: Codec[L])(
-    implicit ord: ByteOrdering,
+  inline def byBlockBytesCodec[L <: Tuple](hexConstant: ByteVector, blockBytesCodec: Codec[L])(
+      implicit ord: ByteOrdering
   ): Codec[Tuple.Concat[Unit *: Length *: L, Unit *: EmptyTuple]] =
-    codecByHex(hexConstant)(length => fixedSizeBytes(length.toLong - 12, c))
+    unknownByteOrder(hexConstant)(length => fixedSizeBytes(length.toLong - 12, blockBytesCodec))
 
-  def codecIgnored(
-    hexConstant: ByteVector
+  def ignored(
+      hexConstant: ByteVector
   )(implicit ord: ByteOrdering): Codec[Length *: ByteVector *: EmptyTuple] =
-    codecByHex(hexConstant) { length =>
+    unknownByteOrder(hexConstant) { length =>
       fixedSizeBytes(length.toLong - 12, bytes).tuple
     }.dropUnits
 
-  def codecUnrecognized(
-    implicit ord: ByteOrdering
+  def unrecognizedBlockType(implicit
+      ord: ByteOrdering
   ): Codec[ByteVector *: Length *: ByteVector *: EmptyTuple] =
-    codec(bytes(4)) { length =>
+    commonStructure(bytes(4)) { length =>
       fixedSizeBytes(length.toLong - 12, bytes).tuple
     }.dropUnits
 }

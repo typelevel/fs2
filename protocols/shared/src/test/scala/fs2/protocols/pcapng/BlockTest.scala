@@ -62,8 +62,8 @@ class BlockTest extends munit.FunSuite {
     assertEquals(actual, fullyDecoded(Enhanced4.expected))
   }
 
-  test("real-data dummy") {
-    val actual = DummyBlock.codec(LittleEndian).decode(RD.bytes.bits)
+  test("real-data UnrecognizedBlock") {
+    val actual = UnrecognizedBlock.codec(LittleEndian).decode(RD.bytes.bits)
     assertEquals(actual, fullyDecoded(RD.expectedDummy))
   }
 
@@ -203,6 +203,6 @@ private object BlockTest {
     val bytes = header ++ length.bv ++ props ++ data ++ padding ++ opts ++ length.bv
 
     val expectedEPB = EnhancedPacketBlock(length, 0, 381443, 399317124, 66, 66, data, opts)
-    val expectedDummy = DummyBlock(header, length, props ++ data ++ padding ++ opts)
+    val expectedDummy = UnrecognizedBlock(header, length, props ++ data ++ padding ++ opts)
   }
 }

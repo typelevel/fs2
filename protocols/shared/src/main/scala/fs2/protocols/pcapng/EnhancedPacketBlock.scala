@@ -42,7 +42,7 @@ object EnhancedPacketBlock {
 
   // format: off
   def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
-    "EPB" | Block.codecByLength(hexConstant, epbCodec).dropUnits.as[EnhancedPacketBlock]
+    "EPB" | BlockCodec.byBlockBytesCodec(hexConstant, epbCodec).dropUnits.as[EnhancedPacketBlock]
 
   private def epbCodec(implicit ord: ByteOrdering) =
     ("Interface ID"           | guint32                                            ) ::
@@ -51,16 +51,16 @@ object EnhancedPacketBlock {
     ("Captured Packet Length" | guint32                                            ).flatPrepend { packetLength =>
     ("Original Packet Length" | guint32                                            ) ::
     ("Packet Data"            | bytes(packetLength.toInt)                          ) ::
-    ("Packet padding"         | ignore(padTo32Bits(packetLength.toInt) * 8)        ) ::
+    ("Packet padding"         | ignore(padTo32Bits(packetLength.toInt))            ) ::
     ("Options"                | bytes                                              )}
   // format: on
 
   private def hexConstant(implicit ord: ByteOrdering): ByteVector =
     orderDependent(hex"00000006", hex"06000000")
 
-  private def padTo32Bits(length: Int) = {
+  private def padTo32Bits(length: Int): Long = {
     val rem = length % 4
-    if (rem == 0) 0
-    else 4 - rem
+    val bytes = if (rem == 0) 0 else 4 - rem
+    bytes.toLong * 8
   }
 }

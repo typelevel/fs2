@@ -25,7 +25,7 @@ package pcapng
 import scodec.bits._
 import scodec.Decoder
 
-trait BodyBlock extends Block
+trait BodyBlock
 
 object BodyBlock {
 
@@ -36,6 +36,6 @@ object BodyBlock {
       NameResolutionBlock.codec,
       InterfaceStatisticsBlock.codec,
       ProcessInformationBlock.codec,
-      UnrecognizedBlock.codec,
+      UnrecognizedBlock.codec
     )
 }

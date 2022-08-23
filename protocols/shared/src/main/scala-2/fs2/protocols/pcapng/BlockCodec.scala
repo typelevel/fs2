@@ -28,12 +28,10 @@ import scodec.codecs._
 import shapeless.ops.hlist.{Init, Last, Prepend}
 import shapeless.{::, HList, HNil}
 
-trait Block
-
-object Block {
+object BlockCodec {
 
   // format: off
-  private def codec[A, L <: HList, LB <: HList](blockType: Codec[A])(f: Length => Codec[L])(
+  private def commonStructure[A, L <: HList, LB <: HList](blockType: Codec[A])(f: Length => Codec[L])(
     implicit
     prepend: Prepend.Aux[L, Unit :: HNil, LB],
     init: Init.Aux[LB, L],
@@ -45,32 +43,35 @@ object Block {
     ("Block Total Length"     | constant(length.bv)                 )}
   // format: on
 
-  def codecByHex[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
-    implicit
-    prepend: Prepend.Aux[L, Unit :: HNil, LB],
-    init: Init.Aux[LB, L],
-    last: Last.Aux[LB, Unit]
-  ): Codec[Unit :: Length :: LB] = codec(constant(hexConstant))(f)
+  def unknownByteOrder[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
+      implicit
+      prepend: Prepend.Aux[L, Unit :: HNil, LB],
+      init: Init.Aux[LB, L],
+      last: Last.Aux[LB, Unit]
+  ): Codec[Unit :: Length :: LB] = commonStructure(constant(hexConstant))(f)
 
-  def codecByLength[L <: HList, LB <: HList](hexConstant: ByteVector, c: Codec[L])(
-    implicit
-    prepend: Prepend.Aux[L, Unit :: HNil, LB],
-    init: Init.Aux[LB, L],
-    last: Last.Aux[LB, Unit],
-    ord: ByteOrdering,
-  ): Codec[Unit :: Length :: LB] = codecByHex(hexConstant)(length => fixedSizeBytes(length.toLong - 12, c))
+  def byBlockBytesCodec[L <: HList, LB <: HList](
+      hexConstant: ByteVector,
+      blockBytesCodec: Codec[L]
+  )(implicit
+      prepend: Prepend.Aux[L, Unit :: HNil, LB],
+      init: Init.Aux[LB, L],
+      last: Last.Aux[LB, Unit],
+      ord: ByteOrdering
+  ): Codec[Unit :: Length :: LB] =
+    unknownByteOrder(hexConstant)(length => fixedSizeBytes(length.toLong - 12, blockBytesCodec))
 
-  def codecIgnored(
-    hexConstant: ByteVector
+  def ignored(
+      hexConstant: ByteVector
   )(implicit ord: ByteOrdering): Codec[Length :: ByteVector :: HNil] =
-    codecByHex(hexConstant) { length =>
+    unknownByteOrder(hexConstant) { length =>
       fixedSizeBytes(length.toLong - 12, bytes) :: Codec.deriveHNil
     }.dropUnits
 
-  def codecUnrecognized(
-    implicit ord: ByteOrdering
+  def unrecognizedBlockType(implicit
+      ord: ByteOrdering
   ): Codec[ByteVector :: Length :: ByteVector :: HNil] =
-    codec(bytes(4)) { length =>
+    commonStructure(bytes(4)) { length =>
       fixedSizeBytes(length.toLong - 12, bytes) :: Codec.deriveHNil
     }.dropUnits
 }

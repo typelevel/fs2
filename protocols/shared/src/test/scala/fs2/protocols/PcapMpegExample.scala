@@ -38,7 +38,7 @@ import pcap.{CaptureFile, LinkType}
   *  - of UDP datagrams
   *  - containing MPEG transport stream packets
   */
-object PcapMpegExample {
+object PcapMpegExample extends IOApp.Simple {
 
   case class CapturedPacket(
       source: SocketAddress[Ipv4Address],
