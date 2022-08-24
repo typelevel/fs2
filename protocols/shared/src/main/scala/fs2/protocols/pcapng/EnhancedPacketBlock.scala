@@ -40,11 +40,14 @@ case class EnhancedPacketBlock(
 
 object EnhancedPacketBlock {
 
-  // format: off
   def codec(implicit ord: ByteOrdering): Codec[EnhancedPacketBlock] =
     "EPB" | BlockCodec.byBlockBytesCodec(hexConstant, epbCodec).dropUnits.as[EnhancedPacketBlock]
 
+  private def hexConstant(implicit ord: ByteOrdering): ByteVector =
+    orderDependent(hex"00000006", hex"06000000")
+
   private def epbCodec(implicit ord: ByteOrdering) =
+  // format: off
     ("Interface ID"           | guint32                                            ) ::
     ("Timestamp (High)"       | guint32                                            ) ::
     ("Timestamp (Low)"        | guint32                                            ) ::
@@ -54,9 +57,6 @@ object EnhancedPacketBlock {
     ("Packet padding"         | ignore(padTo32Bits(packetLength.toInt))            ) ::
     ("Options"                | bytes                                              )}
   // format: on
-
-  private def hexConstant(implicit ord: ByteOrdering): ByteVector =
-    orderDependent(hex"00000006", hex"06000000")
 
   private def padTo32Bits(length: Int): Long = {
     val rem = length % 4

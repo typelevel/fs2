@@ -28,10 +28,10 @@ import scodec.codecs._
 
 object BlockCodec {
 
-  // format: off
   private inline def commonStructure[A, L <: Tuple](
-    blockType: Codec[A]
+      blockType: Codec[A]
   )(f: Length => Codec[L]): Codec[Tuple.Concat[A *: Length *: L, Unit *: EmptyTuple]] =
+  // format: off
     ("Block Type"             | blockType                           ) ::
     ("Block Total Length"     | bytes(4).xmapc(Length(_))(_.bv)     ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+

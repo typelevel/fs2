@@ -39,13 +39,14 @@ object SectionHeaderBlock {
 
   private val hexConstant = hex"0A0D0D0A"
 
-  // format: off
   val codec: Codec[SectionHeaderBlock] =
-    "SHB" | BlockCodec.unknownByteOrder(hexConstant) { length =>
-      ("Byte-Order Magic"     | ByteOrderMagic                    ).flatPrepend { implicit byteOrder =>
-      ("Major Version"        | guint16                           ) ::
-      ("Minor Version"        | guint16                           ) ::
-      ("Block Bytes"          | bytes(length.toLong.toInt - 20)   )
-    }}.dropUnits.as[SectionHeaderBlock]
+    "SHB" | BlockCodec.unknownByteOrder(hexConstant)(shbCodec).dropUnits.as[SectionHeaderBlock]
+
+  private def shbCodec(length: Length) =
+  // format: off
+    ("Byte-Order Magic"     | ByteOrderMagic                    ).flatPrepend { implicit byteOrder =>
+    ("Major Version"        | guint16                           ) ::
+    ("Minor Version"        | guint16                           ) ::
+    ("Block Bytes"          | bytes(length.toLong.toInt - 20)   )}
   // format: on
 }

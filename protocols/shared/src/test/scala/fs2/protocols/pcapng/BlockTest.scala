@@ -78,7 +78,8 @@ class BlockTest extends munit.FunSuite {
 
 private object BlockTest {
 
-  //  https://gitlab.com/wireshark/wireshark/-/wikis/Development/PcapNg dhcp.pcapng
+  //  This data is taken from dhcp.pcapng file from
+  //  https://gitlab.com/wireshark/wireshark/-/wikis/Development/PcapNg
   object DHCP {
     object SHB {
       val header = hex"0a0d0d0a"

@@ -27,7 +27,9 @@ import scodec.bits._
 import scodec.codecs._
 
 object ByteOrderMagic extends Codec[ByteOrdering] {
+
   private val BigEndian = hex"1a2b3c4d"
+
   private val LittleEndian = hex"4d3c2b1a"
 
   def sizeBound = SizeBound.exact(32)

@@ -30,13 +30,14 @@ import shapeless.{::, HList, HNil}
 
 object BlockCodec {
 
-  // format: off
-  private def commonStructure[A, L <: HList, LB <: HList](blockType: Codec[A])(f: Length => Codec[L])(
-    implicit
-    prepend: Prepend.Aux[L, Unit :: HNil, LB],
-    init: Init.Aux[LB, L],
-    last: Last.Aux[LB, Unit]
+  private def commonStructure[A, L <: HList, LB <: HList](
+      blockType: Codec[A]
+  )(f: Length => Codec[L])(implicit
+      prepend: Prepend.Aux[L, Unit :: HNil, LB],
+      init: Init.Aux[LB, L],
+      last: Last.Aux[LB, Unit]
   ): Codec[A :: Length :: LB] =
+  // format: off
     ("Block Type"             | blockType                           ) ::
     ("Block Total Length"     | bytes(4).xmapc(Length)(_.bv)        ).flatPrepend { length =>
     ("Block Bytes"            | f(length)                           ) :+

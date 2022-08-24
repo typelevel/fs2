@@ -43,17 +43,19 @@ case class InterfaceDescriptionBlock(
 
 object InterfaceDescriptionBlock {
 
-  // format: off
-  def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] =
-    "IDB" | BlockCodec.byBlockBytesCodec(hexConstant, idbCodec).dropUnits.as[InterfaceDescriptionBlock]
+  def codec(implicit ord: ByteOrdering): Codec[InterfaceDescriptionBlock] = {
+    val rawCodec = BlockCodec.byBlockBytesCodec(hexConstant, idbCodec)
+    "IDB" | rawCodec.dropUnits.as[InterfaceDescriptionBlock]
+  }
+
+  private def hexConstant(implicit ord: ByteOrdering): ByteVector =
+    orderDependent(hex"00000001", hex"01000000")
 
   private def idbCodec(implicit ord: ByteOrdering) =
+  // format: off
     ("LinkType"    | guint16.xmap[LinkType](LinkType.fromInt, LinkType.toInt) ) ::
     ("Reserved"    | ignore(16)                                               ) ::
     ("SnapLen"     | guint32                                                  ) ::
     ("Block Bytes" | bytes                                                    )
   // format: on
-
-  private def hexConstant(implicit ord: ByteOrdering) =
-    orderDependent(hex"00000001", hex"01000000")
 }
