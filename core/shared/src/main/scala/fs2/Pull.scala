@@ -1205,8 +1205,10 @@ object Pull extends PullLowPriority {
           )
 
         case fmout: FlatMapOutput[G, z, _] => // y = Unit
-          val fmrunr = new FlatMapR(getCont(), fmout.fun)
-          F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
+          val v = getCont()
+          val runr = buildR[G, z, End]
+          F.unit >> go(scope, extendedTopLevelScope, translation, runr, fmout.stream).attempt
+            .flatMap(_.fold(goErr(_, v), _.apply(new FlatMapR(v, fmout.fun))))
 
         case u: Uncons[G, y] @unchecked =>
           val v = getCont()
