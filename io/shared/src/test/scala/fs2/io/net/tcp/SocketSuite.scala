@@ -31,7 +31,7 @@ import com.comcast.ip4s._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
-class SocketSuite extends Fs2Suite with SocketSuitePlatform {
+class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
 
   val timeout = 30.seconds
 
