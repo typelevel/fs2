@@ -238,7 +238,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat-net" % "0.0-c5536da-SNAPSHOT" % Test
+      "com.armanbilge" %%% "epollcat-net" % "0.0-640b910-SNAPSHOT" % Test
     )
   )
   .dependsOn(core % "compile->compile;test->test")
