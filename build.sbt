@@ -190,9 +190,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "com.armanbilge" %%% "cats-effect" % "3.4-f28b163-SNAPSHOT",
-      "com.armanbilge" %%% "cats-effect-laws" % "3.4-f28b163-SNAPSHOT" % Test,
-      "com.armanbilge" %%% "cats-effect-testkit" % "3.4-f28b163-SNAPSHOT" % Test,
+      "com.armanbilge" %%% "cats-effect" % "3.4-519e5ce-SNAPSHOT",
+      "com.armanbilge" %%% "cats-effect-laws" % "3.4-519e5ce-SNAPSHOT" % Test,
+      "com.armanbilge" %%% "cats-effect-testkit" % "3.4-519e5ce-SNAPSHOT" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-1a82a3d-SNAPSHOT" % Test,
       "com.armanbilge" %%% "munit-cats-effect" % "2.0-4e051ab-SNAPSHOT" % Test,
@@ -222,10 +222,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
-    tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
-  )
-  .platformsSettings(JVMPlatform, JSPlatform)(
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3"
+    tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
+    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-53-f37ec8e-SNAPSHOT",
   )
   .jvmSettings(
     Test / fork := true,
@@ -237,6 +235,11 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .nativeSettings(
+    libraryDependencies ++= Seq(
+      "com.armanbilge" %%% "epollcat-net" % "0.0-ddff38f-SNAPSHOT" % Test
+    )
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(
