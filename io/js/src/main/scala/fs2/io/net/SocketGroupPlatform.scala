@@ -52,12 +52,18 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, Socket[F]] =
       (for {
-        sock <- F
-          .delay(
-            new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
+        sock <- Resource
+          .make(
+            F.delay(
+              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
+            )
+          )(sock =>
+            F.delay {
+              if (!sock.destroyed)
+                sock.destroy()
+            }
           )
-          .flatTap(setSocketOptions(options))
-          .toResource
+          .evalTap(setSocketOptions(options))
         socket <- Socket.forAsync(sock)
         _ <- F
           .async[Unit] { cb =>
