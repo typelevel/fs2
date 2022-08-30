@@ -23,4 +23,5 @@ package fs2
 
 trait TestPlatform {
   def isJVM: Boolean = false
+  def isNative: Boolean = true
 }
