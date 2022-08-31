@@ -50,6 +50,8 @@ private[tls] object s2n {
   type s2n_recv_fn = CFuncPtr3[Ptr[Byte], Ptr[CUnsignedChar], CUnsignedInt, CInt]
   type s2n_send_fn = CFuncPtr3[Ptr[Byte], Ptr[CUnsignedChar], CUnsignedInt, CInt]
 
+  def s2n_errno_location(): Ptr[CInt] = extern
+
   def s2n_init(): CInt = extern
 
   def s2n_cleanup(): CInt = extern
@@ -59,6 +61,8 @@ private[tls] object s2n {
   def s2n_config_free(config: Ptr[s2n_config]): CInt = extern
 
   def s2n_config_disable_x509_verification(config: Ptr[s2n_config]): CInt = extern
+
+  def s2n_strerror(error: CInt, lang: Ptr[CChar]): Ptr[CChar] = extern
 
   def s2n_connection_new(mode: s2n_mode): Ptr[s2n_connection] = extern
 
