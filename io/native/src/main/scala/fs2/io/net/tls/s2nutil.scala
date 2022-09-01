@@ -30,14 +30,22 @@ import s2n._
 
 private[tls] object s2nutil {
   @alwaysinline def guard_(thunk: => CInt): Unit =
-    if (thunk != S2N_SUCCESS)
-      throw new S2nException(!s2n_errno_location())
+    if (thunk != S2N_SUCCESS) {
+      val error = !s2n_errno_location()
+      val errorType = s2n_error_get_type(error)
+      if (errorType != S2N_ERR_T_BLOCKED)
+        throw new S2nException(error)
+    }
 
   @alwaysinline def guard[A](thunk: => CInt): CInt = {
     val rtn = thunk
-    if (rtn < 0)
-      throw new S2nException(!s2n_errno_location())
-    else rtn
+    if (rtn < 0) {
+      val error = !s2n_errno_location()
+      val errorType = s2n_error_get_type(error)
+      if (errorType != S2N_ERR_T_BLOCKED)
+        throw new S2nException(error)
+      else rtn
+    } else rtn
   }
 
   @alwaysinline def guard[A](thunk: => Ptr[A]): Ptr[A] = {
