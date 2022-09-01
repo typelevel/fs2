@@ -71,6 +71,8 @@ object TLSContext extends TLSContextCompanionPlatform {
     /** Creates a `TLSContext` from the system default `SSLContext`. */
     def system: F[TLSContext[F]]
 
+    def systemResource: Resource[F, TLSContext[F]]
+
   }
 
   object Builder extends BuilderCompanionPlatform {

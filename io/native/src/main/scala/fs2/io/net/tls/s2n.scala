@@ -76,6 +76,8 @@ private[tls] object s2n {
 
   def s2n_connection_set_send_cb(conn: Ptr[s2n_connection], send: s2n_recv_fn): CInt = extern
 
+  def s2n_set_server_name(conn: Ptr[s2n_connection], server_name: Ptr[CChar]): CInt = extern
+  
   def s2n_get_application_protocol(conn: Ptr[s2n_connection]): Ptr[CChar] = extern
 
   def s2n_negotiate(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt = extern

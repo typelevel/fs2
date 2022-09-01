@@ -24,13 +24,15 @@ package io
 package net
 package tls
 
-import CollectionCompat._
+import cats.effect.kernel.Sync
 
-/** Parameters used in creation of a TLS/DTLS session.
+import scala.scalanative.unsafe._
+
+import s2n._
+import s2nutil._
+
+/** Parameters used in creation of an s2n_connection.
   * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
-  *
-  * Note: `applicationProtocols`, `enableRetransmissions`, `maximumPacketSize`, and
-  * `handshakeApplicationProtocolSelector` require Java 9+.
   */
 sealed trait TLSParameters {
   // val algorithmConstraints: Option[AlgorithmConstraints]
@@ -40,35 +42,19 @@ sealed trait TLSParameters {
   // val endpointIdentificationAlgorithm: Option[String]
   // val maximumPacketSize: Option[Int]
   // val protocols: Option[List[String]]
-  // val serverNames: Option[List[SNIServerName]]
+  val serverName: Option[String]
   // val sniMatchers: Option[List[SNIMatcher]]
   // val useCipherSuitesOrder: Boolean
   // val needClientAuth: Boolean
   // val wantClientAuth: Boolean
   // val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
 
-  /**  Converts to a `javax.net.ssl.SSLParameters` instance.
-    *
-    * `needClientAuth` and `wantClientAuth` are mutually exclusive on `SSLParameters`. If both set on this `TLSParameters`, then `needClientAuth` takes precedence.
-    */
-  // def toSSLParameters: SSLParameters = {
-  //   val p = new SSLParameters()
-  //   algorithmConstraints.foreach(p.setAlgorithmConstraints)
-  //   applicationProtocols.foreach(ap => p.setApplicationProtocols(ap.toArray))
-  //   cipherSuites.foreach(cs => p.setCipherSuites(cs.toArray))
-  //   enableRetransmissions.foreach(p.setEnableRetransmissions)
-  //   endpointIdentificationAlgorithm.foreach(p.setEndpointIdentificationAlgorithm)
-  //   maximumPacketSize.foreach(p.setMaximumPacketSize)
-  //   protocols.foreach(ps => p.setProtocols(ps.toArray))
-  //   serverNames.foreach(sn => p.setServerNames(sn.asJava))
-  //   sniMatchers.foreach(sm => p.setSNIMatchers(sm.asJava))
-  //   p.setUseCipherSuitesOrder(useCipherSuitesOrder)
-  //   if (needClientAuth)
-  //     p.setNeedClientAuth(needClientAuth)
-  //   else if (wantClientAuth)
-  //     p.setWantClientAuth(wantClientAuth)
-  //   p
-  // }
+  private[tls] def configure[F[_]](conn: Ptr[s2n_connection])(implicit F: Sync[F]): F[Unit] =
+    F.delay {
+      Zone { implicit z =>
+        serverName.foreach(sn => guard_(s2n_set_server_name(conn, toCString(sn))))
+      }
+    }
 }
 
 object TLSParameters {
@@ -82,7 +68,7 @@ object TLSParameters {
       // endpointIdentificationAlgorithm: Option[String] = None,
       // maximumPacketSize: Option[Int] = None,
       // protocols: Option[List[String]] = None,
-      // serverNames: Option[List[SNIServerName]] = None,
+      serverName: Option[String] = None
       // sniMatchers: Option[List[SNIMatcher]] = None,
       // useCipherSuitesOrder: Boolean = false,
       // needClientAuth: Boolean = false,
@@ -98,7 +84,7 @@ object TLSParameters {
       // endpointIdentificationAlgorithm: Option[String],
       // maximumPacketSize: Option[Int],
       // protocols: Option[List[String]],
-      // serverNames: Option[List[SNIServerName]],
+      serverName: Option[String]
       // sniMatchers: Option[List[SNIMatcher]],
       // useCipherSuitesOrder: Boolean,
       // needClientAuth: Boolean,

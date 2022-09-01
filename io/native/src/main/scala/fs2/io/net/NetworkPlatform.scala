@@ -29,6 +29,7 @@ import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
 import java.net.ProtocolFamily
 import java.nio.channels.AsynchronousChannelGroup
+import fs2.io.net.tls.TLSContext
 
 private[net] trait NetworkPlatform[F[_]]
 
@@ -56,6 +57,7 @@ private[net] trait NetworkCompanionPlatform { self: Network.type =>
       ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
         globalSocketGroup.serverResource(address, port, options)
 
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync
     }
 
 }

@@ -48,12 +48,25 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
     /** Creates a `TLSContext` from an `SSLContext`. */
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
-      // Members declared in fs2.io.net.tls.TLSContext.Builder
-      def system: F[fs2.io.net.tls.TLSContext[F]] = ???
+      def system: F[TLSContext[F]] = ???
 
-      // Members declared in fs2.io.net.tls.TLSContextCompanionPlatform.BuilderPlatform
-      def fromS2nConfig(ctx: fs2.io.net.tls.S2nConfig): fs2.io.net.tls.TLSContext[F] = ???
-      def insecure: F[fs2.io.net.tls.TLSContext[F]] = ???
+      def systemResource: Resource[F, TLSContext[F]] = S2nConfig().map(fromS2nConfig(_))
+
+      def insecure: F[TLSContext[F]] = ???
+
+      def fromS2nConfig(cfg: S2nConfig): TLSContext[F] =
+        new UnsealedTLSContext[F] {
+          def clientBuilder(socket: Socket[F]) = ???
+          def serverBuilder(socket: Socket[F]) = ???
+
+          private def mkSocket(
+              socket: Socket[F],
+              clientMode: Boolean,
+              params: TLSParameters,
+              logger: TLSLogger[F]
+          ): Resource[F, TLSSocket[F]] =
+            S2nConnection(socket, clientMode, cfg, params).flatMap(TLSSocket(socket, _))
+        }
     }
 
   }
