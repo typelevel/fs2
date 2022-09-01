@@ -23,11 +23,7 @@ package fs2
 package io
 package net
 
-sealed trait Network[F[_]]
-    extends NetworkPlatform[F]
-    with SocketGroup[F] {
-
-}
+sealed trait Network[F[_]] extends NetworkPlatform[F] with SocketGroup[F] {}
 
 object Network extends NetworkCompanionPlatform {
   private[net] trait UnsealedNetwork[F[_]] extends Network[F]

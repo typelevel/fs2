@@ -76,6 +76,8 @@ private[tls] object s2n {
 
   def s2n_connection_set_send_cb(conn: Ptr[s2n_connection], send: s2n_recv_fn): CInt = extern
 
+  def s2n_get_application_protocol(conn: Ptr[s2n_connection]): Ptr[CChar] = extern
+
   def s2n_negotiate(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt = extern
 
   def s2n_send(
@@ -100,5 +102,13 @@ private[tls] object s2n {
 
   def s2n_shutdown(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt =
     extern
+
+  def s2n_connection_get_session(
+      conn: Ptr[s2n_connection],
+      session: Ptr[Byte],
+      maxLength: CSize
+  ): CInt = extern
+
+  def s2n_connection_get_session_length(conn: Ptr[s2n_connection]): CInt = extern
 
 }

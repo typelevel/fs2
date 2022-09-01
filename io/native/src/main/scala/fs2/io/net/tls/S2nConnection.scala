@@ -56,6 +56,10 @@ private[tls] trait S2nConnection[F[_]] {
 
   def shutdown: F[Unit]
 
+  def applicationProtocol: F[String]
+
+  def session: F[SSLSession]
+
 }
 
 private[tls] object S2nConnection {
@@ -216,6 +220,18 @@ private[tls] object S2nConnection {
           }
 
         go
+      }
+
+      def applicationProtocol =
+        F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
+
+      def session = F.delay {
+        Zone { implicit z =>
+          val len = guard(s2n_connection_get_session_length(conn)).toUInt
+          val buf = alloc[Byte](len)
+          val copied = guard(s2n_connection_get_session(conn, buf, len))
+          new SSLSession(ByteVector.fromPtr(buf, copied.toLong))
+        }
       }
 
       private def zone: Resource[F, Zone] =
