@@ -27,13 +27,20 @@ import cats.effect.kernel.Sync
 import scala.scalanative.unsafe._
 
 import s2n._
+import s2nutil._
 
 final class S2nConfig private (private[tls] val ptr: Ptr[s2n_config]) {}
 
 object S2nConfig {
 
+  // we must call this *exactly* once, before doing anything else
+  // since you need an S2nConfig before you can do anything, this seems like the right place
+  s2n_init()
+
   def apply[F[_]]()(implicit F: Sync[F]): Resource[F, S2nConfig] = for {
-    cfg <- Resource.make(F.delay(s2n_config_new()))(cfg => F.delay(s2n_config_free(cfg)))
+    cfg <- Resource.make(F.delay(guard(s2n_config_new())))(cfg =>
+      F.delay(guard(s2n_config_free(cfg)))
+    )
   } yield new S2nConfig(cfg)
 
 }
