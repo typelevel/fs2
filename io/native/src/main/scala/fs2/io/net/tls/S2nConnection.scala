@@ -111,7 +111,7 @@ private[tls] object S2nConnection {
         .drain
         .background
 
-      sendAvailable <- F.delay(new AtomicBoolean).toResource
+      sendAvailable <- F.delay(new AtomicBoolean(true)).toResource
       sendLatch <- F.deferred[Either[Throwable, Unit]].flatMap(F.ref(_)).toResource
       _ <- Resource.eval {
         F.delay {
