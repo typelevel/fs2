@@ -47,8 +47,8 @@ private[tls] object s2n {
   type s2n_config
   type s2n_connection
 
-  type s2n_recv_fn = CFuncPtr3[Ptr[Byte], Ptr[CUnsignedChar], CUnsignedInt, CInt]
-  type s2n_send_fn = CFuncPtr3[Ptr[Byte], Ptr[CUnsignedChar], CUnsignedInt, CInt]
+  type s2n_recv_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
+  type s2n_send_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
 
   def s2n_errno_location(): Ptr[CInt] = extern
 

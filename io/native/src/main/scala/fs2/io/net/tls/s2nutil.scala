@@ -22,6 +22,8 @@
 package fs2.io.net.tls
 
 import scala.scalanative.annotation.alwaysinline
+import scala.scalanative.runtime
+import scala.scalanative.runtime.Intrinsics
 import scala.scalanative.unsafe._
 
 import s2n._
@@ -37,4 +39,10 @@ private[tls] object s2nutil {
       throw new S2nException(!s2n_errno_location())
     else rtn
   }
+
+  @alwaysinline def toPtr(a: AnyRef): Ptr[Byte] =
+    runtime.fromRawPtr(Intrinsics.castObjectToRawPtr(a))
+
+  @alwaysinline def fromPtr[A](ptr: Ptr[Byte]): A =
+    Intrinsics.castRawPtrToObject(runtime.toRawPtr(ptr)).asInstanceOf[A]
 }

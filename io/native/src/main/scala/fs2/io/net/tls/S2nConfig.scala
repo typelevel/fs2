@@ -21,6 +21,10 @@
 
 package fs2.io.net.tls
 
-class S2nConfig {
+import scala.scalanative.unsafe._
+
+import s2n._
+
+final class S2nConfig private (private[tls] val ptr: Ptr[s2n_config]) {
   
 }
