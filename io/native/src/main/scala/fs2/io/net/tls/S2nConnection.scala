@@ -54,6 +54,8 @@ private[tls] trait S2nConnection[F[_]] {
 
   def write(bytes: Chunk[Byte]): F[Unit]
 
+  def shutdown: F[Unit]
+
 }
 
 private[tls] object S2nConnection {
@@ -162,7 +164,7 @@ private[tls] object S2nConnection {
               }
             }.flatten
           }
-          
+
           go(0)
         }
       }
@@ -190,6 +192,30 @@ private[tls] object S2nConnection {
 
             go(0)
           }
+      }
+
+      def shutdown = {
+        def go: F[Unit] =
+          (recvLatch.get, sendLatch.get).flatMapN { (recvLatch, sendLatch) =>
+            F.delay {
+              val blocked = stackalloc[s2n_blocked_status]()
+              guard_(s2n_shutdown(conn, blocked))
+              !blocked
+            }.flatMap { blocked =>
+              (blocked.toInt: @switch) match {
+                case S2N_NOT_BLOCKED =>
+                  F.unit
+                case S2N_BLOCKED_ON_READ =>
+                  recvLatch.get >> go
+                case S2N_BLOCKED_ON_WRITE =>
+                  sendLatch.get >> go
+                case _ =>
+                  F.raiseError(new IllegalStateException(s"s2n_shutdown blocked: $blocked"))
+              }
+            }
+          }
+
+        go
       }
 
       private def zone: Resource[F, Zone] =

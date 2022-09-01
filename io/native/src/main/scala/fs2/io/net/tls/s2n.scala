@@ -98,7 +98,7 @@ private[tls] object s2n {
 
   def s2n_connection_free(conn: Ptr[s2n_connection]): CInt = extern
 
-  def s2n_connection_shutdown(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt =
+  def s2n_shutdown(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt =
     extern
 
 }
