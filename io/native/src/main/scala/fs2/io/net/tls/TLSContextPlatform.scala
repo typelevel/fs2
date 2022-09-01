@@ -56,7 +56,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
       def fromS2nConfig(cfg: S2nConfig): TLSContext[F] =
         new UnsealedTLSContext[F] {
-          def clientBuilder(socket: Socket[F]) = ???
+          def clientBuilder(socket: Socket[F]) =
+            SocketBuilder(mkSocket(socket, true, _, _))
+
           def serverBuilder(socket: Socket[F]) = ???
 
           private def mkSocket(

@@ -74,7 +74,7 @@ object TLSParameters {
       // needClientAuth: Boolean = false,
       // wantClientAuth: Boolean = false,
       // handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None
-  ): TLSParameters = ???
+  ): TLSParameters = DefaultTLSParameters(serverName)
 
   private case class DefaultTLSParameters(
       // algorithmConstraints: Option[AlgorithmConstraints],
