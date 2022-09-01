@@ -29,9 +29,16 @@ import scala.scalanative.unsafe._
 import s2n._
 
 private[tls] object s2nutil {
-  @alwaysinline def guard(thunk: => CInt): Unit =
+  @alwaysinline def guard_(thunk: => CInt): Unit =
     if (thunk != S2N_SUCCESS)
       throw new S2nException(!s2n_errno_location())
+
+  @alwaysinline def guard[A](thunk: => CInt): CInt = {
+    val rtn = thunk
+    if (rtn < 0)
+      throw new S2nException(!s2n_errno_location())
+    else rtn
+  }
 
   @alwaysinline def guard[A](thunk: => Ptr[A]): Ptr[A] = {
     val rtn = thunk

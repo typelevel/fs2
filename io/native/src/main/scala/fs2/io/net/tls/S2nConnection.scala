@@ -37,6 +37,7 @@ import scodec.bits.ByteVector
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import scala.annotation.switch
 import scala.scalanative.libc
 import scala.scalanative.posix
 import scala.scalanative.unsafe._
@@ -49,7 +50,7 @@ private[tls] trait S2nConnection[F[_]] {
 
   def handshake: F[Unit]
 
-  def read(n: Int): F[Chunk[Byte]]
+  def read(n: Long): F[Option[Chunk[Byte]]]
 
   def write(bytes: Chunk[Byte]): F[Unit]
 
@@ -71,7 +72,7 @@ private[tls] object S2nConnection {
 
       conn <- Resource.make(
         F.delay(guard(s2n_connection_new(if (clientMode) S2N_CLIENT.toUInt else S2N_SERVER.toUInt)))
-      )(conn => F.delay(guard(s2n_connection_free(conn))))
+      )(conn => F.delay(guard_(s2n_connection_free(conn))))
 
       _ <- F.delay(s2n_connection_set_config(conn, config.ptr)).toResource
 
@@ -81,8 +82,8 @@ private[tls] object S2nConnection {
       _ <- Resource.eval {
         F.delay {
           val ctx = RecvCallbackContext(recvBuffer, recvQueue, dispatcher)
-          guard(s2n_connection_set_recv_ctx(conn, toPtr(ctx)))
-          guard(s2n_connection_set_recv_cb(conn, recvCallback[F](_, _, _)))
+          guard_(s2n_connection_set_recv_ctx(conn, toPtr(ctx)))
+          guard_(s2n_connection_set_recv_cb(conn, recvCallback[F](_, _, _)))
           gcRoot.add(ctx)
         }
       }
@@ -109,19 +110,90 @@ private[tls] object S2nConnection {
       _ <- Resource.eval {
         F.delay {
           val ctx = SendCallbackContext(sendAvailable, sendLatch, socket, dispatcher, F)
-          guard(s2n_connection_set_send_ctx(conn, toPtr(ctx)))
-          guard(s2n_connection_set_send_cb(conn, sendCallback[F](_, _, _)))
+          guard_(s2n_connection_set_send_ctx(conn, toPtr(ctx)))
+          guard_(s2n_connection_set_send_cb(conn, sendCallback[F](_, _, _)))
           gcRoot.add(ctx)
         }
       }
 
     } yield new S2nConnection[F] {
 
-      def handshake = ???
+      def handshake = {
+        def go: F[Unit] =
+          (recvLatch.get, sendLatch.get).flatMapN { (recvLatch, sendLatch) =>
+            F.delay {
+              val blocked = stackalloc[s2n_blocked_status]()
+              guard_(s2n_negotiate(conn, blocked))
+              !blocked
+            }.flatMap { blocked =>
+              (blocked.toInt: @switch) match {
+                case S2N_NOT_BLOCKED =>
+                  F.delay(guard_(s2n_connection_free_handshake(conn)))
+                case S2N_BLOCKED_ON_READ =>
+                  recvLatch.get >> go
+                case S2N_BLOCKED_ON_WRITE =>
+                  sendLatch.get >> go
+                case _ =>
+                  F.raiseError(new IllegalStateException(s"s2n_negotiate blocked: $blocked"))
+              }
+            }
+          }
 
-      def read(n: Int) = ???
+        go
+      }
 
-      def write(bytes: Chunk[Byte]) = ???
+      def read(n: Long) = zone.use { implicit z =>
+        F.delay(alloc[Byte](n)).flatMap { buf =>
+          def go(i: Long): F[Option[Chunk[Byte]]] = recvLatch.get.flatMap { recvLatch =>
+            F.delay[F[Option[Chunk[Byte]]]] {
+              val blocked = stackalloc[s2n_blocked_status]()
+              val readed = guard(s2n_recv(conn, buf + i, n - i, blocked))
+              ((!blocked).toInt: @switch) match {
+                case S2N_NOT_BLOCKED =>
+                  val total = i + readed
+                  if (total > 0)
+                    F.pure(Some(Chunk.byteVector(ByteVector.fromPtr(buf, total))))
+                  else
+                    F.pure(None)
+                case S2N_BLOCKED_ON_READ =>
+                  recvLatch.get >> go(i + readed)
+                case _ =>
+                  F.raiseError(new IllegalStateException(s"s2n_recv blocked: $blocked"))
+              }
+            }.flatten
+          }
+          
+          go(0)
+        }
+      }
+
+      def write(bytes: Chunk[Byte]) = zone.use { implicit z =>
+        val n = bytes.size.toLong
+        F.delay(alloc[Byte](n.toLong))
+          .flatTap(buf => F.delay(bytes.toByteVector.copyToPtr(buf, 0)))
+          .flatMap { buf =>
+            def go(i: Long): F[Unit] = sendLatch.get.flatMap { sendLatch =>
+              F.delay[F[Unit]] {
+                val blocked = stackalloc[s2n_blocked_status]()
+                val wrote = guard(s2n_send(conn, buf + i, n - i, blocked))
+                ((!blocked).toInt: @switch) match {
+                  case S2N_NOT_BLOCKED =>
+                    val total = i + wrote
+                    if (total == n) F.unit else go(total)
+                  case S2N_BLOCKED_ON_WRITE =>
+                    sendLatch.get >> go(i + wrote)
+                  case _ =>
+                    F.raiseError(new IllegalStateException(s"s2n_send blocked: $blocked"))
+                }
+              }.flatten
+            }
+
+            go(0)
+          }
+      }
+
+      private def zone: Resource[F, Zone] =
+        Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
 
     }
 
