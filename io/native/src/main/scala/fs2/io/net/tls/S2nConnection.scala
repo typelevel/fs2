@@ -136,9 +136,9 @@ private[tls] object S2nConnection {
                 case S2N_NOT_BLOCKED =>
                   F.delay(guard_(s2n_connection_free_handshake(conn)))
                 case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get >> go
+                  recvLatch.get.rethrow >> go
                 case S2N_BLOCKED_ON_WRITE =>
-                  sendLatch.get >> go
+                  sendLatch.get.rethrow >> go
                 case _ =>
                   F.raiseError(new IllegalStateException(s"s2n_negotiate blocked: $blocked"))
               }
@@ -162,7 +162,7 @@ private[tls] object S2nConnection {
                   else
                     F.pure(None)
                 case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get >> go(i + readed)
+                  recvLatch.get.rethrow >> go(i + readed)
                 case _ =>
                   F.raiseError(new IllegalStateException(s"s2n_recv blocked: $blocked"))
               }
@@ -187,7 +187,7 @@ private[tls] object S2nConnection {
                     val total = i + wrote
                     if (total == n) F.unit else go(total)
                   case S2N_BLOCKED_ON_WRITE =>
-                    sendLatch.get >> go(i + wrote)
+                    sendLatch.get.rethrow >> go(i + wrote)
                   case _ =>
                     F.raiseError(new IllegalStateException(s"s2n_send blocked: $blocked"))
                 }
@@ -210,9 +210,9 @@ private[tls] object S2nConnection {
                 case S2N_NOT_BLOCKED =>
                   F.unit
                 case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get >> go
+                  recvLatch.get.rethrow >> go
                 case S2N_BLOCKED_ON_WRITE =>
-                  sendLatch.get >> go
+                  sendLatch.get.rethrow >> go
                 case _ =>
                   F.raiseError(new IllegalStateException(s"s2n_shutdown blocked: $blocked"))
               }
