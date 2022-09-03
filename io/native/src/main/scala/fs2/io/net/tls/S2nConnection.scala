@@ -23,13 +23,8 @@ package fs2
 package io.net
 package tls
 
-import cats.effect.SyncIO
 import cats.effect.kernel.Async
-import cats.effect.kernel.Deferred
-import cats.effect.kernel.Ref
 import cats.effect.kernel.Resource
-import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import scodec.bits.ByteVector
@@ -37,7 +32,7 @@ import scodec.bits.ByteVector
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import scala.annotation.switch
+import java.util.concurrent.atomic.AtomicReference
 import scala.scalanative.libc
 import scala.scalanative.posix
 import scala.scalanative.unsafe._
@@ -74,48 +69,30 @@ private[tls] object S2nConnection {
         F.delay(Collections.newSetFromMap[Any](new IdentityHashMap))
       )(gcr => F.delay(gcr.clear()))
 
-      dispatcher <- Dispatcher.sequential[F]
-
       conn <- Resource.make(
         F.delay(guard(s2n_connection_new(if (clientMode) S2N_CLIENT.toUInt else S2N_SERVER.toUInt)))
       )(conn => F.delay(guard_(s2n_connection_free(conn))))
 
       _ <- F.delay(s2n_connection_set_config(conn, config.ptr)).toResource
 
-      recvLatch <- F.deferred[Either[Throwable, Unit]].flatMap(F.ref(_)).toResource
-      recvBuffer <- Ref.in[Resource[F, *], SyncIO, Option[ByteVector]](Some(ByteVector.empty))
-      recvQueue <- Queue.synchronous[F, Unit].toResource
+      readBuffer <- Resource.eval {
+        F.delay(new AtomicReference[Option[ByteVector]](Some(ByteVector.empty)))
+      }
+      readTasks <- F.delay(new AtomicReference[F[Unit]](F.unit)).toResource
       _ <- Resource.eval {
         F.delay {
-          val ctx = RecvCallbackContext(recvBuffer, recvQueue, dispatcher)
+          val ctx = RecvCallbackContext(readBuffer, readTasks, socket, F)
           guard_(s2n_connection_set_recv_ctx(conn, toPtr(ctx)))
           guard_(s2n_connection_set_recv_cb(conn, recvCallback[F](_, _, _)))
           gcRoot.add(ctx)
         }
       }
-      _ <- socket.reads.chunks
-        .evalTap(_ => recvQueue.take)
-        .noneTerminate
-        .attempt
-        .foreach {
-          case Left(ex) =>
-            recvLatch.get.flatMap(_.complete(Left(ex))).void
-          case Right(chunk) =>
-            recvBuffer.set(chunk.map(_.toByteVector)).to[F] *>
-              F.deferred[Either[Throwable, Unit]]
-                .flatMap(recvLatch.getAndSet(_))
-                .flatMap(_.complete(Either.unit))
-                .void
-        }
-        .compile
-        .drain
-        .background
 
       sendAvailable <- F.delay(new AtomicBoolean(true)).toResource
-      sendLatch <- F.deferred[Either[Throwable, Unit]].flatMap(F.ref(_)).toResource
+      writeTasks <- F.delay(new AtomicReference[F[Unit]](F.unit)).toResource
       _ <- Resource.eval {
         F.delay {
-          val ctx = SendCallbackContext(sendAvailable, sendLatch, socket, dispatcher, F)
+          val ctx = SendCallbackContext(sendAvailable, writeTasks, socket, F)
           guard_(s2n_connection_set_send_ctx(conn, toPtr(ctx)))
           guard_(s2n_connection_set_send_cb(conn, sendCallback[F](_, _, _)))
           gcRoot.add(ctx)
@@ -124,103 +101,77 @@ private[tls] object S2nConnection {
 
     } yield new S2nConnection[F] {
 
-      def handshake = {
-        def go: F[Unit] =
-          (recvLatch.get, sendLatch.get).flatMapN { (recvLatch, sendLatch) =>
-            F.delay {
-              val blocked = stackalloc[s2n_blocked_status]()
-              guard_(s2n_negotiate(conn, blocked))
-              !blocked
-            }.flatMap { blocked =>
-              (blocked.toInt: @switch) match {
-                case S2N_NOT_BLOCKED =>
-                  F.delay(guard_(s2n_connection_free_handshake(conn)))
-                case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get.rethrow >> go
-                case S2N_BLOCKED_ON_WRITE =>
-                  sendLatch.get.rethrow >> go
-                case _ =>
-                  F.raiseError(new IllegalStateException(s"s2n_negotiate blocked: $blocked"))
-              }
-            }
-          }
-
-        go
-      }
+      def handshake =
+        F.delay {
+          readTasks.set(F.unit)
+          writeTasks.set(F.unit)
+          val blocked = stackalloc[s2n_blocked_status]()
+          guard_(s2n_negotiate(conn, blocked))
+          !blocked
+        }.productL {
+          val reads = F.delay(readTasks.get).flatten
+          val writes = F.delay(writeTasks.get).flatten
+          reads.both(writes)
+        }.iterateUntil(_.toInt == S2N_NOT_BLOCKED) *>
+          F.delay(guard_(s2n_connection_free_handshake(conn)))
 
       def read(n: Long) = zone.use { implicit z =>
         F.delay(alloc[Byte](n)).flatMap { buf =>
-          def go(i: Long): F[Option[Chunk[Byte]]] = recvLatch.get.flatMap { recvLatch =>
-            F.delay[F[Option[Chunk[Byte]]]] {
+          def go(i: Long): F[Option[Chunk[Byte]]] =
+            F.delay {
+              readTasks.set(F.unit)
               val blocked = stackalloc[s2n_blocked_status]()
               val readed = guard(s2n_recv(conn, buf + i, n - i, blocked))
-              ((!blocked).toInt: @switch) match {
-                case S2N_NOT_BLOCKED =>
-                  val total = i + readed
+              (!blocked, readed)
+            }.productL(F.delay(readTasks.get).flatten)
+              .flatMap { case (blocked, readed) =>
+                val total = i + readed
+                if (blocked.toInt == S2N_NOT_BLOCKED) {
                   if (total > 0)
                     F.pure(Some(Chunk.byteVector(ByteVector.fromPtr(buf, total))))
                   else
                     F.pure(None)
-                case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get.rethrow >> go(i + readed)
-                case _ =>
-                  F.raiseError(new IllegalStateException(s"s2n_recv blocked: $blocked"))
+                } else go(total)
               }
-            }.flatten
-          }
-
           go(0)
         }
+
       }
 
       def write(bytes: Chunk[Byte]) = zone.use { implicit z =>
         val n = bytes.size.toLong
-        F.delay(alloc[Byte](n.toLong))
+        F.delay(alloc[Byte](n))
           .flatTap(buf => F.delay(bytes.toByteVector.copyToPtr(buf, 0)))
           .flatMap { buf =>
-            def go(i: Long): F[Unit] = sendLatch.get.flatMap { sendLatch =>
-              F.delay[F[Unit]] {
+            def go(i: Long): F[Unit] =
+              F.delay {
+                writeTasks.set(F.unit)
                 val blocked = stackalloc[s2n_blocked_status]()
                 val wrote = guard(s2n_send(conn, buf + i, n - i, blocked))
-                ((!blocked).toInt: @switch) match {
-                  case S2N_NOT_BLOCKED =>
-                    val total = i + wrote
-                    if (total == n) F.unit else go(total)
-                  case S2N_BLOCKED_ON_WRITE =>
-                    sendLatch.get.rethrow >> go(i + wrote)
-                  case _ =>
-                    F.raiseError(new IllegalStateException(s"s2n_send blocked: $blocked"))
+                (!blocked, wrote)
+              }.productL(F.delay(writeTasks.get).flatten)
+                .flatMap { case (blocked, wrote) =>
+                  val total = i + wrote
+                  go(total).whenA(blocked.toInt == S2N_NOT_BLOCKED && total == n)
                 }
-              }.flatten
-            }
 
             go(0)
           }
       }
 
-      def shutdown = {
-        def go: F[Unit] =
-          (recvLatch.get, sendLatch.get).flatMapN { (recvLatch, sendLatch) =>
-            F.delay {
-              val blocked = stackalloc[s2n_blocked_status]()
-              guard_(s2n_shutdown(conn, blocked))
-              !blocked
-            }.flatMap { blocked =>
-              (blocked.toInt: @switch) match {
-                case S2N_NOT_BLOCKED =>
-                  F.unit
-                case S2N_BLOCKED_ON_READ =>
-                  recvLatch.get.rethrow >> go
-                case S2N_BLOCKED_ON_WRITE =>
-                  sendLatch.get.rethrow >> go
-                case _ =>
-                  F.raiseError(new IllegalStateException(s"s2n_shutdown blocked: $blocked"))
-              }
-            }
-          }
-
-        go
-      }
+      def shutdown =
+        F.delay {
+          readTasks.set(F.unit)
+          writeTasks.set(F.unit)
+          val blocked = stackalloc[s2n_blocked_status]()
+          guard_(s2n_shutdown(conn, blocked))
+          !blocked
+        }.productL {
+          val reads = F.delay(readTasks.get).flatten
+          val writes = F.delay(writeTasks.get).flatten
+          reads.both(writes)
+        }.iterateUntil(_.toInt == S2N_NOT_BLOCKED)
+          .void
 
       def applicationProtocol =
         F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
@@ -240,28 +191,27 @@ private[tls] object S2nConnection {
     }
 
   private final case class RecvCallbackContext[F[_]](
-      recvBuffer: Ref[SyncIO, Option[ByteVector]],
-      recvQueue: Queue[F, Unit],
-      dispatcher: Dispatcher[F]
+      readBuffer: AtomicReference[Option[ByteVector]],
+      readTasks: AtomicReference[F[Unit]],
+      socket: Socket[F],
+      async: Async[F]
   )
 
   private def recvCallback[F[_]](ioContext: Ptr[Byte], buf: Ptr[Byte], len: CUnsignedInt): CInt = {
     val ctx = fromPtr[RecvCallbackContext[F]](ioContext)
     import ctx._
+    implicit val F = async
 
-    val read = recvBuffer.modify {
-      case Some(bytes) =>
-        val (left, right) = bytes.splitAt(len.toLong)
-        (Some(right), Some(left))
-      case None => (None, None)
-    }
+    val read = readBuffer.getAndUpdate(_.map(_.drop(len.toLong))).map(_.take(len.toLong))
 
-    read.unsafeRunSync() match {
+    read match {
       case Some(bytes) if bytes.nonEmpty =>
         bytes.copyToPtr(buf, 0)
         bytes.length.toInt
       case Some(_) =>
-        dispatcher.unsafeRunAndForget(recvQueue.offer(()))
+        val readTask =
+          socket.read(len.toInt).flatMap(b => F.delay(readBuffer.set(b.map(_.toByteVector)))).void
+        readTasks.getAndUpdate(_ *> readTask)
         libc.errno.errno = posix.errno.EWOULDBLOCK
         S2N_FAILURE
       case None => 0
@@ -270,9 +220,8 @@ private[tls] object S2nConnection {
 
   private final case class SendCallbackContext[F[_]](
       sendAvailable: AtomicBoolean,
-      sendLatch: Ref[F, Deferred[F, Either[Throwable, Unit]]],
+      writeTasks: AtomicReference[F[Unit]],
       socket: Socket[F],
-      dispatcher: Dispatcher[F],
       async: Async[F]
   )
 
@@ -282,19 +231,10 @@ private[tls] object S2nConnection {
     implicit val F = async
 
     if (sendAvailable.getAndSet(false)) {
-      dispatcher.unsafeRunAndForget(
-        socket
-          .write(Chunk.byteVector(ByteVector.fromPtr(buf, len.toLong)))
-          .redeemWith(
-            ex => sendLatch.get.flatMap(_.complete(Left(ex))),
-            _ =>
-              F.deferred[Either[Throwable, Unit]]
-                .flatMap(sendLatch.getAndSet(_))
-                .flatMap(oldLatch =>
-                  F.delay(sendAvailable.set(true)) *> oldLatch.complete(Either.unit)
-                )
-          )
-      )
+      val writeTask =
+        socket.write(Chunk.byteVector(ByteVector.fromPtr(buf, len.toLong))) *>
+          F.delay(sendAvailable.set(true))
+      writeTasks.getAndUpdate(_ *> writeTask)
       len.toInt
     } else {
       libc.errno.errno = posix.errno.EWOULDBLOCK
