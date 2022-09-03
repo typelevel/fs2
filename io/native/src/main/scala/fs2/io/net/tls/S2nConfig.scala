@@ -39,7 +39,7 @@ object S2nConfig {
 
   def apply[F[_]]()(implicit F: Sync[F]): Resource[F, S2nConfig] = for {
     cfg <- Resource.make(F.delay(guard(s2n_config_new())))(cfg =>
-      F.delay(guard(s2n_config_free(cfg)))
+      F.delay(guard_(s2n_config_free(cfg)))
     )
   } yield new S2nConfig(cfg)
 
