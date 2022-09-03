@@ -223,7 +223,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-53-f37ec8e-SNAPSHOT",
+    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-53-f37ec8e-SNAPSHOT"
   )
   .jvmSettings(
     Test / fork := true,
@@ -239,8 +239,19 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(
     libraryDependencies ++= Seq(
       "com.armanbilge" %%% "epollcat-net" % "0.0-2f64289-SNAPSHOT" % Test
-    )
+    ),
+    vcpkgDependencies := Set("s2n"),
+    nativeConfig := {
+      val conf = nativeConfig.value
+      val manager = vcpkgManager.value
+      conf.withLinkingOptions(
+        conf.linkingOptions ++
+          List(s"-L${manager.files("s2n").libDir}", s"-L${manager.files("openssl").libDir}")
+      )
+    },
+    Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
   )
+  .nativeEnablePlugins(VcpkgPlugin)
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
