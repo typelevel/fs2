@@ -243,6 +243,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     vcpkgDependencies := Set("s2n"),
     nativeConfig := {
       val conf = nativeConfig.value
+      val _ = vcpkgInstall.value
       val manager = vcpkgManager.value
       conf.withLinkingOptions(
         conf.linkingOptions ++
