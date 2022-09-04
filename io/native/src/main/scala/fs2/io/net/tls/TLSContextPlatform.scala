@@ -63,7 +63,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           def clientBuilder(socket: Socket[F]) =
             SocketBuilder(mkSocket(socket, true, _, _))
 
-          def serverBuilder(socket: Socket[F]) = ???
+          def serverBuilder(socket: Socket[F]) =
+            SocketBuilder(mkSocket(socket, false, _, _))
 
           private def mkSocket(
               socket: Socket[F],

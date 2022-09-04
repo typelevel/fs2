@@ -101,14 +101,14 @@ class TLSSocketSuite extends TLSSuite {
       }
     }
 
-    test("echo") {
+    test("echo".only) {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
         tlsContext <- testTlsContext
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
-        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+        client = Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
@@ -118,9 +118,10 @@ class TLSSocketSuite extends TLSSuite {
             socket.reads.chunks.foreach(socket.write(_))
           }.parJoinUnbounded
 
-          val client =
-            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(msg)) ++
               clientSocket.reads.take(msg.size.toLong)
+          }
 
           client.concurrently(echoServer)
         }
