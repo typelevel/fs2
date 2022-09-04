@@ -152,7 +152,7 @@ private[tls] object S2nConnection {
               }.productL(F.delay(writeTasks.get).flatten)
                 .flatMap { case (blocked, wrote) =>
                   val total = i + wrote
-                  go(total).whenA(blocked.toInt == S2N_NOT_BLOCKED && total == n)
+                  go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total == n)
                 }
 
             go(0)
