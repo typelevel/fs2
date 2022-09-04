@@ -246,7 +246,7 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    test("blinding".only) {
+    test("blinding") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {

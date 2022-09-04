@@ -53,6 +53,10 @@ private[tls] object s2n {
   final val S2N_CERT_AUTH_REQUIRED = 1
   final val S2N_CERT_AUTH_OPTIONAL = 2
 
+  type s2n_blinding = CUnsignedInt
+  final val S2N_BUILT_IN_BLINDING = 0
+  final val S2N_SELF_SERVICE_BLINDING = 1
+
   type s2n_config
   type s2n_connection
   type s2n_cert_chain_and_key
@@ -133,6 +137,10 @@ private[tls] object s2n {
       cb: s2n_verify_host_fn,
       data: Ptr[Byte]
   ): CInt = extern
+
+  def s2n_connection_set_blinding(conn: Ptr[s2n_connection], blinding: s2n_blinding): CInt = extern
+
+  def s2n_connection_get_delay(conn: Ptr[s2n_connection]): CUnsignedLong = extern
 
   def s2n_connection_set_cipher_preferences(conn: Ptr[s2n_connection], version: Ptr[CChar]): CInt =
     extern

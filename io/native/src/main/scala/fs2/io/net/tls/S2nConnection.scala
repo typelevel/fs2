@@ -31,6 +31,7 @@ import scodec.bits.ByteVector
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import scala.concurrent.duration._
 import scala.scalanative.libc
 import scala.scalanative.posix
 import scala.scalanative.unsafe._
@@ -69,8 +70,11 @@ private[tls] object S2nConnection {
         F.delay(guard(s2n_connection_new(if (clientMode) S2N_CLIENT.toUInt else S2N_SERVER.toUInt)))
       )(conn => F.delay(guard_(s2n_connection_free(conn))))
 
-      _ <- F.delay(s2n_connection_set_config(conn, config.ptr)).toResource
+      _ <- F.delay(guard_(s2n_connection_set_config(conn, config.ptr))).toResource
       _ <- parameters.configure(conn)
+      _ <- F.delay {
+        guard_(s2n_connection_set_blinding(conn, S2N_SELF_SERVICE_BLINDING.toUInt))
+      }.toResource
 
       readBuffer <- Resource.eval {
         F.delay(new AtomicReference[Option[ByteVector]](Some(ByteVector.empty)))
@@ -105,6 +109,8 @@ private[tls] object S2nConnection {
           val blocked = stackalloc[s2n_blocked_status]()
           guard_(s2n_negotiate(conn, blocked))
           !blocked
+        }.guaranteeCase { oc =>
+          blindingSleep.whenA(oc.isError)
         }.productL {
           val reads = F.delay(readTasks.get).flatten
           val writes = F.delay(writeTasks.get).flatten
@@ -120,6 +126,8 @@ private[tls] object S2nConnection {
               val blocked = stackalloc[s2n_blocked_status]()
               val readed = guard(s2n_recv(conn, buf + i, n - i, blocked))
               (!blocked, Math.max(readed, 0))
+            }.guaranteeCase { oc =>
+              blindingSleep.whenA(oc.isError)
             }.productL(F.delay(readTasks.get).flatten)
               .flatMap { case (blocked, readed) =>
                 val total = i + readed
@@ -185,6 +193,9 @@ private[tls] object S2nConnection {
       private def zone: Resource[F, Zone] =
         Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
 
+      private def blindingSleep: F[Unit] =
+        F.delay(s2n_connection_get_delay(conn).toLong.nanos)
+          .flatMap(delay => F.sleep(delay))
     }
 
   private final case class RecvCallbackContext[F[_]](
