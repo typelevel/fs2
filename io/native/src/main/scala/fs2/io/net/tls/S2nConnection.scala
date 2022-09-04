@@ -122,7 +122,7 @@ private[tls] object S2nConnection {
               readTasks.set(F.unit)
               val blocked = stackalloc[s2n_blocked_status]()
               val readed = guard(s2n_recv(conn, buf + i, n - i, blocked))
-              (!blocked, readed)
+              (!blocked, Math.max(readed, 0))
             }.productL(F.delay(readTasks.get).flatten)
               .flatMap { case (blocked, readed) =>
                 val total = i + readed
@@ -148,7 +148,7 @@ private[tls] object S2nConnection {
                 writeTasks.set(F.unit)
                 val blocked = stackalloc[s2n_blocked_status]()
                 val wrote = guard(s2n_send(conn, buf + i, n - i, blocked))
-                (!blocked, wrote)
+                (!blocked, Math.max(wrote, 0))
               }.productL(F.delay(writeTasks.get).flatten)
                 .flatMap { case (blocked, wrote) =>
                   val total = i + wrote
