@@ -42,6 +42,15 @@ abstract class TLSSuite extends Fs2IoSuite {
       .build[IO]
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
+  def testClientTlsContext: Resource[IO, TLSContext[IO]] = for {
+    cert <- Resource.eval {
+      readClassResource[IO, TLSSuite]("/cert.pem").compile.to(ByteVector)
+    }
+    cfg <- S2nConfig.builder
+      .withPemsToTrustStore(List(cert.decodeAscii.toOption.get))
+      .build[IO]
+  } yield Network[IO].tlsContext.fromS2nConfig(cfg)
+
   val logger = TLSLogger.Disabled
   // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
 }

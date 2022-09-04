@@ -172,6 +172,50 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
+    test("mTLS client verification") {
+      val msg = Chunk.array(("Hello, world! " * 100).getBytes)
+
+      val setup = for {
+        serverContext <- testTlsContext
+        clientContext <- testClientTlsContext
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            clientContext
+              .clientBuilder(_)
+              .withParameters(TLSParameters(serverName = Some("Unknown")))
+              .build
+          )
+      } yield server.flatMap(s =>
+        Stream.resource(
+          serverContext
+            .serverBuilder(s)
+            .withParameters(TLSParameters(clientAuthType = CertAuthType.Required.some)) // mTLS
+            .build
+        )
+      ) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
+
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+          }
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .intercept[SSLException]
+    }
+
     test("echo insecure client") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
