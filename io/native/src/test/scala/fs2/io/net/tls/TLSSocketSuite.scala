@@ -137,70 +137,69 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    //   test("error") {
-    //     val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+    test("error") {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
-    //     val setup = for {
-    //       tlsContext <- Resource.eval(Network[IO].tlsContext.system)
-    //       addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-    //       (serverAddress, server) = addressAndConnections
-    //       client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
-    //     } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+      val setup = for {
+        tlsContext <- Network[IO].tlsContext.systemResource
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(TLSParameters(serverName = Some("Unknown")))
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
-    //     Stream
-    //       .resource(setup)
-    //       .flatMap { case (server, clientSocket) =>
-    //         val echoServer = server.map { socket =>
-    //           socket.reads.chunks.foreach(socket.write(_))
-    //         }.parJoinUnbounded
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
 
-    //         val client =
-    //           Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
-    //             clientSocket.reads.take(msg.size.toLong)
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+          }
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .intercept[SSLException]
+    }
 
-    //         client.concurrently(echoServer)
-    //       }
-    //       .compile
-    //       .to(Chunk)
-    //       .intercept[SSLHandshakeException]
-    //   }
+    test("echo insecure client") {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
-    //   test("echo insecure client with Endpoint verification") {
-    //     val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+      val setup = for {
+        clientContext <- Network[IO].tlsContext.insecureResource
+        tlsContext <- testTlsContext
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO].client(serverAddress).flatMap(clientContext.client(_))
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
-    //     val setup = for {
-    //       clientContext <- Resource.eval(TLSContext.Builder.forAsync[IO].insecure)
-    //       tlsContext <- Resource.eval(testTlsContext)
-    //       addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-    //       (serverAddress, server) = addressAndConnections
-    //       client <- Network[IO]
-    //         .client(serverAddress)
-    //         .flatMap(s =>
-    //           clientContext
-    //             .clientBuilder(s)
-    //             .withParameters(
-    //               TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))
-    //             ) // makes test fail if using X509TrustManager, passes if using X509ExtendedTrustManager
-    //             .build
-    //         )
-    //     } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
 
-    //     Stream
-    //       .resource(setup)
-    //       .flatMap { case (server, clientSocket) =>
-    //         val echoServer = server.map { socket =>
-    //           socket.reads.chunks.foreach(socket.write(_))
-    //         }.parJoinUnbounded
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(msg)) ++
+              clientSocket.reads.take(msg.size.toLong)
+          }
 
-    //         val client =
-    //           Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
-    //             clientSocket.reads.take(msg.size.toLong)
-
-    //         client.concurrently(echoServer)
-    //       }
-    //       .compile
-    //       .to(Chunk)
-    //       .assertEquals(msg)
-    //   }
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .assertEquals(msg)
+    }
   }
 }

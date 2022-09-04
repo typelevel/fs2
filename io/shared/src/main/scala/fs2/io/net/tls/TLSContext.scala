@@ -73,6 +73,8 @@ object TLSContext extends TLSContextCompanionPlatform {
 
     def systemResource: Resource[F, TLSContext[F]]
 
+    def insecureResource: Resource[F, TLSContext[F]]
+
   }
 
   object Builder extends BuilderCompanionPlatform {
