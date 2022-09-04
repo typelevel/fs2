@@ -50,9 +50,12 @@ private[tls] object s2n {
 
   type s2n_config
   type s2n_connection
+  type s2n_cert_chain_and_key
 
   type s2n_recv_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
   type s2n_send_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
+
+  type s2n_verify_host_fn = CFuncPtr3[Ptr[CChar], CSize, Ptr[Byte], Byte]
 
   def s2n_errno_location(): Ptr[CInt] = extern
 
@@ -66,7 +69,45 @@ private[tls] object s2n {
 
   def s2n_config_free(config: Ptr[s2n_config]): CInt = extern
 
+  def s2n_cert_chain_and_key_new(): Ptr[s2n_cert_chain_and_key] = extern
+
+  def s2n_cert_chain_and_key_load_pem_bytes(
+      chain_and_key: Ptr[s2n_cert_chain_and_key],
+      chain_pem: Ptr[Byte],
+      chain_pem_len: CUnsignedInt,
+      private_key_pem: Ptr[Byte],
+      private_key_pem_len: CUnsignedInt
+  ): CInt = extern
+
+  def s2n_cert_chain_and_key_free(cert_and_key: Ptr[s2n_cert_chain_and_key]): CInt = extern
+
+  def s2n_config_add_cert_chain_and_key_to_store(
+      config: Ptr[s2n_config],
+      cert_key_pair: Ptr[s2n_cert_chain_and_key]
+  ): CInt = extern
+
+  def s2n_config_add_pem_to_trust_store(config: Ptr[s2n_config], pem: Ptr[CChar]): CInt = extern
+
+  def s2n_config_wipe_trust_store(config: Ptr[s2n_config]): CInt = extern
+
+  def s2n_config_set_send_buffer_size(config: Ptr[s2n_config], size: CUnsignedInt): CInt = extern
+
+  def s2n_config_set_verify_host_callback(
+      config: Ptr[s2n_config],
+      cb: s2n_verify_host_fn,
+      data: Ptr[Byte]
+  ): CInt = extern
+
   def s2n_config_disable_x509_verification(config: Ptr[s2n_config]): CInt = extern
+
+  def s2n_config_set_max_cert_chain_depth(
+      config: Ptr[s2n_config],
+      max_depth: CUnsignedShort
+  ): CInt = extern
+
+  def s2n_config_add_dhparams(config: Ptr[s2n_config], dhparams_pem: Ptr[CChar]): CInt = extern
+
+  def s2n_config_set_cipher_preferences(config: Ptr[s2n_config], version: Ptr[CChar]): CInt = extern
 
   def s2n_strerror(error: CInt, lang: Ptr[CChar]): Ptr[CChar] = extern
 

@@ -29,8 +29,6 @@ import cats.effect.syntax.all._
 import cats.syntax.all._
 import scodec.bits.ByteVector
 
-import java.util.Collections
-import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import scala.scalanative.libc
@@ -65,9 +63,7 @@ private[tls] object S2nConnection {
       parameters: TLSParameters
   )(implicit F: Async[F]): Resource[F, S2nConnection[F]] =
     for {
-      gcRoot <- Resource.make(
-        F.delay(Collections.newSetFromMap[Any](new IdentityHashMap))
-      )(gcr => F.delay(gcr.clear()))
+      gcRoot <- mkGcRoot
 
       conn <- Resource.make(
         F.delay(guard(s2n_connection_new(if (clientMode) S2N_CLIENT.toUInt else S2N_SERVER.toUInt)))

@@ -27,6 +27,10 @@ import scala.scalanative.runtime.Intrinsics
 import scala.scalanative.unsafe._
 
 import s2n._
+import cats.effect.kernel.Resource
+import cats.effect.kernel.Sync
+import java.util.Collections
+import java.util.IdentityHashMap
 
 private[tls] object s2nutil {
   @alwaysinline def guard_(thunk: => CInt): Unit =
@@ -60,4 +64,8 @@ private[tls] object s2nutil {
 
   @alwaysinline def fromPtr[A](ptr: Ptr[Byte]): A =
     Intrinsics.castRawPtrToObject(runtime.toRawPtr(ptr)).asInstanceOf[A]
+
+  def mkGcRoot[F[_]](implicit F: Sync[F]) = Resource.make(
+    F.delay(Collections.newSetFromMap[Any](new IdentityHashMap))
+  )(gcr => F.delay(gcr.clear()))
 }
