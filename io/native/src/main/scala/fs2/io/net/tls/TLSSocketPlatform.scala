@@ -40,7 +40,9 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       connection: S2nConnection[F]
   ): Resource[F, TLSSocket[F]] =
     Resource.eval(mk(socket, connection)) <*
-      Resource.makeFull[F, Unit](poll => poll(connection.handshake))(_ => connection.shutdown)
+      Resource.makeFull[F, Unit](poll => poll(connection.handshake))(_ =>
+        connection.shutdown.attempt.void
+      )
 
   def mk[F[_]](
       socket: Socket[F],
