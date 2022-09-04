@@ -101,14 +101,21 @@ class TLSSocketSuite extends TLSSuite {
       }
     }
 
-    test("echo".only) {
+    test("echo") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       val setup = for {
         tlsContext <- testTlsContext
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (serverAddress, server) = addressAndConnections
-        client = Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(TLSParameters(serverName = Some("Unknown")))
+              .build
+          )
       } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
