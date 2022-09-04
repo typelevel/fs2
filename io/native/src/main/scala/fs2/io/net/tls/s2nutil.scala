@@ -21,16 +21,19 @@
 
 package fs2.io.net.tls
 
+import cats.effect.SyncIO
+import cats.effect.kernel.Resource
+import cats.effect.kernel.Sync
+import scodec.bits.ByteVector
+
+import java.util.Collections
+import java.util.IdentityHashMap
 import scala.scalanative.annotation.alwaysinline
 import scala.scalanative.runtime
 import scala.scalanative.runtime.Intrinsics
 import scala.scalanative.unsafe._
 
 import s2n._
-import cats.effect.kernel.Resource
-import cats.effect.kernel.Sync
-import java.util.Collections
-import java.util.IdentityHashMap
 
 private[tls] object s2nutil {
   @alwaysinline def guard_(thunk: => CInt): Unit =
@@ -68,4 +71,11 @@ private[tls] object s2nutil {
   def mkGcRoot[F[_]](implicit F: Sync[F]) = Resource.make(
     F.delay(Collections.newSetFromMap[Any](new IdentityHashMap))
   )(gcr => F.delay(gcr.clear()))
+
+  def s2nVerifyHostFn(hostName: Ptr[CChar], hostNameLen: CSize, data: Ptr[Byte]): Byte = {
+    val cb = fromPtr[String => SyncIO[Boolean]](data)
+    val hn = ByteVector.fromPtr(hostName, hostNameLen.toLong).decodeAsciiLenient
+    val trust = cb(hn).unsafeRunSync()
+    if (trust) 1 else 0
+  }
 }

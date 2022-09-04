@@ -48,6 +48,11 @@ private[tls] object s2n {
   final val S2N_BLOCKED_ON_APPLICATION_INPUT = 3
   final val S2N_BLOCKED_ON_EARLY_DATA = 4
 
+  type s2n_cert_auth_type = CUnsignedInt
+  final val S2N_CERT_AUTH_NONE = 0
+  final val S2N_CERT_AUTH_REQUIRED = 1
+  final val S2N_CERT_AUTH_OPTIONAL = 2
+
   type s2n_config
   type s2n_connection
   type s2n_cert_chain_and_key
@@ -123,6 +128,21 @@ private[tls] object s2n {
 
   def s2n_connection_set_send_cb(conn: Ptr[s2n_connection], send: s2n_recv_fn): CInt = extern
 
+  def s2n_connection_set_verify_host_callback(
+      conn: Ptr[s2n_connection],
+      cb: s2n_verify_host_fn,
+      data: Ptr[Byte]
+  ): CInt = extern
+
+  def s2n_connection_set_cipher_preferences(conn: Ptr[s2n_connection], version: Ptr[CChar]): CInt =
+    extern
+
+  def s2n_connection_append_protocol_preference(
+      conn: Ptr[s2n_connection],
+      protocol: Ptr[Byte],
+      protocol_len: Byte
+  ): CInt = extern
+
   def s2n_set_server_name(conn: Ptr[s2n_connection], server_name: Ptr[CChar]): CInt = extern
 
   def s2n_get_application_protocol(conn: Ptr[s2n_connection]): Ptr[CChar] = extern
@@ -151,6 +171,11 @@ private[tls] object s2n {
 
   def s2n_shutdown(conn: Ptr[s2n_connection], blocked: Ptr[s2n_blocked_status]): CInt =
     extern
+
+  def s2n_connection_set_client_auth_type(
+      conn: Ptr[s2n_connection],
+      client_auth_type: s2n_cert_auth_type
+  ): CInt = extern
 
   def s2n_connection_get_session(
       conn: Ptr[s2n_connection],

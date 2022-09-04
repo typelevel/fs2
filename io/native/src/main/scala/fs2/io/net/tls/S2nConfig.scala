@@ -26,7 +26,6 @@ import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import scodec.bits.ByteVector
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -34,7 +33,12 @@ import scala.scalanative.unsigned._
 import s2n._
 import s2nutil._
 
-final class S2nConfig private (private[tls] val ptr: Ptr[s2n_config]) {}
+/**
+  * An `s2n_config`.
+  * 
+  * See [[https://github.com/aws/s2n-tls/ s2n-tls]] for detailed documentation.
+  */
+final class S2nConfig private (private[tls] val ptr: Ptr[s2n_config])
 
 object S2nConfig {
 
@@ -151,13 +155,6 @@ object S2nConfig {
 
     def withCipherPreferences(version: String): Builder = copy(cipherPreferences = Some(version))
 
-  }
-
-  private def s2nVerifyHostFn(hostName: Ptr[CChar], hostNameLen: CSize, data: Ptr[Byte]): Byte = {
-    val cb = fromPtr[String => SyncIO[Boolean]](data)
-    val hn = ByteVector.fromPtr(hostName, hostNameLen.toLong).decodeAsciiLenient
-    val trust = cb(hn).unsafeRunSync()
-    if (trust) 1 else 0
   }
 
 }

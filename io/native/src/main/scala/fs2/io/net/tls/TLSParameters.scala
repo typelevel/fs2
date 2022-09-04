@@ -24,71 +24,114 @@ package io
 package net
 package tls
 
+import cats.effect.SyncIO
+import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
+import cats.effect.syntax.all._
+import cats.syntax.all._
+import scodec.bits.ByteVector
 
 import scala.scalanative.unsafe._
+import scala.scalanative.unsigned._
 
 import s2n._
 import s2nutil._
 
 /** Parameters used in creation of an s2n_connection.
-  * See `javax.net.ssl.SSLParameters` for detailed documentation on each parameter.
+  * See [[https://github.com/aws/s2n-tls/ s2n-tls]] for detailed documentation on each parameter.
   */
 sealed trait TLSParameters {
-  // val algorithmConstraints: Option[AlgorithmConstraints]
-  // val applicationProtocols: Option[List[String]]
-  // val cipherSuites: Option[List[String]]
-  // val enableRetransmissions: Option[Boolean]
-  // val endpointIdentificationAlgorithm: Option[String]
-  // val maximumPacketSize: Option[Int]
-  // val protocols: Option[List[String]]
+  val protocolPreferences: Option[List[String]]
+  val cipherPreferences: Option[String]
   val serverName: Option[String]
-  // val sniMatchers: Option[List[SNIMatcher]]
-  // val useCipherSuitesOrder: Boolean
-  // val needClientAuth: Boolean
-  // val wantClientAuth: Boolean
-  // val handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
+  val verifyHostCallback: Option[String => SyncIO[Boolean]]
+  val clientAuthType: Option[CertAuthType]
 
-  private[tls] def configure[F[_]](conn: Ptr[s2n_connection])(implicit F: Sync[F]): F[Unit] =
-    F.delay {
-      Zone { implicit z =>
-        serverName.foreach(sn => guard_(s2n_set_server_name(conn, toCString(sn))))
-      }
-    }
+  private[tls] def configure[F[_]](
+      conn: Ptr[s2n_connection]
+  )(implicit F: Sync[F]): Resource[F, Unit] =
+    for {
+      gcRoot <- mkGcRoot
+
+      _ <- protocolPreferences.toList.flatten.traverse { protocol =>
+        ByteVector.encodeAscii(protocol).liftTo[F].flatMap { protocolBytes =>
+          F.delay {
+            Zone { implicit z =>
+              guard_ {
+                s2n_connection_append_protocol_preference(
+                  conn,
+                  protocolBytes.toPtr,
+                  protocolBytes.length.toByte
+                )
+              }
+            }
+          }
+        }
+      }.toResource
+
+      _ <- cipherPreferences.traverse_ { version =>
+        F.delay {
+          Zone { implicit z =>
+            guard_(s2n_connection_set_cipher_preferences(conn, toCString(version)))
+          }
+        }
+      }.toResource
+
+      _ <- serverName.traverse { sn =>
+        F.delay {
+          Zone { implicit z =>
+            guard_(s2n_set_server_name(conn, toCString(sn)))
+          }
+        }
+      }.toResource
+
+      _ <- verifyHostCallback.traverse_ { cb =>
+        F.delay(gcRoot.add(cb)) *>
+          F.delay {
+            guard_(
+              s2n_connection_set_verify_host_callback(
+                conn,
+                s2nVerifyHostFn(_, _, _),
+                toPtr(cb)
+              )
+            )
+          }
+      }.toResource
+
+      _ <- clientAuthType.traverse_ { authType =>
+        val ord = authType match {
+          case CertAuthType.None     => S2N_CERT_AUTH_NONE
+          case CertAuthType.Optional => S2N_CERT_AUTH_OPTIONAL
+          case CertAuthType.Required => S2N_CERT_AUTH_REQUIRED
+        }
+        F.delay(guard_(s2n_connection_set_client_auth_type(conn, ord.toUInt)))
+      }.toResource
+    } yield ()
 }
 
 object TLSParameters {
   val Default: TLSParameters = TLSParameters()
 
   def apply(
-      // algorithmConstraints: Option[AlgorithmConstraints] = None,
-      // applicationProtocols: Option[List[String]] = None,
-      // cipherSuites: Option[List[String]] = None,
-      // enableRetransmissions: Option[Boolean] = None,
-      // endpointIdentificationAlgorithm: Option[String] = None,
-      // maximumPacketSize: Option[Int] = None,
-      // protocols: Option[List[String]] = None,
-      serverName: Option[String] = None
-      // sniMatchers: Option[List[SNIMatcher]] = None,
-      // useCipherSuitesOrder: Boolean = false,
-      // needClientAuth: Boolean = false,
-      // wantClientAuth: Boolean = false,
-      // handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String] = None
-  ): TLSParameters = DefaultTLSParameters(serverName)
+      protocolPreferences: Option[List[String]] = None,
+      cipherPreferences: Option[String] = None,
+      serverName: Option[String] = None,
+      verifyHostCallback: Option[String => SyncIO[Boolean]] = None,
+      clientAuthType: Option[CertAuthType] = None
+  ): TLSParameters = DefaultTLSParameters(
+    protocolPreferences,
+    cipherPreferences,
+    serverName,
+    verifyHostCallback,
+    clientAuthType
+  )
 
   private case class DefaultTLSParameters(
-      // algorithmConstraints: Option[AlgorithmConstraints],
-      // applicationProtocols: Option[List[String]],
-      // cipherSuites: Option[List[String]],
-      // enableRetransmissions: Option[Boolean],
-      // endpointIdentificationAlgorithm: Option[String],
-      // maximumPacketSize: Option[Int],
-      // protocols: Option[List[String]],
-      serverName: Option[String]
-      // sniMatchers: Option[List[SNIMatcher]],
-      // useCipherSuitesOrder: Boolean,
-      // needClientAuth: Boolean,
-      // wantClientAuth: Boolean,
-      // handshakeApplicationProtocolSelector: Option[(SSLEngine, List[String]) => String]
+      protocolPreferences: Option[List[String]],
+      cipherPreferences: Option[String],
+      serverName: Option[String],
+      verifyHostCallback: Option[String => SyncIO[Boolean]],
+      clientAuthType: Option[CertAuthType]
   ) extends TLSParameters
+
 }
