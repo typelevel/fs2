@@ -74,6 +74,7 @@ private[tls] object S2nConnection {
       )(conn => F.delay(guard_(s2n_connection_free(conn))))
 
       _ <- F.delay(s2n_connection_set_config(conn, config.ptr)).toResource
+      _ <- parameters.configure(conn).toResource
 
       readBuffer <- Resource.eval {
         F.delay(new AtomicReference[Option[ByteVector]](Some(ByteVector.empty)))
