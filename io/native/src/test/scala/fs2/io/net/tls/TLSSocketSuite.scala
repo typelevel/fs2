@@ -31,24 +31,22 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-class TLSSocketSuite extends Fs2IoSuite {
+class TLSSocketSuite extends TLSSuite {
   val size = 8192
 
   group("TLSSocket") {
     group("google") {
-      def googleSetup =
+      def googleSetup(version: String) =
         for {
-          // tlsContext <- Resource.pure(
-          //   Network[IO].tlsContext.fromSecureContext(
-          //     SecureContext(minVersion = protocol.some, maxVersion = protocol.some)
-          //   )
-          // )
           tlsContext <- Network[IO].tlsContext.systemResource
           socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
           tlsSocket <- tlsContext
             .clientBuilder(socket)
             .withParameters(
-              TLSParameters(serverName = "www.google.com".some)
+              TLSParameters(
+                serverName = "www.google.com".some,
+                cipherPreferences = version.some
+              )
             )
             .build
         } yield tlsSocket
@@ -56,16 +54,16 @@ class TLSSocketSuite extends Fs2IoSuite {
       val googleDotCom = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
       val httpOk = "HTTP/1.1 200 OK"
 
-      def writesBeforeReading =
-        test("client writes before reading") {
+      def writesBeforeReading(protocol: String) =
+        test(s"$protocol - client writes before reading") {
           Stream
-            .resource(googleSetup)
+            .resource(googleSetup(protocol))
             .flatMap { tlsSocket =>
               Stream(googleDotCom)
                 .covary[IO]
                 .through(text.utf8.encode)
-                .through(tlsSocket.writes) ++
-                Stream.exec(tlsSocket.endOfOutput) ++
+                .through(tlsSocket.writes)
+                .onFinalize(tlsSocket.endOfOutput) ++
                 tlsSocket.reads
                   .through(text.utf8.decode)
                   .through(text.lines)
@@ -76,10 +74,10 @@ class TLSSocketSuite extends Fs2IoSuite {
             .assertEquals(httpOk)
         }
 
-      def readsBeforeWriting =
-        test("client reads before writing") {
+      def readsBeforeWriting(protocol: String) =
+        test(s"$protocol - client reads before writing") {
           Stream
-            .resource(googleSetup)
+            .resource(googleSetup(protocol))
             .flatMap { socket =>
               val send = Stream(googleDotCom)
                 .through(text.utf8.encode)
@@ -96,48 +94,40 @@ class TLSSocketSuite extends Fs2IoSuite {
             .assertEquals(httpOk)
         }
 
-      writesBeforeReading
-      readsBeforeWriting
+      // https://github.com/aws/s2n-tls/blob/8556f56bc6386dc8bfd8cceb6a38b97215a6f32e/docs/USAGE-GUIDE.md#security-policies
+      List("default", "default_tls13" /*, "rfc9151"*/ ).foreach { protocol =>
+        writesBeforeReading(protocol)
+        readsBeforeWriting(protocol)
+      }
     }
 
-    //   test("echo") {
-    //     val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+    test("echo") {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
-    //     val setup = for {
-    //       tlsContext <- Resource.eval(testTlsContext)
-    //       addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-    //       (serverAddress, server) = addressAndConnections
-    //       client <- Network[IO]
-    //         .client(serverAddress)
-    //         .flatMap(
-    //           tlsContext
-    //             .clientBuilder(_)
-    //             .withParameters(
-    //               TLSParameters(checkServerIdentity =
-    //                 Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
-    //               )
-    //             )
-    //             .build
-    //         )
-    //     } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+      val setup = for {
+        tlsContext <- testTlsContext
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
-    //     Stream
-    //       .resource(setup)
-    //       .flatMap { case (server, clientSocket) =>
-    //         val echoServer = server.map { socket =>
-    //           socket.reads.chunks.foreach(socket.write(_))
-    //         }.parJoinUnbounded
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
 
-    //         val client =
-    //           Stream.exec(clientSocket.write(msg)) ++
-    //             clientSocket.reads.take(msg.size.toLong)
+          val client =
+            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
+              clientSocket.reads.take(msg.size.toLong)
 
-    //         client.concurrently(echoServer)
-    //       }
-    //       .compile
-    //       .to(Chunk)
-    //       .assertEquals(msg)
-    //   }
+          client.concurrently(echoServer)
+        }
+        .compile
+        .to(Chunk)
+        .assertEquals(msg)
+    }
 
     //   test("error") {
     //     val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
@@ -146,16 +136,43 @@ class TLSSocketSuite extends Fs2IoSuite {
     //       tlsContext <- Resource.eval(Network[IO].tlsContext.system)
     //       addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
     //       (serverAddress, server) = addressAndConnections
+    //       client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
+    //     } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+    //     Stream
+    //       .resource(setup)
+    //       .flatMap { case (server, clientSocket) =>
+    //         val echoServer = server.map { socket =>
+    //           socket.reads.chunks.foreach(socket.write(_))
+    //         }.parJoinUnbounded
+
+    //         val client =
+    //           Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
+    //             clientSocket.reads.take(msg.size.toLong)
+
+    //         client.concurrently(echoServer)
+    //       }
+    //       .compile
+    //       .to(Chunk)
+    //       .intercept[SSLHandshakeException]
+    //   }
+
+    //   test("echo insecure client with Endpoint verification") {
+    //     val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+
+    //     val setup = for {
+    //       clientContext <- Resource.eval(TLSContext.Builder.forAsync[IO].insecure)
+    //       tlsContext <- Resource.eval(testTlsContext)
+    //       addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+    //       (serverAddress, server) = addressAndConnections
     //       client <- Network[IO]
     //         .client(serverAddress)
-    //         .flatMap(
-    //           tlsContext
-    //             .clientBuilder(_)
+    //         .flatMap(s =>
+    //           clientContext
+    //             .clientBuilder(s)
     //             .withParameters(
-    //               TLSParameters(checkServerIdentity =
-    //                 Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
-    //               )
-    //             )
+    //               TLSParameters.apply(endpointIdentificationAlgorithm = Some("HTTPS"))
+    //             ) // makes test fail if using X509TrustManager, passes if using X509ExtendedTrustManager
     //             .build
     //         )
     //     } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
@@ -168,15 +185,14 @@ class TLSSocketSuite extends Fs2IoSuite {
     //         }.parJoinUnbounded
 
     //         val client =
-    //           Stream.exec(clientSocket.write(msg)) ++
+    //           Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
     //             clientSocket.reads.take(msg.size.toLong)
 
     //         client.concurrently(echoServer)
     //       }
     //       .compile
     //       .to(Chunk)
-    //       .intercept[SSLException]
+    //       .assertEquals(msg)
     //   }
-
   }
 }
