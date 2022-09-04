@@ -14,6 +14,10 @@ ThisBuild / crossScalaVersions := Seq("3.1.3", "2.12.16", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+val isLinux = {
+  val osName = Option(System.getProperty("os.name"))
+  osName.exists(_.toLowerCase().contains("linux"))
+}
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
@@ -240,19 +244,19 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "com.armanbilge" %%% "epollcat-net" % "0.0-2f64289-SNAPSHOT" % Test
     ),
-    vcpkgDependencies := Set("s2n"),
-    nativeConfig := {
-      val conf = nativeConfig.value
-      val _ = vcpkgInstall.value
-      val manager = vcpkgManager.value
-      conf.withLinkingOptions(
-        conf.linkingOptions ++
-          List(s"-L${manager.files("s2n").libDir}", s"-L${manager.files("openssl").libDir}")
-      )
+    nativeConfig ~= { c =>
+      if (isLinux) { // brew-installed s2n
+        c.withLinkingOptions(c.linkingOptions :+ "-L/home/linuxbrew/.linuxbrew/lib")
+      } else c
     },
-    Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
+    Test / envVars ++= {
+      val ldLibPath =
+        if (isLinux)
+          Map("LD_LIBRARY_PATH" -> "/home/linuxbrew/.linuxbrew/lib")
+        else Map.empty
+      Map("S2N_DONT_MLOCK" -> "1") ++ ldLibPath
+    }
   )
-  .nativeEnablePlugins(VcpkgPlugin)
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
