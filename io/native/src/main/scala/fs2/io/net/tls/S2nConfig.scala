@@ -179,7 +179,7 @@ object S2nConfig {
       val cleanup = F.delay(guard_(s2n_async_pkey_op_free(op)))
 
       privateKeyTasks.getAndUpdate(_ *> task)
-      privateKeyCleanupTasks.getAndUpdate(_ *> cleanup)
+      privateKeyCleanupTasks.getAndUpdate(_.guarantee(cleanup))
 
       S2N_SUCCESS
     } catch {
