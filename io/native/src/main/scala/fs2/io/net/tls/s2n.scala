@@ -26,7 +26,6 @@ import scala.annotation.nowarn
 
 @extern
 @link("s2n")
-@link("crypto")
 @nowarn
 private[tls] object s2n {
 
