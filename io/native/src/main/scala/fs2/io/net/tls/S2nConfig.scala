@@ -29,13 +29,13 @@ import cats.syntax.all._
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
+import scala.util.control.NonFatal
 
 import s2n._
 import s2nutil._
 
-/**
-  * An `s2n_config`.
-  * 
+/** An `s2n_config`.
+  *
   * See [[https://github.com/aws/s2n-tls/ s2n-tls]] for detailed documentation.
   */
 final class S2nConfig private (private[tls] val ptr: Ptr[s2n_config])
@@ -80,6 +80,10 @@ object S2nConfig {
       cfg <- Resource.make(F.delay(guard(s2n_config_new())))(cfg =>
         F.delay(guard_(s2n_config_free(cfg)))
       )
+
+      _ <- F.delay {
+        guard_(s2n_config_set_async_pkey_callback(cfg, asyncPkeyCallback[F](_, _)))
+      }.toResource
 
       _ <- F.delay(guard_(s2n_config_wipe_trust_store(cfg))).whenA(wipedTrustStore).toResource
 
@@ -156,5 +160,32 @@ object S2nConfig {
     def withCipherPreferences(version: String): Builder = copy(cipherPreferences = Some(version))
 
   }
+
+  // we manually schedule expensive private-key operations so we can add fairness boundaries
+  private def asyncPkeyCallback[F[_]](conn: Ptr[s2n_connection], op: Ptr[s2n_async_pkey_op]): CInt =
+    try {
+      val data = fromPtr[S2nConnection.ConnectionContext[F]](guard(s2n_connection_get_ctx(conn)))
+      import data._
+      implicit val F = async
+
+      val cert = guard(s2n_connection_get_selected_cert(conn))
+      val key = guard(s2n_cert_chain_and_key_get_private_key(cert))
+
+      val task = F.cede *>
+        F.delay {
+          guard_(s2n_async_pkey_op_perform(op, key))
+          guard_(s2n_async_pkey_op_apply(op, conn))
+        }.guarantee(F.cede)
+
+      privateKeyTasks.getAndUpdate { tasks =>
+        (tasks *> task).guarantee(F.delay(guard_(s2n_async_pkey_op_free(op))))
+      }
+
+      S2N_SUCCESS
+    } catch {
+      case NonFatal(_) =>
+        guard_(s2n_async_pkey_op_free(op))
+        S2N_FAILURE
+    }
 
 }

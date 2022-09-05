@@ -60,11 +60,15 @@ private[tls] object s2n {
   type s2n_config
   type s2n_connection
   type s2n_cert_chain_and_key
+  type s2n_async_pkey_op
+  type s2n_cert_private_key
 
   type s2n_recv_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
   type s2n_send_fn = CFuncPtr3[Ptr[Byte], Ptr[Byte], CUnsignedInt, CInt]
 
   type s2n_verify_host_fn = CFuncPtr3[Ptr[CChar], CSize, Ptr[Byte], Byte]
+
+  type s2n_async_pkey_fn = CFuncPtr2[Ptr[s2n_connection], Ptr[s2n_async_pkey_op], CInt]
 
   def s2n_errno_location(): Ptr[CInt] = extern
 
@@ -89,6 +93,10 @@ private[tls] object s2n {
   ): CInt = extern
 
   def s2n_cert_chain_and_key_free(cert_and_key: Ptr[s2n_cert_chain_and_key]): CInt = extern
+
+  def s2n_cert_chain_and_key_get_private_key(
+      cert_and_key: Ptr[s2n_cert_chain_and_key]
+  ): Ptr[s2n_cert_private_key] = extern
 
   def s2n_config_add_cert_chain_and_key_to_store(
       config: Ptr[s2n_config],
@@ -123,6 +131,10 @@ private[tls] object s2n {
   def s2n_connection_new(mode: s2n_mode): Ptr[s2n_connection] = extern
 
   def s2n_connection_set_config(conn: Ptr[s2n_connection], config: Ptr[s2n_config]): CInt = extern
+
+  def s2n_connection_set_ctx(conn: Ptr[s2n_connection], ctx: Ptr[Byte]): CInt = extern
+
+  def s2n_connection_get_ctx(conn: Ptr[s2n_connection]): Ptr[Byte] = extern
 
   def s2n_connection_set_recv_ctx(conn: Ptr[s2n_connection], ctx: Ptr[Byte]): CInt = extern
 
@@ -192,5 +204,18 @@ private[tls] object s2n {
   ): CInt = extern
 
   def s2n_connection_get_session_length(conn: Ptr[s2n_connection]): CInt = extern
+
+  def s2n_connection_get_selected_cert(conn: Ptr[s2n_connection]): Ptr[s2n_cert_chain_and_key] =
+    extern
+
+  def s2n_config_set_async_pkey_callback(config: Ptr[s2n_config], fn: s2n_async_pkey_fn): CInt =
+    extern
+
+  def s2n_async_pkey_op_perform(op: Ptr[s2n_async_pkey_op], key: Ptr[s2n_cert_private_key]): CInt =
+    extern
+
+  def s2n_async_pkey_op_apply(op: Ptr[s2n_async_pkey_op], conn: Ptr[s2n_connection]): CInt = extern
+
+  def s2n_async_pkey_op_free(op: Ptr[s2n_async_pkey_op]): CInt = extern
 
 }
