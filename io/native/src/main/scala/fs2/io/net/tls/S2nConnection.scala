@@ -77,9 +77,10 @@ private[tls] object S2nConnection {
       }.toResource
 
       privateKeyTasks <- F.delay(new AtomicReference[F[Unit]](F.unit)).toResource
+      privateKeyCleanupTasks <- F.delay(new AtomicReference[F[Unit]](F.unit)).toResource
       _ <- Resource.eval {
         F.delay {
-          val ctx = ConnectionContext(privateKeyTasks, F)
+          val ctx = ConnectionContext(privateKeyTasks, privateKeyCleanupTasks, F)
           guard_(s2n_connection_set_ctx(conn, toPtr(ctx)))
           gcRoot.add(ctx)
         }
@@ -116,6 +117,7 @@ private[tls] object S2nConnection {
           readTasks.set(F.unit)
           writeTasks.set(F.unit)
           privateKeyTasks.set(F.unit)
+          privateKeyCleanupTasks.set(F.unit)
           val blocked = stackalloc[s2n_blocked_status]()
           guard_(s2n_negotiate(conn, blocked))
           !blocked
@@ -126,6 +128,8 @@ private[tls] object S2nConnection {
           val writes = F.delay(writeTasks.get).flatten
           val pkeyOps = F.delay(privateKeyTasks.get).flatten
           reads.both(writes).both(pkeyOps)
+        }.guarantee {
+          F.delay(privateKeyCleanupTasks.get).flatten
         }.iterateUntil(_.toInt == S2N_NOT_BLOCKED) *>
           F.delay(guard_(s2n_connection_free_handshake(conn)))
 
@@ -211,6 +215,7 @@ private[tls] object S2nConnection {
 
   final case class ConnectionContext[F[_]](
       privateKeyTasks: AtomicReference[F[Unit]],
+      privateKeyCleanupTasks: AtomicReference[F[Unit]],
       async: Async[F]
   )
 
