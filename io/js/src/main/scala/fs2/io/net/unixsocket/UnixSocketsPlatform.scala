@@ -41,15 +41,22 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
 
       override def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
         Resource
-          .eval(for {
-            socket <- F.delay(
+          .make(
+            F.delay(
               new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
             )
-            _ <- F.async_[Unit] { cb =>
+          )(socket =>
+            F.delay {
+              if (!socket.destroyed)
+                socket.destroy()
+            }
+          )
+          .evalTap { socket =>
+            F.async_[Unit] { cb =>
               socket.connect(address.path, () => cb(Right(())))
               ()
             }
-          } yield socket)
+          }
           .flatMap(Socket.forAsync[F])
 
       override def server(
