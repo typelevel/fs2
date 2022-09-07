@@ -47,7 +47,7 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
       val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))
 
-      (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalMap(identity))
+      (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalFlatten)
         .concurrently(server)
         .compile
         .drain
