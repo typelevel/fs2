@@ -158,13 +158,18 @@ private[fs2] trait ioplatform {
             case None => Pull.done
           }
 
-          go(in).stream.onFinalizeCase[F] {
-            case Resource.ExitCase.Succeeded =>
-              if (endAfterUse)
+          val end =
+            if (endAfterUse)
+              Stream.exec {
                 F.async_[Unit] { cb =>
                   writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
                 }
-              else F.unit
+              }
+            else Stream.empty
+
+          (go(in).stream ++ end).onFinalizeCase[F] {
+            case Resource.ExitCase.Succeeded =>
+              F.unit
             case Resource.ExitCase.Errored(_) | Resource.ExitCase.Canceled =>
               // tempting, but don't propagate the error!
               // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
