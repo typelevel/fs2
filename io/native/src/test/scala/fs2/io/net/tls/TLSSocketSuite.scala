@@ -279,7 +279,7 @@ class TLSSocketSuite extends TLSSuite {
 
       val checkBlinding =
         echo.attempt.flatMap(result => IO(assert(clue(result).isLeft))).timed.flatMap {
-          case (duration, _) => IO(assert(clue(duration) > 9.seconds), "didn't blind on error")
+          case (duration, _) => IO(assert(clue(duration) > 9.seconds, "didn't blind on error"))
         }
 
       checkStarvation.both(checkBlinding).void
