@@ -24,6 +24,8 @@ package io
 
 import epollcat.unsafe.EpollRuntime
 
+import scala.annotation.nowarn
+
 abstract class Fs2IoSuite extends Fs2Suite {
-  override lazy val munitIORuntime = EpollRuntime.global
+  override lazy val munitIoRuntime = EpollRuntime.global: @nowarn
 }
