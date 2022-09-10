@@ -28,8 +28,8 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.syntax.all._
-
 import com.comcast.ip4s._
+import epollcat.unsafe.EpollRuntime
 
 class TLSSocketSuite extends TLSSuite {
   override lazy val munitIoRuntime = EpollRuntime.global
