@@ -100,11 +100,11 @@ jobs:
 
       - name: Make target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
-        run: mkdir -p target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target benchmark/target project/target
+        run: mkdir -p target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target protocols/native/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target benchmark/target project/target
 
       - name: Compress target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
-        run: tar cf targets.tar target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target benchmark/target project/target
+        run: tar cf targets.tar target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target protocols/native/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target benchmark/target project/target
 
       - name: Upload target directories
         if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')

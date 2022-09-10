@@ -317,14 +317,14 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     nativeConfig ~= { _.withEmbedResources(true) }
   )
 
-lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("scodec"))
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.9"
+                                                               "1.11.10"
                                                              else "2.1.0"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
@@ -334,7 +334,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform)
   )
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
-lazy val protocols = crossProject(JVMPlatform, JSPlatform)
+lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
