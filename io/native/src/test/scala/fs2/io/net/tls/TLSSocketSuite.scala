@@ -32,6 +32,8 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 class TLSSocketSuite extends TLSSuite {
+  override lazy val munitIoRuntime = EpollRuntime.global
+
   val size = 8192
 
   group("TLSSocket") {
