@@ -32,7 +32,11 @@ import fs2.io.file.Path
 import scala.scalajs.js
 
 abstract class TLSSuite extends Fs2Suite {
-  def testTlsContext: IO[TLSContext[IO]] = Files[IO]
+
+  def testTlsContext(
+      privateKey: Boolean,
+      version: Option[SecureContext.SecureVersion] = None
+  ): IO[TLSContext[IO]] = Files[IO]
     .readAll(Path("io/shared/src/test/resources/keystore.json"))
     .through(text.utf8.decode)
     .compile
@@ -41,9 +45,13 @@ abstract class TLSSuite extends Fs2Suite {
     .map { certKey =>
       Network[IO].tlsContext.fromSecureContext(
         SecureContext(
+          minVersion = version,
+          maxVersion = version,
           ca = List(certKey.cert.asRight).some,
           cert = List(certKey.cert.asRight).some,
-          key = List(SecureContext.Key(certKey.key.asRight, "password".some)).some
+          key =
+            if (privateKey) List(SecureContext.Key(certKey.key.asRight, "password".some)).some
+            else None
         )
       )
     }

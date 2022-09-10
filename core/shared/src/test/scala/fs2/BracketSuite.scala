@@ -357,4 +357,16 @@ class BracketSuite extends Fs2Suite {
       .compile
       .drain
   }
+
+  test("#2966 release is uncancelable") {
+    IO.ref(false)
+      .flatMap { released =>
+        Stream
+          .bracket(IO.unit)(_ => IO.canceled *> released.set(true))
+          .compile
+          .drain
+          .start
+          .flatMap(_.join) *> released.get.assert
+      }
+  }
 }

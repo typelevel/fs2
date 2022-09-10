@@ -20,14 +20,25 @@
  */
 
 package fs2
-package io
+package compression
 
-import cats.effect.kernel.Sync
-import fs2.compression.Compression
-
-private[io] trait compressionplatform {
-
-  type ZipException = java.util.zip.ZipException
-
-  implicit def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
-}
+/** Gunzip decompression results including file properties and
+  * decompressed content stream, used as follows:
+  *   stream
+  *     .through(gunzip[IO]())
+  *     .flatMap { gunzipResult =>
+  *       // Access properties here.
+  *       gunzipResult.content
+  *     }
+  *
+  * @param content Uncompressed content stream.
+  * @param modificationTime Modification time of compressed file.
+  * @param fileName File name.
+  * @param comment File comment.
+  */
+case class GunzipResult[F[_]](
+    content: Stream[F, Byte],
+    modificationTime: Option[Nothing] = None,
+    fileName: Option[Nothing] = None,
+    comment: Option[Nothing] = None
+)

@@ -41,7 +41,7 @@ case class Ipv4Header(
     sourceIp: Ipv4Address,
     destinationIp: Ipv4Address,
     options: BitVector
-)
+) extends UnsealedIpHeader
 
 object Ipv4Header {
 

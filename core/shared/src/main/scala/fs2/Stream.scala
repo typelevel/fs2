@@ -553,8 +553,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def concurrently[F2[x] >: F[x], O2](
       that: Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O] = {
-    val fstream: F2[Stream[F2, O]] = for {
+  )(implicit F: Concurrent[F2]): Stream[F2, O] =
+    concurrentlyAux(that).flatMap { case (startBack, fore) => startBack >> fore }
+
+  private def concurrentlyAux[F2[x] >: F[x], O2](
+      that: Stream[F2, O2]
+  )(implicit
+      F: Concurrent[F2]
+  ): Stream[F2, (Stream[F2, Fiber[F2, Throwable, Unit]], Stream[F2, O])] = {
+    val fstream: F2[(Stream[F2, Fiber[F2, Throwable, Unit]], Stream[F2, O])] = for {
       interrupt <- F.deferred[Unit]
       backResult <- F.deferred[Either[Throwable, Unit]]
     } yield {
@@ -571,10 +578,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       // We use F.fromEither to bring errors from the back into the fore
       val stopBack: F2[Unit] = interrupt.complete(()) >> backResult.get.flatMap(F.fromEither)
 
-      Stream.bracket(compileBack.start)(_ => stopBack) >> watch(this)
+      (Stream.bracket(compileBack.start)(_ => stopBack), watch(this))
     }
 
-    Stream.eval(fstream).flatten
+    Stream.eval(fstream)
   }
 
   /** Prepends a chunk onto the front of this stream.
@@ -685,7 +692,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Provides the same functionality as [[metered]] but begins immediately instead of waiting for `rate`
     */
   def meteredStartImmediately[F2[x] >: F[x]: Temporal](rate: FiniteDuration): Stream[F2, O] =
-    (Stream.emit(()) ++ Stream.fixedRate[F2](rate)).zipRight(this)
+    Stream.fixedRateStartImmediately[F2](rate).zipRight(this)
 
   /** Waits the specified `delay` between each event.
     *
@@ -2565,10 +2572,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     resultPull.stream
   }
 
-  /** Starts this stream and cancels it as finalization of the returned stream.
+  /** Starts this stream in the background and cancels it as finalization of the returned stream.
+    *
+    * Any errors that occur in the background stream results in the foreground stream terminating
+    * with an error.
     */
-  def spawn[F2[x] >: F[x]: Concurrent]: Stream[F2, Fiber[F2, Throwable, Unit]] =
-    Stream.supervise(this.covary[F2].compile.drain)
+  def spawn[F2[x] >: F[x]](implicit F: Concurrent[F2]): Stream[F2, Fiber[F2, Throwable, Unit]] =
+    Stream.emit[F2, Unit](()).concurrentlyAux(this).flatMap { case (startBack, fore) =>
+      startBack.flatTap(_ => fore)
+    }
 
   /** Breaks the input into chunks where the delimiter matches the predicate.
     * The delimiter does not appear in the output. Two adjacent delimiters in the
@@ -3232,6 +3244,29 @@ object Stream extends StreamLowPriority {
       F: Temporal[F]
   ): Stream[F, Unit] =
     Stream.eval(F.monotonic).flatMap(t => fixedRate_(period, t, dampen))
+
+  /** Discrete stream that emits a unit every `d`, with missed period ticks dampened.
+    *
+    * Unlike [[fixedRate]], it doesn't wait for `d` before emitting the first unit.
+    *
+    * @param period duration between emits of the resulting stream
+    */
+  def fixedRateStartImmediately[F[_]](period: FiniteDuration)(implicit
+      F: Temporal[F]
+  ): Stream[F, Unit] =
+    fixedRateStartImmediately(period, true)
+
+  /** Discrete stream that emits a unit every `d`.
+    *
+    * Unlike [[fixedRate]], it doesn't wait for `d` before emitting the first unit.
+    *
+    * @param period duration between emits of the resulting stream
+    * @param dampen true if a single unit should be emitted when multiple periods have passed since last execution, false if a unit for each period should be emitted
+    */
+  def fixedRateStartImmediately[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
+      F: Temporal[F]
+  ): Stream[F, Unit] =
+    Stream.eval(F.monotonic).flatMap(t => Stream.emit(()) ++ fixedRate_(period, t, dampen))
 
   private def fixedRate_[F[_]: Temporal](
       period: FiniteDuration,

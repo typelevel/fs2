@@ -162,7 +162,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.compression.Compression.gunzip$default$1$"
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.ChunkCompanionPlatform.makeArrayBuilder"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend")
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.compression.Compression.gunzip"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSContext#Builder.insecure")
 )
 
 lazy val root = tlCrossRootProject
@@ -301,7 +303,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ),
       ProblemFilters.exclude[IncompatibleResultTypeProblem](
         "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
-      )
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
   .nativeSettings(
@@ -344,7 +347,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.4",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
-      "org.scalatestplus" %% "testng-7-5" % "3.2.12.0" % "test"
+      "org.scalatestplus" %% "testng-7-5" % "3.2.13.0" % "test"
     ),
     tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails

@@ -47,11 +47,13 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, Socket[F]] = {
       def setup: Resource[F, AsynchronousSocketChannel] =
-        Resource.make(Async[F].delay {
-          val ch = AsynchronousSocketChannel.open(channelGroup)
-          options.foreach(opt => ch.setOption(opt.key, opt.value))
-          ch
-        })(ch => Async[F].delay(if (ch.isOpen) ch.close else ()))
+        Resource
+          .make(
+            Async[F].delay(
+              AsynchronousSocketChannel.open(channelGroup)
+            )
+          )(ch => Async[F].delay(if (ch.isOpen) ch.close else ()))
+          .evalTap(ch => Async[F].delay(options.foreach(opt => ch.setOption(opt.key, opt.value))))
 
       def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
         to.resolve[F].flatMap { ip =>
@@ -78,22 +80,25 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = {
 
-      val setup: F[AsynchronousServerSocketChannel] =
-        address.traverse(_.resolve[F]).flatMap { addr =>
-          Async[F].delay {
-            val ch = AsynchronousServerSocketChannel.open(channelGroup)
-            ch.bind(
-              new InetSocketAddress(
-                addr.map(_.toInetAddress).orNull,
-                port.map(_.value).getOrElse(0)
+      val setup: Resource[F, AsynchronousServerSocketChannel] =
+        Resource.eval(address.traverse(_.resolve[F])).flatMap { addr =>
+          Resource
+            .make(
+              Async[F].delay(
+                AsynchronousServerSocketChannel.open(channelGroup)
+              )
+            )(sch => Async[F].delay(if (sch.isOpen) sch.close()))
+            .evalTap(ch =>
+              Async[F].delay(
+                ch.bind(
+                  new InetSocketAddress(
+                    addr.map(_.toInetAddress).orNull,
+                    port.map(_.value).getOrElse(0)
+                  )
+                )
               )
             )
-            ch
-          }
         }
-
-      def cleanup(sch: AsynchronousServerSocketChannel): F[Unit] =
-        Async[F].delay(if (sch.isOpen) sch.close())
 
       def acceptIncoming(
           sch: AsynchronousServerSocketChannel
@@ -134,7 +139,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         }
       }
 
-      Resource.make(setup)(cleanup).map { sch =>
+      setup.map { sch =>
         val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
         val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
         (localAddress, acceptIncoming(sch))
