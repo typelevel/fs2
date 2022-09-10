@@ -220,7 +220,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
             sslEngine.flatMap(TLSEngine[F](_, binding, logger))
           }
         }
-      
+
       def insecure: F[TLSContext[F]] =
         Async[F]
           .blocking {
