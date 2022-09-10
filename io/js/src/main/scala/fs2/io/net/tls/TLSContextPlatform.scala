@@ -43,7 +43,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   }
 
   private[tls] trait BuilderCompanionPlatform {
-    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends UnsealedBuilder[F] {
 
       def fromSecureContext(
           context: SecureContext,

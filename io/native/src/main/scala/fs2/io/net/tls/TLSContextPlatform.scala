@@ -37,7 +37,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   private[tls] trait BuilderCompanionPlatform {
 
     /** Creates a `TLSContext` from an `SSLContext`. */
-    private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]: Async] extends UnsealedBuilder[F] {
       def systemResource: Resource[F, TLSContext[F]] =
         S2nConfig.builder.build.map(fromS2nConfig(_))
 
