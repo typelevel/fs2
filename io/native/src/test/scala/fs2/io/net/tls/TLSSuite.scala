@@ -28,7 +28,7 @@ import cats.effect.IO
 import cats.effect.kernel.Resource
 import scodec.bits.ByteVector
 
-abstract class TLSSuite extends Fs2Suite {
+abstract class TLSSuite extends Fs2IoSuite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
     cert <- Resource.eval {
       readClassResource[IO, TLSSuite]("/cert.pem").compile.to(ByteVector)

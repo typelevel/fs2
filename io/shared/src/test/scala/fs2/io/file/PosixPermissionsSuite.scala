@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-class PosixPermissionsSuite extends Fs2Suite {
+class PosixPermissionsSuite extends Fs2IoSuite {
   test("construction") {
     val cases = Seq(
       "777" -> "rwxrwxrwx",

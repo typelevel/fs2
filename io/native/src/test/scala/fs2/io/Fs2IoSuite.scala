@@ -25,5 +25,5 @@ package io
 import epollcat.unsafe.EpollRuntime
 
 abstract class Fs2IoSuite extends Fs2Suite {
-  override lazy val munitIoRuntime = EpollRuntime.global
+  override def munitIORuntime = EpollRuntime.global
 }
