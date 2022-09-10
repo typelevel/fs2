@@ -27,8 +27,6 @@ import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
-import java.net.ProtocolFamily
-import java.nio.channels.AsynchronousChannelGroup
 import fs2.io.net.tls.TLSContext
 
 private[net] trait NetworkPlatform[F[_]]

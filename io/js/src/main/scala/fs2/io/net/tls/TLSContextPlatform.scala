@@ -143,8 +143,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
       def system: F[TLSContext[F]] =
         Async[F].delay(fromSecureContext(SecureContext.default))
 
+      def systemResource: Resource[F, TLSContext[F]] =
+        Resource.eval(system)
+
       def insecure: F[TLSContext[F]] =
         Async[F].delay(fromSecureContext(SecureContext.default, insecure = true))
+
+      def insecureResource: Resource[F, TLSContext[F]] =
+        Resource.eval(insecure)
     }
   }
 }

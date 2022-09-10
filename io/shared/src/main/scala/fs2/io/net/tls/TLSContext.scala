@@ -69,13 +69,9 @@ object TLSContext extends TLSContextCompanionPlatform {
   trait Builder[F[_]] extends BuilderPlatform[F] {
 
     /** Creates a `TLSContext` from the system default `SSLContext`. */
-    def system: F[TLSContext[F]]
-
-    /** Creates a `TLSContext` which trusts all certificates. */
-    def insecure: F[TLSContext[F]]
-
     def systemResource: Resource[F, TLSContext[F]]
 
+    /** Creates a `TLSContext` which trusts all certificates. */
     def insecureResource: Resource[F, TLSContext[F]]
 
   }

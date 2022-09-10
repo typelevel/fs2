@@ -22,7 +22,6 @@
 package fs2
 package io
 
-import cats._
 import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
@@ -30,9 +29,6 @@ import cats.syntax.all._
 import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
-import java.nio.charset.Charset
-import java.nio.charset.StandardCharsets
-import scala.reflect.ClassTag
 
 private[fs2] trait ioplatform extends iojvmnative {
 

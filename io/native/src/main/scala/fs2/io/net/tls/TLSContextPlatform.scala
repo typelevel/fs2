@@ -24,14 +24,7 @@ package io
 package net
 package tls
 
-import java.io.{FileInputStream, InputStream}
-import cats.Applicative
 import cats.effect.kernel.{Async, Resource}
-import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, SocketAddress}
-
-import java.util.function.BiFunction
-import java.nio.file.Path
 
 private[tls] trait TLSContextPlatform[F[_]]
 
@@ -39,21 +32,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
   private[tls] trait BuilderPlatform[F[_]] {
     def fromS2nConfig(ctx: S2nConfig): TLSContext[F]
-
-    /** Creates a `TLSContext` which trusts all certificates. */
-    def insecure: F[TLSContext[F]]
   }
 
   private[tls] trait BuilderCompanionPlatform {
 
     /** Creates a `TLSContext` from an `SSLContext`. */
     private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
-      def system: F[TLSContext[F]] = ???
-
       def systemResource: Resource[F, TLSContext[F]] =
         S2nConfig.builder.build.map(fromS2nConfig(_))
-
-      def insecure: F[TLSContext[F]] = ???
 
       def insecureResource: Resource[F, TLSContext[F]] =
         S2nConfig.builder.withDisabledX509Verification.build.map(fromS2nConfig(_))
@@ -71,8 +57,10 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] =
+          ): Resource[F, TLSSocket[F]] = {
+            val _ = logger
             S2nConnection(socket, clientMode, cfg, params).flatMap(TLSSocket(socket, _))
+          }
         }
     }
 

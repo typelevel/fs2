@@ -220,7 +220,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
             sslEngine.flatMap(TLSEngine[F](_, binding, logger))
           }
         }
-
+      
       def insecure: F[TLSContext[F]] =
         Async[F]
           .blocking {
@@ -259,8 +259,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           }
           .map(fromSSLContext(_))
 
+      def insecureResource: Resource[F, TLSContext[F]] =
+        Resource.eval(insecure)
+
       def system: F[TLSContext[F]] =
         Async[F].blocking(SSLContext.getDefault).map(fromSSLContext(_))
+
+      def systemResource: Resource[F, TLSContext[F]] =
+        Resource.eval(system)
 
       def fromKeyStoreFile(
           file: Path,

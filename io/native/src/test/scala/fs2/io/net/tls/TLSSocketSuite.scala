@@ -26,7 +26,7 @@ package tls
 
 import scala.concurrent.duration._
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import cats.syntax.all._
 
 import com.comcast.ip4s._
