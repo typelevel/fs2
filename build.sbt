@@ -14,6 +14,12 @@ ThisBuild / crossScalaVersions := Seq("3.1.3", "2.12.16", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowBuildPreamble +=
+  WorkflowStep.Run(
+    List("brew install s2n"),
+    name = Some("Install s2n"),
+    cond = Some("startsWith(matrix.project, 'rootNative')")
+  )
 val isLinux = {
   val osName = Option(System.getProperty("os.name"))
   osName.exists(_.toLowerCase().contains("linux"))
