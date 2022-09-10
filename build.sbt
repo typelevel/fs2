@@ -332,6 +332,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
 lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -344,6 +345,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", scodec, io)
 
 lazy val reactiveStreams = project
