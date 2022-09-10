@@ -180,8 +180,6 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
-
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
   .configs(IntegrationTest)
@@ -196,12 +194,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "com.armanbilge" %%% "cats-effect" % "3.4-519e5ce-SNAPSHOT",
-      "com.armanbilge" %%% "cats-effect-laws" % "3.4-519e5ce-SNAPSHOT" % Test,
-      "com.armanbilge" %%% "cats-effect-testkit" % "3.4-519e5ce-SNAPSHOT" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.3.14-1-5d11fe9",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.14-1-5d11fe9" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14-1-5d11fe9" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-1a82a3d-SNAPSHOT" % Test,
-      "com.armanbilge" %%% "munit-cats-effect" % "2.0-4e051ab-SNAPSHOT" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-9366e44" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0-5e03bfc" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
     tlJdkRelease := Some(8),
@@ -229,7 +227,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-53-f37ec8e-SNAPSHOT"
+    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-83-cfa2ec1"
   )
   .jvmSettings(
     Test / fork := true,
@@ -244,7 +242,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat-net" % "0.0-2f64289-SNAPSHOT" % Test
+      "com.armanbilge" %%% "epollcat" % "0.0-70bf67b" % Test
     ),
     nativeConfig ~= { c =>
       if (isLinux) { // brew-installed s2n
