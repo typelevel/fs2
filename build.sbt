@@ -180,6 +180,10 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
+lazy val commonNativeSettings = Seq(
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap
+)
+
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
   .configs(IntegrationTest)
@@ -206,7 +210,6 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
-  .nativeConfigure(_.disablePlugins(DoctestPlugin))
 
 lazy val coreJVM = core.jvm
   .settings(
@@ -221,6 +224,10 @@ lazy val coreJS = core.js
     jsEnv := new org.scalajs.jsenv.nodejs.NodeJSEnv(),
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+
+lazy val coreNative = core.native
+  .disablePlugins(DoctestPlugin)
+  .settings(commonNativeSettings)
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
@@ -240,6 +247,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
       "com.armanbilge" %%% "epollcat" % "0.0-70bf67b" % Test
