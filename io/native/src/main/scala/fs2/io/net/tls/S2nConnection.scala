@@ -146,9 +146,15 @@ private[tls] object S2nConnection {
             }.productL(F.delay(readTasks.get).flatten)
               .flatMap { case (blocked, readed) =>
                 val total = i + readed
-                if (blocked.toInt == S2N_NOT_BLOCKED) {
+
+                def chunk: F[Option[Chunk[Byte]]] =
+                  F.pure(Some(Chunk.byteVector(ByteVector.fromPtr(buf, total))))
+
+                if (total >= n)
+                  chunk
+                else if (blocked.toInt == S2N_NOT_BLOCKED) {
                   if (total > 0)
-                    F.pure(Some(Chunk.byteVector(ByteVector.fromPtr(buf, total))))
+                    chunk
                   else
                     F.pure(None)
                 } else go(total)
@@ -172,7 +178,7 @@ private[tls] object S2nConnection {
               }.productL(F.delay(writeTasks.get).flatten)
                 .flatMap { case (blocked, wrote) =>
                   val total = i + wrote
-                  go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total == n)
+                  go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
                 }
 
             go(0)
