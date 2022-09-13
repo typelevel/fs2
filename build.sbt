@@ -209,9 +209,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.14-1-5d11fe9",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.14-1-5d11fe9" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14-1-5d11fe9" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.3.14-5-4591364",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.14-5-4591364" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14-5-4591364" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-9366e44" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0-5e03bfc" % Test,
@@ -261,7 +261,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.0-e7dd9a7" % Test
+      "com.armanbilge" %%% "epollcat" % "0.0-ab1026e" % Test
     ),
     nativeConfig ~= { c =>
       if (isLinux) { // brew-installed s2n
