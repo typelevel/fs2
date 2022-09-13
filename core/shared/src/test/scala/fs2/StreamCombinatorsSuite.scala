@@ -268,7 +268,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .map { result =>
         assertEquals(result.size, 1)
         val head = result.head
-        assert(head.toMillis >= (delay.toMillis - 5))
+        assert(clue(head.toMillis) >= clue(delay.toMillis - 5))
       }
   }
 
