@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.2"
+ThisBuild / tlBaseVersion := "3.3"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -209,12 +209,12 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.14-6-d8a0441",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.14-6-d8a0441" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14-6-d8a0441" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.3.14",
+      "org.typelevel" %%% "cats-effect-laws" % "3.3.14" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.3.14" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0-9366e44" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.0-5e03bfc" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
     tlJdkRelease := Some(8),
@@ -245,7 +245,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.armanbilge" %%% "ip4s-core" % "3.1.3-83-cfa2ec1"
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.2.0"
   )
   .jvmSettings(
     Test / fork := true,
@@ -261,7 +261,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.0-ab1026e" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.0" % Test
     ),
     nativeConfig ~= { c =>
       if (isLinux) { // brew-installed s2n
