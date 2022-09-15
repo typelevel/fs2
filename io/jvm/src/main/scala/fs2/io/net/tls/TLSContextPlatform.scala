@@ -100,6 +100,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
   private[tls] trait BuilderPlatform[F[_]] {
     def fromSSLContext(ctx: SSLContext): TLSContext[F]
+    def system: F[TLSContext[F]]
+    def insecure: F[TLSContext[F]]
 
     /** Creates a `TLSContext` from the specified key store file. */
     def fromKeyStoreFile(
@@ -125,7 +127,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
   private[tls] trait BuilderCompanionPlatform {
 
     /** Creates a `TLSContext` from an `SSLContext`. */
-    private[tls] final class AsyncBuilder[F[_]: Async] extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]: Async] extends UnsealedBuilder[F] {
 
       def fromSSLContext(
           ctx: SSLContext
@@ -259,8 +261,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
           }
           .map(fromSSLContext(_))
 
+      def insecureResource: Resource[F, TLSContext[F]] =
+        Resource.eval(insecure)
+
       def system: F[TLSContext[F]] =
         Async[F].blocking(SSLContext.getDefault).map(fromSSLContext(_))
+
+      def systemResource: Resource[F, TLSContext[F]] =
+        Resource.eval(system)
 
       def fromKeyStoreFile(
           file: Path,

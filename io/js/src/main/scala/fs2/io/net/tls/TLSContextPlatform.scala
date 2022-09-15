@@ -38,10 +38,12 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
   private[tls] trait BuilderPlatform[F[_]] {
     def fromSecureContext(context: SecureContext): TLSContext[F]
+    def system: F[TLSContext[F]]
+    def insecure: F[TLSContext[F]]
   }
 
   private[tls] trait BuilderCompanionPlatform {
-    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends UnsealedBuilder[F] {
 
       def fromSecureContext(
           context: SecureContext,
@@ -143,8 +145,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
       def system: F[TLSContext[F]] =
         Async[F].delay(fromSecureContext(SecureContext.default))
 
+      def systemResource: Resource[F, TLSContext[F]] =
+        Resource.eval(system)
+
       def insecure: F[TLSContext[F]] =
         Async[F].delay(fromSecureContext(SecureContext.default, insecure = true))
+
+      def insecureResource: Resource[F, TLSContext[F]] =
+        Resource.eval(insecure)
     }
   }
 }

@@ -31,7 +31,7 @@ import org.scalacheck.Cogen
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
-class PathSuite extends Fs2Suite {
+class PathSuite extends Fs2IoSuite {
 
   implicit val arbitraryPath: Arbitrary[Path] = Arbitrary(for {
     names <- Gen.listOf(Gen.alphaNumStr)

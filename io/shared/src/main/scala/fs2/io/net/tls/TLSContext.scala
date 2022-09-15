@@ -66,14 +66,17 @@ object TLSContext extends TLSContextCompanionPlatform {
 
   private[tls] trait UnsealedTLSContext[F[_]] extends TLSContext[F]
 
-  trait Builder[F[_]] extends BuilderPlatform[F] {
+  sealed trait Builder[F[_]] extends BuilderPlatform[F] {
 
     /** Creates a `TLSContext` from the system default `SSLContext`. */
-    def system: F[TLSContext[F]]
+    def systemResource: Resource[F, TLSContext[F]]
 
     /** Creates a `TLSContext` which trusts all certificates. */
-    def insecure: F[TLSContext[F]]
+    def insecureResource: Resource[F, TLSContext[F]]
+
   }
+
+  private[tls] trait UnsealedBuilder[F[_]] extends Builder[F]
 
   object Builder extends BuilderCompanionPlatform {
     def forAsync[F[_]: Async]: Builder[F] = new AsyncBuilder

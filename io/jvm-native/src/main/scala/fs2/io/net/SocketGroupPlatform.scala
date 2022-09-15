@@ -31,7 +31,6 @@ import java.nio.channels.{
   CompletionHandler
 }
 import java.nio.channels.AsynchronousChannelGroup
-import java.nio.channels.spi.AsynchronousChannelProvider
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Resource}
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
@@ -51,7 +50,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         Resource
           .make(
             Async[F].delay(
-              AsynchronousChannelProvider.provider.openAsynchronousSocketChannel(channelGroup)
+              AsynchronousSocketChannel.open(channelGroup)
             )
           )(ch => Async[F].delay(if (ch.isOpen) ch.close else ()))
           .evalTap(ch => Async[F].delay(options.foreach(opt => ch.setOption(opt.key, opt.value))))
@@ -86,8 +85,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           Resource
             .make(
               Async[F].delay(
-                AsynchronousChannelProvider.provider
-                  .openAsynchronousServerSocketChannel(channelGroup)
+                AsynchronousServerSocketChannel.open(channelGroup)
               )
             )(sch => Async[F].delay(if (sch.isOpen) sch.close()))
             .evalTap(ch =>

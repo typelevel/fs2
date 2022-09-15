@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.2"
+ThisBuild / tlBaseVersion := "3.3"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -14,6 +14,16 @@ ThisBuild / crossScalaVersions := Seq("3.1.3", "2.12.16", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowBuildPreamble +=
+  WorkflowStep.Run(
+    List("brew install s2n"),
+    name = Some("Install s2n"),
+    cond = Some("startsWith(matrix.project, 'rootNative')")
+  )
+val isLinux = {
+  val osName = Option(System.getProperty("os.name"))
+  osName.exists(_.toLowerCase().contains("linux"))
+}
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
@@ -160,7 +170,12 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.ChunkCompanionPlatform.makeArrayBuilder"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.compression.Compression.gunzip"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.TLSContext#Builder.insecure")
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.systemResource"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.insecureResource"
+  )
 )
 
 lazy val root = tlCrossRootProject
@@ -176,7 +191,11 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val core = crossProject(JVMPlatform, JSPlatform)
+lazy val commonNativeSettings = Seq(
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap
+)
+
+lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
@@ -194,9 +213,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.typelevel" %%% "cats-effect-laws" % "3.3.14" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.3.14" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.4" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
-      "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
     tlJdkRelease := Some(8),
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -217,12 +236,16 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val io = crossProject(JVMPlatform, JSPlatform)
+lazy val coreNative = core.native
+  .disablePlugins(DoctestPlugin)
+  .settings(commonNativeSettings)
+
+lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.3",
-    tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
+    tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.2.0"
   )
   .jvmSettings(
     Test / fork := true,
@@ -234,6 +257,24 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .nativeSettings(commonNativeSettings)
+  .nativeSettings(
+    libraryDependencies ++= Seq(
+      "com.armanbilge" %%% "epollcat" % "0.1.0" % Test
+    ),
+    nativeConfig ~= { c =>
+      if (isLinux) { // brew-installed s2n
+        c.withLinkingOptions(c.linkingOptions :+ "-L/home/linuxbrew/.linuxbrew/lib")
+      } else c
+    },
+    Test / envVars ++= {
+      val ldLibPath =
+        if (isLinux)
+          Map("LD_LIBRARY_PATH" -> "/home/linuxbrew/.linuxbrew/lib")
+        else Map.empty
+      Map("S2N_DONT_MLOCK" -> "1") ++ ldLibPath
+    }
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(
@@ -283,25 +324,29 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
+  .nativeSettings(
+    nativeConfig ~= { _.withEmbedResources(true) }
+  )
 
-lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("scodec"))
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.9"
-                                                             else "2.1.0"),
+                                                               "1.11.10"
+                                                             else "2.2.0"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
-lazy val protocols = crossProject(JVMPlatform, JSPlatform)
+lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
@@ -311,6 +356,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", scodec, io)
 
 lazy val reactiveStreams = project
