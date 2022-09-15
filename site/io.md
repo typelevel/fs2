@@ -1,6 +1,6 @@
 # I/O
 
-The `fs2-io` library provides support for performing input and output on the JVM and Node.js. This includes:
+The `fs2-io` library provides support for performing input and output on the JVM, Node.js, and Scala Native. This includes:
 - [Networking](#networking)
   - [TCP](#tcp)
   - [UDP](#udp)
