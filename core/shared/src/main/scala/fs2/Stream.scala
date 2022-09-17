@@ -668,14 +668,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case Some(_) => F.unit
         }
 
-      def go(tl: Pull[F2, O, Unit]): Pull[F2, Nothing, Unit] =
-        Pull.uncons(tl).flatMap {
-          // Note: hd is non-empty, so hd.last.get is safe
-          case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
-          case None           => Pull.eval(sendLatest >> chan.close.void)
-        }
+      def sendPull(hd: Chunk[O]): Pull[F2, Nothing, Unit] =
+        Pull.eval(sendItem(hd.last.get))
 
-      val debouncedSend: Stream[F2, Nothing] = new Stream(go(this.underlying))
+      val debouncedSend: Stream[F2, Nothing] =
+        (Pull.unconsFlatMap[F2, F2, O, Nothing](this.underlying)(sendPull) >>
+          Pull.eval(sendLatest >> chan.close.void)).streamNoScope
 
       chan.stream.concurrently(debouncedSend)
     }
@@ -974,8 +972,15 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * which has performance implications. For maximum performance, `evalMapChunk`
     * is available, however, with caveats.
     */
-  def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
-    flatMap(o => Stream.eval(f(o)))
+  def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] = {
+    def evalOut(o: O): Pull[F2, O2, Unit] = Pull.eval(f(o)).flatMap(Pull.output1)
+
+    Pull.flatMapOutput[F, F2, O, O2](underlying, evalOut).streamNoScope
+//    def goChunk(ch: Chunk[O], ix: Int, s: Int): Pull[F2, O2, Unit] =
+//      if (ix < s) evalOut(ch(ix)) >> goChunk(ch, ix + 1, s) else Pull.done
+//
+//    Pull.unconsFlatMap[F, F2, O, O2](underlying)(ch => goChunk(ch, 0, ch.size)).streamNoScope
+  }
 
   /** Like `evalMap`, but operates on chunks for performance. This means this operator
     * is not lazy on every single element, rather on the chunks.
@@ -993,8 +998,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] =
-    chunks.flatMap(o => Stream.evalUnChunk(o.traverse(f)))
+  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] = {
+    def onChunk(hd: Chunk[O]) = Pull.eval(hd.traverse(f)).flatMap(Pull.output(_))
+    Pull.unconsFlatMap[F, F2, O, O2](underlying)(onChunk).streamNoScope
+  }
 
   /** Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
     *
@@ -1283,8 +1290,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] =
-    flatMap(o => Stream.exec(f(o)))
+  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] = {
+    def goChunk(ch: Chunk[O], ix: Int, s: Int): Pull[F2, Nothing, Unit] =
+      if (ix >= s) Pull.done else Pull.eval(f(ch(ix))) >> goChunk(ch, ix + 1, s)
+
+    Pull.unconsFlatMap[F, F2, O, Nothing](underlying)(ch => goChunk(ch, 0, ch.size)).streamNoScope
+  }
+
+  /** Like `foreach` but performs operations discards the result of evaluation,
+    * resulting in a stream with no elements.
+    */
+  def foreachChunk[F2[x] >: F[x]: Applicative](f: O => F2[Unit]): Stream[F2, Nothing] = {
+    def onChunk(ch: Chunk[O]): Pull[F2, Nothing, Unit] = Pull.eval(ch.traverse_(f))
+    Pull.unconsFlatMap[F, F2, O, Nothing](underlying)(onChunk).streamNoScope
+  }
 
   /** Partitions the input into a stream of chunks according to a discriminator function.
     *
@@ -1706,7 +1725,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * This method preserves the Chunking structure of `this` stream.
     */
   def intersperse[O2 >: O](separator: O2): Stream[F, O2] = {
-    def doChunk(hd: Chunk[O], isFirst: Boolean): Chunk[O2] = {
+    def doChunk(hd: Chunk[O], isFirst: Boolean): Pull[F, O2, Unit] = {
       val bldr = Vector.newBuilder[O2]
       bldr.sizeHint(hd.size * 2 + (if (isFirst) 1 else 0))
       val iter = hd.iterator
@@ -1716,17 +1735,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         bldr += separator
         bldr += o
       }
-      Chunk.vector(bldr.result())
+      Pull.output(Chunk.vector(bldr.result()))
     }
-    def go(str: Stream[F, O]): Pull[F, O2, Unit] =
-      str.pull.uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output(doChunk(hd, false)) >> go(tl)
+
+    Pull
+      .uncons(underlying)
+      .flatMap {
+        case None => Pull.done
+        case Some((hd, tl)) =>
+          doChunk(hd, true) >> Pull.unconsFlatMap[F, F, O, O2](tl)(doChunk(_, false))
       }
-    this.pull.uncons.flatMap {
-      case None           => Pull.done
-      case Some((hd, tl)) => Pull.output(doChunk(hd, true)) >> go(tl)
-    }.stream
+      .stream
   }
 
   /** Returns the last element of this stream, if non-empty.
@@ -1920,19 +1939,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       // We need to use `attempt` because `interruption` may already be completed.
       val signalInterruption: F2[Unit] = interrupt.complete(()).void
 
-      def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, Nothing, Unit] =
-        Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
-          case Some((hd, tl)) =>
-            val send = resultChan.send(Stream.chunk(hd).onFinalize(guard.release))
-            Pull.eval(send) >> go(tl, guard)
-          case None => Pull.done
-        }
-
       def runStream(s: Stream[F2, O2], whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
         // guarantee we process only single chunk at any given time from any given side.
         Semaphore(1).flatMap { guard =>
-          val str = watchInterrupted(go(s, guard).stream)
-          str.compile.drain.attempt.flatMap {
+          def pushChunk(hd: Chunk[O2]): F2[Unit] =
+            resultChan.send(Stream.chunk(hd).onFinalize(guard.release)) >> guard.acquire
+
+          val pusher: Pull[F2, Nothing, Unit] =
+            Pull.eval(guard.acquire) >>
+              Pull.unconsFlatMap[F2, F2, O2, Nothing](s.underlying)(hd => Pull.eval(pushChunk(hd)))
+
+          watchInterrupted(pusher.stream).compile.drain.attempt.flatMap {
             // signal completion of our side before we will signal interruption,
             // to make sure our result is always available to others
             case r @ Left(_)  => whenDone.complete(r) >> signalInterruption
