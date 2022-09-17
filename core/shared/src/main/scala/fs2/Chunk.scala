@@ -1144,6 +1144,19 @@ object Chunk
       chunks.foldLeft(empty[O])(_ :+ _)
   }
 
+  class Interspersed[O](base: Chunk[O], sep: O, isFirst: Boolean) extends Chunk[O] {
+    override val size = (2 * base.size) - (if (isFirst) 1 else 0)
+
+    override def apply(i: Int): O = {
+      val isEven: Boolean = (i & 1) == 0
+      if ((isFirst == isEven))  base(i >> 1) else sep
+    }
+
+    override def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = ???
+
+    override protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = ???    
+  }
+
   def newBuilder[O]: Collector.Builder[O, Chunk[O]] =
     new Collector.Builder[O, Chunk[O]] {
       private[this] var acc = Chunk.empty[O]
