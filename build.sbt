@@ -261,7 +261,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.0" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
     ),
     nativeConfig ~= { c =>
       if (isLinux) { // brew-installed s2n
