@@ -41,7 +41,12 @@ object text {
     private val utf8Charset = Charset.forName("UTF-8")
     private[this] val utf8BomSeq: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
 
-    /** Converts UTF-8 encoded byte stream to a stream of `String`. */
+    /** Converts UTF-8 encoded byte stream to a stream of `String`.
+      *
+      * Note that the output stream is ''not'' a singleton stream but rather a stream
+      * of strings where each string is the result of UTF8 decoding a chunk of the
+      * underlying byte stream.
+      */
     def decode[F[_]]: Pipe[F, Byte, String] =
       _.chunks.through(decodeC)
 
