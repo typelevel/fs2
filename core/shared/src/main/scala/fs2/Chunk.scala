@@ -1159,6 +1159,15 @@ object Chunk
       override def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
       override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
       override def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
+      override def flatten[A](ffa: Chunk[Chunk[A]]): Chunk[A] =
+        if (ffa.isEmpty) Chunk.empty
+        else if (ffa.size == 1) ffa(0) // short-circuit and simply return the first chunk
+        else {
+          var acc = Chunk.Queue.empty[A]
+          ffa.foreach(x => acc = acc :+ x)
+          acc
+        }
+
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
         // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
         val buf = makeArrayBuilder[Any]
