@@ -32,7 +32,6 @@ package object dgram {
 
   @js.native
   @JSImport("dgram", "createSocket")
-  @nowarn
   private[io] def createSocket(`type`: String): Socket =
     js.native
 
@@ -41,7 +40,6 @@ package object dgram {
 package dgram {
 
   @js.native
-  @nowarn
   private[io] trait Socket extends EventEmitter {
 
     def address(): AddressInfo = js.native
@@ -92,6 +90,7 @@ package dgram {
     def port: Int = js.native
   }
 
+  @nowarn
   private[io] trait BindOptions extends js.Object {
     var port: js.UndefOr[Int] = js.undefined
     var address: js.UndefOr[String] = js.undefined

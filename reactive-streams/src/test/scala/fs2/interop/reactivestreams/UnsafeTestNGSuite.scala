@@ -29,6 +29,9 @@ import cats.effect.unsafe.implicits.global
 import org.scalatestplus.testng._
 import org.testng.annotations.AfterClass
 
+import scala.annotation.nowarn
+
+@nowarn
 trait UnsafeTestNGSuite extends TestNGSuiteLike {
 
   protected var dispatcher: Dispatcher[IO] = _

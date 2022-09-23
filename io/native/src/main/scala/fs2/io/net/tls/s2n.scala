@@ -22,11 +22,9 @@
 package fs2.io.net.tls
 
 import scala.scalanative.unsafe._
-import scala.annotation.nowarn
 
 @extern
 @link("s2n")
-@nowarn
 private[tls] object s2n {
 
   final val S2N_SUCCESS = 0

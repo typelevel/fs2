@@ -26,11 +26,9 @@ import cats.effect.kernel.Sync
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 
 @js.native
-@nowarn
 private[io] trait EventEmitter extends js.Object {
 
   protected[io] def on[E](eventName: String, listener: js.Function1[E, Unit]): this.type = js.native
