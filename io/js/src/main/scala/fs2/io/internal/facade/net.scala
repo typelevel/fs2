@@ -30,7 +30,6 @@ import events.EventEmitter
 package object net {
   @js.native
   @JSImport("net", "createServer")
-  @nowarn
   private[io] def createServer(
       options: ServerOptions,
       connectionListener: js.Function1[Socket, Unit]
@@ -41,7 +40,6 @@ package object net {
 package net {
 
   @js.native
-  @nowarn
   private[io] trait Server extends EventEmitter {
 
     def address(): ServerAddress = js.native
@@ -64,6 +62,7 @@ package net {
     def port: Int = js.native
   }
 
+  @nowarn
   private[io] trait ServerOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
@@ -71,10 +70,12 @@ package net {
     var pauseOnConnect: js.UndefOr[Boolean] = js.undefined
   }
 
+  @nowarn
   private[io] trait ListenOptions extends js.Object {
     var path: js.UndefOr[String] = js.undefined
   }
 
+  @nowarn
   private[io] trait SocketOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
@@ -83,7 +84,6 @@ package net {
 
   @JSImport("net", "Socket")
   @js.native
-  @nowarn
   private[io] class Socket extends fs2.io.Duplex {
 
     def this(options: SocketOptions) = this()

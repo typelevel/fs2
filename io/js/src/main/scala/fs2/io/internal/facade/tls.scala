@@ -35,13 +35,11 @@ package object tls {
 
   @js.native
   @JSImport("tls", "connect")
-  @nowarn
   private[io] def connect(options: TLSConnectOptions): TLSSocket =
     js.native
 
   @js.native
   @JSImport("tls", "createSecureContext")
-  @nowarn
   private[io] def createSecureContext(
       options: js.UndefOr[SecureContextOptions] = js.undefined
   ): SecureContext =
@@ -50,6 +48,7 @@ package object tls {
 
 package tls {
 
+  @nowarn
   private[io] trait SecureContextOptions extends js.Object {
 
     var ca: js.UndefOr[js.Array[String | Uint8Array]] = js.undefined
@@ -94,6 +93,7 @@ package tls {
 
   }
 
+  @nowarn
   private[io] trait Key extends js.Object {
 
     val pem: String | Uint8Array
@@ -102,6 +102,7 @@ package tls {
 
   }
 
+  @nowarn
   private[io] trait Pfx extends js.Object {
 
     val buf: String | Uint8Array
@@ -110,6 +111,7 @@ package tls {
 
   }
 
+  @nowarn
   private[io] trait TLSConnectOptions extends js.Object {
 
     var secureContext: js.UndefOr[SecureContext] = js.undefined
@@ -142,6 +144,7 @@ package tls {
 
   }
 
+  @nowarn
   private[io] trait PSKCallbackNegotation extends js.Object {
 
     var psk: js.UndefOr[Uint8Array] = js.undefined
@@ -157,6 +160,7 @@ package tls {
 
   }
 
+  @nowarn
   private[io] trait TLSSocketOptions extends js.Object {
 
     var secureContext: js.UndefOr[SecureContext] = js.undefined

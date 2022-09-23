@@ -38,13 +38,11 @@ package object fs {
 
   @js.native
   @JSImport("fs", "createReadStream")
-  @nowarn
   private[io] def createReadStream(path: String, options: ReadStreamOptions): fs2.io.Readable =
     js.native
 
   @js.native
   @JSImport("fs", "createWriteStream")
-  @nowarn
   private[io] def createWriteStream(path: String, options: WriteStreamOptions): fs2.io.Writable =
     js.native
 
@@ -52,6 +50,7 @@ package object fs {
 
 package fs {
 
+  @nowarn
   private[io] trait ReadStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
@@ -64,6 +63,7 @@ package fs {
 
   }
 
+  @nowarn
   private[io] trait WriteStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
@@ -143,6 +143,7 @@ package fs {
 
   }
 
+  @nowarn
   private[io] trait MkdirOptions extends js.Object {
 
     var recursive: js.UndefOr[Boolean] = js.undefined
@@ -151,6 +152,7 @@ package fs {
 
   }
 
+  @nowarn
   private[io] trait RmOptions extends js.Object {
 
     var force: js.UndefOr[Boolean] = js.undefined
@@ -201,7 +203,6 @@ package fs {
   }
 
   @js.native
-  @nowarn
   private[io] trait FileHandle extends js.Object {
 
     def datasync(): js.Promise[Unit] = js.native
