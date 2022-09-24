@@ -149,8 +149,11 @@ class TextSuite extends Fs2Suite {
       }
       property("spanning chunks") {
         forAll(genStringNoBom) { (s: String) =>
-          val c = bom ++ utf8Bytes(s)
-          assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8.decode).compile.string, s)
+          forAll(Gen.chooseNum(0, s.length + bom.size, 0, 1, 2, 3, 4)) { splitIndex =>
+            val (c1, c2) = (bom ++ utf8Bytes(s)).splitAt(splitIndex)
+            assertEquals(Stream(c1, c2).unchunks.through(text.utf8.decode).compile.string, s)
+          }
+
         }
       }
       test("does not force buffering") {
