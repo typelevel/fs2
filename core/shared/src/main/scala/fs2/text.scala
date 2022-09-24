@@ -171,8 +171,9 @@ object text {
                 if (newBuffer.startsWith(utf8BomSeq)) newBuffer.drop(3)
                 else newBuffer
               doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
-            } else
+            } else if (newBuffer.startsWith(utf8BomSeq.take(newBuffer.size)))
               processByteOrderMark(newBuffer, tl)
+            else doPull(Chunk.empty, Stream.emits(newBuffer.chunks) ++ tl)
           case None =>
             if (buffer ne null)
               doPull(Chunk.empty, Stream.emits(buffer.chunks))
