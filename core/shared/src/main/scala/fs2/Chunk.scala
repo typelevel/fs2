@@ -550,6 +550,31 @@ object Chunk
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
   }
 
+  def constant[A](value: A, size: Int): Chunk[A] =
+    if (size <= 0) empty
+    else if (size == 1) singleton(value)
+    else new Constant(value, size)
+
+  final class Constant[A](value: A, override val size: Int) extends Chunk[A] {
+
+    def apply(i: Int): A =
+      if (0 <= i && i < size) value else throw new IndexOutOfBoundsException()
+
+    def copyToArray[O2 >: A](xs: Array[O2], start: Int): Unit = {
+
+      @tailrec
+      def go(ix: Int): Unit =
+        if (ix < size) {
+          xs(start + ix) = value
+          go(ix + 1)
+        }
+      go(0)
+    }
+
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) =
+      constant(value, n) -> constant(value, size - n)
+  }
+
   /** Creates a chunk backed by a vector. */
   def vector[O](v: Vector[O]): Chunk[O] = indexedSeq(v)
 
