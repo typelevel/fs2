@@ -149,9 +149,22 @@ class TextSuite extends Fs2Suite {
       }
       property("spanning chunks") {
         forAll(genStringNoBom) { (s: String) =>
-          val c = bom ++ utf8Bytes(s)
-          assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8.decode).compile.string, s)
+          forAll(Gen.chooseNum(0, s.length + bom.size, 0, 1, 2, 3, 4)) { splitIndex =>
+            val (c1, c2) = (bom ++ utf8Bytes(s)).splitAt(splitIndex)
+            assertEquals(Stream(c1, c2).unchunks.through(text.utf8.decode).compile.string, s)
+          }
+
         }
+      }
+      test("does not force buffering") {
+        val s1 = Stream(97, 98, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s1.through(text.utf8.decode).chunks.compile.count, 3L)
+
+        val s2 = Stream(0xef, 98, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s2.through(text.utf8.decode).chunks.compile.count, 2L)
+
+        val s3 = Stream(0xef, 0xbb, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s3.through(text.utf8.decode).chunks.compile.count, 1L)
       }
     }
 
