@@ -17,7 +17,7 @@ ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble +=
   WorkflowStep.Run(
-    List("brew install s2n"),
+    List("/home/linuxbrew/.linuxbrew/bin/brew install s2n"),
     name = Some("Install s2n"),
     cond = Some("startsWith(matrix.project, 'rootNative')")
   )
