@@ -159,7 +159,8 @@ object Channel {
         def send(a: A): F[Either[Channel.Closed, Unit]] =
           isClosed.ifM(
             Channel.Closed.asLeft[Unit].pure[F],
-            (leasesR.update(_ + 1) *> q.offer(a)).guarantee(leasesR.update(_ - 1)).map(Right(_)))
+            (leasesR.update(_ + 1) *> q.offer(a)).guarantee(leasesR.update(_ - 1)).map(Right(_))
+          )
 
         def trySend(a: A): F[Either[Channel.Closed, Boolean]] =
           isClosed.ifM(Channel.Closed.asLeft[Boolean].pure[F], q.tryOffer(a).map(Right(_)))
@@ -168,7 +169,7 @@ object Channel {
           val takeN: F[Chunk[A]] =
             q.tryTakeN(None).flatMap {
               case Nil =>
-                val fallback = leasesDrained flatMap { b =>
+                val fallback = leasesDrained.flatMap { b =>
                   if (b) {
                     MonadCancel[F].uncancelable { poll =>
                       poll(Spawn[F].racePair(q.take, closedR.get)).flatMap {
