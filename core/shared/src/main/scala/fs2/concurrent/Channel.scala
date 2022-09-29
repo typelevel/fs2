@@ -136,7 +136,10 @@ object Channel {
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] =
-          _.evalMapChunk(send(_)).onComplete(Stream.exec(close.void)).drain
+          _.evalMapChunk(send(_))
+            .takeWhile(_.isRight)
+            .onComplete(Stream.exec(close.void))
+            .drain
 
         // doesn't interrupt taking in progress
         def close: F[Either[Channel.Closed, Unit]] =

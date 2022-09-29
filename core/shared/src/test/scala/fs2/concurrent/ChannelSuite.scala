@@ -168,4 +168,20 @@ class ChannelSuite extends Fs2Suite {
 
     TestControl.executeEmbed(test)
   }
+
+  test("eagerly close sendAll upstream") {
+    for {
+      countR <- IO.ref(0)
+      chan <- Channel.unbounded[IO, Unit]
+
+      incrementer = Stream.eval(countR.update(_ + 1)).repeat.take(5)
+      upstream = incrementer ++ Stream.eval(chan.close).drain ++ incrementer
+
+      results <- chan.stream.concurrently(upstream.through(chan.sendAll)).compile.toList
+
+      _ <- IO(assert(results.length == 5))
+      count <- countR.get
+      _ <- IO(assert(count == 6)) // we have to overrun the closure to detect it
+    } yield ()
+  }
 }
