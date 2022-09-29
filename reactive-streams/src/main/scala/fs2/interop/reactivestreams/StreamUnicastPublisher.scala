@@ -40,6 +40,10 @@ final class StreamUnicastPublisher[F[_]: Async, A] private (
     startDispatcher: Dispatcher[F],
     requestDispatcher: Dispatcher[F]
 ) extends Publisher[A] {
+
+  @deprecated("Use StreamUnicastPublisher.apply", "3.4.0")
+  def this(stream: Stream[F, A], dispatcher: Dispatcher[F]) = this(stream, dispatcher, dispatcher)
+
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     startDispatcher.unsafeRunAndForget {
