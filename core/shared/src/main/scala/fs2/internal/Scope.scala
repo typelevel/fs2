@@ -189,7 +189,7 @@ private[fs2] final class Scope[F[_]] private (
           acquire(poll).redeemWith(
             t => F.pure(Left(t)),
             r => {
-              val finalizer = (ec: Resource.ExitCase) => release(r, ec)
+              val finalizer = (ec: Resource.ExitCase) => F.uncancelable(_ => release(r, ec))
               resource.acquired(finalizer).flatMap { result =>
                 if (result.exists(identity)) {
                   register(resource).flatMap {

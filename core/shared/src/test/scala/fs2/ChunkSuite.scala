@@ -25,12 +25,13 @@ import cats.Eq
 import cats.kernel.CommutativeMonoid
 import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
-import org.scalacheck.{Arbitrary, Cogen, Gen}
+import org.scalacheck.{Arbitrary, Cogen, Gen, Test}
 import org.scalacheck.Prop.forAll
+
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
-  override def scalaCheckTestParameters =
+  override def scalaCheckTestParameters: Test.Parameters =
     super.scalaCheckTestParameters
       .withMinSuccessfulTests(if (isJVM) 100 else 25)
       .withWorkers(1)
@@ -106,7 +107,7 @@ class ChunkSuite extends Fs2Suite {
           val arr = new Array[A](c.size * 2)
           c.copyToArray(arr, 0)
           c.copyToArray(arr, c.size)
-          assertEquals(arr.toVector, (c.toVector ++ c.toVector))
+          assertEquals(arr.toVector, c.toVector ++ c.toVector)
         }
       }
       property("concat") {
@@ -114,7 +115,7 @@ class ChunkSuite extends Fs2Suite {
           val result = Chunk
             .concat(List(Chunk.empty, c1, Chunk.empty, c2))
             .toVector
-          assertEquals(result, (c1.toVector ++ c2.toVector))
+          assertEquals(result, c1.toVector ++ c2.toVector)
         }
       }
       test("concat empty") {
@@ -123,7 +124,7 @@ class ChunkSuite extends Fs2Suite {
       property("scanLeft") {
         forAll { (c: Chunk[A]) =>
           def step(acc: List[A], item: A) = acc :+ item
-          assertEquals(c.scanLeft(List[A]())(step).toList, (c.toList.scanLeft(List[A]())(step)))
+          assertEquals(c.scanLeft(List[A]())(step).toList, c.toList.scanLeft(List[A]())(step))
         }
       }
       property("scanLeftCarry") {
@@ -136,7 +137,7 @@ class ChunkSuite extends Fs2Suite {
         }
       }
 
-      if (implicitly[ClassTag[A]] == ClassTag.Byte)
+      if (implicitly[ClassTag[A]] == ClassTag.Byte) {
         property("toByteBuffer.byte") {
           forAll { (c: Chunk[A]) =>
             implicit val ev: A =:= Byte = null
@@ -146,6 +147,14 @@ class ChunkSuite extends Fs2Suite {
             assertEquals[Any, Any](arr.toVector, c.toArray.toVector)
           }
         }
+
+        property("toByteVector") {
+          forAll { (c: Chunk[A]) =>
+            implicit val ev: A =:= Byte = null
+            assertEquals[Any, Any](c.toByteVector.toArray.toVector, c.toArray.toVector)
+          }
+        }
+      }
 
       checkAll(s"Eq[Chunk[$of]]", EqTests[Chunk[A]].eqv)
       checkAll("Monad[Chunk]", MonadTests[Chunk].monad[A, A, A])
@@ -210,6 +219,17 @@ class ChunkSuite extends Fs2Suite {
   test("ArraySlice toArray - regression #1745") {
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Any]
     Chunk.ArraySlice(Array[Any](0)).asInstanceOf[Chunk[Int]].toArray[Int]
+  }
+
+  test("ArraySlice toByteVector") {
+    Chunk.ArraySlice(Array[Any](0.toByte)).asInstanceOf[Chunk[Byte]].toByteVector
+  }
+
+  test("ArraySlice does not copy when chunk is already an ArraySlice instance") {
+    val chunk: Chunk[Int] = Chunk.ArraySlice(Array(0))
+    assert(chunk eq chunk.toArraySlice)
+    val chunk2: Chunk[Any] = Chunk.ArraySlice(Array(new Object))
+    assert(chunk2 eq chunk2.toArraySlice)
   }
 
   test("compactUntagged - regression #2679") {

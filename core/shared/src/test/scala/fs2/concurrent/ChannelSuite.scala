@@ -24,6 +24,7 @@ package concurrent
 
 import cats.syntax.all._
 import cats.effect.IO
+import cats.effect.testkit.TestControl
 import scala.concurrent.duration._
 
 import org.scalacheck.effect.PropF.forAllF
@@ -94,6 +95,19 @@ class ChannelSuite extends Fs2Suite {
     p.assertEquals(v)
   }
 
+  test("trySend does not block") {
+    val v = Vector(1, 2, 3, 4)
+    val capacity = 3
+    val p = for {
+      chan <- Channel.bounded[IO, Int](capacity)
+      _ <- v.traverse(chan.trySend)
+      _ <- chan.close
+      res <- chan.stream.chunks.take(1).compile.lastOrError
+    } yield res.toVector
+
+    p.assertEquals(v.take(capacity))
+  }
+
   test("Timely closure") {
     val v = Vector(1, 2, 3)
     val p = for {
@@ -119,4 +133,39 @@ class ChannelSuite extends Fs2Suite {
     p.assertEquals(true)
   }
 
+  test("synchronous respects fifo") {
+    val l = for {
+      chan <- Channel.synchronous[IO, Int]
+      _ <- (0 until 5).toList.traverse_ { i =>
+        val f = for {
+          _ <- IO.sleep(i.second)
+          _ <- chan.send(i)
+          _ <- if (i == 4) chan.close.void else IO.unit
+        } yield ()
+        f.start
+      }
+      result <- IO.sleep(5.seconds) *> chan.stream.compile.toList
+    } yield result
+
+    TestControl.executeEmbed(l).assertEquals((0 until 5).toList)
+  }
+
+  test("complete all blocked sends after closure") {
+    val test = for {
+      chan <- Channel.bounded[IO, Int](2)
+
+      fiber <- 0.until(5).toList.parTraverse(chan.send(_)).start
+      _ <- IO.sleep(1.second)
+      _ <- chan.close
+
+      results <- chan.stream.compile.toList
+      _ <- IO(assert(results.length == 5))
+      _ <- IO(assert(0.until(5).forall(results.contains(_))))
+
+      sends <- fiber.joinWithNever
+      _ <- IO(assert(sends.forall(_ == Right(()))))
+    } yield ()
+
+    TestControl.executeEmbed(test)
+  }
 }

@@ -28,8 +28,9 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.nodeNetMod
-import fs2.internal.jsdeps.node.tlsMod
+import fs2.io.internal.facade
+
+import scala.scalajs.js
 
 private[tls] trait TLSContextPlatform[F[_]]
 
@@ -37,12 +38,17 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
 
   private[tls] trait BuilderPlatform[F[_]] {
     def fromSecureContext(context: SecureContext): TLSContext[F]
+    def system: F[TLSContext[F]]
+    def insecure: F[TLSContext[F]]
   }
 
   private[tls] trait BuilderCompanionPlatform {
-    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends Builder[F] {
+    private[tls] final class AsyncBuilder[F[_]](implicit F: Async[F]) extends UnsealedBuilder[F] {
 
-      def fromSecureContext(context: SecureContext): TLSContext[F] =
+      def fromSecureContext(
+          context: SecureContext,
+          insecure: Boolean
+      ): TLSContext[F] =
         new UnsealedTLSContext[F] {
 
           override def clientBuilder(socket: Socket[F]): SocketBuilder[F, TLSSocket] =
@@ -58,33 +64,95 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] = Dispatcher[F]
             .flatMap { dispatcher =>
-              import SecureContext.ops
-
               if (clientMode) {
-                val options = params
-                  .toConnectionOptions(dispatcher)
-                  .setSecureContext(context.toJS)
-                  .setEnableTrace(logger != TLSLogger.Disabled)
-                TLSSocket.forAsync(
-                  socket,
-                  sock => tlsMod.connect(options.setSocket(sock.asInstanceOf[nodeNetMod.Socket]))
-                )
+                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
+                  TLSSocket
+                    .forAsync(
+                      socket,
+                      sock => {
+                        val options = params.toTLSConnectOptions(dispatcher)
+                        options.secureContext = context
+                        if (insecure)
+                          options.rejectUnauthorized = false
+                        options.enableTrace = logger != TLSLogger.Disabled
+                        options.socket = sock
+                        val tlsSock = facade.tls.connect(options)
+                        tlsSock.once(
+                          "secureConnect",
+                          () => dispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
+                        )
+                        tlsSock.once[js.Error](
+                          "error",
+                          e =>
+                            dispatcher.unsafeRunAndForget(
+                              handshake.complete(Left(new js.JavaScriptException(e)))
+                            )
+                        )
+                        tlsSock
+                      },
+                      dispatcher
+                    )
+                    .evalTap(_ => handshake.get.rethrow)
+                }
               } else {
-                val options = params
-                  .toTLSSocketOptions(dispatcher)
-                  .setSecureContext(context.toJS)
-                  .setEnableTrace(logger != TLSLogger.Disabled)
-                  .setIsServer(true)
-                TLSSocket.forAsync(
-                  socket,
-                  sock => new tlsMod.TLSSocket(sock.asInstanceOf[nodeNetMod.Socket], options)
-                )
+                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
+                  TLSSocket
+                    .forAsync(
+                      socket,
+                      sock => {
+                        val options = params.toTLSSocketOptions(dispatcher)
+                        options.secureContext = context
+                        if (insecure)
+                          options.rejectUnauthorized = false
+                        options.enableTrace = logger != TLSLogger.Disabled
+                        options.isServer = true
+                        val tlsSock = new facade.tls.TLSSocket(sock, options)
+                        tlsSock.once(
+                          "secure",
+                          { () =>
+                            val requestCert = options.requestCert.getOrElse(false)
+                            val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
+                            val result =
+                              if (requestCert && rejectUnauthorized)
+                                Option(tlsSock.ssl.verifyError())
+                                  .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
+                                  .toLeft(())
+                              else Either.unit
+                            dispatcher.unsafeRunAndForget(verifyError.complete(result))
+                          }
+                        )
+                        tlsSock.once[js.Error](
+                          "error",
+                          e =>
+                            dispatcher.unsafeRunAndForget(
+                              verifyError.complete(Left(new js.JavaScriptException(e)))
+                            )
+                        )
+                        tlsSock
+                      },
+                      dispatcher
+                    )
+                    .evalTap(_ => verifyError.get.rethrow)
+                }
               }
             }
             .adaptError { case IOException(ex) => ex }
         }
 
-      def system: F[TLSContext[F]] = Async[F].delay(fromSecureContext(SecureContext.default))
+      def fromSecureContext(context: SecureContext): TLSContext[F] =
+        fromSecureContext(context, insecure = false)
+
+      def system: F[TLSContext[F]] =
+        Async[F].delay(fromSecureContext(SecureContext.default))
+
+      def systemResource: Resource[F, TLSContext[F]] =
+        Resource.eval(system)
+
+      def insecure: F[TLSContext[F]] =
+        Async[F].delay(fromSecureContext(SecureContext.default, insecure = true))
+
+      def insecureResource: Resource[F, TLSContext[F]] =
+        Resource.eval(insecure)
     }
   }
 }

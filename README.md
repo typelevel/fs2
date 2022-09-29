@@ -11,7 +11,7 @@ FS2 is a library for purely functional, effectful, and polymorphic stream proces
 Its design goals are compositionality, expressiveness, resource safety, and speed.
 The name is a modified acronym for **F**unctional **S**treams for **Scala** (FSS, or FS2).
 
-FS2 is available for Scala 2.12, Scala 2.13, Scala 3, and [Scala.js](http://www.scala-js.org/).
+FS2 is available for Scala 2.12, Scala 2.13, Scala 3, and [Scala.js](http://www.scala-js.org/) and [Scala Native](https://scala-native.org/).
 FS2 is built upon two major functional libraries for Scala, [Cats](https://typelevel.org/cats/), and [Cats-Effect](https://typelevel.org/cats-effect/).
 Regardless of those dependencies, FS2 core types (streams and pulls) are polymorphic in the effect type (as long as it is compatible with `cats-effect` typeclasses),
 and thus FS2 can be used with other effect libraries, such as [Monix](https://monix.io/).
@@ -23,11 +23,11 @@ Quick links:
 * [Microsite][microsite]
 * [About the library](#about)
 * [How to get latest version](https://fs2.io/#/getstarted/install)
-* API docs: [fs2-core][core-api], [fs2-io][io-api], [fs2-reactive-streams][rx-api]
+* [API docs][api]
 * [Docs and getting help](#docs)
 
 [microsite]: http://fs2.io
-[core-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-core_2.13/3.1.0/fs2-core_2.13-3.1.0-javadoc.jar/!/fs2/index.html
+[api]: https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/latest/fs2/index.html
 [io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.13/3.1.0/fs2-io_2.13-3.1.0-javadoc.jar/!/fs2/io/index.html
 [rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.13/3.1.0/fs2-reactive-streams_2.13-3.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
 

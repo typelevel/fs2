@@ -328,12 +328,12 @@ object Pull extends PullLowPriority {
   /** A pull that performs no effects, emits no outputs, and
     * always terminates successfully with a unit result.
     */
-  val done: Pull[Pure, INothing, Unit] = unit
+  val done: Pull[Nothing, Nothing, Unit] = unit
 
   /** Creates an pull that performs no effects, emits no outputs,
     * and terminates successfully with the supplied value as its result.
     */
-  def pure[F[_], R](r: R): Pull[F, INothing, R] = Succeeded(r)
+  def pure[F[_], R](r: R): Pull[F, Nothing, R] = Succeeded(r)
 
   /** Lifts a throwable error into an atomic pull that emits no outputs and
     * fails with the given error, without any result.
@@ -342,16 +342,16 @@ object Pull extends PullLowPriority {
     * or `raiseError[Fallible]`).
     */
   @nowarn("msg=never used")
-  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
+  def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, Nothing, Nothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
     * outputs, and terminates with the result of the effect.
     * If the `fr` effect fails with an error, the new pull fails with that error.
     */
-  def eval[F[_], R](fr: F[R]): Pull[F, INothing, R] = Eval[F, R](fr)
+  def eval[F[_], R](fr: F[R]): Pull[F, Nothing, R] = Eval[F, R](fr)
 
   /** Creates a pull that waits for the duration `d` */
-  def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull[F, INothing, Unit] =
+  def sleep[F[_]](d: FiniteDuration)(implicit t: Temporal[F]): Pull[F, Nothing, Unit] =
     Pull.eval(t.sleep(d))
 
   /** Lifts the given output value `O` into a pull that performs no
@@ -361,37 +361,37 @@ object Pull extends PullLowPriority {
     * _Note_: using singleton chunks is not efficient. If possible,
     * use the chunk-based `output` method instead.
     */
-  def output1[F[x] >: Pure[x], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
+  def output1[F[_], O](o: O): Pull[F, O, Unit] = Output(Chunk.singleton(o))
 
   /** Lifts the given optional value `O` into a pull that performs no
     * effects, emits the content of that option, and always
     * terminates successfully with a unit result.
     */
-  def outputOption1[F[x] >: Pure[x], O](opt: Option[O]): Pull[F, O, Unit] =
+  def outputOption1[F[_], O](opt: Option[O]): Pull[F, O, Unit] =
     opt.map(output1).getOrElse(done)
 
   /** Creates a pull that emits the elements of the given chunk.
     * The new pull performs no effects and terminates successfully with a unit result.
     */
-  def output[F[x] >: Pure[x], O](os: Chunk[O]): Pull[F, O, Unit] =
+  def output[F[_], O](os: Chunk[O]): Pull[F, O, Unit] =
     if (os.isEmpty) Pull.done else Output[O](os)
 
   private[fs2] def acquire[F[_], R](
       resource: F[R],
       release: (R, ExitCase) => F[Unit]
-  ): Pull[F, INothing, R] =
+  ): Pull[F, Nothing, R] =
     Acquire(resource, release, cancelable = false)
 
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, _]): Pull[F, INothing, R] =
+  )(implicit F: MonadCancel[F, _]): Pull[F, Nothing, R] =
     Acquire(F.uncancelable(resource), release, cancelable = true)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned
     * in a `Left` instead of failing the pull.
     */
-  def attemptEval[F[_], R](fr: F[R]): Pull[F, INothing, Either[Throwable, R]] =
+  def attemptEval[F[_], R](fr: F[R]): Pull[F, Nothing, Either[Throwable, R]] =
     Eval[F, R](fr)
       .map(r => Right(r): Either[Throwable, R])
       .handleErrorWith(t => Succeeded[Either[Throwable, R]](Left(t)))
@@ -430,7 +430,7 @@ object Pull extends PullLowPriority {
     */
   def extendScopeTo[F[_], O](
       s: Stream[F, O]
-  )(implicit F: MonadError[F, Throwable]): Pull[F, INothing, Stream[F, O]] =
+  )(implicit F: MonadError[F, Throwable]): Pull[F, Nothing, Stream[F, O]] =
     for {
       scope <- Pull.getScope[F]
       lease <- Pull.eval(scope.lease)
@@ -457,7 +457,7 @@ object Pull extends PullLowPriority {
         case Right(r) => Pull.pure(r)
       }
 
-  private[fs2] def fail[F[_]](err: Throwable): Pull[F, INothing, INothing] = Fail(err)
+  private[fs2] def fail[F[_]](err: Throwable): Pull[F, Nothing, Nothing] = Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
     def apply[A](either: Either[Throwable, A])(implicit ev: RaiseThrowable[F]): Pull[F, A, Unit] =
@@ -471,7 +471,7 @@ object Pull extends PullLowPriority {
     * scala> Pull.fromEither[SyncIO](Right(42)).stream.compile.toList.unsafeRunSync()
     * res0: List[Int] = List(42)
     * scala> Try(Pull.fromEither[SyncIO](Left(new RuntimeException)).stream.compile.toList.unsafeRunSync())
-    * res1: Try[List[INothing]] = Failure(java.lang.RuntimeException)
+    * res1: Try[List[Nothing]] = Failure(java.lang.RuntimeException)
     * }}}
     */
   def fromEither[F[x]] = new PartiallyAppliedFromEither[F]
@@ -479,12 +479,12 @@ object Pull extends PullLowPriority {
   /** Gets the current scope, allowing manual leasing or interruption.
     * This is a low-level method and generally should not be used by user code.
     */
-  private[fs2] def getScope[F[_]]: Pull[F, INothing, Scope[F]] = GetScope[F]()
+  private[fs2] def getScope[F[_]]: Pull[F, Nothing, Scope[F]] = GetScope[F]()
 
   /** Returns a pull that evaluates the supplied by-name each time the pull is
     * used, allowing use of a mutable value in pull computations.
     */
-  def suspend[F[x] >: Pure[x], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
+  def suspend[F[_], O, R](p: => Pull[F, O, R]): Pull[F, O, R] =
     new Bind[F, O, Unit, R](unit) {
       def cont(r: Terminal[Unit]): Pull[F, O, R] = p
     }
@@ -538,7 +538,7 @@ object Pull extends PullLowPriority {
       * (hidden, basically) so you cannot do anything on it except for
       * pattern matching, which is best done as a `Left(_)` case.
       */
-    def uncons: Pull[F, INothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
+    def uncons: Pull[F, Nothing, Option[(Either[Timeout, Chunk[O]], Pull.Timed[F, O])]]
 
     /** Asynchronously starts a timeout that will be received by
       * `uncons` after `t`, and immediately returns.
@@ -573,14 +573,14 @@ object Pull extends PullLowPriority {
       * cases, given that usually there is no need to sleep in between
       * `timeout` and the very first call to `uncons`.
       */
-    def timeout(t: FiniteDuration): Pull[F, INothing, Unit]
+    def timeout(t: FiniteDuration): Pull[F, Nothing, Unit]
   }
 
   /** `Sync` instance for `Pull`. */
   implicit def syncInstance[F[_]: Sync, O]: Sync[Pull[F, O, *]] =
     new PullSyncInstance[F, O]
 
-  /** `FunctionK` instance for `F ~> Pull[F, INothing, *]`
+  /** `FunctionK` instance for `F ~> Pull[F, Nothing, *]`
     *
     * @example {{{
     * scala> import cats.Id
@@ -588,8 +588,8 @@ object Pull extends PullLowPriority {
     * res0: cats.Id[List[Int]] = List(42)
     * }}}
     */
-  implicit def functionKInstance[F[_]]: F ~> Pull[F, INothing, *] =
-    new (F ~> Pull[F, INothing, *]) {
+  implicit def functionKInstance[F[_]]: F ~> Pull[F, Nothing, *] =
+    new (F ~> Pull[F, Nothing, *]) {
       def apply[X](fx: F[X]) = Pull.eval(fx)
     }
 
@@ -618,8 +618,8 @@ object Pull extends PullLowPriority {
    * or interrupted from another concurrent pull.
    */
   private sealed abstract class Terminal[+R]
-      extends Pull[Pure, INothing, R]
-      with ViewL[Pure, INothing]
+      extends Pull[Nothing, Nothing, R]
+      with ViewL[Nothing, Nothing]
 
   private final case class Succeeded[+R](r: R) extends Terminal[R] {
     override def map[R2](f: R => R2): Terminal[R2] =
@@ -627,8 +627,8 @@ object Pull extends PullLowPriority {
       catch { case NonFatal(err) => Fail(err) }
   }
 
-  private final case class Fail(error: Throwable) extends Terminal[INothing] {
-    override def map[R](f: INothing => R): Terminal[R] = this
+  private final case class Fail(error: Throwable) extends Terminal[Nothing] {
+    override def map[R](f: Nothing => R): Terminal[R] = this
   }
 
   /** Signals that pull evaluation was interrupted.
@@ -641,8 +641,8 @@ object Pull extends PullLowPriority {
     *                      signalling of the errors may be deferred until the Interruption resumes.
     */
   private final case class Interrupted(context: Unique.Token, deferredError: Option[Throwable])
-      extends Terminal[INothing] {
-    override def map[R](f: INothing => R): Terminal[R] = this
+      extends Terminal[Nothing] {
+    override def map[R](f: Nothing => R): Terminal[R] = this
   }
 
   private sealed trait ContP[-Y, +F[_], +O, +X] extends (Terminal[Y] => Pull[F, O, X]) {
@@ -650,14 +650,13 @@ object Pull extends PullLowPriority {
     protected def cont(r: Terminal[Y]): Pull[F, O, X]
   }
 
-  private object IdContP extends ContP[Unit, Pure, INothing, Unit] {
-    def cont(r: Terminal[Unit]): Pull[Pure, INothing, Unit] = r
+  private object IdContP extends ContP[Unit, Nothing, Nothing, Unit] {
+    def cont(r: Terminal[Unit]): Pull[Nothing, Nothing, Unit] = r
   }
 
-  private abstract class Bind[+F[_], +O, X, +R](misstep: Pull[F, O, X])
+  private abstract class Bind[+F[_], +O, X, +R](val step: Pull[F, O, X])
       extends Pull[F, O, R]
       with ContP[X, F, O, R] {
-    def step: Pull[F, O, X] = misstep
     def cont(r: Terminal[X]): Pull[F, O, R]
     def delegate: Bind[F, O, X, R] = this
   }
@@ -694,30 +693,25 @@ object Pull extends PullLowPriority {
 
   // This class is not created by combinators in public Pull API, only during compilation
   private class BindBind[F[_], O, X, Y](
-      var innerBind: Bind[F, O, X, Y],
-      var endBind: Bind[F, O, Y, Unit]
-  ) extends Bind[F, O, X, Unit](null) {
-    override def step: Pull[F, O, X] = innerBind.step
-    def cont(xterm: Terminal[X]): Pull[F, O, Unit] =
-      try bindBindAux(xterm, this)
+      step: Pull[F, O, X],
+      val bb: Bind[F, O, X, Y],
+      val del: Bind[F, O, Y, Unit]
+  ) extends Bind[F, O, X, Unit](step) {
+    def cont(tx: Terminal[X]): Pull[F, O, Unit] =
+      try bindBindAux(bb.cont(tx), del)
       catch { case NonFatal(e) => Fail(e) }
   }
 
   @tailrec @nowarn("cat=unchecked")
-  private def bindBindAux[F[_], O, X, Y](
-      py: Pull[F, O, Y],
-      del: Bind[F, O, Y, Unit]
+  private def bindBindAux[F[_], O, X](
+      py: Pull[F, O, X],
+      del: Bind[F, O, X, Unit]
   ): Pull[F, O, Unit] =
     py match {
       case ty: Terminal[_] =>
         del match {
-          case cici: BindBind[F, O, r, Y] =>
-            val innerBind = cici.innerBind
-            val endBind = cici.endBind
-            cici.innerBind = null
-            cici.endBind = null
-            val nextStep = innerBind.cont(ty)
-            bindBindAux[F, O, r, Y](nextStep, endBind)
+          case cici: BindBind[F, O, _, X] =>
+            bindBindAux(cici.bb.cont(ty), cici.del)
           case _ => del.cont(ty)
         }
       case x => new DelegateBind(x, del)
@@ -732,7 +726,7 @@ object Pull extends PullLowPriority {
   private sealed abstract class Action[+F[_], +O, +R] extends Pull[F, O, R] with ViewL[F, O]
 
   /* An action that emits a non-empty chunk of outputs. */
-  private final case class Output[+O](values: Chunk[O]) extends Action[Pure, O, Unit]
+  private final case class Output[+O](values: Chunk[O]) extends Action[Nothing, O, Unit]
 
   /* A translation point, that wraps an inner stream written in another effect. */
   private final case class Translate[G[_], F[_], +O](
@@ -753,7 +747,7 @@ object Pull extends PullLowPriority {
    * @param stream             Stream to step
    */
   private final case class Uncons[+F[_], +O](stream: Pull[F, O, Unit])
-      extends Action[Pure, INothing, Option[(Chunk[O], Pull[F, O, Unit])]]
+      extends Action[Nothing, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]]
 
   /** Steps through the stream, providing a `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
@@ -762,10 +756,10 @@ object Pull extends PullLowPriority {
     * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
-      extends Action[Pure, INothing, Option[Stream.StepLeg[F, O]]]
+      extends Action[Nothing, Nothing, Option[Stream.StepLeg[F, O]]]
 
   /* The `AlgEffect` trait is for operations on the `F` effect that create no `O` output. */
-  private sealed abstract class AlgEffect[+F[_], R] extends Action[F, INothing, R]
+  private sealed abstract class AlgEffect[+F[_], R] extends Action[F, Nothing, R]
 
   private final case class Eval[+F[_], R](value: F[R]) extends AlgEffect[F, R]
 
@@ -785,7 +779,7 @@ object Pull extends PullLowPriority {
 
   // `InterruptedScope` contains id of the scope currently being interrupted
   // together with any errors accumulated during interruption process
-  private abstract class CloseScope extends AlgEffect[Pure, Unit] {
+  private abstract class CloseScope extends AlgEffect[Nothing, Unit] {
     def scopeId: Unique.Token
     def interruption: Option[Interrupted]
     def exitCase: ExitCase
@@ -807,7 +801,7 @@ object Pull extends PullLowPriority {
     def interruption: Option[Interrupted] = None
   }
 
-  private final case class GetScope[F[_]]() extends AlgEffect[Pure, Scope[F]]
+  private final case class GetScope[F[_]]() extends AlgEffect[Nothing, Scope[F]]
 
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
@@ -835,7 +829,7 @@ object Pull extends PullLowPriority {
    */
   private[fs2] def uncons[F[_], O](
       s: Pull[F, O, Unit]
-  ): Pull[F, INothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
+  ): Pull[F, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
     Uncons(s)
 
   private type Cont[-Y, +G[_], +O] = Terminal[Y] => Pull[G, O, Unit]
@@ -858,9 +852,9 @@ object Pull extends PullLowPriority {
   )(foldChunk: (B, Chunk[O]) => B)(implicit
       F: MonadError[F, Throwable]
   ): F[B] = {
-    var contP: ContP[INothing, Nought, Any, Unit] = null
+    var contP: ContP[Nothing, Nought, Any, Unit] = null
 
-    def getCont[Y, G[_], X]: Cont[Y, G, X] = contP.asInstanceOf[Cont[Y, G, X]]
+    def getCont(): Cont[Any, Nothing, Nothing] = contP.asInstanceOf[Cont[Any, Nothing, Nothing]]
 
     @tailrec
     def viewL[G[_], X](free: Pull[G, X, Unit]): ViewL[G, X] =
@@ -868,11 +862,11 @@ object Pull extends PullLowPriority {
         case e: Action[G, X, Unit] =>
           contP = IdContP
           e
-        case b: Bind[G, X, y, Unit] =>
+        case b: Bind[G, X, _, Unit] =>
           b.step match {
-            case c: Bind[G, X, x, _] =>
-              viewL(new BindBind[G, X, x, y](c, b.delegate))
-            case e: Action[G, X, y2] =>
+            case c: Bind[G, X, _, _] =>
+              viewL(new BindBind(c.step, c.delegate, b.delegate))
+            case e: Action[G, X, _] =>
               contP = b.delegate
               e
             case r: Terminal[_] => viewL(b.cont(r))
@@ -890,10 +884,10 @@ object Pull extends PullLowPriority {
         case cs: CloseScope =>
           // Inner scope is getting closed b/c a parent was interrupted
           val cl: Pull[G, X, Unit] = CanceledScope(cs.scopeId, interruption)
-          transformWith(cl)(getCont[Unit, G, X])
+          transformWith(cl)(getCont())
         case _: Action[G, X, y] =>
           // all other actions, roll the interruption forwards
-          getCont[Unit, G, X](interruption)
+          getCont()(interruption)
         case interrupted: Interrupted => interrupted // impossible
         case _: Succeeded[_]          => interruption
         case failed: Fail =>
@@ -904,22 +898,34 @@ object Pull extends PullLowPriority {
 
       }
 
-    trait Run[-G[_], -X] {
-      def done(scope: Scope[F]): F[B]
-      def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): F[B]
-      def interrupted(inter: Interrupted): F[B]
-      def fail(e: Throwable): F[B]
+    trait Run[-G[_], -X, +End] {
+      def done(scope: Scope[F]): End
+      def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): End
+      def interrupted(inter: Interrupted): End
+      def fail(e: Throwable): End
+    }
+    type CallRun[+G[_], +X, End] = Run[G, X, End] => End
+
+    object TheBuildR extends Run[Nothing, Nothing, F[CallRun[Nothing, Nothing, F[Nothing]]]] {
+      def fail(e: Throwable) = F.raiseError(e)
+      def done(scope: Scope[F]) = F.pure(_.done(scope))
+      def out(head: Chunk[Nothing], scope: Scope[F], tail: Pull[Nothing, Nothing, Unit]) =
+        F.pure(_.out(head, scope, tail))
+      def interrupted(i: Interrupted) = F.pure(_.interrupted(i))
     }
 
-    def go[G[_], X](
+    def buildR[G[_], X, End]: Run[G, X, F[CallRun[G, X, F[End]]]] =
+      TheBuildR.asInstanceOf[Run[G, X, F[CallRun[G, X, F[End]]]]]
+
+    def go[G[_], X, End](
         scope: Scope[F],
         extendedTopLevelScope: Option[Scope[F]],
         translation: G ~> F,
-        runner: Run[G, X],
+        runner: Run[G, X, F[End]],
         stream: Pull[G, X, Unit]
-    ): F[B] = {
+    ): F[End] = {
 
-      def interruptGuard(scope: Scope[F], view: Cont[INothing, G, X])(next: => F[B]): F[B] =
+      def interruptGuard(scope: Scope[F], view: Cont[Nothing, G, X])(next: => F[End]): F[End] =
         scope.isInterrupted.flatMap {
           case None => next
           case Some(outcome) =>
@@ -931,60 +937,60 @@ object Pull extends PullLowPriority {
             go(scope, extendedTopLevelScope, translation, runner, view(result))
         }
 
-      def goErr(err: Throwable, view: Cont[Nothing, G, X]): F[B] =
+      def goErr(err: Throwable, view: Cont[Nothing, G, X]): F[End] =
         go(scope, extendedTopLevelScope, translation, runner, view(Fail(err)))
 
-      class ViewRunner(val view: Cont[Unit, G, X]) extends Run[G, X] {
+      class ViewRunner(val view: Cont[Unit, G, X]) extends Run[G, X, F[End]] {
         private val prevRunner = runner
 
-        def done(doneScope: Scope[F]): F[B] =
+        def done(doneScope: Scope[F]): F[End] =
           go(doneScope, extendedTopLevelScope, translation, prevRunner, view(unit))
 
-        def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): F[B] = {
+        def out(head: Chunk[X], scope: Scope[F], tail: Pull[G, X, Unit]): F[End] = {
           @tailrec
-          def outLoop(acc: Pull[G, X, Unit], pred: Run[G, X]): F[B] =
+          def outLoop(acc: Pull[G, X, Unit], pred: Run[G, X, F[End]]): F[End] =
             // bit of an ugly hack to avoid a stack overflow when these accummulate
             pred match {
-              case vrun: ViewRunner => outLoop(bindView(acc, vrun.view), vrun.prevRunner)
-              case _                => pred.out(head, scope, acc)
+              case vrun: ViewRunner @unchecked => outLoop(bindView(acc, vrun.view), vrun.prevRunner)
+              case _                           => pred.out(head, scope, acc)
             }
           outLoop(tail, this)
         }
 
-        def interrupted(inter: Interrupted): F[B] =
+        def interrupted(inter: Interrupted): F[End] =
           go(scope, extendedTopLevelScope, translation, prevRunner, view(inter))
 
-        def fail(e: Throwable): F[B] = goErr(e, view)
+        def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
-      class TranslateRunner[H[_]](fk: H ~> G, view: Cont[Unit, G, X]) extends Run[H, X] {
-        def done(doneScope: Scope[F]): F[B] =
+      class TranslateRunner[H[_]](fk: H ~> G, view: Cont[Unit, G, X]) extends Run[H, X, F[End]] {
+        def done(doneScope: Scope[F]): F[End] =
           go(doneScope, extendedTopLevelScope, translation, runner, view(unit))
-        def out(head: Chunk[X], scope: Scope[F], tail: Pull[H, X, Unit]): F[B] = {
+        def out(head: Chunk[X], scope: Scope[F], tail: Pull[H, X, Unit]): F[End] = {
           val next = bindView(Translate(tail, fk), view)
           runner.out(head, scope, next)
         }
-        def interrupted(inter: Interrupted): F[B] =
+        def interrupted(inter: Interrupted): F[End] =
           go(scope, extendedTopLevelScope, translation, runner, view(inter))
-        def fail(e: Throwable): F[B] = goErr(e, view)
+        def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
-      abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y] {
-        def done(scope: Scope[F]): F[B] =
+      abstract class StepRunR[Y, S](view: Cont[Option[S], G, X]) extends Run[G, Y, F[End]] {
+        def done(scope: Scope[F]): F[End] =
           interruptGuard(scope, view) {
             go(scope, extendedTopLevelScope, translation, runner, view(Succeeded(None)))
           }
 
-        def interrupted(inter: Interrupted): F[B] =
+        def interrupted(inter: Interrupted): F[End] =
           go(scope, extendedTopLevelScope, translation, runner, view(inter))
 
-        def fail(e: Throwable): F[B] = goErr(e, view)
+        def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
       class UnconsRunR[Y](view: Cont[Option[(Chunk[Y], Pull[G, Y, Unit])], G, X])
           extends StepRunR[Y, (Chunk[Y], Pull[G, Y, Unit])](view) {
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] =
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
           // For a Uncons, we continue in same Scope at which we ended compilation of inner stream
           interruptGuard(outScope, view) {
             val result = Succeeded(Some((head, tail)))
@@ -995,7 +1001,7 @@ object Pull extends PullLowPriority {
       class StepLegRunR[Y](view: Cont[Option[Stream.StepLeg[G, Y]], G, X])
           extends StepRunR[Y, Stream.StepLeg[G, Y]](view) {
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] =
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] =
           // StepLeg: we shift back to the scope at which we were
           // before we started to interpret the Leg's inner stream.
           interruptGuard(scope, view) {
@@ -1004,7 +1010,8 @@ object Pull extends PullLowPriority {
           }
       }
 
-      class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit]) extends Run[G, Y] {
+      class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit])
+          extends Run[G, Y, F[End]] {
         private[this] def unconsed(chunk: Chunk[Y], tail: Pull[G, Y, Unit]): Pull[G, X, Unit] =
           if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
@@ -1030,23 +1037,23 @@ object Pull extends PullLowPriority {
             go(0)
           }
 
-        def done(scope: Scope[F]): F[B] =
+        def done(scope: Scope[F]): F[End] =
           interruptGuard(scope, view) {
             go(scope, extendedTopLevelScope, translation, runner, view(unit))
           }
 
-        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[B] = {
+        def out(head: Chunk[Y], outScope: Scope[F], tail: Pull[G, Y, Unit]): F[End] = {
           val next = bindView(unconsed(head, tail), view)
           go(outScope, extendedTopLevelScope, translation, runner, next)
         }
 
-        def interrupted(inter: Interrupted): F[B] =
+        def interrupted(inter: Interrupted): F[End] =
           go(scope, extendedTopLevelScope, translation, runner, view(inter))
 
-        def fail(e: Throwable): F[B] = goErr(e, view)
+        def fail(e: Throwable): F[End] = goErr(e, view)
       }
 
-      def goEval[V](eval: Eval[G, V], view: Cont[V, G, X]): F[B] =
+      def goEval[V](eval: Eval[G, V], view: Cont[V, G, X]): F[End] =
         scope.interruptibleEval(translation(eval.value)).flatMap { eitherOutcome =>
           val result = eitherOutcome match {
             case Right(r)                       => Succeeded(r)
@@ -1057,7 +1064,7 @@ object Pull extends PullLowPriority {
           go(scope, extendedTopLevelScope, translation, runner, view(result))
         }
 
-      def goAcquire[R](acquire: Acquire[G, R], view: Cont[R, G, X]): F[B] = {
+      def goAcquire[R](acquire: Acquire[G, R], view: Cont[R, G, X]): F[End] = {
         val onScope = scope.acquireResource[R](
           poll =>
             if (acquire.cancelable) poll(translation(acquire.resource))
@@ -1079,7 +1086,7 @@ object Pull extends PullLowPriority {
       def goInterruptWhen(
           haltOnSignal: F[Either[Throwable, Unit]],
           view: Cont[Unit, G, X]
-      ): F[B] = {
+      ): F[End] = {
         val onScope = scope.acquireResource(
           _ => scope.interruptWhen(haltOnSignal),
           (f: Fiber[F, Throwable, Unit], _: ExitCase) => f.cancel
@@ -1100,7 +1107,7 @@ object Pull extends PullLowPriority {
           stream: Pull[G, X, Unit],
           useInterruption: Boolean,
           view: Cont[Unit, G, X]
-      ): F[B] = {
+      ): F[End] = {
         def endScope(scopeId: Unique.Token, result: Terminal[Unit]): Pull[G, X, Unit] =
           result match {
             case Succeeded(_)              => SucceedScope(scopeId)
@@ -1127,7 +1134,7 @@ object Pull extends PullLowPriority {
         interruptGuard(scope, view)(tail)
       }
 
-      def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[B] = {
+      def goCloseScope(close: CloseScope, view: Cont[Unit, G, X]): F[End] = {
         def addError(err: Throwable, res: Terminal[Unit]): Terminal[Unit] = res match {
           case Succeeded(_) => Fail(err)
           case Fail(err0)   => Fail(CompositeFailure(err, err0, Nil))
@@ -1187,40 +1194,44 @@ object Pull extends PullLowPriority {
 
       (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
         case tst: Translate[h, G, _] @unchecked => // y = Unit
-          val translateRunner: Run[h, X] = new TranslateRunner(tst.fk, getCont[Unit, G, X])
-          val composed: h ~> F = translation.compose[h](tst.fk)
-          go[h, X](scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
+          val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont())
+          val composed: h ~> F = translation.compose(tst.fk)
+          go(scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
         case output: Output[_] =>
-          val view = getCont[Unit, G, X]
+          val view = getCont()
           interruptGuard(scope, view)(
             runner.out(output.values, scope, view(unit))
           )
 
         case fmout: FlatMapOutput[G, z, _] => // y = Unit
-          val fmrunr = new FlatMapR(getCont[Unit, G, X], fmout.fun)
+          val fmrunr = new FlatMapR(getCont(), fmout.fun)
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
         case u: Uncons[G, y] @unchecked =>
-          val v = getCont[Option[(Chunk[y], Pull[G, y, Unit])], G, X]
+          val v = getCont()
           // a Uncons is run on the same scope, without shifting.
-          F.unit >> go(scope, extendedTopLevelScope, translation, new UnconsRunR(v), u.stream)
+          val runr = buildR[G, y, End]
+          F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
+            .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
 
         case s: StepLeg[G, y] @unchecked =>
-          val v = getCont[Option[Stream.StepLeg[G, y]], G, X]
+          val v = getCont()
+          val runr = buildR[G, y, End]
           scope
             .shiftScope(s.scope, s.toString)
-            .flatMap(go(_, extendedTopLevelScope, translation, new StepLegRunR(v), s.stream))
+            .flatMap(go(_, extendedTopLevelScope, translation, runr, s.stream).attempt)
+            .flatMap(_.fold(goErr(_, v), _.apply(new StepLegRunR(v))))
 
         case _: GetScope[_] =>
-          go(scope, extendedTopLevelScope, translation, runner, getCont(Succeeded(scope)))
-        case eval: Eval[G, r]       => goEval[r](eval, getCont[r, G, X])
-        case acquire: Acquire[G, r] => goAcquire(acquire, getCont[r, G, X])
+          go(scope, extendedTopLevelScope, translation, runner, getCont()(Succeeded(scope)))
+        case eval: Eval[G, r]       => goEval[r](eval, getCont())
+        case acquire: Acquire[G, _] => goAcquire(acquire, getCont())
         case inScope: InScope[G, _] =>
-          goInScope(inScope.stream, inScope.useInterruption, getCont[Unit, G, X])
+          goInScope(inScope.stream, inScope.useInterruption, getCont())
         case int: InterruptWhen[G] =>
-          goInterruptWhen(translation(int.haltOnSignal), getCont[Unit, G, X])
-        case close: CloseScope => goCloseScope(close, getCont[Unit, G, X])
+          goInterruptWhen(translation(int.haltOnSignal), getCont())
+        case close: CloseScope => goCloseScope(close, getCont())
 
         case _: Succeeded[_]  => runner.done(scope)
         case failed: Fail     => runner.fail(failed.error)
@@ -1230,7 +1241,7 @@ object Pull extends PullLowPriority {
 
     val initFk: F ~> F = cats.arrow.FunctionK.id[F]
 
-    class OuterRun(initB: B) extends Run[F, O] { self =>
+    class OuterRun(initB: B) extends Run[F, O, F[B]] { self =>
       private[this] var accB: B = initB
 
       override def done(scope: Scope[F]): F[B] = F.pure(accB)
@@ -1247,7 +1258,8 @@ object Pull extends PullLowPriority {
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case _: Action[F, O, _]  => go(scope, None, initFk, self, getCont(Fail(e)))
+              case _: Action[F, O, _] =>
+                go(scope, None, initFk, self, getCont()(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
               case Interrupted(_, err) => F.raiseError(err.fold(e)(t => CompositeFailure(e, t)))
@@ -1255,7 +1267,7 @@ object Pull extends PullLowPriority {
         }
     }
 
-    go[F, O](initScope, None, initFk, new OuterRun(init), stream)
+    go(initScope, None, initFk, new OuterRun(init), stream)
   }
 
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
@@ -1273,8 +1285,8 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case t: Translate[e, f, _] =>
-        translate[e, G, O](t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
+      case t: Translate[_, f, _] =>
+        translate(t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
       case o: Output[_]   => o
       case r: Terminal[_] => r
       case _              => Translate(stream, fK)

@@ -19,20 +19,22 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io
+package fs2
 
-import java.io.{ByteArrayInputStream, InputStream}
 import cats.effect.IO
-import fs2.Fs2Suite
+import fs2.text.utf8
 import org.scalacheck.effect.PropF.forAllF
 
-class IoSuite extends Fs2Suite {
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+
+class IoSuite extends io.Fs2IoSuite {
   group("readInputStream") {
     test("non-buffered") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        val stream = readInputStream(IO(is), chunkSize)
+        val stream = io.readInputStream(IO(is), chunkSize)
         stream.compile.toVector.assertEquals(bytes.toVector)
       }
     }
@@ -41,7 +43,7 @@ class IoSuite extends Fs2Suite {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        val stream = readInputStream(IO(is), chunkSize)
+        val stream = io.readInputStream(IO(is), chunkSize)
         stream
           .buffer(chunkSize * 2)
           .compile
@@ -56,9 +58,29 @@ class IoSuite extends Fs2Suite {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
         val chunkSize = (chunkSize0 % 20).abs + 1
         val is: InputStream = new ByteArrayInputStream(bytes)
-        val stream = unsafeReadInputStream(IO(is), chunkSize)
+        val stream = io.unsafeReadInputStream(IO(is), chunkSize)
         stream.compile.toVector.assertEquals(bytes.toVector)
       }
+    }
+  }
+
+  group("standard streams") {
+    test("stdout") {
+      Stream
+        .emit("good day stdout\n")
+        .through(utf8.encode)
+        .through(io.stdout[IO])
+        .compile
+        .drain
+    }
+
+    test("stderr") {
+      Stream
+        .emit("how do you do stderr\n")
+        .through(utf8.encode)
+        .through(io.stderr[IO])
+        .compile
+        .drain
     }
   }
 }

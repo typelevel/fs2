@@ -101,10 +101,10 @@ package object io extends ioplatform {
   def writeOutputStream[F[_]](
       fos: F[OutputStream],
       closeAfterUse: Boolean = true
-  )(implicit F: Sync[F]): Pipe[F, Byte, INothing] =
+  )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
     s => {
-      def useOs(os: OutputStream): Stream[F, INothing] =
-        s.chunks.foreach(c => F.blocking(os.write(c.toArray)))
+      def useOs(os: OutputStream): Stream[F, Nothing] =
+        s.chunks.foreach(c => F.interruptible(os.write(c.toArray)))
 
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))

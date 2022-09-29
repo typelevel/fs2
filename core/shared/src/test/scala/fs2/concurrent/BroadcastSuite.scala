@@ -84,7 +84,7 @@ class BroadcastSuite extends Fs2Suite {
 
   test("pipes should not be empty") {
     interceptMessage[AssertionError]("assertion failed: pipes should not be empty")(
-      Stream.empty.broadcastThrough[IO, INothing]()
+      Stream.empty.broadcastThrough[IO, Nothing]()
     )
   }
 }

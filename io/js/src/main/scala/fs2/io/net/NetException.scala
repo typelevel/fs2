@@ -26,7 +26,7 @@ package net
 import com.comcast.ip4s
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.SocketAddress
-import fs2.internal.jsdeps.node.osMod
+import fs2.io.internal.facade
 
 import scala.annotation.nowarn
 import scala.scalajs.js
@@ -100,7 +100,7 @@ private class JavaScriptUnknownHostException(host: String, cause: js.JavaScriptE
     extends UnknownHostException(s"$host: ${UnknownHostException.message}", cause)
     with NoStackTrace
 object UnknownHostException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[UnknownHostException] =
+  private[io] def unapply(cause: js.JavaScriptException): Option[ip4s.UnknownHostException] =
     cause.exception match {
       case error: js.Error =>
         pattern.findFirstMatchIn(error.message).collect { case Regex.Groups(addr) =>
@@ -115,7 +115,7 @@ object UnknownHostException {
       case _ => None
     }
   private[this] val pattern = raw"(?:ENOTFOUND|EAI_AGAIN)(?: (\S+))?".r
-  private[net] val message = osMod.`type`() match {
+  private[net] val message = facade.os.`type`() match {
     case "Darwin" => "nodename nor servname provided, or not known"
     case _        => "Name or service not known"
   }

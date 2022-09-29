@@ -31,16 +31,13 @@ import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
-import fs2.internal.jsdeps.node.netMod
-import fs2.internal.jsdeps.node.streamMod
 import fs2.io.internal.SuspendedStream
-
-import scala.scalajs.js
+import fs2.io.internal.facade
 
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
-      sock: netMod.Socket
+      sock: facade.net.Socket
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     suspendReadableAndRead(
       destroyIfNotEnded = false,
@@ -52,12 +49,12 @@ private[net] trait SocketCompanionPlatform {
       .onFinalize {
         F.delay {
           if (!sock.destroyed)
-            sock.asInstanceOf[streamMod.Readable].destroy()
+            sock.destroy()
         }
       }
 
   private[net] class AsyncSocket[F[_]](
-      sock: netMod.Socket,
+      sock: facade.net.Socket,
       readStream: SuspendedStream[F, Byte]
   )(implicit F: Async[F])
       extends Socket[F] {
@@ -83,10 +80,12 @@ private[net] trait SocketCompanionPlatform {
 
     override def endOfInput: F[Unit] = F.unit
 
-    override def endOfOutput: F[Unit] = F.delay(sock.end())
+    override def endOfOutput: F[Unit] = F.delay {
+      sock.end()
+      ()
+    }
 
-    override def isOpen: F[Boolean] =
-      F.delay(sock.asInstanceOf[js.Dynamic].readyState.asInstanceOf[String] == "open")
+    override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
       for {
@@ -103,7 +102,7 @@ private[net] trait SocketCompanionPlatform {
     override def write(bytes: Chunk[Byte]): F[Unit] =
       Stream.chunk(bytes).through(writes).compile.drain
 
-    override def writes: Pipe[F, Byte, INothing] =
+    override def writes: Pipe[F, Byte, Nothing] =
       writeWritable(sock.asInstanceOf[Writable].pure, endAfterUse = false)
   }
 

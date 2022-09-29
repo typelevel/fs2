@@ -24,6 +24,7 @@ package concurrent
 
 import cats.effect._
 import cats.effect.std.Queue
+import cats.effect.syntax.all._
 import cats.syntax.all._
 
 /** Stream aware, multiple producer, single consumer closeable channel.
@@ -44,6 +45,17 @@ sealed trait Channel[F[_], A] {
     * No-op if the channel is closed, see [[close]] for further info.
     */
   def send(a: A): F[Either[Channel.Closed, Unit]]
+
+  /** Attempts to send an element through this channel, and indicates if
+    * it succeeded (`true`) or not (`false`).
+    *
+    * It can be called concurrently by multiple producers, and it may
+    * not succeed if the channel is bounded or synchronous. It will
+    * never semantically block.
+    *
+    * No-op if the channel is closed, see [[close]] for further info.
+    */
+  def trySend(a: A): F[Either[Channel.Closed, Boolean]]
 
   /** The stream of elements sent through this channel.
     * It terminates if [[close]] is called and all elements in the channel
@@ -120,7 +132,7 @@ object Channel {
     Queue.bounded[F, A](capacity).flatMap(impl(_))
 
   private[this] def impl[F[_]: Concurrent, A](q: Queue[F, A]): F[Channel[F, A]] =
-    Concurrent[F].deferred[Unit].map { closedR =>
+    (Concurrent[F].deferred[Unit], Concurrent[F].ref(0)).mapN { (closedR, leasesR) =>
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] =
@@ -135,34 +147,51 @@ object Channel {
 
         def isClosed: F[Boolean] = closedR.tryGet.map(_.isDefined)
 
+        private[this] val leasesDrained: F[Boolean] =
+          leasesR.get.map(_ <= 0)
+
+        private[this] val isQuiesced: F[Boolean] =
+          isClosed.ifM(leasesDrained, false.pure[F])
+
         def send(a: A): F[Either[Channel.Closed, Unit]] =
-          isClosed.ifM(Channel.Closed.asLeft[Unit].pure[F], q.offer(a).map(Right(_)))
+          isClosed.ifM(
+            Channel.Closed.asLeft[Unit].pure[F],
+            (leasesR.update(_ + 1) *> q.offer(a)).guarantee(leasesR.update(_ - 1)).map(Right(_)))
+
+        def trySend(a: A): F[Either[Channel.Closed, Boolean]] =
+          isClosed.ifM(Channel.Closed.asLeft[Boolean].pure[F], q.tryOffer(a).map(Right(_)))
 
         def stream: Stream[F, A] = {
           val takeN: F[Chunk[A]] =
             q.tryTakeN(None).flatMap {
-              case None =>
-                val fallback = MonadCancel[F].uncancelable { poll =>
-                  poll(Spawn[F].racePair(q.take, closedR.get)).flatMap {
-                    case Left((oca, fiber)) =>
-                      oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
+              case Nil =>
+                val fallback = leasesDrained flatMap { b =>
+                  if (b) {
+                    MonadCancel[F].uncancelable { poll =>
+                      poll(Spawn[F].racePair(q.take, closedR.get)).flatMap {
+                        case Left((oca, fiber)) =>
+                          oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
 
-                    case Right((fiber, ocb)) =>
-                      ocb.embedNever.flatMap { _ =>
-                        (fiber.cancel *> fiber.join).flatMap { oca =>
-                          oca.fold(
-                            Chunk.empty[A].pure[F],
-                            _ => Chunk.empty[A].pure[F],
-                            _.map(Chunk.singleton(_))
-                          )
-                        }
+                        case Right((fiber, ocb)) =>
+                          ocb.embedNever.flatMap { _ =>
+                            (fiber.cancel *> fiber.join).flatMap { oca =>
+                              oca.fold(
+                                Chunk.empty[A].pure[F],
+                                _ => Chunk.empty[A].pure[F],
+                                _.map(Chunk.singleton(_))
+                              )
+                            }
+                          }
                       }
+                    }
+                  } else {
+                    q.take.map(Chunk.singleton(_))
                   }
                 }
 
-                isClosed.ifM(Chunk.empty[A].pure[F], fallback)
+                isQuiesced.ifM(Chunk.empty[A].pure[F], fallback)
 
-              case Some(as) =>
+              case as =>
                 Chunk.seq(as).pure[F]
             }
 

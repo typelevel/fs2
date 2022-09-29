@@ -30,7 +30,7 @@ import org.scalacheck.effect.PropF.forAllF
 
 class StreamObserveSuite extends Fs2Suite {
   trait Observer {
-    def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O]
+    def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, Nothing]): Stream[IO, O]
   }
 
   def observationTests(label: String, observer: Observer): Unit =
@@ -89,14 +89,14 @@ class StreamObserveSuite extends Fs2Suite {
 
       test("handle multiple consecutive observations") {
         forAllF { (s: Stream[Pure, Int]) =>
-          val sink: Pipe[IO, Int, INothing] = _.foreach(_ => IO.unit)
+          val sink: Pipe[IO, Int, Nothing] = _.foreach(_ => IO.unit)
           observer(observer(s)(sink))(sink).assertEmitsSameAs(s)
         }
       }
 
       test("no hangs on failures") {
         forAllF { (s: Stream[Pure, Int]) =>
-          val sink: Pipe[IO, Int, INothing] =
+          val sink: Pipe[IO, Int, Nothing] =
             in => spuriousFail(in.foreach(_ => IO.unit))
           val src: Stream[IO, Int] = spuriousFail(s.covary[IO])
           src.observe(sink).observe(sink).attempt.compile.drain
@@ -107,7 +107,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observe",
     new Observer {
-      def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O] =
+      def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, Nothing]): Stream[IO, O] =
         s.observe(observation)
     }
   )
@@ -115,7 +115,7 @@ class StreamObserveSuite extends Fs2Suite {
   observationTests(
     "observeAsync",
     new Observer {
-      def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, INothing]): Stream[IO, O] =
+      def apply[O](s: Stream[IO, O])(observation: Pipe[IO, O, Nothing]): Stream[IO, O] =
         s.observeAsync(maxQueued = 10)(observation)
     }
   )

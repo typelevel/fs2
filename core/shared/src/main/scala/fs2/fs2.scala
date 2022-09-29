@@ -47,5 +47,6 @@ package object fs2 {
 
   /** Alias for `Nothing` which works better with type inference.
     */
+  @deprecated("Use Nothing instead", "3.3.0")
   type INothing <: Nothing
 }

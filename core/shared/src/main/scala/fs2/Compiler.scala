@@ -24,6 +24,7 @@ package fs2
 import cats.{Id, Monad}
 import cats.effect.SyncIO
 import cats.effect.kernel.{
+  Async,
   CancelScope,
   Concurrent,
   MonadCancelThrow,
@@ -54,7 +55,7 @@ import scala.annotation.implicitNotFound
   * Support for stream interruption requires compilation to an effect which has a `Concurrent` instance.
   */
 @implicitNotFound(
-  "Cannot find an implicit Compiler[F, G]. This typically means you need a Concurrent[F] in scope"
+  "Cannot find an implicit Compiler[${F}, ${G}]. This typically means you need a Concurrent[${F}] in scope"
 )
 sealed trait Compiler[F[_], G[_]] {
   private[fs2] val target: Monad[G]
@@ -177,8 +178,12 @@ object Compiler extends CompilerLowPriority {
       private[fs2] def interruptContext(root: Unique.Token): Option[F[InterruptContext[F]]] = None
     }
 
-    implicit def forSync[F[_]: Sync]: Target[F] =
-      new SyncTarget
+    implicit def forSync[F[_]](implicit F: Sync[F]): Target[F] = F match {
+      case async: Async[F @unchecked] => Target.forConcurrent(async)
+      case _                          => new SyncTarget
+    }
+
+    private[fs2] def mkSyncTarget[F[_]: Sync]: Target[F] = new SyncTarget
   }
 
   object Target extends TargetLowPriority {

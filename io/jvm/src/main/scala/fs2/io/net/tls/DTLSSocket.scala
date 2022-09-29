@@ -75,7 +75,7 @@ object DTLSSocket {
         def write(datagram: Datagram): F[Unit] =
           engine.write(datagram.bytes)
 
-        def writes: Pipe[F, Datagram, INothing] =
+        def writes: Pipe[F, Datagram, Nothing] =
           _.foreach(write)
         def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
         def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =

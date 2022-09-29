@@ -31,7 +31,7 @@ import com.comcast.ip4s._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
-class SocketSuite extends Fs2Suite with SocketSuitePlatform {
+class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
 
   val timeout = 30.seconds
 
@@ -43,7 +43,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         Network[IO].client(bindAddress, options = setupOptionsPlatform)
       )
       .repeat
-  } yield (server -> clients)
+  } yield server -> clients
 
   group("tcp") {
     test("echo requests - each concurrent client gets back what it sent") {
@@ -218,7 +218,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
 
-    test("read after timed out read not allowed on JVM") {
+    test("read after timed out read not allowed on JVM or Native") {
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (bindAddress, server) = serverSetup
@@ -239,7 +239,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               client
                 .readN(msg.size)
                 .flatMap { c =>
-                  if (isJVM) {
+                  if (isJVM || isNative) {
                     assertEquals(c.size, 0)
                     // Read again now that the pending read is no longer pending
                     client.readN(msg.size).map(c => assertEquals(c.size, 0))

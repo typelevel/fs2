@@ -423,6 +423,12 @@ class StreamSuite extends Fs2Suite {
         released <- ref.get
       } yield assert(released)
     }
+
+    test("spawn") {
+      testCancelation {
+        constantStream.spawn
+      }
+    }
   }
 
   group("map") {

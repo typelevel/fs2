@@ -25,6 +25,9 @@ import org.scalacheck.Arbitrary
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
+import scala.scalajs.js.typedarray.Int8Array
+import scala.scalajs.js.typedarray.Uint8Array
+
 class ChunkRuntimePlatformSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -48,6 +51,19 @@ class ChunkRuntimePlatformSuite extends Fs2Suite {
       property("Uint8Array conversion is idempotent") {
         forAll { (c: Chunk[Byte]) =>
           assertEquals(Chunk.uint8Array(c.toUint8Array), c)
+        }
+      }
+      property("Uint8Array conversion respects offset and length") {
+        forAll[(Chunk[Byte], Int, Int), Unit](for {
+          chunk <- genChunk
+          offset <- Gen.chooseNum(0, chunk.size)
+          length <- Gen.chooseNum(0, chunk.size - offset)
+        } yield (chunk, offset, length)) { case (chunk, offset, length) =>
+          val buffer = chunk.toJSArrayBuffer
+          assertEquals(
+            Chunk.uint8Array(new Uint8Array(buffer, offset, length)),
+            Chunk.array(new Int8Array(buffer, offset, length).toArray)
+          )
         }
       }
     }

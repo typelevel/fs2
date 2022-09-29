@@ -31,7 +31,7 @@ import org.scalacheck.Cogen
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
-class PathSuite extends Fs2Suite {
+class PathSuite extends Fs2IoSuite {
 
   implicit val arbitraryPath: Arbitrary[Path] = Arbitrary(for {
     names <- Gen.listOf(Gen.alphaNumStr)
@@ -89,6 +89,11 @@ class PathSuite extends Fs2Suite {
     )
   }
 
+  test("names") {
+    assertEquals(Path("foo").names, List(Path("foo")))
+    assertEquals(Path("foo/bar").names, List(Path("foo"), Path("bar")))
+  }
+
   test("extName") {
     assertEquals(Path("index.html").extName, ".html")
     assertEquals(Path("index.coffee.md").extName, ".md")
@@ -96,6 +101,10 @@ class PathSuite extends Fs2Suite {
     assertEquals(Path("index").extName, "")
     assertEquals(Path(".index").extName, "")
     assertEquals(Path(".index.md").extName, ".md")
+  }
+
+  test("endsWith") {
+    assert(!Path("foo").endsWith(".xml"))
   }
 
   test("startsWith/endsWith") {

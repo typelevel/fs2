@@ -37,13 +37,10 @@ import com.comcast.ip4s.MulticastJoin
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 import com.comcast.ip4s.SourceSpecificMulticastJoin
-import fs2.io.internal.ByteChunkOps._
-import fs2.io.internal.EventEmitterOps._
-import fs2.internal.jsdeps.node.bufferMod
-import fs2.internal.jsdeps.node.dgramMod
-import fs2.internal.jsdeps.node.nodeStrings
+import fs2.io.internal.facade
 
 import scala.scalajs.js
+import scala.scalajs.js.typedarray.Uint8Array
 
 private[net] trait DatagramSocketPlatform[F[_]] {
   private[net] trait GroupMembershipPlatform
@@ -53,7 +50,7 @@ private[net] trait DatagramSocketCompanionPlatform {
   type NetworkInterface = String
 
   private[net] def forAsync[F[_]](
-      sock: dgramMod.Socket
+      sock: facade.dgram.Socket
   )(implicit F: Async[F]): Resource[F, DatagramSocket[F]] =
     for {
       dispatcher <- Dispatcher[F]
@@ -61,32 +58,28 @@ private[net] trait DatagramSocketCompanionPlatform {
         .circularBuffer[F, Datagram](1024)
         .toResource // TODO how to set this? Or, bad design?
       error <- F.deferred[Throwable].toResource
-      _ <- registerListener2[bufferMod.global.Buffer, dgramMod.RemoteInfo](
-        sock,
-        nodeStrings.message
-      )(_.on_message(_, _)) { (buffer, info) =>
-        dispatcher.unsafeRunAndForget(
+      _ <- sock.registerListener2[F, Uint8Array, facade.dgram.RemoteInfo]("message", dispatcher) {
+        (msg, rinfo) =>
           queue.offer(
             Datagram(
               SocketAddress(
-                IpAddress.fromString(info.address).get,
-                Port.fromInt(info.port.toInt).get
+                IpAddress.fromString(rinfo.address).get,
+                Port.fromInt(rinfo.port).get
               ),
-              buffer.toChunk
+              Chunk.uint8Array(msg)
             )
           )
-        )
       }
-      _ <- registerListener[js.Error](sock, nodeStrings.error)(_.on_error(_, _)) { e =>
-        dispatcher.unsafeRunAndForget(error.complete(js.JavaScriptException(e)))
+      _ <- sock.registerListener[F, js.Error]("error", dispatcher) { e =>
+        error.complete(js.JavaScriptException(e)).void
       }
       socket <- Resource.make(F.pure(new AsyncDatagramSocket(sock, queue, error)))(_ =>
-        F.delay(sock.close())
+        F.async_[Unit](cb => sock.close(() => cb(Right(()))))
       )
     } yield socket
 
   private final class AsyncDatagramSocket[F[_]](
-      sock: dgramMod.Socket,
+      sock: facade.dgram.Socket,
       queue: Queue[F, Datagram],
       error: Deferred[F, Throwable]
   )(implicit
@@ -103,17 +96,14 @@ private[net] trait DatagramSocketCompanionPlatform {
 
     override def write(datagram: Datagram): F[Unit] = F.async_ { cb =>
       sock.send(
-        datagram.bytes.toNodeUint8Array,
-        datagram.remote.port.value.toDouble,
+        datagram.bytes.toUint8Array,
+        datagram.remote.port.value,
         datagram.remote.host.toString,
-        (err, _) =>
-          Option(err.asInstanceOf[js.Error]).fold(cb(Right(())))(err =>
-            cb(Left(js.JavaScriptException(err)))
-          )
+        err => Option(err).fold(cb(Right(())))(err => cb(Left(js.JavaScriptException(err))))
       )
     }
 
-    override def writes: Pipe[F, Datagram, INothing] = _.foreach(write)
+    override def writes: Pipe[F, Datagram, Nothing] = _.foreach(write)
 
     override def localAddress: F[SocketAddress[IpAddress]] =
       F.delay {

@@ -26,7 +26,7 @@ import scala.scalajs.js.typedarray.TypedArrayBuffer
 import scala.scalajs.js.typedarray.Uint8Array
 import scala.scalajs.js.typedarray.TypedArrayBufferOps._
 
-trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
+private[fs2] trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 
   def toJSArrayBuffer[B >: O](implicit ev: B =:= Byte): ArrayBuffer = {
     val bb = toByteBuffer[B]
@@ -46,12 +46,14 @@ trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 
 }
 
-trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
+private[fs2] trait ChunkCompanionRuntimePlatform { self: Chunk.type =>
 
   def jsArrayBuffer(buffer: ArrayBuffer): Chunk[Byte] =
     byteBuffer(TypedArrayBuffer.wrap(buffer))
 
   def uint8Array(array: Uint8Array): Chunk[Byte] =
-    jsArrayBuffer(array.buffer)
+    byteBuffer(
+      TypedArrayBuffer.wrap(array.buffer, array.byteOffset, array.byteLength)
+    )
 
 }

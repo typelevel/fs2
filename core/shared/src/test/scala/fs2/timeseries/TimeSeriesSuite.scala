@@ -37,26 +37,26 @@ class TimeSeriesSuite extends Fs2Suite {
     assertEquals(
       withTicks1s,
       List(
-        Some(1) at 1.seconds,
-        None at 2.seconds,
-        Some(2) at 2.seconds,
-        None at 3.seconds,
-        Some(3) at 3.seconds
+        Some(1).at(1.seconds),
+        None.at(2.seconds),
+        Some(2).at(2.seconds),
+        None.at(3.seconds),
+        Some(3).at(3.seconds)
       )
     )
     val withTicks300ms = events.through(TimeSeries.interpolateTicks(300.millis)).toList
     assertEquals(
       withTicks300ms,
       List(
-        Some(1) at 1.second,
-        None at 1.3.seconds,
-        None at 1.6.seconds,
-        None at 1.9.seconds,
-        Some(2) at 2.seconds,
-        None at 2.2.seconds,
-        None at 2.5.seconds,
-        None at 2.8.seconds,
-        Some(3) at 3.seconds
+        Some(1).at(1.second),
+        None.at(1.3.seconds),
+        None.at(1.6.seconds),
+        None.at(1.9.seconds),
+        Some(2).at(2.seconds),
+        None.at(2.2.seconds),
+        None.at(2.5.seconds),
+        None.at(2.8.seconds),
+        Some(3).at(3.seconds)
       )
     )
   }
@@ -74,10 +74,10 @@ class TimeSeriesSuite extends Fs2Suite {
     assertEquals(
       source.through(TimeSeries.preserve(x).toPipe).toList,
       List(
-        Some(3) at 0.millis,
-        Some(3) at 500.millis,
-        None at 1000.millis,
-        Some(5) at 1500.millis
+        Some(3).at(0.millis),
+        Some(3).at(500.millis),
+        None.at(1000.millis),
+        Some(5).at(1500.millis)
       )
     )
   }

@@ -22,7 +22,6 @@
 package fs2
 package io
 
-import cats._
 import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
@@ -30,13 +29,8 @@ import cats.syntax.all._
 import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
-import java.nio.charset.Charset
-import java.nio.charset.StandardCharsets
-import scala.reflect.ClassTag
 
-private[fs2] trait ioplatform {
-  type InterruptedIOException = java.io.InterruptedIOException
-  type ClosedChannelException = java.nio.channels.ClosedChannelException
+private[fs2] trait ioplatform extends iojvmnative {
 
   /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
@@ -110,57 +104,5 @@ private[fs2] trait ioplatform {
       }
     }
   }
-
-  //
-  // STDIN/STDOUT Helpers
-
-  /** Stream of bytes read asynchronously from standard input. */
-  def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
-    readInputStream(Sync[F].blocking(System.in), bufSize, false)
-
-  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync]: Pipe[F, Byte, INothing] =
-    writeOutputStream(Sync[F].blocking(System.out), false)
-
-  /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  def stderr[F[_]: Sync]: Pipe[F, Byte, INothing] =
-    writeOutputStream(Sync[F].blocking(System.err), false)
-
-  /** Writes this stream to standard output asynchronously, converting each element to
-    * a sequence of bytes via `Show` and the given `Charset`.
-    */
-  def stdoutLines[F[_]: Sync, O: Show](
-      charset: Charset = StandardCharsets.UTF_8
-  ): Pipe[F, O, INothing] =
-    _.map(_.show).through(text.encode(charset)).through(stdout)
-
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
-    stdin(bufSize).through(text.utf8.decode)
-
-  /** Stream of bytes read asynchronously from the specified resource relative to the class `C`.
-    * @see [[readClassLoaderResource]] for a resource relative to a classloader.
-    */
-  def readClassResource[F[_], C](
-      name: String,
-      chunkSize: Int = 64 * 1024
-  )(implicit F: Sync[F], ct: ClassTag[C]): Stream[F, Byte] =
-    Stream.eval(F.blocking(Option(ct.runtimeClass.getResourceAsStream(name)))).flatMap {
-      case Some(resource) => io.readInputStream(resource.pure, chunkSize)
-      case None           => Stream.raiseError(new IOException(s"Resource $name not found"))
-    }
-
-  /** Stream of bytes read asynchronously from the specified classloader resource.
-    * @see [[readClassResource]] for a resource relative to a class.
-    */
-  def readClassLoaderResource[F[_]](
-      name: String,
-      chunkSize: Int = 64 * 1024,
-      classLoader: ClassLoader = getClass().getClassLoader()
-  )(implicit F: Sync[F]): Stream[F, Byte] =
-    Stream.eval(F.blocking(Option(classLoader.getResourceAsStream(name)))).flatMap {
-      case Some(resource) => io.readInputStream(resource.pure, chunkSize)
-      case None           => Stream.raiseError(new IOException(s"Resource $name not found"))
-    }
 
 }

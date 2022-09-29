@@ -40,7 +40,7 @@ case class Ipv6Header(
     hopLimit: Int,
     sourceIp: Ipv6Address,
     destinationIp: Ipv6Address
-)
+) extends UnsealedIpHeader
 
 object Ipv6Header {
   implicit val codec: Codec[Ipv6Header] = {

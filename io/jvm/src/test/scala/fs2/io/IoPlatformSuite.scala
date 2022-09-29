@@ -39,7 +39,7 @@ import java.util.concurrent.Executors
 class IoPlatformSuite extends Fs2Suite {
 
   // This suite runs for a long time, this avoids timeouts in CI.
-  override def munitTimeout: Duration = 1.minute
+  override def munitIOTimeout: Duration = 1.minute
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
@@ -211,6 +211,24 @@ class IoPlatformSuite extends Fs2Suite {
 
       readOutputStream(1)(_ => EitherT.left[Unit](IO.unit)).compile.drain.value
         .timeout(5.seconds)
+    }
+
+    test("writeOutputStream doesn't hang on error") {
+      val s = Stream
+        .emit[IO, Byte](0)
+        .repeat
+        .take(3)
+        .through { in =>
+          readOutputStream(1) { out =>
+            in
+              .through(writeOutputStream(IO.pure(out)))
+              .compile
+              .drain
+          }
+        }
+
+      (s >> Stream.raiseError[IO](new RuntimeException("boom"))).compile.drain
+        .intercept[RuntimeException]
     }
   }
 

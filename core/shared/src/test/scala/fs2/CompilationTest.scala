@@ -67,8 +67,8 @@ object ThisModuleShouldCompile {
     case Some((hd, _)) => Pull.eval(IO.pure(1)) >> Pull.output1(hd)
     case None          => Pull.done
   }.stream
-  (Stream(1, 2, 3).evalMap(IO(_))): Stream[IO, Int]
-  (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
+  Stream(1, 2, 3).evalMap(IO(_)): Stream[IO, Int]
+  Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i))): Stream[IO, Int]
 
   val s: Stream[IO, Int] = if (true) Stream(1, 2, 3) else Stream.eval(IO(10))
 
@@ -92,7 +92,7 @@ object ThisModuleShouldCompile {
     import cats.syntax.all._
     1 |+| 1 // Mask unused warning from cats.syntax.all._ import
     Stream(1, 2, 3).flatMap(i => Stream.eval(IO.pure(i)))
-    (Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i)))): Stream[IO, Int]
+    Stream(1, 2, 3).flatMap(i => Stream.eval(IO(i))): Stream[IO, Int]
   }
 
   // Join a pure stream of effectful streams without type annotations
@@ -107,7 +107,9 @@ object ThisModuleShouldCompile {
 
   // Ensure that .to(Collector) syntax works even when target type is known (regression #1709)
   val z: List[Int] = Stream.range(0, 5).compile.to(List)
-  Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
+  (Stream.empty[Id]: Stream[Id, Byte]).compile.to(Chunk): Chunk[Byte]
+  // Following doesn't compile; Scala 2 gets confused with the Nothing output param, Scala 3 works
+  // Stream.empty[Id].covaryOutput[Byte].compile.to(Chunk): Chunk[Byte]
 
   Stream(1, 2, 3).compile.to(Set)
   Stream(1, 2, 3).to(List)

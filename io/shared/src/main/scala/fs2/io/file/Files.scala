@@ -30,6 +30,7 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 import cats.Traverse
+import fs2.text
 
 /** Provides operations related to working with files in the effect `F`.
   *
@@ -273,6 +274,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
+  /** Reads all bytes from the file specified and decodes them as a utf8 string. */
+  def readUtf8(path: Path): Stream[F, String]
+
+  /** Reads all bytes from the file specified and decodes them as utf8 lines. */
+  def readUtf8Lines(path: Path): Stream[F, String]
+
   /** Returns the real path i.e. the actual location of `path`.
     * The precise definition of this method is implementation dependent but in general
     * it derives from this path, an absolute path that locates the same file as this path,
@@ -370,12 +377,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * Use `writeAll(path, Flags.Append)` to append to the end of
     * the file, or pass other flags to further customize behavior.
     */
-  def writeAll(path: Path): Pipe[F, Byte, INothing] = writeAll(path, Flags.Write)
+  def writeAll(path: Path): Pipe[F, Byte, Nothing] = writeAll(path, Flags.Write)
 
   /** Writes all data to the file at the specified path, using the
     * specified flags to open the file.
     */
-  def writeAll(path: Path, flags: Flags): Pipe[F, Byte, INothing]
+  def writeAll(path: Path, flags: Flags): Pipe[F, Byte, Nothing]
 
   /** Returns a `WriteCursor` for the specified path.
     */
@@ -398,7 +405,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       computePath: F[Path],
       limit: Long,
       flags: Flags
-  ): Pipe[F, Byte, INothing]
+  ): Pipe[F, Byte, Nothing]
 }
 
 object Files extends FilesCompanionPlatform {
@@ -418,6 +425,12 @@ object Files extends FilesCompanionPlatform {
       Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
         cursor.seek(start).readUntil(chunkSize, end).void.stream
       }
+
+    def readUtf8(path: Path): Stream[F, String] =
+      readAll(path).through(text.utf8.decode)
+
+    def readUtf8Lines(path: Path): Stream[F, String] =
+      readUtf8(path).through(text.lines)
 
     def tail(
         path: Path,
@@ -486,7 +499,7 @@ object Files extends FilesCompanionPlatform {
     def writeAll(
         path: Path,
         flags: Flags
-    ): Pipe[F, Byte, INothing] =
+    ): Pipe[F, Byte, Nothing] =
       in =>
         Stream
           .resource(writeCursor(path, flags))
@@ -512,7 +525,7 @@ object Files extends FilesCompanionPlatform {
         computePath: F[Path],
         limit: Long,
         flags: Flags
-    ): Pipe[F, Byte, INothing] = {
+    ): Pipe[F, Byte, Nothing] = {
       def openNewFile: Resource[F, FileHandle[F]] =
         Resource
           .eval(computePath)
