@@ -26,6 +26,7 @@ package reactivestreams
 import org.reactivestreams._
 import cats.effect._
 import cats.effect.std.Dispatcher
+import cats.syntax.all._
 
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -47,17 +48,18 @@ class CancellationSpec extends Fs2Suite {
 
   val attempts = 10000
 
-  def withDispatcher(f: Dispatcher[IO] => Unit): Unit =
-    Dispatcher[IO]
-      .use(dispatcher => IO(f(dispatcher)))
+  def withDispatchers(f: (Dispatcher[IO], Dispatcher[IO]) => Unit): Unit =
+    (Dispatcher.sequential[IO], Dispatcher.sequential[IO]).tupled
+      .use { case (d1, d2) => IO(f(d1, d2)) }
       .unsafeRunSync()
 
   test("after subscription is cancelled request must be noOps") {
-    withDispatcher { dispatcher =>
+    withDispatchers { (startDispatcher, requestDispatcher) =>
       var i = 0
       val b = new AtomicBoolean(false)
       while (i < attempts) {
-        val sub = StreamSubscription(Sub[Int](b), s, dispatcher).unsafeRunSync()
+        val sub =
+          StreamSubscription(Sub[Int](b), s, startDispatcher, requestDispatcher).unsafeRunSync()
         sub.unsafeStart()
         sub.cancel()
         sub.request(1)
@@ -70,11 +72,12 @@ class CancellationSpec extends Fs2Suite {
   }
 
   test("after subscription is cancelled additional cancelations must be noOps") {
-    withDispatcher { dispatcher =>
+    withDispatchers { (startDispatcher, requestDispatcher) =>
       var i = 0
       val b = new AtomicBoolean(false)
       while (i < attempts) {
-        val sub = StreamSubscription(Sub[Int](b), s, dispatcher).unsafeRunSync()
+        val sub =
+          StreamSubscription(Sub[Int](b), s, startDispatcher, requestDispatcher).unsafeRunSync()
         sub.unsafeStart()
         sub.cancel()
         sub.cancel()

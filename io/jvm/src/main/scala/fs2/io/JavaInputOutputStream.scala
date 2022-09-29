@@ -191,7 +191,7 @@ private[io] object JavaInputOutputStream {
      * - DownStream signal -  keeps any remainders from last `read` and signals
      *                        that downstream has been terminated that in turn kills upstream
      */
-    Dispatcher[F].flatMap { dispatcher =>
+    Dispatcher.sequential[F].flatMap { dispatcher =>
       Resource
         .eval(
           (

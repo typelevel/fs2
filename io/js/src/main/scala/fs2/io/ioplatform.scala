@@ -30,6 +30,7 @@ import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
+import fs2.concurrent.Channel
 import fs2.io.internal.MicrotaskExecutor
 import fs2.io.internal.facade
 
@@ -59,8 +60,8 @@ private[fs2] trait ioplatform {
       destroyIfCanceled: Boolean = true
   )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
     (for {
-      dispatcher <- Dispatcher[F]
-      queue <- Queue.synchronous[F, Option[Unit]].toResource
+      dispatcher <- Dispatcher.sequential[F]
+      channel <- Channel.unbounded[F, Unit].toResource
       error <- F.deferred[Throwable].toResource
       readableResource = for {
         readable <- Resource.makeCase(F.delay(thunk)) {
@@ -79,9 +80,9 @@ private[fs2] trait ioplatform {
             else
               F.unit
         }
-        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => queue.offer(Some(())))
-        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => queue.offer(None))
-        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => queue.offer(None))
+        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => channel.send(()).void)
+        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => channel.close.void)
+        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => channel.close.void)
         _ <- readable.registerListener[F, js.Error]("error", dispatcher) { e =>
           error.complete(js.JavaScriptException(e)).void
         }
@@ -94,8 +95,7 @@ private[fs2] trait ioplatform {
       // our only recourse is to run the entire creation/listener registration process on the microtask executor.
       readable <- readableResource.evalOn(MicrotaskExecutor)
       stream =
-        (Stream
-          .fromQueueNoneTerminated(queue)
+        (channel.stream
           .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
           Stream
             .evalUnChunk(
@@ -199,9 +199,11 @@ private[fs2] trait ioplatform {
       in: Stream[F, Byte]
   )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] =
     for {
-      dispatcher <- Dispatcher[F]
+      readDispatcher <- Dispatcher.sequential[F]
+      writeDispatcher <- Dispatcher.sequential[F]
+      errorDispatcher <- Dispatcher.sequential[F]
       readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
-      writeQueue <- Queue.synchronous[F, Option[Chunk[Byte]]].toResource
+      writeChannel <- Channel.synchronous[F, Chunk[Byte]].toResource
       error <- F.deferred[Throwable].toResource
       duplex <- Resource.make {
         F.delay {
@@ -211,7 +213,7 @@ private[fs2] trait ioplatform {
               var autoDestroy = false
 
               var read = { readable =>
-                dispatcher.unsafeRunAndForget(
+                readDispatcher.unsafeRunAndForget(
                   readQueue.take.flatMap { chunk =>
                     F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
                   }
@@ -219,19 +221,19 @@ private[fs2] trait ioplatform {
               }
 
               var write = { (_, chunk, _, cb) =>
-                dispatcher.unsafeRunAndForget(
-                  writeQueue.offer(Some(Chunk.uint8Array(chunk))) *> F.delay(cb(null))
+                writeDispatcher.unsafeRunAndForget(
+                  writeChannel.send(Chunk.uint8Array(chunk)) *> F.delay(cb(null))
                 )
               }
 
               var `final` = { (_, cb) =>
-                dispatcher.unsafeRunAndForget(
-                  writeQueue.offer(None) *> F.delay(cb(null))
+                writeDispatcher.unsafeRunAndForget(
+                  writeChannel.close *> F.delay(cb(null))
                 )
               }
 
               var destroy = { (_, err, cb) =>
-                dispatcher.unsafeRunAndForget {
+                errorDispatcher.unsafeRunAndForget {
                   error
                     .complete(
                       Option(err)
@@ -249,8 +251,7 @@ private[fs2] trait ioplatform {
         }
       }
       drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
-      out = Stream
-        .fromQueueNoneTerminatedChunk(writeQueue)
+      out = writeChannel.stream.unchunks
         .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
     } yield (
       duplex,

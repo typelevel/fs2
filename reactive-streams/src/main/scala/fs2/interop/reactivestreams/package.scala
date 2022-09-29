@@ -23,7 +23,6 @@ package fs2
 package interop
 
 import cats.effect.kernel._
-import cats.effect.std.Dispatcher
 import org.reactivestreams._
 
 /** Implementation of the reactivestreams protocol for fs2
@@ -103,8 +102,6 @@ package object reactivestreams {
     def toUnicastPublisher(implicit
         F: Async[F]
     ): Resource[F, StreamUnicastPublisher[F, A]] =
-      Dispatcher[F].map { dispatcher =>
-        StreamUnicastPublisher(stream, dispatcher)
-      }
+      StreamUnicastPublisher(stream)
   }
 }
