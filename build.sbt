@@ -176,6 +176,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.tls.TLSContext#Builder.insecureResource"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]( // something funky in Scala 3.2.0 ...
+    "fs2.io.net.SocketGroupCompanionPlatform#AsyncSocketGroup.this"
   )
 )
 
