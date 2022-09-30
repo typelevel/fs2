@@ -53,7 +53,7 @@ private[net] trait DatagramSocketCompanionPlatform {
       sock: facade.dgram.Socket
   )(implicit F: Async[F]): Resource[F, DatagramSocket[F]] =
     for {
-      dispatcher <- Dispatcher[F]
+      dispatcher <- Dispatcher.sequential[F]
       queue <- Queue
         .circularBuffer[F, Datagram](1024)
         .toResource // TODO how to set this? Or, bad design?

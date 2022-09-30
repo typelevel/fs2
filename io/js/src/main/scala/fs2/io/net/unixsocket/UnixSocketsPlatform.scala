@@ -25,8 +25,8 @@ package io.net.unixsocket
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.syntax.all._
+import fs2.concurrent.Channel
 import fs2.io.file.Files
 import fs2.io.file.Path
 import fs2.io.net.Socket
@@ -65,8 +65,8 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           deleteOnClose: Boolean
       ): fs2.Stream[F, Socket[F]] =
         for {
-          dispatcher <- Stream.resource(Dispatcher[F])
-          queue <- Stream.eval(Queue.unbounded[F, facade.net.Socket])
+          dispatcher <- Stream.resource(Dispatcher.sequential[F])
+          channel <- Stream.eval(Channel.unbounded[F, facade.net.Socket])
           errored <- Stream.eval(F.deferred[js.JavaScriptException])
           server <- Stream.bracket(
             F.delay {
@@ -75,7 +75,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
                   pauseOnConnect = true
                   allowHalfOpen = true
                 },
-                sock => dispatcher.unsafeRunAndForget(queue.offer(sock))
+                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
               )
             }
           )(server =>
@@ -103,9 +103,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
               ()
             }
           )
-          socket <- Stream
-            .fromQueueUnterminated(queue)
-            .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+          socket <- channel.stream.flatMap(sock => Stream.resource(Socket.forAsync(sock)))
         } yield socket
 
     }

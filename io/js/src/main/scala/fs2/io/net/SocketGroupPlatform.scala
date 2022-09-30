@@ -26,13 +26,13 @@ package net
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
+import fs2.concurrent.Channel
 import fs2.io.internal.facade
 
 import scala.scalajs.js
@@ -83,8 +83,8 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       (for {
-        dispatcher <- Dispatcher[F]
-        queue <- Queue.unbounded[F, Option[facade.net.Socket]].toResource
+        dispatcher <- Dispatcher.sequential[F]
+        channel <- Channel.unbounded[F, facade.net.Socket].toResource
         server <- Resource.make(
           F
             .delay(
@@ -93,15 +93,14 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
                   pauseOnConnect = true
                   allowHalfOpen = true
                 },
-                sock => dispatcher.unsafeRunAndForget(queue.offer(Some(sock)))
+                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
               )
             )
         )(server =>
           F.async[Unit] { cb =>
             if (server.listening)
-              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) >> queue
-                .offer(None)
-                .as(None)
+              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) *>
+                channel.close.as(None)
             else
               F.delay(cb(Right(()))).as(None)
           }
@@ -126,8 +125,7 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           val info = server.address()
           SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port).get)
         }.toResource
-        sockets = Stream
-          .fromQueueNoneTerminated(queue)
+        sockets = channel.stream
           .evalTap(setSocketOptions(options))
           .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
       } yield (ipAddress, sockets)).adaptError { case IOException(ex) => ex }

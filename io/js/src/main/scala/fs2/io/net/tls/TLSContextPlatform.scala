@@ -62,15 +62,15 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] = Dispatcher[F]
-            .flatMap { dispatcher =>
+          ): Resource[F, TLSSocket[F]] = (Dispatcher.sequential[F], Dispatcher.parallel[F])
+            .flatMapN { (seqDispatcher, parDispatcher) =>
               if (clientMode) {
                 Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
                   TLSSocket
                     .forAsync(
                       socket,
                       sock => {
-                        val options = params.toTLSConnectOptions(dispatcher)
+                        val options = params.toTLSConnectOptions(parDispatcher)
                         options.secureContext = context
                         if (insecure)
                           options.rejectUnauthorized = false
@@ -79,18 +79,18 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         val tlsSock = facade.tls.connect(options)
                         tlsSock.once(
                           "secureConnect",
-                          () => dispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
+                          () => seqDispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
                         )
                         tlsSock.once[js.Error](
                           "error",
                           e =>
-                            dispatcher.unsafeRunAndForget(
+                            seqDispatcher.unsafeRunAndForget(
                               handshake.complete(Left(new js.JavaScriptException(e)))
                             )
                         )
                         tlsSock
                       },
-                      dispatcher
+                      seqDispatcher
                     )
                     .evalTap(_ => handshake.get.rethrow)
                 }
@@ -100,7 +100,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                     .forAsync(
                       socket,
                       sock => {
-                        val options = params.toTLSSocketOptions(dispatcher)
+                        val options = params.toTLSSocketOptions(parDispatcher)
                         options.secureContext = context
                         if (insecure)
                           options.rejectUnauthorized = false
@@ -118,19 +118,19 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                                   .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
                                   .toLeft(())
                               else Either.unit
-                            dispatcher.unsafeRunAndForget(verifyError.complete(result))
+                            seqDispatcher.unsafeRunAndForget(verifyError.complete(result))
                           }
                         )
                         tlsSock.once[js.Error](
                           "error",
                           e =>
-                            dispatcher.unsafeRunAndForget(
+                            seqDispatcher.unsafeRunAndForget(
                               verifyError.complete(Left(new js.JavaScriptException(e)))
                             )
                         )
                         tlsSock
                       },
-                      dispatcher
+                      seqDispatcher
                     )
                     .evalTap(_ => verifyError.get.rethrow)
                 }
