@@ -200,7 +200,7 @@ object Channel {
             }
 
           // you can do this more efficiently, just proves a point
-          Stream.eval(takeN).repeat.takeWhile(!_.isEmpty).flatMap(Stream.chunk(_))
+          Stream.eval(takeN).repeat.takeWhile(!_.isEmpty).unchunks
         }
 
         def closed: F[Unit] = closedR.get
