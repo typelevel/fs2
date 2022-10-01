@@ -71,7 +71,8 @@ abstract class Topic[F[_], A] { self =>
     *
     * If at any point, the queue backing the subscription has `maxQueued` elements in it,
     * any further publications semantically block until elements are dequeued from the
-    * subscription queue.
+    * subscription queue. Any value of `maxQueued` which is greater than `Short.MaxValue`
+    * is treated as unbounded.
     *
     * @param maxQueued maximum number of elements to enqueue to the subscription
     * queue before blocking publishers
