@@ -162,7 +162,7 @@ object Channel {
             (isClosed, leasesR.get.map(_ <= 0), q.size.map(_ <= 0)).mapN(_ && _ && _)
 
           def send(a: A): F[Either[Channel.Closed, Unit]] = {
-            def permit[A](fa: F[A]): F[A] =
+            def permit[E](fa: F[E]): F[E] =
               MonadCancel[F].uncancelable { poll =>
                 (leasesR.update(_ + 1) *> poll(fa)).guarantee {
                   (closedR.get, leasesR.updateAndGet(_ - 1)).tupled.flatMap {
