@@ -80,7 +80,9 @@ abstract class Topic[F[_], A] { self =>
 
   /** Like `subscribe`, but represents the subscription explicitly as
     * a `Resource` which returns after the subscriber is subscribed,
-    * but before it has started pulling elements.
+    * but before it has started pulling elements. Note that any value
+    * of `maxQueued` which is greater than `Short.MaxValue` will be
+    * treated as "unbounded".
     */
   def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
 
@@ -159,7 +161,10 @@ object Topic {
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
           Resource
-            .eval(Channel.bounded[F, A](maxQueued))
+            .eval(
+              if (maxQueued >= Short.MaxValue) Channel.unbounded[F, A]
+              else Channel.bounded[F, A](maxQueued)
+            )
             .flatMap { chan =>
               val subscribe = state.modify { case (subs, id) =>
                 (subs.updated(id, chan), id + 1) -> id
