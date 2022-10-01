@@ -16,6 +16,7 @@ ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
+ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
