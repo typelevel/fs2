@@ -184,19 +184,4 @@ class ChannelSuite extends Fs2Suite {
       _ <- IO(assert(count == 6)) // we have to overrun the closure to detect it
     } yield ()
   }
-
-  test("sendPull") {
-    def blackHole(s: Stream[IO, Unit]) =
-      s.repeatPull(_.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) =>
-          val action = IO.delay(0.until(hd.size).foreach(_ => ()))
-          Pull.eval(action).as(Some(tl))
-      })
-
-    Channel.bounded[IO, Unit](8).flatMap { channel =>
-      val action = List.fill(64)(()).traverse_(_ => channel.send(()).void) *> channel.close
-      action.start *> channel.stream.through(blackHole).compile.drain
-    }
-  }
 }

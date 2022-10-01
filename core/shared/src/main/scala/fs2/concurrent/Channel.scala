@@ -22,7 +22,6 @@
 package fs2
 package concurrent
 
-import cats.Applicative
 import cats.effect._
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
@@ -133,7 +132,7 @@ object Channel {
     Queue.bounded[F, A](capacity).flatMap(impl(_))
 
   private[this] def impl[F[_]: Concurrent, A](q: Queue[F, A]): F[Channel[F, A]] =
-    (Concurrent[F].deferred[Unit], Lease[F]).mapN { (closedR, lease) =>
+    (Concurrent[F].deferred[Unit], Concurrent[F].ref(0)).mapN { (closedR, leasesR) =>
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] =
@@ -152,7 +151,7 @@ object Channel {
         def isClosed: F[Boolean] = closedR.tryGet.map(_.isDefined)
 
         private[this] val leasesDrained: F[Boolean] =
-          lease.isEmpty
+          leasesR.get.map(_ <= 0)
 
         private[this] val isQuiesced: F[Boolean] =
           isClosed.ifM(leasesDrained, false.pure[F])
@@ -160,7 +159,7 @@ object Channel {
         def send(a: A): F[Either[Channel.Closed, Unit]] =
           isClosed.ifM(
             Channel.Closed.asLeft[Unit].pure[F],
-            lease.permit(q.offer(a)).map(Right(_))
+            (leasesR.update(_ + 1) *> q.offer(a)).guarantee(leasesR.update(_ - 1)).map(Right(_))
           )
 
         def trySend(a: A): F[Either[Channel.Closed, Boolean]] =
@@ -170,21 +169,27 @@ object Channel {
           val takeN: F[Chunk[A]] =
             q.tryTakeN(None).flatMap {
               case Nil =>
-                val fallback = MonadCancel[F].uncancelable { poll =>
-                  poll(Spawn[F].racePair(q.take, closedR.get.both(lease.await))).flatMap {
-                    case Left((oca, fiber)) =>
-                      oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
+                val fallback = leasesDrained.flatMap { b =>
+                  if (b) {
+                    MonadCancel[F].uncancelable { poll =>
+                      poll(Spawn[F].racePair(q.take, closedR.get)).flatMap {
+                        case Left((oca, fiber)) =>
+                          oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
 
-                    case Right((fiber, ocb)) =>
-                      ocb.embedNever.flatMap { _ =>
-                        (fiber.cancel *> fiber.join).flatMap { oca =>
-                          oca.fold(
-                            Chunk.empty[A].pure[F],
-                            _ => Chunk.empty[A].pure[F],
-                            _.map(Chunk.singleton(_))
-                          )
-                        }
+                        case Right((fiber, ocb)) =>
+                          ocb.embedNever.flatMap { _ =>
+                            (fiber.cancel *> fiber.join).flatMap { oca =>
+                              oca.fold(
+                                Chunk.empty[A].pure[F],
+                                _ => Chunk.empty[A].pure[F],
+                                _.map(Chunk.singleton(_))
+                              )
+                            }
+                          }
                       }
+                    }
+                  } else {
+                    q.take.map(Chunk.singleton(_))
                   }
                 }
 
@@ -201,42 +206,4 @@ object Channel {
         def closed: F[Unit] = closedR.get
       }
     }
-
-  // this is like an inverse semaphore and I'm surprised we haven't added it in std yet
-  private final class Lease[F[_]: Concurrent] private (
-      leasesR: Ref[F, Int],
-      latchR: Ref[F, Deferred[F, Unit]]
-  ) {
-
-    def permit[A](fa: F[A]): F[A] =
-      MonadCancel[F].uncancelable { poll =>
-        val init = leasesR.modify(i => (i + 1, i + 1)).flatMap { leases =>
-          if (leases == 1)
-            Concurrent[F].deferred[Unit].flatMap(latchR.set(_))
-          else
-            Applicative[F].unit
-        }
-
-        (init *> poll(fa)).guarantee {
-          leasesR.modify(i => (i - 1, i - 1)).flatMap { leases =>
-            if (leases == 0)
-              latchR.get.flatMap(_.complete(())).void
-            else
-              Applicative[F].unit
-          }
-        }
-      }
-
-    def isEmpty: F[Boolean] = leasesR.get.map(_ == 0)
-
-    def await: F[Unit] = latchR.get.flatMap(_.get)
-  }
-
-  private object Lease {
-    def apply[F[_]: Concurrent]: F[Lease[F]] =
-      Concurrent[F].deferred[Unit].flatMap { latch =>
-        latch.complete(()) *> (Concurrent[F].ref(0), Concurrent[F].ref(latch))
-          .mapN(new Lease[F](_, _))
-      }
-  }
 }
