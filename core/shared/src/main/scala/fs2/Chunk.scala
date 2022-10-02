@@ -127,6 +127,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Maps `f` over the elements of this chunk and concatenates the result. */
   def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
     if (isEmpty) Chunk.empty
+    else if (size == 1) f(apply(0))
     else {
       var acc = Chunk.Queue.empty[O2]
       foreach(o => acc = acc :+ f(o))
@@ -370,6 +371,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])
+    else if (size == 1) f(apply(0)).map(Chunk.singleton)
     else {
       // we branch out by this factor
       val width = 128
@@ -1166,6 +1168,15 @@ object Chunk
           var acc = Chunk.Queue.empty[A]
           ffa.foreach(x => acc = acc :+ x)
           acc
+        }
+
+      override def traverse_[F[_], A, B](
+          fa: Chunk[A]
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Unit] =
+        fa.size match {
+          case 0 => F.unit
+          case 1 => f(fa(0)).void
+          case _ => super.traverse_(fa)(f)
         }
 
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
