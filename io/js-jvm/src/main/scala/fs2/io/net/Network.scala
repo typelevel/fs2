@@ -59,7 +59,7 @@ sealed trait Network[F[_]]
 }
 
 object Network extends NetworkCompanionPlatform {
-  private[net] trait UnsealedNetwork[F[_]] extends Network[F]
+  private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
 }
