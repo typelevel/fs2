@@ -325,6 +325,8 @@ object Pull extends PullLowPriority {
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
 
+  private[fs2] val outUnit: Pull[Pure, Unit, Unit] = Output(Chunk.unit)
+
   /** A pull that performs no effects, emits no outputs, and
     * always terminates successfully with a unit result.
     */
@@ -1093,7 +1095,7 @@ object Pull extends PullLowPriority {
         )
         val cont = onScope.flatMap { outcome =>
           val result = outcome match {
-            case Outcome.Succeeded(Right(_))      => Succeeded(())
+            case Outcome.Succeeded(Right(_))      => unit
             case Outcome.Succeeded(Left(scopeId)) => Interrupted(scopeId, None)
             case Outcome.Canceled()               => Interrupted(scope.id, None)
             case Outcome.Errored(err)             => Fail(err)
@@ -1342,6 +1344,7 @@ private[fs2] class PullMonadErrorInstance[F[_], O] extends MonadError[Pull[F, O,
   def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
   def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
     p.flatMap(f)
+  override def unit: Pull[F, O, Unit] = Pull.done
   override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
     f(a).flatMap {
       case Left(a)  => tailRecM(a)(f)

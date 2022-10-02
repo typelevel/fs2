@@ -528,6 +528,8 @@ object Chunk
     override def toString = "empty"
   }
 
+  private[fs2] val unit: Chunk[Unit] = singleton(())
+
   /** Chunk with no elements. */
   def empty[A]: Chunk[A] = empty_
 

@@ -715,7 +715,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       delay: FiniteDuration,
       startImmediately: Boolean = true
   ): Stream[F2, O] =
-    ((if (startImmediately) Stream.emit(()) else Stream.empty) ++ Stream.fixedDelay[F2](delay))
+    ((if (startImmediately) Stream.unit else Stream.empty) ++ Stream.fixedDelay[F2](delay))
       .zipRight(this)
 
   /** Logs the elements of this stream as they are pulled.
@@ -2128,7 +2128,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             semaphore.release *>
               semaphore.available.flatMap {
                 case `concurrency` => channel.close *> end.complete(()).void
-                case _             => ().pure[F2]
+                case _             => F.unit
               }
 
           def forkOnElem(el: O): F2[Unit] =
@@ -2578,7 +2578,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * with an error.
     */
   def spawn[F2[x] >: F[x]](implicit F: Concurrent[F2]): Stream[F2, Fiber[F2, Throwable, Unit]] =
-    Stream.emit[F2, Unit](()).concurrentlyAux(this).flatMap { case (startBack, fore) =>
+    Stream.unit.covary[F2].concurrentlyAux(this).flatMap { case (startBack, fore) =>
       startBack.flatTap(_ => fore)
     }
 
@@ -2962,6 +2962,10 @@ object Stream extends StreamLowPriority {
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
   def apply[F[x] >: Pure[x], O](os: O*): Stream[F, O] = emits(os)
 
+  /** A pure stream that just emits the unit value once and ends.
+    */
+  val unit: Stream[Pure, Unit] = new Stream(Pull.outUnit)
+
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
     * is emitted. Otherwise, a `Right` is emitted.
     *
@@ -3266,14 +3270,14 @@ object Stream extends StreamLowPriority {
   def fixedRateStartImmediately[F[_]](period: FiniteDuration, dampen: Boolean)(implicit
       F: Temporal[F]
   ): Stream[F, Unit] =
-    Stream.eval(F.monotonic).flatMap(t => Stream.emit(()) ++ fixedRate_(period, t, dampen))
+    Stream.eval(F.monotonic).flatMap(t => Stream.unit ++ fixedRate_(period, t, dampen))
 
   private def fixedRate_[F[_]: Temporal](
       period: FiniteDuration,
       lastAwakeAt: FiniteDuration,
       dampen: Boolean
   ): Stream[F, Unit] =
-    if (period.toNanos == 0) Stream(()).repeat
+    if (period.toNanos == 0) Stream.unit.repeat
     else
       Stream.eval(Temporal[F].monotonic).flatMap { now =>
         val next = lastAwakeAt + period
@@ -3284,8 +3288,8 @@ object Stream extends StreamLowPriority {
           val step =
             ticks match {
               case count if count < 0            => Stream.empty
-              case count if count == 0 || dampen => Stream.emit(())
-              case count                         => Stream.emit(()).repeatN(count)
+              case count if count == 0 || dampen => unit
+              case count                         => unit.repeatN(count)
             }
           step ++ fixedRate_(period, lastAwakeAt + (period * ticks), dampen)
         }
@@ -3970,7 +3974,7 @@ object Stream extends StreamLowPriority {
     /** Converts a `Stream[F, Nothing]` to a `Stream[F, Unit]` which emits a single `()` after this stream completes.
       */
     def unitary: Stream[F, Unit] =
-      self ++ Stream.emit(())
+      self ++ unit
   }
 
   implicit final class OptionStreamOps[F[_], O](private val self: Stream[F, Option[O]])
@@ -5163,6 +5167,8 @@ private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
     new Monad[Stream[F, *]] {
       override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+      override def unit: Stream[F, Unit] = Stream.unit
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
