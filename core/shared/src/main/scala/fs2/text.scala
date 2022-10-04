@@ -316,8 +316,7 @@ object text {
     def encodeC(
         encoder: CharsetEncoder,
         acc: Chunk[Char],
-        s: Stream[F, Chunk[Char]],
-        lastOutBuffer: ByteBuffer
+        s: Stream[F, Chunk[Char]]
     ): Pull[F, Chunk[Byte], Unit] =
       s.pull.uncons1.flatMap { r =>
         val toEncode = r match {
@@ -326,14 +325,9 @@ object text {
         }
 
         val isLast = r.isEmpty
-        (lastOutBuffer: Buffer).clear()
-
         val outBufferSize = (encoder.maxBytesPerChar() * toEncode.size).ceil.toInt
 
-        val out =
-          if (outBufferSize > lastOutBuffer.remaining())
-            ByteBuffer.allocate(outBufferSize)
-          else lastOutBuffer
+        val out = ByteBuffer.allocate(outBufferSize)
 
         val inBuffer = toEncode.toCharBuffer
         val result = encoder.encode(inBuffer, out, isLast)
@@ -354,19 +348,16 @@ object text {
             else new CharacterCodingException()
           }
         } else if (out.remaining() > 0) {
-          Pull.output1(Chunk.byteBuffer(out)) >> encodeC(encoder, nextAcc, rest, out)
+          Pull.output1(Chunk.byteBuffer(out)) >> encodeC(encoder, nextAcc, rest)
         } else if (!isLast) {
-          encodeC(encoder, nextAcc, rest, out)
+          encodeC(encoder, nextAcc, rest)
         } else if (nextAcc.nonEmpty) {
           encodeC(
             encoder,
             nextAcc,
-            rest,
-            ByteBuffer.allocate(
-              outBufferSize + (encoder.maxBytesPerChar() * nextAcc.size).toInt
-            )
+            rest
           )
-        } else flush(encoder, lastOutBuffer)
+        } else flush(encoder, ByteBuffer.allocate(0))
       }
 
     @tailrec
@@ -396,8 +387,7 @@ object text {
         encodeC(
           encoder,
           Chunk.empty,
-          s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s))),
-          ByteBuffer.allocate(0)
+          s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s)))
         ).stream
       }
     }
