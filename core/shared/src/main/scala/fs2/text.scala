@@ -27,12 +27,15 @@ import java.nio.charset.{
   CharacterCodingException,
   Charset,
   CharsetDecoder,
+  CharsetEncoder,
   MalformedInputException,
   StandardCharsets,
   UnmappableCharacterException
 }
 import scala.collection.mutable.{ArrayBuffer, Builder}
 import scodec.bits.{Bases, ByteVector}
+
+import scala.annotation.tailrec
 
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
@@ -305,12 +308,100 @@ object text {
     utf8.decodeC
 
   /** Encodes a stream of `String` in to a stream of bytes using the given charset. */
-  def encode[F[_]](charset: Charset): Pipe[F, String, Byte] =
-    _.mapChunks(c => c.flatMap(s => Chunk.array(s.getBytes(charset))))
+  def encode[F[_]](charset: Charset): Pipe[F, String, Byte] = {
+    def encodeC(
+        encoder: CharsetEncoder,
+        acc: Chunk[Char],
+        s: Stream[F, Chunk[Char]],
+        lastOutBuffer: ByteBuffer
+    ): Pull[F, Byte, Unit] =
+      s.pull.uncons1.flatMap { r =>
+        val toEncode = r match {
+          case Some((c, _)) => acc ++ c
+          case None         => acc
+        }
+
+        val isLast = r.isEmpty
+        (lastOutBuffer: Buffer).clear()
+
+        val outBufferSize = (encoder.maxBytesPerChar() * toEncode.size).ceil.toInt
+
+        val out =
+          if (outBufferSize > lastOutBuffer.remaining())
+            ByteBuffer.allocate(outBufferSize)
+          else lastOutBuffer
+
+        val inBuffer = toEncode.toCharBuffer
+        val result = encoder.encode(inBuffer, out, isLast)
+        (out: Buffer).flip()
+
+        val nextAcc =
+          if (inBuffer.remaining() > 0) Chunk.charBuffer(inBuffer.slice()) else Chunk.empty
+
+        val rest = r match {
+          case Some((_, tail)) => tail
+          case None            => Stream.empty
+        }
+
+        if (result.isError) {
+          ApplicativeThrow[Pull[F, Byte, *]].raiseError {
+            if (result.isMalformed) new MalformedInputException(result.length())
+            else if (result.isUnmappable) new UnmappableCharacterException(result.length())
+            else new CharacterCodingException()
+          }
+        } else if (out.remaining() > 0) {
+          Pull.output(Chunk.byteBuffer(out)) >> encodeC(encoder, nextAcc, rest, out)
+        } else if (!isLast) {
+          encodeC(encoder, nextAcc, rest, out)
+        } else if (nextAcc.nonEmpty) {
+          encodeC(
+            encoder,
+            nextAcc,
+            rest,
+            ByteBuffer.allocate(
+              outBufferSize + (encoder.maxBytesPerChar() * nextAcc.size).toInt
+            )
+          )
+        } else flush(encoder, lastOutBuffer)
+      }
+
+    @tailrec
+    def flush(
+        encoder: CharsetEncoder,
+        out: ByteBuffer
+    ): Pull[F, Byte, Unit] = {
+      (out: Buffer).clear()
+      encoder.flush(out) match {
+        case res if res.isUnderflow =>
+          if (out.position() > 0) {
+            (out: Buffer).flip()
+            Pull.output(Chunk.byteBuffer(out)) >> Pull.done
+          } else
+            Pull.done
+        case res if res.isOverflow =>
+          val newSize = (out.capacity + encoder.maxBytesPerChar() * 2).toInt
+          val bigger = ByteBuffer.allocate(newSize)
+          flush(encoder, bigger)
+        case res =>
+          ApplicativeThrow[Pull[F, Byte, *]].catchNonFatal(res.throwException())
+      }
+    }
+
+    { s =>
+      Stream.suspend(Stream.emit(charset.newEncoder())).flatMap { encoder =>
+        encodeC(
+          encoder,
+          Chunk.empty,
+          s.map(s => Chunk.charBuffer(CharBuffer.wrap(s))),
+          ByteBuffer.allocate(0)
+        ).stream
+      }
+    }
+  }
 
   /** Encodes a stream of `String` in to a stream of `Chunk[Byte]` using the given charset. */
   def encodeC[F[_]](charset: Charset): Pipe[F, String, Chunk[Byte]] =
-    _.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
+    _.through(encode[F](charset)).chunks // TODO: Why?
 
   /** Encodes a stream of `String` in to a stream of bytes using the UTF-8 charset. */
   @deprecated("Use text.utf8.encode", "3.1.0")

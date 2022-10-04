@@ -493,5 +493,12 @@ class TextSuite extends Fs2Suite {
         assertEquals(s, Right("\u0940"))
       }
     }
+
+    test("doesn't produce BOMs in the middle of strings") {
+      // protect against regressions of #3006 that come from encoding each element in the stream individually,
+      // leading to BOMs wherever an input string begins
+      val s = Stream("1", "2", "3").through(encode(StandardCharsets.UTF_16)).compile.toList
+      assertEquals(s, List(-2, -1, 0, 49, 0, 50, 0, 51).map(_.toByte))
+    }
   }
 }
