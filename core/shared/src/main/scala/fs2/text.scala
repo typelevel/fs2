@@ -331,7 +331,7 @@ object text {
         val out = ByteBuffer.allocate(outBufferSize)
 
         val inBuffer = toEncode.toCharBuffer
-        val result = encoder.encode(inBuffer, out, isLast)
+        encoder.encode(inBuffer, out, isLast)
         (out: Buffer).flip()
 
         val nextAcc =

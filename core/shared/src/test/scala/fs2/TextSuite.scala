@@ -502,7 +502,7 @@ class TextSuite extends Fs2Suite {
     }
 
     test("replaces unmappable characters") {
-      val s = Stream("à").through(encode(Charset.forName("iso-2022-kr"))).compile.toList
+      val s = Stream("à").through(encode(Charset.forName("ascii"))).compile.toList
       assertEquals(s, List(63).map(_.toByte)) // 63 = ? (the usual replacement character)
     }
   }
