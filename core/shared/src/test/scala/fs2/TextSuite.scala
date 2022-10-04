@@ -500,5 +500,10 @@ class TextSuite extends Fs2Suite {
       val s = Stream("1", "2", "3").through(encode(StandardCharsets.UTF_16)).compile.toList
       assertEquals(s, List(-2, -1, 0, 49, 0, 50, 0, 51).map(_.toByte))
     }
+
+    test("replaces unmappable characters") {
+      val s = Stream("à").through(encode(Charset.forName("iso-2022-kr"))).compile.toList
+      assertEquals(s, List(63).map(_.toByte)) // 63 = ? (the usual replacement character)
+    }
   }
 }

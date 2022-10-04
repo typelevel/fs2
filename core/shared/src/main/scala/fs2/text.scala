@@ -28,6 +28,7 @@ import java.nio.charset.{
   Charset,
   CharsetDecoder,
   CharsetEncoder,
+  CodingErrorAction,
   MalformedInputException,
   StandardCharsets,
   UnmappableCharacterException
@@ -341,13 +342,7 @@ object text {
           case None            => Stream.empty
         }
 
-        if (result.isError) {
-          ApplicativeThrow[Pull[F, Chunk[Byte], *]].raiseError {
-            if (result.isMalformed) new MalformedInputException(result.length())
-            else if (result.isUnmappable) new UnmappableCharacterException(result.length())
-            else new CharacterCodingException()
-          }
-        } else if (out.remaining() > 0) {
+        if (out.remaining() > 0) {
           Pull.output1(Chunk.byteBuffer(out)) >> encodeC(encoder, nextAcc, rest)
         } else if (!isLast) {
           encodeC(encoder, nextAcc, rest)
@@ -383,13 +378,22 @@ object text {
     }
 
     { s =>
-      Stream.suspend(Stream.emit(charset.newEncoder())).flatMap { encoder =>
-        encodeC(
-          encoder,
-          Chunk.empty,
-          s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s)))
-        ).stream
-      }
+      Stream
+        .suspend(
+          Stream.emit(
+            charset
+              .newEncoder()
+              .onMalformedInput(CodingErrorAction.REPLACE)
+              .onUnmappableCharacter(CodingErrorAction.REPLACE)
+          )
+        )
+        .flatMap { encoder =>
+          encodeC(
+            encoder,
+            Chunk.empty,
+            s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s)))
+          ).stream
+        }
     }
   }
 
