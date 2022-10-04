@@ -459,6 +459,14 @@ object Pull extends PullLowPriority {
         case Right(r) => Pull.pure(r)
       }
 
+  private[fs2] def unconsFlatMap[F[_], F2[x] >: F[x], O, O2](p: Pull[F, O, Unit])(
+      f: Chunk[O] => Pull[F2, O2, Unit]
+  ): Pull[F2, O2, Unit] =
+    uncons(p).flatMap {
+      case None           => Pull.done
+      case Some((hd, tl)) => f(hd) >> unconsFlatMap[F, F2, O, O2](tl)(f)
+    }
+
   private[fs2] def fail[F[_]](err: Throwable): Pull[F, Nothing, Nothing] = Fail(err)
 
   final class PartiallyAppliedFromEither[F[_]] {
@@ -1302,14 +1310,8 @@ object Pull extends PullLowPriority {
   private[fs2] def mapOutputNoScope[F[_], O, P](
       s: Stream[F, O],
       f: O => P
-  ): Pull[F, P, Unit] = {
-    def go(s: Stream[F, O]): Pull[F, P, Unit] =
-      s.pull.uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output(hd.map(f)) >> go(tl)
-      }
-    go(s)
-  }
+  ): Pull[F, P, Unit] =
+    unconsFlatMap[F, F, O, P](s.pull.echo)(hd => Pull.output(hd.map(f)))
 
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
