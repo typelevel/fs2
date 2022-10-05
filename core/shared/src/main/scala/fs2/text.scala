@@ -343,15 +343,11 @@ object text {
         }
 
         if (out.remaining() > 0) {
-          Pull.output1(Chunk.byteBuffer(out)) >> encodeC(encoder, nextAcc, rest)
+          Pull.output1(Chunk.ByteBuffer.view(out)) >> encodeC(encoder, nextAcc, rest)
         } else if (!isLast) {
           encodeC(encoder, nextAcc, rest)
         } else if (nextAcc.nonEmpty) {
-          encodeC(
-            encoder,
-            nextAcc,
-            rest
-          )
+          encodeC(encoder, nextAcc, rest)
         } else flush(encoder, ByteBuffer.allocate(0))
       }
 
@@ -365,7 +361,7 @@ object text {
         case res if res.isUnderflow =>
           if (out.position() > 0) {
             (out: Buffer).flip()
-            Pull.output1(Chunk.byteBuffer(out)) >> Pull.done
+            Pull.output1(Chunk.ByteBuffer.view(out)) >> Pull.done
           } else
             Pull.done
         case res if res.isOverflow =>
