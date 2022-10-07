@@ -3104,7 +3104,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def constant[F[x] >: Pure[x], O](o: O, chunkSize: Int = 256): Stream[F, O] =
-    chunk(Chunk.seq(List.fill(chunkSize)(o))).repeat
+    chunk(Chunk.constant(o, chunkSize)).repeat
 
   /** A continuous stream of the elapsed time, computed using `System.nanoTime`.
     * Note that the actual granularity of these elapsed times depends on the OS, for instance
