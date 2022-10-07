@@ -401,10 +401,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def chunks: Stream[F, Chunk[O]] =
-    this.repeatPull(_.uncons.flatMap {
-      case None           => Pull.pure(None)
-      case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
-    })
+    Pull.unconsFlatMap[F, F, O, Chunk[O]](underlying)(Pull.output1).stream
 
   /** Outputs chunk with a limited maximum size, splitting as necessary.
     *
@@ -413,13 +410,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Chunk[Int]] = List(Chunk(1), Chunk(2, 3), Chunk(4, 5), Chunk(6))
     * }}}
     */
-  def chunkLimit(n: Int): Stream[F, Chunk[O]] =
-    this.repeatPull {
-      _.unconsLimit(n).flatMap {
-        case None           => Pull.pure(None)
-        case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+  def chunkLimit(n: Int): Stream[F, Chunk[O]] = {
+    def breakup(ch: Chunk[O]): Pull[F, Chunk[O], Unit] =
+      if (ch.size <= n) Pull.output1(ch)
+      else {
+        val (pre, rest) = ch.splitAt(n)
+        Pull.output1(pre) >> breakup(rest)
       }
-    }
+
+    Pull.unconsFlatMap[F, F, O, Chunk[O]](underlying)(breakup).stream
+  }
 
   /** Outputs chunks of size larger than N
     *
@@ -804,7 +804,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def drain: Stream[F, Nothing] =
-    this.repeatPull(_.uncons.flatMap(uc => Pull.pure(uc.map(_._2))))
+    Pull.unconsFlatMap[F, F, O, Nothing](underlying)(_ => Pull.done).stream
 
   /** Drops `n` elements of the input, then echoes the rest.
     *
@@ -1808,12 +1808,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
-    this.repeatPull {
-      _.uncons.flatMap {
-        case None           => Pull.pure(None)
-        case Some((hd, tl)) => Pull.output(f(hd)).as(Some(tl))
-      }
-    }
+    Pull.unconsFlatMap[F, F, O, O2](underlying)((hd: Chunk[O]) => Pull.output(f(hd))).stream
 
   /** Behaves like the identity function but halts the stream on an error and does not return the error.
     *
@@ -3997,18 +3992,19 @@ object Stream extends StreamLowPriority {
       * res0: List[Int] = List(1, 2)
       * }}}
       */
-    def unNoneTerminate: Stream[F, O] =
-      self.repeatPull {
-        _.uncons.flatMap {
-          case None => Pull.pure(None)
+    def unNoneTerminate: Stream[F, O] = {
+      def loop(p: Pull[F, Option[O], Unit]): Pull[F, O, Unit] =
+        Pull.uncons(p).flatMap {
+          case None => Pull.done
           case Some((hd, tl)) =>
             hd.indexWhere(_.isEmpty) match {
-              case Some(0)   => Pull.pure(None)
-              case Some(idx) => Pull.output(hd.take(idx).map(_.get)).as(None)
-              case None      => Pull.output(hd.map(_.get)).as(Some(tl))
+              case Some(0)   => Pull.done
+              case Some(idx) => Pull.output(hd.take(idx).map(_.get))
+              case None      => Pull.output(hd.map(_.get)) >> loop(tl)
             }
         }
-      }
+      loop(self.underlying).stream
+    }
   }
 
   /** Provides syntax for streams of streams. */
