@@ -185,18 +185,36 @@ class ChannelSuite extends Fs2Suite {
     } yield ()
   }
 
-  test("sendPull") {
-    def blackHole(s: Stream[IO, Unit]) =
-      s.repeatPull(_.uncons.flatMap {
-        case None => Pull.pure(None)
-        case Some((hd, tl)) =>
-          val action = IO.delay(0.until(hd.size).foreach(_ => ()))
-          Pull.eval(action).as(Some(tl))
-      })
+  def blackHole(s: Stream[IO, Unit]) =
+    s.repeatPull(_.uncons.flatMap {
+      case None => Pull.pure(None)
+      case Some((hd, tl)) =>
+        val action = IO.delay(0.until(hd.size).foreach(_ => ()))
+        Pull.eval(action).as(Some(tl))
+    })
 
-    Channel.bounded[IO, Unit](8).flatMap { channel =>
+  @inline
+  private def sendAll(list: List[Unit], action: IO[Unit]) =
+    list.foldLeft(IO.unit)((acc, _) => acc *> action)
+
+  test("sendPull") {
+    val test = Channel.bounded[IO, Unit](8).flatMap { channel =>
       val action = List.fill(64)(()).traverse_(_ => channel.send(()).void) *> channel.close
       action.start *> channel.stream.through(blackHole).compile.drain
     }
+
+    test.replicateA_(1000)
+  }
+
+  test("sendPullPar8") {
+    val lists = List.fill(8)(List.fill(8)(()))
+
+    val test = Channel.bounded[IO, Unit](8).flatMap { channel =>
+      val action = lists.parTraverse_(sendAll(_, channel.send(()).void)) *> channel.close
+
+      action &> channel.stream.through(blackHole).compile.drain
+    }
+
+    test.replicateA_(10000)
   }
 }
