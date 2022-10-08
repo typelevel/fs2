@@ -124,111 +124,163 @@ object Channel {
   object Closed
 
   def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.unbounded[F, A].flatMap(impl(_))
+    Queue.unbounded[F, AnyRef].flatMap(impl(_))
 
   def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.synchronous[F, A].flatMap(impl(_))
+    Queue.synchronous[F, AnyRef].flatMap(impl(_))
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] =
-    Queue.bounded[F, A](capacity).flatMap(impl(_))
+    Queue.bounded[F, AnyRef](capacity).flatMap(impl(_))
 
-  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, A]): F[Channel[F, A]] =
+  // used as a marker to wake up q.take when the channel is closed
+  private[this] val Sentinel = new AnyRef
+
+  private[this] val LeftClosed: Either[Channel.Closed, Unit] = Left(Channel.Closed)
+  private[this] val RightUnit: Either[Channel.Closed, Unit] = Right(())
+
+  // technically this should be A | Sentinel.type
+  // the queue will consist of exclusively As until we shut down, when there will be one Sentinel
+  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, AnyRef]): F[Channel[F, A]] =
     (Concurrent[F].ref(0), Concurrent[F].ref(false), Concurrent[F].deferred[Unit]).mapN {
       (leasesR, closedR, closedLatch) =>
         new Channel[F, A] {
 
-          def sendAll: Pipe[F, A, Nothing] =
+          private[this] val LeftClosedF = LeftClosed.pure[F]
+          private[this] val FalseF = false.pure[F]
+
+          // might be interesting to try to optimize this more, but it needs support from CE
+          val sendAll: Pipe[F, A, Nothing] =
             _.evalMapChunk(send(_))
               .takeWhile(_.isRight)
               .onComplete(Stream.exec(close.void))
               .drain
 
-          // doesn't interrupt taking in progress
-          def close: F[Either[Channel.Closed, Unit]] =
-            (closedR.getAndSet(true), leasesR.get).tupled.flatMap {
-              case (false, leases) =>
-                if (leases <= 0)
-                  closedLatch.complete(()).as(().asRight[Channel.Closed])
-                else
-                  ().asRight[Channel.Closed].pure[F]
-
-              case (true, _) =>
-                Channel.Closed.asLeft[Unit].pure[F]
+          // setting the flag means we won't accept any more sends
+          val close: F[Either[Channel.Closed, Unit]] =
+            closedR.getAndSet(true).flatMap { b =>
+              if (b) {
+                LeftClosedF
+              } else {
+                leasesR.get.flatMap { leases =>
+                  if (leases <= 0)
+                    q.offer(Sentinel).start.as(RightUnit)
+                  else
+                    RightUnit.pure[F]
+                }
+              }
             }
 
-          def isClosed: F[Boolean] = closedR.get
+          val isClosed: F[Boolean] = closedR.get
 
+          // there are four states to worry about: open, closing, draining, quiesced
+          // in the second state, we have outstanding blocked sends
+          // in the third state we have data in the queue but no sends
+          // in the fourth state we are completely drained and can shut down the stream
           private[this] val isQuiesced: F[Boolean] =
-            (isClosed, leasesR.get.map(_ <= 0), q.size.map(_ <= 0)).mapN(_ && _ && _)
+            isClosed.flatMap { b =>
+              if (b) {
+                leasesR.get.flatMap { leases =>
+                  if (leases <= 0)
+                    q.size.map(_ <= 0)
+                  else
+                    FalseF
+                }
+              } else {
+                FalseF
+              }
+            }
 
           def send(a: A): F[Either[Channel.Closed, Unit]] = {
-            def permit[E](fa: F[E]): F[E] =
+            // we track the outstanding blocked offers so we can distinguish closing from draining
+            // the very last blocked send, when closed, is responsible for triggering the sentinel
+            def permit[E](fe: F[E]): F[E] =
               MonadCancel[F].uncancelable { poll =>
-                (leasesR.update(_ + 1) *> poll(fa)).guarantee {
-                  (closedR.get, leasesR.updateAndGet(_ - 1)).tupled.flatMap {
-                    case (true, leases) if leases <= 0 =>
-                      closedLatch.complete(()).void
-
-                    case _ =>
+                (leasesR.update(_ + 1) *> poll(fe)).guarantee {
+                  leasesR.updateAndGet(_ - 1).flatMap { leases =>
+                    if (leases <= 0) {
+                      closedR.get.flatMap { b =>
+                        if (b)
+                          q.offer(Sentinel)
+                            .start
+                            .void // we don't want to backpressure on processing the sentinel
+                        else
+                          Applicative[F].unit
+                      }
+                    } else {
                       Applicative[F].unit
+                    }
                   }
                 }
               }
 
             isClosed.ifM(
-              Channel.Closed.asLeft[Unit].pure[F],
-              permit(
-                // double-check inside the permit window to resolve race condition
-                isClosed.ifM(Channel.Closed.asLeft[Unit].pure[F], q.offer(a).map(Right(_)))
-              )
+              LeftClosedF,
+              permit(isClosed.ifM(LeftClosedF, q.offer(a.asInstanceOf[AnyRef]).as(RightUnit)))
             )
           }
 
           def trySend(a: A): F[Either[Channel.Closed, Boolean]] =
-            isClosed.ifM(Channel.Closed.asLeft[Boolean].pure[F], q.tryOffer(a).map(Right(_)))
+            isClosed.flatMap { b =>
+              if (b)
+                LeftClosedF.asInstanceOf[F[Either[Channel.Closed, Boolean]]]
+              else
+                q.tryOffer(a.asInstanceOf[AnyRef]).map(_.asRight[Channel.Closed])
+            }
 
-          def stream: Stream[F, A] = {
+          val stream: Stream[F, A] = {
             val takeN: F[Chunk[A]] =
               q.tryTakeN(None).flatMap {
                 case Nil =>
-                  val fallback = MonadCancel[F].uncancelable { poll =>
-                    poll(Spawn[F].racePair(q.take, closedLatch.get)).flatMap {
-                      case Left((oca, fiber)) =>
-                        oca.embedNever.flatMap(a => fiber.cancel.as(Chunk.singleton(a)))
+                  // if we land here, it either means we're consuming faster than producing
+                  // or it means we're actually closed and we need to shut down
+                  // this is the unhappy path either way
 
-                      case Right((fiber, ocb)) =>
-                        ocb.embedNever.flatMap { _ =>
-                          (fiber.cancel *> fiber.join).flatMap { oca =>
-                            // drain any remaining data
-                            q.tryTakeN(None).flatMap { tail =>
-                              oca.fold(
-                                (if (tail.isEmpty) Chunk.empty[A] else Chunk.seq(tail)).pure[F],
-                                _ =>
-                                  (if (tail.isEmpty) Chunk.empty[A] else Chunk.seq(tail)).pure[F],
-                                _.map { head =>
-                                  tail match {
-                                    case Nil  => Chunk.singleton(head)
-                                    case tail => Chunk.seq(head :: tail)
-                                  }
-                                }
-                              )
-                            }
-                          }
-                        }
-                    }
+                  val fallback = q.take.flatMap { a =>
+                    // if we get the sentinel, shut down all the things, otherwise emit
+                    if (a eq Sentinel)
+                      closedLatch.complete(()).as(Chunk.empty[A])
+                    else
+                      Chunk.singleton(a.asInstanceOf[A]).pure[F]
                   }
 
-                  isQuiesced.ifM(Chunk.empty[A].pure[F], fallback)
+                  // check to see if we're closed and done processing
+                  // if we're all done, complete the latch and terminate the stream
+                  isQuiesced.flatMap { b =>
+                    if (b)
+                      closedLatch.complete(()).as(Chunk.empty[A])
+                    else
+                      fallback
+                  }
 
                 case as =>
-                  Chunk.seq(as).pure[F]
+                  // this is the happy path: we were able to take a chunk
+                  // meaning we're producing as fast or faster than we're consuming
+
+                  isClosed.flatMap { b =>
+                    val back = if (b) {
+                      // if we're closed, we have to check for the sentinel and strip it out
+                      val as2 = as.filter(_ ne Sentinel)
+
+                      // if it's empty, we definitely stripped a sentinel, so just be done
+                      // if it's non-empty, we can't know without expensive comparisons, so fall through
+                      if (as2.isEmpty)
+                        closedLatch.complete(()).as(Chunk.empty[A])
+                      else
+                        Chunk.seq(as2).pure[F]
+                    } else {
+                      Chunk.seq(as).pure[F]
+                    }
+
+                    back.asInstanceOf[F[Chunk[A]]]
+                  }
               }
 
-            // you can do this more efficiently, just proves a point
+            // we will emit non-empty chunks until we see the sentinel
             Stream.eval(takeN).repeat.takeWhile(!_.isEmpty).unchunks
           }
 
-          def closed: F[Unit] = closedLatch.get
+          // closedLatch solely exists to support this function
+          val closed: F[Unit] = closedLatch.get
         }
     }
 }

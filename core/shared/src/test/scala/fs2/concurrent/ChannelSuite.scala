@@ -30,6 +30,19 @@ import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
 
 class ChannelSuite extends Fs2Suite {
+
+  test("receives some simple elements above capacity and closes") {
+    val test = Channel.bounded[IO, Int](5).flatMap { chan =>
+      val senders = 0.until(10).toList.parTraverse_ { i =>
+        IO.sleep(i.millis) *> chan.send(i)
+      }
+
+      senders &> (IO.sleep(15.millis) *> chan.close *> chan.stream.compile.toVector)
+    }
+
+    TestControl.executeEmbed(test)
+  }
+
   test("Channel receives all elements and closes") {
     forAllF { (source: Stream[Pure, Int]) =>
       Channel.unbounded[IO, Int].flatMap { chan =>
