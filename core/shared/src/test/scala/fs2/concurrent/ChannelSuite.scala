@@ -216,7 +216,7 @@ class ChannelSuite extends Fs2Suite {
       action.start *> channel.stream.through(blackHole).compile.drain
     }
 
-    test.replicateA_(1000)
+    test.replicateA_(if (isJVM) 1000 else 1)
   }
 
   test("sendPullPar8") {
@@ -228,6 +228,6 @@ class ChannelSuite extends Fs2Suite {
       action &> channel.stream.through(blackHole).compile.drain
     }
 
-    test.replicateA_(10000)
+    test.replicateA_(if (isJVM) 10000 else 1)
   }
 }
