@@ -46,7 +46,9 @@ class TextBenchmark {
     asciiBytes = (0 until asciiStringSize).map { _ =>
       (rng.nextInt(126) + 1).toByte
     }.toArray
-    strings = new String(asciiBytes).grouped(16).toArray // chunk it up to be more real-world
+    strings = new String(asciiBytes)
+      .grouped(asciiStringSize / 16) // chunk it up to be more real-world
+      .toArray
     charset = Charset.forName(charsetName)
   }
 
