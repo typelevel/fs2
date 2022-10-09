@@ -275,8 +275,18 @@ object Channel {
                   }
               }
 
-            // we will emit non-empty chunks until we see the sentinel
-            Stream.eval(takeN).repeat.takeWhile(!_.isEmpty).unchunks
+            // we will emit non-empty chunks until we see the empty chunk sentinel
+            lazy val go: Stream[F, A] =
+              Stream.force {
+                takeN.map { c =>
+                  if (c.isEmpty)
+                    Stream.empty
+                  else
+                    Stream.chunk(c) ++ go
+                }
+              }
+
+            go
           }
 
           // closedLatch solely exists to support this function
