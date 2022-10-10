@@ -41,9 +41,25 @@ import scala.annotation.tailrec
 /** Provides utilities for working with streams of text (e.g., encoding byte streams to strings). */
 object text {
 
+  /** Byte order mark (BOM) values for different Unicode charsets.
+    */
+  object bom {
+
+    /** BOM for UTF-8.
+      */
+    val utf8: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
+
+    /** BOM for UTF-16BE (big endian).
+      */
+    val utf16Big: Seq[Byte] = Array(0xfe.toByte, 0xff.toByte).toSeq
+
+    /** BOM for UTF-16LE (little endian).
+      */
+    val utf16Little: Seq[Byte] = Array(0xff.toByte, 0xfe.toByte).toSeq
+  }
+
   object utf8 {
     private val utf8Charset = Charset.forName("UTF-8")
-    private[this] val utf8BomSeq: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
 
     /** Converts UTF-8 encoded byte stream to a stream of `String`.
       *
@@ -172,10 +188,10 @@ object text {
             val newBuffer: Chunk.Queue[Byte] = newBuffer0 :+ hd
             if (newBuffer.size >= 3) {
               val rem =
-                if (newBuffer.startsWith(utf8BomSeq)) newBuffer.drop(3)
+                if (newBuffer.startsWith(bom.utf8)) newBuffer.drop(3)
                 else newBuffer
               doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
-            } else if (newBuffer.startsWith(utf8BomSeq.take(newBuffer.size)))
+            } else if (newBuffer.startsWith(bom.utf8.take(newBuffer.size)))
               processByteOrderMark(newBuffer, tl)
             else doPull(Chunk.empty, Stream.emits(newBuffer.chunks) ++ tl)
           case None =>
@@ -326,7 +342,8 @@ object text {
         }
 
         val isLast = r.isEmpty
-        val outBufferSize = (encoder.maxBytesPerChar() * toEncode.size).ceil.toInt
+        val outBufferSize =
+          math.max(encoder.maxBytesPerChar(), encoder.averageBytesPerChar() * toEncode.size).toInt
 
         val out = ByteBuffer.allocate(outBufferSize)
 
@@ -373,22 +390,44 @@ object text {
       }
     }
 
+    def cutBOMs(
+        s: Stream[F, String],
+        bom: Seq[Byte],
+        doDrop: Boolean
+    ): Pull[F, Chunk[Byte], Unit] =
+      s.pull.uncons1.flatMap {
+        case Some((hd, tail)) =>
+          val bytes = Chunk.array(hd.getBytes(charset))
+          val dropped = if (doDrop && bytes.startsWith(bom)) bytes.drop(bom.length) else bytes
+          Pull.output1(dropped) >> cutBOMs(tail, bom, doDrop = true)
+        case None => Pull.done
+      }
+
     { s =>
       Stream
-        .suspend(
-          Stream.emit(
-            charset
-              .newEncoder()
-              .onMalformedInput(CodingErrorAction.REPLACE)
-              .onUnmappableCharacter(CodingErrorAction.REPLACE)
-          )
-        )
-        .flatMap { encoder =>
-          encodeC(
-            encoder,
-            Chunk.empty,
-            s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s)))
-          ).stream
+        .suspend(Stream.emit(charset.newEncoder()))
+        .flatMap { // dispatch over different implementations for performance reasons
+          case _ if charset == StandardCharsets.UTF_16BE || charset == StandardCharsets.UTF_16 =>
+            // encode strings individually to profit from Java optimizations, strip superfluous BOMs from output
+            cutBOMs(s, bom.utf16Big, doDrop = false).stream
+          case _ if charset == StandardCharsets.UTF_16LE =>
+            // encode strings individually to profit from Java optimizations, strip superfluous BOMs from output
+            cutBOMs(s, bom.utf16Little, doDrop = false).stream
+          case _ if charset == StandardCharsets.UTF_8 =>
+            // we know UTF-8 doesn't produce BOMs in encoding
+            s.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
+          case encoder if encoder.averageBytesPerChar() == encoder.maxBytesPerChar() =>
+            // maxBytes accounts for BOMs, average doesn't, so if they're equal, the charset encodes no BOM.
+            s.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
+          case encoder =>
+            // fallback to slower implementation using CharsetEncoder, known to be correct for all charsets
+            encodeC(
+              encoder
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE),
+              Chunk.empty,
+              s.map(s => Chunk.CharBuffer.view(CharBuffer.wrap(s)))
+            ).stream
         }
     }
   }

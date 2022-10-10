@@ -36,7 +36,7 @@ class TextBenchmark {
   var asciiBytes: Array[Byte] = _
   var strings: Array[String] = _
 
-  @Param(Array("utf-8", "iso-2022-kr"))
+  @Param(Array("utf-8", "utf-16", "iso-2022-kr"))
   var charsetName: String = _
   var charset: Charset = _
 
