@@ -407,18 +407,17 @@ object text {
       Stream
         .suspend(Stream.emit(charset.newEncoder()))
         .flatMap { // dispatch over different implementations for performance reasons
-          case _ if charset == StandardCharsets.UTF_16BE || charset == StandardCharsets.UTF_16 =>
+          case encoder
+              if charset == StandardCharsets.UTF_8 ||
+                encoder.averageBytesPerChar() == encoder.maxBytesPerChar() =>
+            // 1. we know UTF-8 doesn't produce BOMs in encoding
+            // 2. maxBytes accounts for BOMs, average doesn't, so if they're equal, the charset encodes no BOM.
+            // In these cases, we can delegate to getBytes without having to fear BOMs being added in the wrong places.
+            // As the JDK optimizes this very well, this is the fastest implementation.
+            s.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
+          case _ if charset == StandardCharsets.UTF_16 =>
             // encode strings individually to profit from Java optimizations, strip superfluous BOMs from output
             cutBOMs(s, bom.utf16Big, doDrop = false).stream
-          case _ if charset == StandardCharsets.UTF_16LE =>
-            // encode strings individually to profit from Java optimizations, strip superfluous BOMs from output
-            cutBOMs(s, bom.utf16Little, doDrop = false).stream
-          case _ if charset == StandardCharsets.UTF_8 =>
-            // we know UTF-8 doesn't produce BOMs in encoding
-            s.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
-          case encoder if encoder.averageBytesPerChar() == encoder.maxBytesPerChar() =>
-            // maxBytes accounts for BOMs, average doesn't, so if they're equal, the charset encodes no BOM.
-            s.mapChunks(_.map(s => Chunk.array(s.getBytes(charset))))
           case encoder =>
             // fallback to slower implementation using CharsetEncoder, known to be correct for all charsets
             encodeC(
