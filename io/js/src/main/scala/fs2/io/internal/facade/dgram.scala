@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -90,7 +89,6 @@ package dgram {
     def port: Int = js.native
   }
 
-  @nowarn
   private[io] trait BindOptions extends js.Object {
     var port: js.UndefOr[Int] = js.undefined
     var address: js.UndefOr[String] = js.undefined

@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
@@ -62,7 +61,6 @@ package net {
     def port: Int = js.native
   }
 
-  @nowarn
   private[io] trait ServerOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
@@ -70,12 +68,10 @@ package net {
     var pauseOnConnect: js.UndefOr[Boolean] = js.undefined
   }
 
-  @nowarn
   private[io] trait ListenOptions extends js.Object {
     var path: js.UndefOr[String] = js.undefined
   }
 
-  @nowarn
   private[io] trait SocketOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined

@@ -23,7 +23,6 @@ package fs2.io.internal.facade
 
 import fs2.io.net.tls.SecureContext
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -48,7 +47,6 @@ package object tls {
 
 package tls {
 
-  @nowarn
   private[io] trait SecureContextOptions extends js.Object {
 
     var ca: js.UndefOr[js.Array[String | Uint8Array]] = js.undefined
@@ -93,7 +91,6 @@ package tls {
 
   }
 
-  @nowarn
   private[io] trait Key extends js.Object {
 
     val pem: String | Uint8Array
@@ -102,7 +99,6 @@ package tls {
 
   }
 
-  @nowarn
   private[io] trait Pfx extends js.Object {
 
     val buf: String | Uint8Array
@@ -111,7 +107,6 @@ package tls {
 
   }
 
-  @nowarn
   private[io] trait TLSConnectOptions extends js.Object {
 
     var secureContext: js.UndefOr[SecureContext] = js.undefined
@@ -144,7 +139,6 @@ package tls {
 
   }
 
-  @nowarn
   private[io] trait PSKCallbackNegotation extends js.Object {
 
     var psk: js.UndefOr[Uint8Array] = js.undefined
@@ -160,7 +154,6 @@ package tls {
 
   }
 
-  @nowarn
   private[io] trait TLSSocketOptions extends js.Object {
 
     var secureContext: js.UndefOr[SecureContext] = js.undefined

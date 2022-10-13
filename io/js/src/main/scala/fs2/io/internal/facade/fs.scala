@@ -50,7 +50,6 @@ package object fs {
 
 package fs {
 
-  @nowarn
   private[io] trait ReadStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
@@ -63,7 +62,6 @@ package fs {
 
   }
 
-  @nowarn
   private[io] trait WriteStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
@@ -143,7 +141,6 @@ package fs {
 
   }
 
-  @nowarn
   private[io] trait MkdirOptions extends js.Object {
 
     var recursive: js.UndefOr[Boolean] = js.undefined
@@ -152,7 +149,6 @@ package fs {
 
   }
 
-  @nowarn
   private[io] trait RmOptions extends js.Object {
 
     var force: js.UndefOr[Boolean] = js.undefined

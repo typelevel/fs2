@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -81,7 +80,6 @@ package zlib {
     def close(cb: js.Function0[Unit]): Unit = js.native
   }
 
-  @nowarn
   private[io] trait Options extends js.Object {
 
     var chunkSize: js.UndefOr[Int] = js.undefined
