@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        scala: [3.2.0, 2.12.17, 2.13.8]
+        scala: [3.2.0, 2.12.17, 2.13.10]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
     runs-on: ${{ matrix.os }}
@@ -97,7 +97,7 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++${{ matrix.scala }}' doc
 
       - name: Scalafix tests
-        if: matrix.scala == '2.13.8' && matrix.project == 'rootJVM'
+        if: matrix.scala == '2.13.10' && matrix.project == 'rootJVM'
         run: |
           cd scalafix
           sbt testCI
@@ -124,7 +124,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        scala: [2.13.8]
+        scala: [2.13.10]
         java: [temurin@17]
     runs-on: ${{ matrix.os }}
     steps:
@@ -270,7 +270,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [2.13.8]
+        scala: [2.13.10]
         java: [temurin@17]
     runs-on: ${{ matrix.os }}
     steps:
