@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
@@ -30,7 +29,6 @@ import events.EventEmitter
 package object net {
   @js.native
   @JSImport("net", "createServer")
-  @nowarn
   private[io] def createServer(
       options: ServerOptions,
       connectionListener: js.Function1[Socket, Unit]
@@ -41,7 +39,6 @@ package object net {
 package net {
 
   @js.native
-  @nowarn
   private[io] trait Server extends EventEmitter {
 
     def address(): ServerAddress = js.native
@@ -83,7 +80,6 @@ package net {
 
   @JSImport("net", "Socket")
   @js.native
-  @nowarn
   private[io] class Socket extends fs2.io.Duplex {
 
     def this(options: SocketOptions) = this()

@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -32,7 +31,6 @@ package object dgram {
 
   @js.native
   @JSImport("dgram", "createSocket")
-  @nowarn
   private[io] def createSocket(`type`: String): Socket =
     js.native
 
@@ -41,7 +39,6 @@ package object dgram {
 package dgram {
 
   @js.native
-  @nowarn
   private[io] trait Socket extends EventEmitter {
 
     def address(): AddressInfo = js.native

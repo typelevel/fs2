@@ -21,7 +21,6 @@
 
 package fs2.io.internal.facade
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
@@ -33,42 +32,34 @@ package object path {
 
   @js.native
   @JSImport("path", "join")
-  @nowarn
   private[io] def join(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "resolve")
-  @nowarn
   private[io] def resolve(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "relative")
-  @nowarn
   private[io] def relative(from: String, to: String): String = js.native
 
   @js.native
   @JSImport("path", "normalize")
-  @nowarn
   private[io] def normalize(path: String): String = js.native
 
   @js.native
   @JSImport("path", "isAbsolute")
-  @nowarn
   private[io] def isAbsolute(path: String): Boolean = js.native
 
   @js.native
   @JSImport("path", "basename")
-  @nowarn
   private[io] def basename(path: String): String = js.native
 
   @js.native
   @JSImport("path", "extname")
-  @nowarn
   private[io] def extname(path: String): String = js.native
 
   @js.native
   @JSImport("path", "parse")
-  @nowarn
   private[io] def parse(path: String): ParsedPath = js.native
 
 }
