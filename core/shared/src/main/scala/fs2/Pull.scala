@@ -901,11 +901,8 @@ object Pull extends PullLowPriority {
         case interrupted: Interrupted => interrupted // impossible
         case _: Succeeded[_]          => interruption
         case failed: Fail =>
-          val mixed = CompositeFailure
-            .fromList(interruption.deferredError.toList :+ failed.error)
-            .getOrElse(failed.error)
-          Fail(mixed)
-
+          val errs = interruption.deferredError.toList :+ failed.error
+          Fail(CompositeFailure.fromList(errs).getOrElse(failed.error))
       }
 
     trait Run[-G[_], -X, +End] {
@@ -1034,14 +1031,25 @@ object Pull extends PullLowPriority {
               if (idx == chunk.size)
                 flatMapOutput[G, G, Y, X](tail, fun)
               else {
-                try
-                  transformWith(fun(chunk(idx))) {
-                    case Succeeded(_) => go(idx + 1)
+                try {
+                  var j = idx
+                  @tailrec
+                  def loop: Pull[G, X, Unit] = fun(chunk(j)) match {
+                    case Succeeded(_) if j < chunk.size - 1 =>
+                      j += 1
+                      loop
+                    case p => p
+                  }
+
+                  val next: Pull[G, X, Unit] = loop
+                  transformWith(next) {
+                    case Succeeded(_) => go(j + 1)
                     case Fail(err)    => Fail(err)
                     case interruption @ Interrupted(_, _) =>
-                      flatMapOutput[G, G, Y, X](interruptBoundary(tail, interruption), fun)
+                      val ib = interruptBoundary(tail, interruption)
+                      flatMapOutput[G, G, Y, X](ib, fun)
                   }
-                catch { case NonFatal(e) => Fail(e) }
+                } catch { case NonFatal(e) => Fail(e) }
               }
 
             go(0)
