@@ -962,6 +962,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       queue: Queue[F2, Option[Chunk[O2]]]
   ): Stream[F2, Nothing] = enqueueNoneTerminatedChunks(queue: QueueSink[F2, Option[Chunk[O2]]])
 
+  import Pull.StreamPullOps
+
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
     *
     * @example {{{
@@ -975,8 +977,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * is available, however, with caveats.
     */
   def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] = {
-    def evalOut(o: O): Pull[F2, O2, Unit] = Pull.eval(f(o)).flatMap(Pull.output1)
-    Pull.flatMapOutput[F, F2, O, O2](underlying, evalOut).streamNoScope
+    def evalOut(o: O) = Pull.eval(f(o)).flatMap(Pull.output1)
+    underlying.flatMapOutput(evalOut).streamNoScope
   }
 
   /** Like `evalMap`, but operates on chunks for performance. This means this operator
@@ -1194,7 +1196,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def flatMap[F2[x] >: F[x], O2](
       f: O => Stream[F2, O2]
   )(implicit ev: NotGiven[O <:< Nothing]): Stream[F2, O2] =
-    new Stream(Pull.flatMapOutput[F, F2, O, O2](underlying, (o: O) => f(o).underlying))
+    underlying.flatMapOutput((o: O) => f(o).underlying).streamNoScope
 
   /** Alias for `flatMap(_ => s2)`. */
   def >>[F2[x] >: F[x], O2](
@@ -1285,10 +1287,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] = {
-    def exec(o: O): Pull[F2, Nothing, Unit] = Pull.eval(f(o))
-    Pull.flatMapOutput[F, F2, O, Nothing](underlying, exec).streamNoScope
-  }
+  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] =
+    underlying.flatMapOutput(o => Pull.eval(f(o))).streamNoScope
 
   /** Partitions the input into a stream of chunks according to a discriminator function.
     *
