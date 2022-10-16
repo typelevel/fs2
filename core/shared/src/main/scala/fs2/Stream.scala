@@ -974,8 +974,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * which has performance implications. For maximum performance, `evalMapChunk`
     * is available, however, with caveats.
     */
-  def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] =
-    flatMap(o => Stream.eval(f(o)))
+  def evalMap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O2] = {
+    def evalOut(o: O): Pull[F2, O2, Unit] = Pull.eval(f(o)).flatMap(Pull.output1)
+    Pull.flatMapOutput[F, F2, O, O2](underlying, evalOut).streamNoScope
+  }
 
   /** Like `evalMap`, but operates on chunks for performance. This means this operator
     * is not lazy on every single element, rather on the chunks.
@@ -1283,8 +1285,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] =
-    flatMap(o => Stream.exec(f(o)))
+  def foreach[F2[x] >: F[x]](f: O => F2[Unit]): Stream[F2, Nothing] = {
+    def exec(o: O): Pull[F2, Nothing, Unit] = Pull.eval(f(o))
+    Pull.flatMapOutput[F, F2, O, Nothing](underlying, exec).streamNoScope
+  }
 
   /** Partitions the input into a stream of chunks according to a discriminator function.
     *
