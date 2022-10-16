@@ -321,6 +321,16 @@ object Pull extends PullLowPriority {
       * Use `p.void.stream` to explicitly ignore the result of a pull.
       */
     def streamNoScope: Stream[F, O] = new Stream(self)
+
+    private[fs2] def flatMapOutput[F2[x] >: F[x], O2](
+        f: O => Pull[F2, O2, Unit]
+    ): Pull[F2, O2, Unit] =
+      self match {
+        case a: AlgEffect[F, Unit] => a
+        case r: Terminal[_]        => r
+        case _                     => FlatMapOutput(self, f)
+      }
+
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
@@ -1029,7 +1039,7 @@ object Pull extends PullLowPriority {
           else {
             def go(idx: Int): Pull[G, X, Unit] =
               if (idx == chunk.size)
-                flatMapOutput[G, G, Y, X](tail, fun)
+                tail.flatMapOutput(fun)
               else {
                 try {
                   var j = idx
@@ -1046,8 +1056,7 @@ object Pull extends PullLowPriority {
                     case Succeeded(_) => go(j + 1)
                     case Fail(err)    => Fail(err)
                     case interruption @ Interrupted(_, _) =>
-                      val ib = interruptBoundary(tail, interruption)
-                      flatMapOutput[G, G, Y, X](ib, fun)
+                      interruptBoundary(tail, interruption).flatMapOutput(fun)
                   }
                 } catch { case NonFatal(e) => Fail(e) }
               }
@@ -1288,15 +1297,12 @@ object Pull extends PullLowPriority {
     go(initScope, None, initFk, new OuterRun(init), stream)
   }
 
+  @deprecated("use the extension method", "3.4.0")
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
       p: Pull[F, O, Unit],
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
-    p match {
-      case a: AlgEffect[F, Unit] => a
-      case r: Terminal[_]        => r
-      case _                     => FlatMapOutput(p, f)
-    }
+    p.flatMapOutput(f)
 
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull[F, O, Unit],
