@@ -331,6 +331,14 @@ object Pull extends PullLowPriority {
         case _                     => FlatMapOutput(self, f)
       }
 
+    private[fs2] def unconsFlatMap[F2[x] >: F[x], O2](
+        f: Chunk[O] => Pull[F2, O2, Unit]
+    ): Pull[F2, O2, Unit] =
+      uncons(self).flatMap {
+        case None           => Pull.done
+        case Some((hd, tl)) => f(hd) >> tl.unconsFlatMap(f)
+      }
+
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
@@ -468,14 +476,6 @@ object Pull extends PullLowPriority {
         case Left(ns) => loopEither(f)(ns)
         case Right(r) => Pull.pure(r)
       }
-
-  private[fs2] def unconsFlatMap[F[_], F2[x] >: F[x], O, O2](p: Pull[F, O, Unit])(
-      f: Chunk[O] => Pull[F2, O2, Unit]
-  ): Pull[F2, O2, Unit] =
-    uncons(p).flatMap {
-      case None           => Pull.done
-      case Some((hd, tl)) => f(hd) >> unconsFlatMap[F, F2, O, O2](tl)(f)
-    }
 
   private[fs2] def fail[F[_]](err: Throwable): Pull[F, Nothing, Nothing] = Fail(err)
 
@@ -1325,7 +1325,7 @@ object Pull extends PullLowPriority {
       s: Stream[F, O],
       f: O => P
   ): Pull[F, P, Unit] =
-    unconsFlatMap[F, F, O, P](s.pull.echo)(hd => Pull.output(hd.map(f)))
+    s.pull.echo.unconsFlatMap(hd => Pull.output(hd.map(f)))
 
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
