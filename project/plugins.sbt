@@ -1,8 +1,10 @@
-val sbtTypelevelVersion = "0.4.7"
+val sbtTypelevelVersion = "0.4.16"
 addSbtPlugin("org.typelevel" % "sbt-typelevel" % sbtTypelevelVersion)
 addSbtPlugin("org.typelevel" % "sbt-typelevel-site" % sbtTypelevelVersion)
-addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.10.0")
-addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.9.9")
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.10.1")
+addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.4.7")
+addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.2.0")
+addSbtPlugin("com.armanbilge" % "sbt-scala-native-config-brew-github-actions" % "0.1.2")
+addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.3")
-addSbtPlugin("org.scalameta" % "sbt-mdoc" % "2.3.2")
-addSbtPlugin("org.scalablytyped.converter" % "sbt-converter" % "1.0.0-beta37")
+addSbtPlugin("org.scalameta" % "sbt-mdoc" % "2.3.6")

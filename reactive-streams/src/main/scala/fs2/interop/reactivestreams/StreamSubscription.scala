@@ -41,7 +41,8 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
     stream: Stream[F, A],
-    dispatcher: Dispatcher[F]
+    startDispatcher: Dispatcher[F],
+    requestDispatcher: Dispatcher[F]
 )(implicit F: Async[F])
     extends Subscription {
   import StreamSubscription._
@@ -76,18 +77,17 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         .compile
         .drain
 
-    dispatcher.unsafeRunAndForget(s)
+    startDispatcher.unsafeRunAndForget(s)
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
   // be processed immediately, but if you have synchronous `cancel();
-  // request()`, then the request _must_ be a no op. For this reason, we
-  // need to make sure that `cancel()` does not return until the
-  // `cancelled` signal has been set.
+  // request()`, then the request _must_ be a no op. Fortunately,
+  // ordering is guaranteed by a sequential d
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   def cancel(): Unit =
-    dispatcher.unsafeRunSync(cancelled.set(true))
+    requestDispatcher.unsafeRunAndForget(cancelled.set(true))
 
   def request(n: Long): Unit = {
     val request: F[Request] =
@@ -98,7 +98,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
     val prog = cancelled.get
       .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.offer).handleErrorWith(onError))
 
-    dispatcher.unsafeRunAndForget(prog)
+    requestDispatcher.unsafeRunAndForget(prog)
   }
 }
 
@@ -112,11 +112,12 @@ private[reactivestreams] object StreamSubscription {
   def apply[F[_]: Async, A](
       sub: Subscriber[A],
       stream: Stream[F, A],
-      dispatcher: Dispatcher[F]
+      startDispatcher: Dispatcher[F],
+      requestDispatcher: Dispatcher[F]
   ): F[StreamSubscription[F, A]] =
     SignallingRef(false).flatMap { cancelled =>
       Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream, dispatcher)
+        new StreamSubscription(requests, cancelled, sub, stream, startDispatcher, requestDispatcher)
       }
     }
 }

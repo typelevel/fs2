@@ -24,7 +24,10 @@ package io
 
 import cats.effect.IO
 import fs2.Fs2Suite
+import fs2.io.internal.facade
 import org.scalacheck.effect.PropF.forAllF
+
+import scala.concurrent.duration._
 
 class IoPlatformSuite extends Fs2Suite {
 
@@ -67,6 +70,49 @@ class IoPlatformSuite extends Fs2Suite {
         .toVector
         .assertEquals(bytes2.compile.toVector)
     }
+  }
+
+  test("Doesn't cause an unhandled error event") {
+    suspendReadableAndRead[IO, Readable]()(
+      facade.fs.createReadStream(
+        "README.md",
+        new facade.fs.ReadStreamOptions {
+          highWaterMark = 1
+        }
+      )
+    ).use { case (_, stream) =>
+      IO.deferred[Unit].flatMap { gate =>
+        stream
+          .evalTap(_ => gate.complete(()) *> IO.never)
+          .compile
+          .drain
+          .background
+          .use { _ =>
+            gate.get *> IO.raiseError(new Exception("too hot to handle!"))
+          }
+      }
+    }.attempt
+  }
+
+  test("unacknowledged 'end' does not prevent writeWritable cancelation") {
+    val writable = IO {
+      new facade.stream.Duplex(
+        new facade.stream.DuplexOptions {
+          var autoDestroy = false
+          var read = _ => ()
+          var write = (_, _, _, _) => ()
+          var `final` = (_, _) => ()
+          var destroy = (_, _, _) => ()
+        }
+      )
+    }
+
+    Stream
+      .empty[IO]
+      .through(writeWritable[IO](writable))
+      .compile
+      .drain
+      .timeoutTo(100.millis, IO.unit)
   }
 
 }

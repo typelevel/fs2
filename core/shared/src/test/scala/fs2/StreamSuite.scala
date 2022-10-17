@@ -149,9 +149,23 @@ class StreamSuite extends Fs2Suite {
         Stream.evals(SyncIO(Option(42))).compile.lastOrError.assertEquals(42)
     }
 
-    property("flatMap") {
-      forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
-        assertEquals(s.flatMap(inner => inner).toList, s.toList.flatMap(inner => inner.toList))
+    group("flatMap") {
+
+      property("list homomorphism") {
+        forAll { (s: Stream[Pure, Stream[Pure, Int]]) =>
+          assertEquals(s.flatMap(i => i).toList, s.toList.flatMap(_.toList))
+        }
+      }
+
+      test("Stack safety - Regression #3011") {
+        // https://github.com/typelevel/fs2/issues/3011
+        val res = fs2.Stream
+          .emits(List.fill(100000)(()))
+          .flatMap(_ => fs2.Stream.empty)
+          .compile
+          .toList
+
+        assertEquals(res, Nil)
       }
     }
 
@@ -422,6 +436,12 @@ class StreamSuite extends Fs2Suite {
         _ <- IO.sleep(200.milliseconds)
         released <- ref.get
       } yield assert(released)
+    }
+
+    test("spawn") {
+      testCancelation {
+        constantStream.spawn
+      }
     }
   }
 
@@ -1014,4 +1034,5 @@ class StreamSuite extends Fs2Suite {
       }
     }
   }
+
 }

@@ -288,7 +288,7 @@ The `Pull[F[_],O,R]` type represents a program that may pull values from one or 
 [`Pull` class](https://github.com/functional-streams-for-scala/fs2/blob/main/core/shared/src/main/scala/fs2/Pull.scala)
 for the full set of operations on `Pull`.
 
-A pull that writes a single a single output of type `Int` can be constructed with `Pull.output1`.
+A pull that writes a single output of type `Int` can be constructed with `Pull.output1`.
 
 ```scala mdoc:reset
 import fs2._
@@ -641,7 +641,7 @@ trait CSVHandle {
 
 def rows[F[_]](h: CSVHandle)(implicit F: Async[F]): Stream[F,Row] = {
   for {
-    dispatcher <- Stream.resource(Dispatcher[F])
+    dispatcher <- Stream.resource(Dispatcher.sequential[F])
     q <- Stream.eval(Queue.unbounded[F, Option[RowOrError]])
     _ <- Stream.eval { F.delay {
       def enqueue(v: Option[RowOrError]): Unit = dispatcher.unsafeRunAndForget(q.offer(v))

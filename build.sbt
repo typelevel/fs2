@@ -1,20 +1,22 @@
 import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
-Global / stQuiet := true
 
-ThisBuild / tlBaseVersion := "3.2"
+ThisBuild / tlBaseVersion := "3.3"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val NewScala = "2.13.8"
+val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.1.1", "2.12.15", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
+ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
@@ -159,14 +161,23 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.compression.Compression.gunzip$default$1$"
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.ChunkCompanionPlatform.makeArrayBuilder"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend")
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.concurrent.Channel.trySend"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.compression.Compression.gunzip"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.systemResource"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.insecureResource"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]( // something funky in Scala 3.2.0 ...
+    "fs2.io.net.SocketGroupCompanionPlatform#AsyncSocketGroup.this"
+  )
 )
 
 lazy val root = tlCrossRootProject
   .aggregate(
     core,
     io,
-    node,
     scodec,
     protocols,
     reactiveStreams,
@@ -176,7 +187,11 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val core = crossProject(JVMPlatform, JSPlatform)
+lazy val commonNativeSettings = Seq(
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap
+)
+
+lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
   .configs(IntegrationTest)
   .settings(Defaults.itSettings: _*)
@@ -188,15 +203,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.7.0",
-      "org.typelevel" %%% "cats-laws" % "2.7.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.3.11",
-      "org.typelevel" %%% "cats-effect-laws" % "3.3.11" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.3.11" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.30",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.3" % Test,
-      "org.typelevel" %%% "munit-cats-effect-3" % "1.0.7" % Test,
-      "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test
+      "org.typelevel" %%% "cats-core" % "2.8.0",
+      "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.34",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
     tlJdkRelease := Some(8),
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -217,32 +232,16 @@ lazy val coreJS = core.js
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
 
-lazy val node = crossProject(JSPlatform)
-  .in(file("node"))
-  .enablePlugins(ScalablyTypedConverterGenSourcePlugin)
-  .settings(
-    name := "fs2-node",
-    mimaPreviousArtifacts := Set.empty,
-    scalacOptions += "-nowarn",
-    Compile / doc / sources := Nil,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Compile / npmDevDependencies += "@types/node" -> "16.11.7",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile",
-    stOutputPackage := "fs2.internal.jsdeps",
-    stPrivateWithin := Some("fs2"),
-    stStdlib := List("es2020"),
-    stUseScalaJsDom := false,
-    stIncludeDev := true
-  )
+lazy val coreNative = core.native
+  .disablePlugins(DoctestPlugin)
+  .settings(commonNativeSettings)
 
-lazy val io = crossProject(JVMPlatform, JSPlatform)
+lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
-  .jsEnablePlugins(ScalaJSBundlerPlugin)
   .settings(
     name := "fs2-io",
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.1.2",
-    tlVersionIntroduced ~= { _.updated("3", "3.1.0") }
+    tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.2.0"
   )
   .jvmSettings(
     Test / fork := true,
@@ -253,13 +252,18 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
   )
   .jsSettings(
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
-    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    Test / npmDevDependencies += "jks-js" -> "1.0.1",
-    useYarn := true,
-    yarnExtraArgs += "--frozen-lockfile"
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
+  )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
+  .nativeSettings(commonNativeSettings)
+  .nativeSettings(
+    libraryDependencies ++= Seq(
+      "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
+    ),
+    Test / nativeBrewFormulas += "s2n",
+    Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
   )
   .dependsOn(core % "compile->compile;test->test")
-  .jsConfigure(_.dependsOn(node.js))
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
@@ -272,28 +276,64 @@ lazy val io = crossProject(JVMPlatform, JSPlatform)
       ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.JavaScriptUnknownException"),
       ProblemFilters.exclude[DirectMissingMethodProblem](
         "fs2.io.net.tls.TLSSocketCompanionPlatform#AsyncTLSSocket.this"
-      )
+      ),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.file.FileHandle.make"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.DatagramSocket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem](
+        "fs2.io.net.DatagramSocketCompanionPlatform#AsyncDatagramSocket.this"
+      ),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocketOption#Key.set"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.Socket.forAsync"),
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.SocketOption.encoding"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.SocketOptionCompanionPlatform#Key.set"),
+      ProblemFilters
+        .exclude[ReversedMissingMethodProblem]("fs2.io.net.tls.SecureContext#SecureVersion.toJS"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops"),
+      ProblemFilters.exclude[Problem]("fs2.io.net.tls.SecureContext.ops"),
+      ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.tls.SecureContext$ops$"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toTLSSocketOptions"
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toConnectionOptions"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.1.toJS"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.2.toJS"
+      ),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
+      ),
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
+  .nativeSettings(
+    nativeConfig ~= { _.withEmbedResources(true) }
+  )
 
-lazy val scodec = crossProject(JVMPlatform, JSPlatform)
+lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("scodec"))
   .settings(
     name := "fs2-scodec",
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.9"
-                                                             else "2.1.0"),
+                                                               "1.11.10"
+                                                             else "2.2.0"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
-lazy val protocols = crossProject(JVMPlatform, JSPlatform)
+lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("protocols"))
   .settings(
     name := "fs2-protocols",
@@ -303,6 +343,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", scodec, io)
 
 lazy val reactiveStreams = project
@@ -310,9 +351,9 @@ lazy val reactiveStreams = project
   .settings(
     name := "fs2-reactive-streams",
     libraryDependencies ++= Seq(
-      "org.reactivestreams" % "reactive-streams" % "1.0.3",
-      "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
-      "org.scalatestplus" %% "testng-6-7" % "3.2.10.0" % "test"
+      "org.reactivestreams" % "reactive-streams" % "1.0.4",
+      "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
+      "org.scalatestplus" %% "testng-7-5" % "3.2.14.0" % "test"
     ),
     tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
@@ -352,7 +393,8 @@ lazy val microsite = project
       sbt.IO.copyDirectory(mdocOut.value, (laikaSite / target).value)
       Set.empty
     },
-    tlFatalWarningsInCi := false
+    tlFatalWarningsInCi := false,
+    tlSiteApiPackage := Some("fs2")
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)
   .enablePlugins(TypelevelSitePlugin)

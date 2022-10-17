@@ -24,15 +24,15 @@ package io.net.unixsocket
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import fs2.io.net.Socket
-import fs2.internal.jsdeps.node.netMod
-import cats.syntax.all._
-import scala.scalajs.js
 import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
-import fs2.internal.jsdeps.node.nodeStrings
-import fs2.io.internal.EventEmitterOps._
-import fs2.io.file.{Files, Path}
+import cats.syntax.all._
+import fs2.concurrent.Channel
+import fs2.io.file.Files
+import fs2.io.file.Path
+import fs2.io.net.Socket
+import fs2.io.internal.facade
+
+import scala.scalajs.js
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
 
@@ -41,14 +41,22 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
 
       override def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
         Resource
-          .eval(for {
-            socket <- F.delay(
-              new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
+          .make(
+            F.delay(
+              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
             )
-            _ <- F.async_[Unit] { cb =>
-              socket.connect(address.path, () => cb(Right(())))
+          )(socket =>
+            F.delay {
+              if (!socket.destroyed)
+                socket.destroy()
             }
-          } yield socket)
+          )
+          .evalTap { socket =>
+            F.async_[Unit] { cb =>
+              socket.connect(address.path, () => cb(Right(())))
+              ()
+            }
+          }
           .flatMap(Socket.forAsync[F])
 
       override def server(
@@ -57,29 +65,32 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           deleteOnClose: Boolean
       ): fs2.Stream[F, Socket[F]] =
         for {
-          dispatcher <- Stream.resource(Dispatcher[F])
-          queue <- Stream.eval(Queue.unbounded[F, netMod.Socket])
+          dispatcher <- Stream.resource(Dispatcher.sequential[F])
+          channel <- Stream.eval(Channel.unbounded[F, facade.net.Socket])
           errored <- Stream.eval(F.deferred[js.JavaScriptException])
           server <- Stream.bracket(
-            F
-              .delay(
-                netMod.createServer(
-                  netMod.ServerOpts().setPauseOnConnect(true).setAllowHalfOpen(true),
-                  sock => dispatcher.unsafeRunAndForget(queue.offer(sock))
-                )
+            F.delay {
+              facade.net.createServer(
+                new facade.net.ServerOptions {
+                  pauseOnConnect = true
+                  allowHalfOpen = true
+                },
+                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
               )
+            }
           )(server =>
             F.async_[Unit] { cb =>
-              if (server.listening)
+              if (server.listening) {
                 server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
-              else
+                ()
+              } else
                 cb(Right(()))
             }
           )
           _ <- Stream
             .resource(
-              registerListener[js.Error](server, nodeStrings.error)(_.once_error(_, _)) { e =>
-                dispatcher.unsafeRunAndForget(errored.complete(js.JavaScriptException(e)))
+              server.registerListener[F, js.Error]("error", dispatcher) { e =>
+                errored.complete(js.JavaScriptException(e)).void
               }
             )
             .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
@@ -87,17 +98,12 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else F.unit
           )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else F.unit)
           _ <- Stream.eval(
-            F
-              .async_[Unit] { cb =>
-                server.listen(
-                  netMod.ListenOptions().setPath(address.path),
-                  () => cb(Right(()))
-                )
-              }
+            F.async_[Unit] { cb =>
+              server.listen(address.path, () => cb(Right(())))
+              ()
+            }
           )
-          socket <- Stream
-            .fromQueueUnterminated(queue)
-            .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+          socket <- channel.stream.flatMap(sock => Stream.resource(Socket.forAsync(sock)))
         } yield socket
 
     }

@@ -46,20 +46,60 @@ object TimeSeries {
       source: Stream[F, TimeStamped[A]],
       tickPeriod: FiniteDuration,
       reorderOver: FiniteDuration
+  ): Stream[F, TimeStamped[Option[A]]] =
+    apply(source, tickPeriod, reorderOver, false)
+
+  /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream.
+    *
+    * The `monotonic` parameter specifies whether time ticks should use a monotonic
+    * increasing counter (e.g. `System.nanoTime`) or the current system time. This must
+    * match the time source of the source stream -- e.g., if `source` uses monotonic time
+    * then `monotonic` must be set to true.
+    */
+  def apply[F[_]: Temporal, A](
+      source: Stream[F, TimeStamped[A]],
+      tickPeriod: FiniteDuration,
+      reorderOver: FiniteDuration,
+      monotonic: Boolean
   ): Stream[F, TimeStamped[Option[A]]] = {
     val src: Stream[F, TimeStamped[Option[A]]] = source.map(tsa => tsa.map(Some(_): Option[A]))
     val ticks: Stream[F, TimeStamped[Option[Nothing]]] =
-      timeTicks(tickPeriod).map(tsu => tsu.map(_ => None))
+      timeTicks(tickPeriod, monotonic).map(tsu => tsu.map(_ => None))
     src.merge(ticks).through(TimeStamped.reorderLocally(reorderOver))
   }
 
-  /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream. */
+  /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream.
+    *
+    * Packets are time stamped with the system time. If downstream processing requires
+    * monotonically increasaing time stamps, consider using the overload which takes the
+    * `monotonic` parameter.
+    */
   def timePulled[F[_]: Temporal, A](
       source: Stream[F, A],
       tickPeriod: FiniteDuration,
       reorderOver: FiniteDuration
   ): Stream[F, TimeStamped[Option[A]]] =
-    apply(source.map(TimeStamped.unsafeNow), tickPeriod, reorderOver)
+    apply(source.map(TimeStamped.unsafeRealTime), tickPeriod, reorderOver)
+
+  /** Stream of either time ticks (spaced by `tickPeriod`) or values from the source stream.
+    *
+    *  The `monotonic` parameter specifies whether time stamps should use a monotonic
+    *  increasing counter (e.g. System.nanoTime) or the current system time.
+    */
+  def timePulled[F[_]: Temporal, A](
+      source: Stream[F, A],
+      tickPeriod: FiniteDuration,
+      reorderOver: FiniteDuration,
+      monotonic: Boolean
+  ): Stream[F, TimeStamped[Option[A]]] =
+    apply(
+      source.map(a =>
+        if (monotonic) TimeStamped.unsafeMonotonic(a) else TimeStamped.unsafeRealTime(a)
+      ),
+      tickPeriod,
+      reorderOver,
+      monotonic
+    )
 
   /** Lifts a function from `A => B` to a time series pipe. */
   def lift[F[_], A, B](
@@ -84,8 +124,13 @@ object TimeSeries {
     }
 
   /** Stream of time ticks spaced by `tickPeriod`. */
-  private def timeTicks[F[_]: Temporal](tickPeriod: FiniteDuration): Stream[F, TimeStamped[Unit]] =
-    Stream.awakeEvery[F](tickPeriod).map(_ => TimeStamped.unsafeNow(()))
+  private def timeTicks[F[_]: Temporal](
+      tickPeriod: FiniteDuration,
+      monotonic: Boolean
+  ): Stream[F, TimeStamped[Unit]] =
+    Stream
+      .awakeEvery[F](tickPeriod)
+      .map(_ => if (monotonic) TimeStamped.unsafeMonotonic(()) else TimeStamped.unsafeRealTime(()))
 
   /** Pipe that converts a stream of timestamped values with monotonically increasing timestamps in
     * to a stream of timestamped ticks or values, where a tick is emitted every `tickPeriod`.

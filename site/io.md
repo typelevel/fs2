@@ -1,6 +1,6 @@
 # I/O
 
-The `fs2-io` library provides support for performing input and output on the JVM and Node.js. This includes:
+The `fs2-io` library provides support for performing input and output on the JVM, Node.js, and Scala Native. This includes:
 - [Networking](#networking)
   - [TCP](#tcp)
   - [UDP](#udp)
@@ -212,10 +212,11 @@ The UDP server implementation is much different than the TCP server implementati
 
 ## TLS
 
-The `fs2.io.net.tls` package provides support for TLS over TCP and DTLS over UDP, built on top of `javax.net.ssl`. TLS over TCP is provided by the `TLSSocket` trait, which is instantiated by `Network.tlsContext`. A `TLSContext` provides cryptographic material used in TLS session establishment -- e.g., the set of certificates that are trusted (sometimes referred to as a trust store) and optionally, the set of certificates identifying this application (sometimes referred to as a key store). The `TLSContext.Builder` trait provides many ways to construct a `TLSContext` -- for example:
-- `system(blocker)` - delegates to `javax.net.ssl.SSLContext.getDefault`, which uses the JDK default set of trusted certificates
-- `fromKeyStoreFile(pathToFile, storePassword, keyPassword, blocker)` - loads a Java Key Store file
-- `insecure(blocker)` - trusts all certificates - note: this is dangerously insecure - only use for quick tests
+The `fs2.io.net.tls` package provides support for TLS over TCP and DTLS over UDP, built on top of `javax.net.ssl` on JVM, [s2n-tls] on Scala Native, and the [`node:tls` module] on Node.js. TLS over TCP is provided by the `TLSSocket` trait, which is instantiated by `Network.tlsContext`. A `TLSContext` provides cryptographic material used in TLS session establishment -- e.g., the set of certificates that are trusted (sometimes referred to as a trust store) and optionally, the set of certificates identifying this application (sometimes referred to as a key store). The `TLSContext.Builder` trait provides many ways to construct a `TLSContext` -- for example:
+- `system` - uses the platform-specific default trust store
+  - delegates to `javax.net.ssl.SSLContext.getDefault` on JVM
+- `fromKeyStoreFile(pathToFile, storePassword, keyPassword)` - loads a Java Key Store file (JVM-only)
+- `insecure` - trusts all certificates - note: this is dangerously insecure - only use for quick tests
 
 A `TLSContext` is typically created at application startup, via `Network[F].tlsContext`, and used for all sockets for the lifetime of the application. Once a `TLSContext` has been created, the `client` and `server` methods are used to create `TLSSocket` instances (and `dtlsClient` / `dtlsServer` methods for `DTLSSocket`). In each case, a regular socket must be provided, which the `TLSSocket` will use for performing the TLS handshake as well as transmitting and receiving encrypted data. `TLSSocket` extends `fs2.io.net.Socket`, making the addition of TLS support a drop in replacement for a program using `fs2-io`.
 
@@ -385,3 +386,6 @@ The `fs2.io.readInputStream` method (and `unsafeReadInputStream` method, see Sca
 The `fs2.io.writeOutputStream` method provides a pipe that writes the bytes emitted from a `Stream[F, Byte]` to an `OutputStream`.
 
 The `fs2.io.readOutputStream` method creates a `Stream[F, Byte]` from a function which writes to an `OutputStream`.
+
+[s2n-tls]: https://github.com/aws/s2n-tls
+[`node:tls` module]: https://nodejs.org/api/tls.html

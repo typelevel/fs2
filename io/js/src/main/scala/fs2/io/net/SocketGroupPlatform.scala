@@ -26,17 +26,14 @@ package net
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.Host
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
-import fs2.internal.jsdeps.node.eventsMod
-import fs2.internal.jsdeps.node.netMod
-import fs2.internal.jsdeps.node.nodeStrings
-import fs2.io.internal.EventEmitterOps._
+import fs2.concurrent.Channel
+import fs2.io.internal.facade
 
 import scala.scalajs.js
 
@@ -47,29 +44,35 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
   private[net] final class AsyncSocketGroup[F[_]](implicit F: Async[F])
       extends AbstractAsyncSocketGroup[F] {
 
-    private def setSocketOptions(options: List[SocketOption])(socket: netMod.Socket): F[Unit] =
-      options.traverse(option => option.key.set(socket, option.value)).void
+    private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
+      options.traverse_(option => option.key.set(socket, option.value))
 
     override def client(
         to: SocketAddress[Host],
         options: List[SocketOption]
     ): Resource[F, Socket[F]] =
       (for {
-        sock <- F
-          .delay(
-            new netMod.Socket(netMod.SocketConstructorOpts().setAllowHalfOpen(true))
+        sock <- Resource
+          .make(
+            F.delay(
+              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
+            )
+          )(sock =>
+            F.delay {
+              if (!sock.destroyed)
+                sock.destroy()
+            }
           )
-          .flatTap(setSocketOptions(options))
-          .toResource
+          .evalTap(setSocketOptions(options))
         socket <- Socket.forAsync(sock)
         _ <- F
           .async[Unit] { cb =>
-            registerListener[js.Error](sock, nodeStrings.error)(_.once_error(_, _)) { error =>
-              cb(Left(js.JavaScriptException(error)))
-            }.evalTap(_ =>
-              F.delay(sock.connect(to.port.value.toDouble, to.host.toString, () => cb(Right(()))))
-            ).allocated
-              .map { case ((), cancel) => Some(cancel) }
+            sock
+              .registerOneTimeListener[F, js.Error]("error") { error =>
+                cb(Left(js.JavaScriptException(error)))
+              } <* F.delay {
+              sock.connect(to.port.value, to.host.toString, () => cb(Right(())))
+            }
           }
           .toResource
       } yield socket).adaptError { case IOException(ex) => ex }
@@ -80,49 +83,49 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       (for {
-        dispatcher <- Dispatcher[F]
-        queue <- Queue.unbounded[F, Option[netMod.Socket]].toResource
+        dispatcher <- Dispatcher.sequential[F]
+        channel <- Channel.unbounded[F, facade.net.Socket].toResource
         server <- Resource.make(
           F
             .delay(
-              netMod.createServer(
-                netMod.ServerOpts().setPauseOnConnect(true).setAllowHalfOpen(true),
-                sock => dispatcher.unsafeRunAndForget(queue.offer(Some(sock)))
+              facade.net.createServer(
+                new facade.net.ServerOptions {
+                  pauseOnConnect = true
+                  allowHalfOpen = true
+                },
+                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
               )
             )
         )(server =>
           F.async[Unit] { cb =>
             if (server.listening)
-              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) >> queue
-                .offer(None)
-                .as(None)
+              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) *>
+                channel.close.as(None)
             else
               F.delay(cb(Right(()))).as(None)
           }
         )
         _ <- F
-          .async_[Unit] { cb =>
-            server.once_error(nodeStrings.error, e => cb(Left(js.JavaScriptException(e))))
-            server.listen(
-              address.foldLeft(
-                netMod.ListenOptions().setPort(port.fold(0.0)(_.value.toDouble))
-              )((opts, host) => opts.setHost(host.toString)),
-              () => {
-                server.asInstanceOf[eventsMod.EventEmitter].removeAllListeners("error")
-                cb(Right(()))
+          .async[Unit] { cb =>
+            server.registerOneTimeListener[F, js.Error]("error") { e =>
+              cb(Left(js.JavaScriptException(e)))
+            } <* F.delay {
+              address match {
+                case Some(host) =>
+                  server.listen(port.fold(0)(_.value), host.toString, () => cb(Right(())))
+                case None =>
+                  server.listen(port.fold(0)(_.value), () => cb(Right(())))
               }
-            )
+
+            }
+
           }
           .toResource
-        ipAddress <- F
-          .delay(server.address())
-          .map { address =>
-            val info = address.asInstanceOf[netMod.AddressInfo]
-            SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port.toInt).get)
-          }
-          .toResource
-        sockets = Stream
-          .fromQueueNoneTerminated(queue)
+        ipAddress <- F.delay {
+          val info = server.address()
+          SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port).get)
+        }.toResource
+        sockets = channel.stream
           .evalTap(setSocketOptions(options))
           .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
       } yield (ipAddress, sockets)).adaptError { case IOException(ex) => ex }

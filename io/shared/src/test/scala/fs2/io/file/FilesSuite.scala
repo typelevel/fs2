@@ -29,7 +29,7 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 
-class FilesSuite extends Fs2Suite with BaseFileSuite {
+class FilesSuite extends Fs2IoSuite with BaseFileSuite {
 
   group("readAll") {
     test("retrieves whole content of a file") {

@@ -268,7 +268,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .map { result =>
         assertEquals(result.size, 1)
         val head = result.head
-        assert(head.toMillis >= (delay.toMillis - 5))
+        assert(clue(head.toMillis) >= clue(delay.toMillis - 5))
       }
   }
 
@@ -1001,6 +1001,17 @@ class StreamCombinatorsSuite extends Fs2Suite {
       .compile
       .toList
       .map(results => assert(results.size == 3))
+  }
+
+  test("meteredStartImmediately should not wait between events that last longer than the rate") {
+    Stream
+      .eval[IO, Int](IO.sleep(1.second).as(1))
+      .repeatN(10)
+      .meteredStartImmediately(1.second)
+      .interruptAfter(4500.milliseconds)
+      .compile
+      .toList
+      .map(results => assert(results.size == 4))
   }
 
   test("spaced should wait between events") {

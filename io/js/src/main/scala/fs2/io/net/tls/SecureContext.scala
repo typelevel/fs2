@@ -22,25 +22,22 @@
 package fs2
 package io.net.tls
 
-import fs2.io.internal.ByteChunkOps._
-import fs2.internal.jsdeps.node.tlsMod
+import cats.syntax.all._
+import fs2.io.internal.facade
+
+import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import scala.scalajs.js.|
 import scala.scalajs.js.JSConverters._
-import cats.syntax.all._
-import fs2.internal.jsdeps.node.bufferMod
-import scala.concurrent.duration.FiniteDuration
+import scala.scalajs.js.typedarray.Uint8Array
 
 /** A facade for Node.js `tls.SecureContext` */
 @js.native
 sealed trait SecureContext extends js.Object
 
 object SecureContext {
-  private[tls] implicit final class ops(private val context: SecureContext) extends AnyVal {
-    private[tls] def toJS = context.asInstanceOf[tlsMod.SecureContext]
-  }
 
-  def default: SecureContext = fromJS(tlsMod.createSecureContext())
+  def default: SecureContext = fromJS(facade.tls.createSecureContext())
 
   /** @see [[https://nodejs.org/api/tls.html#tls_tls_createsecurecontext_options]] */
   def apply(
@@ -65,79 +62,83 @@ object SecureContext {
       sigalgs: Option[String] = None,
       ticketKeys: Option[Chunk[Byte]] = None
   ): SecureContext = {
-    val options = tlsMod.SecureContextOptions()
+    val options = new facade.tls.SecureContextOptions {}
 
-    ca.map(toJS).foreach(options.setCa(_))
-    cert.map(toJS).foreach(options.setCert(_))
-    ciphers.foreach(options.setCiphers(_))
-    clientCertEngine.foreach(options.setClientCertEngine(_))
-    crl.map(toJS).foreach(options.setCrl(_))
-    dhparam.map(toJS).foreach(options.setDhparam(_))
-    ecdhCurve.foreach(options.setEcdhCurve(_))
-    honorCipherOrder.foreach(options.setHonorCipherOrder(_))
-    key
-      .map(_.view.map(_.toJS: bufferMod.global.Buffer | tlsMod.KeyObject).toJSArray)
-      .foreach(options.setKey(_))
-    maxVersion.map(_.toJS).foreach(options.setMaxVersion(_))
-    minVersion.map(_.toJS).foreach(options.setMinVersion(_))
-    passphrase.foreach(options.setPassphrase(_))
-    pfx.map(_.view.map(_.toJS))
-    privateKeyEngine.foreach(options.setPrivateKeyEngine(_))
-    privateKeyIdentifier.foreach(options.setPrivateKeyIdentifier(_))
-    secureOptions.map(_.toDouble).foreach(options.setSecureOptions(_))
-    sessionIdContext.foreach(options.setSessionIdContext(_))
-    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.setSessionTimeout(_))
-    sigalgs.foreach(options.setSigalgs(_))
-    ticketKeys.map(_.toBuffer).foreach(options.setTicketKeys(_))
+    ca.map(toJS).foreach(options.ca = _)
+    cert.map(toJS).foreach(options.cert = _)
+    ciphers.foreach(options.ciphers = _)
+    clientCertEngine.foreach(options.clientCertEngine = _)
+    crl.map(toJS).foreach(options.crl = _)
+    dhparam.map(toJS).foreach(options.dhparam = _)
+    ecdhCurve.foreach(options.ecdhCurve = _)
+    honorCipherOrder.foreach(options.honorCipherOrder = _)
+    key.map(_.view.map(_.toJS).toJSArray).foreach(options.key = _)
+    maxVersion.map(_.toJS).foreach(options.maxVersion = _)
+    minVersion.map(_.toJS).foreach(options.minVersion = _)
+    passphrase.foreach(options.passphrase = _)
+    pfx.map(_.view.map(_.toJS).toJSArray).foreach(options.pfx = _)
+    privateKeyEngine.foreach(options.privateKeyEngine = _)
+    privateKeyIdentifier.foreach(options.privateKeyIdentifier = _)
+    secureOptions.map(_.toDouble).foreach(options.secureOptions = _)
+    sessionIdContext.foreach(options.sessionIdContext = _)
+    sessionTimeout.map(_.toSeconds.toDouble).foreach(options.sessionTimeout = _)
+    sigalgs.foreach(options.sigalgs = _)
+    ticketKeys.map(_.toUint8Array).foreach(options.ticketKeys = _)
 
-    fromJS(tlsMod.createSecureContext(options))
+    facade.tls.createSecureContext(options)
   }
 
   def fromJS(secureContext: js.Any): SecureContext = secureContext.asInstanceOf[SecureContext]
 
   sealed abstract class SecureVersion {
-    private[SecureContext] def toJS: tlsMod.SecureVersion
+    private[SecureContext] def toJS: String
   }
   object SecureVersion {
     case object TLSv1 extends SecureVersion {
-      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1
+      private[SecureContext] def toJS = "TLSv1"
     }
     case object `TLSv1.1` extends SecureVersion {
-      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot1
+      private[SecureContext] def toJS = "TLSv1.1"
     }
     case object `TLSv1.2` extends SecureVersion {
-      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot2
+      private[SecureContext] def toJS = "TLSv1.2"
     }
     case object `TLSv1.3` extends SecureVersion {
-      private[SecureContext] def toJS = tlsMod.SecureVersion.TLSv1Dot3
+      private[SecureContext] def toJS = "TLSv1.3"
     }
   }
 
   final case class Key(pem: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
+    outer =>
     private[SecureContext] def toJS = {
-      val key = tlsMod.KeyObject(SecureContext.toJS(pem))
-      passphrase.foreach(key.setPassphrase(_))
+      val key = new facade.tls.Key {
+        val pem = SecureContext.toJS(outer.pem)
+      }
+      outer.passphrase.foreach(key.passphrase = _)
       key
     }
   }
 
   final case class Pfx(buf: Either[Chunk[Byte], String], passphrase: Option[String] = None) {
+    outer =>
     private[SecureContext] def toJS = {
-      val pfx = tlsMod.PxfObject(SecureContext.toJS(buf))
-      passphrase.foreach(pfx.setPassphrase(_))
+      val pfx = new facade.tls.Pfx {
+        val buf = SecureContext.toJS(outer.buf)
+      }
+      outer.passphrase.foreach(pfx.passphrase = _)
       pfx
     }
   }
 
-  private def toJS(x: Either[Chunk[Byte], String]): String | bufferMod.global.Buffer = x
+  private def toJS(x: Either[Chunk[Byte], String]): String | Uint8Array = x
     .bimap(
-      _.toBuffer: String | bufferMod.global.Buffer,
-      x => x: String | bufferMod.global.Buffer
+      _.toUint8Array: String | Uint8Array,
+      x => x: String | Uint8Array
     )
     .merge
 
   private def toJS(
       x: Seq[Either[Chunk[Byte], String]]
-  ): js.Array[String | bufferMod.global.Buffer] =
+  ): js.Array[String | Uint8Array] =
     x.view.map(toJS).toJSArray
 }

@@ -127,6 +127,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Maps `f` over the elements of this chunk and concatenates the result. */
   def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
     if (isEmpty) Chunk.empty
+    else if (size == 1) f(apply(0))
     else {
       var acc = Chunk.Queue.empty[O2]
       foreach(o => acc = acc :+ f(o))
@@ -296,7 +297,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Converts this chunk to a `Chunk.ArraySlice`. */
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
     this match {
-      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
+      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.values.getClass =>
         as.asInstanceOf[Chunk.ArraySlice[O2]]
       case _ => Chunk.ArraySlice(toArray, 0, size)
     }
@@ -316,6 +317,23 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
         }
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+    }
+
+  /** Converts this chunk to a `java.nio.CharBuffer`. */
+  def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
+    this match {
+      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
+        JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
+      case c: Chunk.CharBuffer =>
+        val b = c.buf.asReadOnlyBuffer
+        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
+        else {
+          (b: JBuffer).position(c.offset.toInt)
+          (b: JBuffer).limit(c.offset.toInt + c.size)
+          b
+        }
+      case _ =>
+        JCharBuffer.wrap(this.asInstanceOf[Chunk[Char]].toArray, 0, size)
     }
 
   /** Converts this chunk to a NonEmptyList */
@@ -363,20 +381,14 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Converts this chunk to a scodec-bits ByteVector. */
   def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
-    this match {
-      case c: Chunk.ByteVectorChunk => c.toByteVector
-      case other                    => ByteVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
-    }
+    ByteVector.viewAt(i => apply(i.toInt), size.toLong)
 
   /** Converts this chunk to a scodec-bits BitVector. */
-  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector =
-    this match {
-      case c: Chunk.ByteVectorChunk => c.toByteVector.bits
-      case other                    => BitVector.view(other.asInstanceOf[Chunk[Byte]].toArray)
-    }
+  def toBitVector[B >: O](implicit ev: B =:= Byte): BitVector = toByteVector[B].bits
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])
+    else if (size == 1) f(apply(0)).map(Chunk.singleton)
     else {
       // we branch out by this factor
       val width = 128
@@ -529,8 +541,11 @@ object Chunk
     protected def splitAtChunk_(n: Int): (Chunk[Nothing], Chunk[Nothing]) =
       sys.error("impossible")
     override def map[O2](f: Nothing => O2): Chunk[O2] = this
+    override def toByteVector[B](implicit ev: B =:= Byte): ByteVector = ByteVector.empty
     override def toString = "empty"
   }
+
+  private[fs2] val unit: Chunk[Unit] = singleton(())
 
   /** Chunk with no elements. */
   def empty[A]: Chunk[A] = empty_
@@ -545,9 +560,36 @@ object Chunk
     def apply(i: Int): O =
       if (i == 0) value else throw new IndexOutOfBoundsException()
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = xs(start) = value
+    override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+      ByteVector.fromByte(value)
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       sys.error("impossible")
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
+  }
+
+  def constant[A](value: A, size: Int): Chunk[A] =
+    if (size <= 0) empty
+    else if (size == 1) singleton(value)
+    else new Constant(value, size)
+
+  final class Constant[A](value: A, override val size: Int) extends Chunk[A] {
+
+    def apply(i: Int): A =
+      if (0 <= i && i < size) value else throw new IndexOutOfBoundsException()
+
+    def copyToArray[O2 >: A](xs: Array[O2], start: Int): Unit = {
+
+      @tailrec
+      def go(ix: Int): Unit =
+        if (ix < size) {
+          xs(start + ix) = value
+          go(ix + 1)
+        }
+      go(0)
+    }
+
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) =
+      constant(value, n) -> constant(value, size - n)
   }
 
   /** Creates a chunk backed by a vector. */
@@ -567,6 +609,10 @@ object Chunk
       s.copyToArray(xs, start)
       ()
     }
+
+    override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+      ByteVector.viewAt(idx => s(idx.toInt), s.length.toLong)
+
     override def toVector = s.toVector
 
     override def drop(n: Int): Chunk[O] =
@@ -700,6 +746,11 @@ object Chunk
         ()
       }
 
+    override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+      if (values.isInstanceOf[Array[Byte]])
+        ByteVector.view(values.asInstanceOf[Array[Byte]], offset, length)
+      else ByteVector.viewAt(i => apply(i.toInt), size.toLong)
+
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       ArraySlice(values, offset, n) -> ArraySlice(values, offset + n, length - n)
 
@@ -798,6 +849,9 @@ object Chunk
       b.get(dest, offset, length)
 
     def duplicate(b: JCharBuffer): JCharBuffer = b.duplicate()
+
+    override def toByteVector[B >: Char](implicit ev: B =:= Byte): ByteVector =
+      throw new UnsupportedOperationException
   }
 
   /** Creates a chunk backed by an char buffer, bounded by the current position and limit */
@@ -828,6 +882,13 @@ object Chunk
       b.get(dest, offset, length)
 
     def duplicate(b: JByteBuffer): JByteBuffer = b.duplicate()
+
+    override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = {
+      val bb = buf.asReadOnlyBuffer()
+      bb.position(offset)
+      bb.limit(offset + size)
+      ByteVector.view(bb)
+    }
   }
 
   /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
@@ -837,39 +898,44 @@ object Chunk
   def byteVector(bv: ByteVector): Chunk[Byte] =
     ByteVectorChunk(bv)
 
-  private case class ByteVectorChunk(toByteVector: ByteVector) extends Chunk[Byte] {
+  private case class ByteVectorChunk(bv: ByteVector) extends Chunk[Byte] {
 
     def apply(i: Int): Byte =
-      toByteVector(i.toLong)
+      bv(i.toLong)
 
     def size: Int =
-      toByteVector.size.toInt
+      bv.size.toInt
 
     def copyToArray[O2 >: Byte](xs: Array[O2], start: Int): Unit =
       if (xs.isInstanceOf[Array[Byte]])
-        toByteVector.copyToArray(xs.asInstanceOf[Array[Byte]], start)
+        bv.copyToArray(xs.asInstanceOf[Array[Byte]], start)
       else {
-        toByteVector.toIndexedSeq.copyToArray(xs, start)
+        bv.toIndexedSeq.copyToArray(xs, start)
         ()
       }
 
     override def drop(n: Int): Chunk[Byte] =
       if (n <= 0) this
       else if (n >= size) Chunk.empty
-      else ByteVectorChunk(toByteVector.drop(n.toLong))
+      else ByteVectorChunk(bv.drop(n.toLong))
 
     override def take(n: Int): Chunk[Byte] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
-      else ByteVectorChunk(toByteVector.take(n.toLong))
+      else ByteVectorChunk(bv.take(n.toLong))
 
     protected def splitAtChunk_(n: Int): (Chunk[Byte], Chunk[Byte]) = {
-      val (before, after) = toByteVector.splitAt(n.toLong)
+      val (before, after) = bv.splitAt(n.toLong)
       (ByteVectorChunk(before), ByteVectorChunk(after))
     }
 
     override def map[O2](f: Byte => O2): Chunk[O2] =
-      Chunk.indexedSeq(toByteVector.toIndexedSeq.map(f))
+      Chunk.indexedSeq(bv.toIndexedSeq.map(f))
+
+    override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = bv
+
+    @deprecated("Retained for bincompat", "3.2.12")
+    def toByteVector() = bv
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
@@ -1004,6 +1070,9 @@ object Chunk
       go(chunks, start)
     }
 
+    override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+      chunks.foldLeft(ByteVector.empty)(_ ++ _.toByteVector(ev))
+
     override def take(n: Int): Queue[O] =
       if (n <= 0) Queue.empty
       else if (n >= size) this
@@ -1129,12 +1198,31 @@ object Chunk
           else b
         go(0)
       }
+      override def size[A](fa: Chunk[A]): Long = fa.size.toLong
       override def toList[A](fa: Chunk[A]): List[A] = fa.toList
       override def isEmpty[A](fa: Chunk[A]): Boolean = fa.isEmpty
       override def empty[A]: Chunk[A] = Chunk.empty
       override def pure[A](a: A): Chunk[A] = Chunk.singleton(a)
       override def map[A, B](fa: Chunk[A])(f: A => B): Chunk[B] = fa.map(f)
       override def flatMap[A, B](fa: Chunk[A])(f: A => Chunk[B]): Chunk[B] = fa.flatMap(f)
+      override def flatten[A](ffa: Chunk[Chunk[A]]): Chunk[A] =
+        if (ffa.isEmpty) Chunk.empty
+        else if (ffa.size == 1) ffa(0) // short-circuit and simply return the first chunk
+        else {
+          var acc = Chunk.Queue.empty[A]
+          ffa.foreach(x => acc = acc :+ x)
+          acc
+        }
+
+      override def traverse_[F[_], A, B](
+          fa: Chunk[A]
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Unit] =
+        fa.size match {
+          case 0 => F.unit
+          case 1 => f(fa(0)).void
+          case _ => super.traverse_(fa)(f)
+        }
+
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
         // Based on the implementation of tailRecM for Vector from cats, licensed under MIT
         val buf = makeArrayBuilder[Any]

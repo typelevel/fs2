@@ -218,19 +218,25 @@ object Channel {
                   else (state.copy(waiting = waiting.some), state)
                 }
                 .flatMap {
-                  case s @ State(values, stateSize, ignorePreviousWaiting @ _, producers, closed) =>
+                  case s @ State(
+                        initValues,
+                        stateSize,
+                        ignorePreviousWaiting @ _,
+                        producers,
+                        closed
+                      ) =>
                     if (shouldEmit(s)) {
                       var size = stateSize
-                      var allValues = values
+                      val tailValues = List.newBuilder[A]
                       var unblock = F.unit
 
                       producers.foreach { case (value, producer) =>
                         size += 1
-                        allValues = value :: allValues
+                        tailValues += value
                         unblock = unblock <* producer.complete(())
                       }
 
-                      val toEmit = makeChunk(allValues, size)
+                      val toEmit = makeChunk(initValues, tailValues.result(), size)
 
                       unblock.as(Pull.output(toEmit) >> consumeLoop)
                     } else {
@@ -258,11 +264,12 @@ object Channel {
 
         @inline private def shouldEmit(s: State) = s.values.nonEmpty || s.producers.nonEmpty
 
-        private def makeChunk(allValues: List[A], size: Int): Chunk[A] = {
+        private def makeChunk(init: List[A], tail: List[A], size: Int): Chunk[A] = {
           val arr = new Array[Any](size)
           var i = size - 1
-          var values = allValues
+          var values = tail
           while (i >= 0) {
+            if (values.isEmpty) values = init
             arr(i) = values.head
             values = values.tail
             i -= 1

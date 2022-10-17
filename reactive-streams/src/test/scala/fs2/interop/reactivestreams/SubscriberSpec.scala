@@ -39,11 +39,13 @@ import org.reactivestreams.tck.{
   TestEnvironment
 }
 
+import org.scalatestplus.testng._
+
 import scala.concurrent.duration._
 
 final class SubscriberWhiteboxSpec
     extends SubscriberWhiteboxVerification[Int](new TestEnvironment(1000L))
-    with UnsafeTestNGSuite {
+    with TestNGSuiteLike {
 
   private val counter = new AtomicInteger()
 
@@ -90,7 +92,7 @@ final class WhiteboxSubscriber[A](sub: StreamSubscriber[IO, A], probe: WhiteboxS
 
 final class SubscriberBlackboxSpec
     extends SubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
-    with UnsafeTestNGSuite {
+    with TestNGSuiteLike {
 
   private val counter = new AtomicInteger()
 
@@ -99,7 +101,7 @@ final class SubscriberBlackboxSpec
 
   override def triggerRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].sub.dequeue1
-    (Stream.eval(IO.sleep(100.milliseconds) >> req)).compile.drain.unsafeRunAsync(_ => ())
+    Stream.eval(IO.sleep(100.milliseconds) >> req).compile.drain.unsafeRunAsync(_ => ())
   }
 
   def createElement(i: Int): Int = counter.incrementAndGet()

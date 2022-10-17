@@ -21,6 +21,8 @@
 
 package fs2
 
+import scodec.bits.ByteVector
+
 import scala.collection.immutable.ArraySeq
 import scala.collection.immutable
 import scala.reflect.ClassTag
@@ -113,6 +115,11 @@ private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
     override def toIArray[O2 >: O: ClassTag]: IArray[O2] =
       if (offset == 0 && length == values.length) values
       else super.toIArray[O2]
+
+    override def toByteVector[B >: O](implicit ev: B =:= Byte): ByteVector =
+      if (values.isInstanceOf[Array[Byte]])
+        ByteVector.view(values.asInstanceOf[Array[Byte]], offset, length)
+      else ByteVector.viewAt(i => apply(i.toInt), size.toLong)
   }
 
   /** Creates a chunk from a `scala.collection.IterableOnce`. */

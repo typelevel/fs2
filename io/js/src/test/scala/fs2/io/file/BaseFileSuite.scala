@@ -26,15 +26,14 @@ package file
 import cats.effect.IO
 import cats.effect.Resource
 import cats.syntax.all._
-import fs2.internal.jsdeps.node.fsPromisesMod
-import fs2.internal.jsdeps.node.osMod
+import fs2.io.internal.facade
 
 import scala.concurrent.duration._
 
 trait BaseFileSuite {
   import Files._
 
-  protected def defaultTempDirectory = IO(Path(osMod.tmpdir()))
+  protected def defaultTempDirectory = IO(Path(facade.os.tmpdir()))
 
   protected def tempDirectory: Resource[IO, Path] =
     Files[IO].tempDirectory
@@ -49,7 +48,7 @@ trait BaseFileSuite {
     tempDirectory.evalMap { topDir =>
       List
         .fill(5)(
-          IO.fromPromise(IO(fsPromisesMod.mkdtemp((topDir / "BaseFileSpec").toString)))
+          IO.fromPromise(IO(facade.fs.promises.mkdtemp((topDir / "BaseFileSpec").toString)))
             .map(Path(_))
         )
         .traverse {

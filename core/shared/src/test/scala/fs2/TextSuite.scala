@@ -36,11 +36,12 @@ class TextSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(1000)
 
+  def genStringNoBom: Gen[String] =
+    Arbitrary.arbitrary[String].filterNot(s => s.startsWith("\ufeff") || s.startsWith("\ufffe"))
+
   group("utf8.decoder") {
     def utf8Bytes(s: String): Chunk[Byte] = Chunk.array(s.getBytes("UTF-8"))
     def utf8String(bs: Chunk[Byte]): String = new String(bs.toArray, "UTF-8")
-
-    def genStringNoBom: Gen[String] = Arbitrary.arbitrary[String].filterNot(_.startsWith("\ufeff"))
 
     def checkChar(c: Char): Unit =
       if (c != '\ufeff')
@@ -149,9 +150,22 @@ class TextSuite extends Fs2Suite {
       }
       property("spanning chunks") {
         forAll(genStringNoBom) { (s: String) =>
-          val c = bom ++ utf8Bytes(s)
-          assertEquals(Stream.emits(c.toArray[Byte]).through(text.utf8.decode).compile.string, s)
+          forAll(Gen.chooseNum(0, s.length + bom.size, 0, 1, 2, 3, 4)) { splitIndex =>
+            val (c1, c2) = (bom ++ utf8Bytes(s)).splitAt(splitIndex)
+            assertEquals(Stream(c1, c2).unchunks.through(text.utf8.decode).compile.string, s)
+          }
+
         }
+      }
+      test("does not force buffering") {
+        val s1 = Stream(97, 98, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s1.through(text.utf8.decode).chunks.compile.count, 3L)
+
+        val s2 = Stream(0xef, 98, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s2.through(text.utf8.decode).chunks.compile.count, 2L)
+
+        val s3 = Stream(0xef, 0xbb, 99).map(_.toByte).chunkLimit(1).unchunks
+        assertEquals(s3.through(text.utf8.decode).chunks.compile.count, 1L)
       }
     }
 
@@ -478,6 +492,73 @@ class TextSuite extends Fs2Suite {
           .compile
           .string
         assertEquals(s, Right("\u0940"))
+      }
+    }
+  }
+  group("encode") {
+    test("doesn't produce BOMs in the middle of strings") {
+      // protect against regressions of #3006 that come from encoding each element in the stream individually,
+      // leading to BOMs wherever an input string begins
+      val s = Stream("1", "2", "3")
+      val expected = Map(
+        StandardCharsets.UTF_8 -> List(49, 50, 51),
+        StandardCharsets.UTF_16 -> List(-2, -1, 0, 49, 0, 50, 0, 51),
+        StandardCharsets.UTF_16BE -> List(0, 49, 0, 50, 0, 51),
+        StandardCharsets.UTF_16LE -> List(49, 0, 50, 0, 51, 0)
+      ) ++ (if (isJVM)
+              Map(
+                Charset.forName("UTF-32") -> List(0, 0, 0, 49, 0, 0, 0, 50, 0, 0, 0, 51),
+                Charset.forName("UTF-32BE") -> List(0, 0, 0, 49, 0, 0, 0, 50, 0, 0, 0, 51),
+                Charset.forName("UTF-32LE") -> List(49, 0, 0, 0, 50, 0, 0, 0, 51, 0, 0, 0)
+              )
+            else Map.empty)
+      expected.foreach { case (charset, exp) =>
+        assertEquals(
+          s.through(encode(charset)).compile.toList,
+          exp.map(_.toByte),
+          s"failed BOM test for $charset"
+        )
+      }
+    }
+
+    test("replaces unmappable characters") {
+      val s = Stream("à").through(encode(Charset.forName("ascii"))).compile.toList
+      assertEquals(s, List(63).map(_.toByte)) // 63 = ? (the usual replacement character)
+    }
+
+    property("encode andThen decode = id for all unicode charsets") {
+      forAll(genStringNoBom) { (s: String) =>
+        if (s.nonEmpty) {
+          val charsets = List(
+            StandardCharsets.UTF_16LE,
+            StandardCharsets.UTF_16BE,
+            StandardCharsets.UTF_8,
+            StandardCharsets.UTF_16
+          ) ++ (if (isJVM)
+                  List(
+                    Charset.forName("UTF-32"),
+                    Charset.forName("UTF-32BE"),
+                    Charset.forName("UTF-32LE")
+                  )
+                else Nil)
+
+          charsets.foreach { charset =>
+            assertEquals(
+              Stream[Fallible, String](s)
+                .through(encodeC(charset))
+                .through(decodeCWithCharset(charset))
+                .toList,
+              Right(List(s))
+            )
+            assertEquals(
+              Stream[Fallible, String](s)
+                .through(encode(charset))
+                .through(decodeWithCharset(charset))
+                .toList,
+              Right(List(s))
+            )
+          }
+        }
       }
     }
   }

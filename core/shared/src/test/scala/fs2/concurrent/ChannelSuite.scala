@@ -24,6 +24,7 @@ package concurrent
 
 import cats.syntax.all._
 import cats.effect.IO
+import cats.effect.testkit.TestControl
 import scala.concurrent.duration._
 
 import org.scalacheck.effect.PropF.forAllF
@@ -130,6 +131,23 @@ class ChannelSuite extends Fs2Suite {
     } yield isClosedBefore
 
     p.assertEquals(true)
+  }
+
+  test("Channel.synchronous respects fifo") {
+    val l = for {
+      chan <- Channel.synchronous[IO, Int]
+      _ <- (0 until 5).toList.traverse_ { i =>
+        val f = for {
+          _ <- IO.sleep(i.second)
+          _ <- chan.send(i)
+          _ <- if (i == 4) chan.close.void else IO.unit
+        } yield ()
+        f.start
+      }
+      result <- IO.sleep(5.seconds) *> chan.stream.compile.toList
+    } yield result
+
+    TestControl.executeEmbed(l).assertEquals((0 until 5).toList)
   }
 
 }
