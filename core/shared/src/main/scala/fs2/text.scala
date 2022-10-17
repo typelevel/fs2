@@ -47,15 +47,15 @@ object text {
 
     /** BOM for UTF-8.
       */
-    val utf8: Seq[Byte] = Array(0xef.toByte, 0xbb.toByte, 0xbf.toByte).toSeq
+    val utf8: ByteVector = ByteVector(0xef, 0xbb, 0xbf)
 
     /** BOM for UTF-16BE (big endian).
       */
-    val utf16Big: Seq[Byte] = Array(0xfe.toByte, 0xff.toByte).toSeq
+    val utf16Big: ByteVector = ByteVector(0xfe, 0xff)
 
     /** BOM for UTF-16LE (little endian).
       */
-    val utf16Little: Seq[Byte] = Array(0xff.toByte, 0xfe.toByte).toSeq
+    val utf16Little: ByteVector = ByteVector(0xff, 0xfe)
   }
 
   object utf8 {
@@ -188,10 +188,10 @@ object text {
             val newBuffer: Chunk.Queue[Byte] = newBuffer0 :+ hd
             if (newBuffer.size >= 3) {
               val rem =
-                if (newBuffer.startsWith(bom.utf8)) newBuffer.drop(3)
+                if (newBuffer.startsWith(Chunk.byteVector(bom.utf8))) newBuffer.drop(3)
                 else newBuffer
               doPull(Chunk.empty, Stream.emits(rem.chunks) ++ tl)
-            } else if (newBuffer.startsWith(bom.utf8.take(newBuffer.size)))
+            } else if (newBuffer.startsWith(Chunk.byteVector(bom.utf8.take(newBuffer.size.toLong))))
               processByteOrderMark(newBuffer, tl)
             else doPull(Chunk.empty, Stream.emits(newBuffer.chunks) ++ tl)
           case None =>
@@ -371,13 +371,15 @@ object text {
   private def encodeUsingBOMSlicing[F[_]](
       s: Stream[F, String],
       charset: Charset,
-      bom: Seq[Byte],
+      bom: ByteVector,
       doDrop: Boolean
   ): Pull[F, Chunk[Byte], Unit] =
     s.pull.uncons1.flatMap {
       case Some((hd, tail)) =>
         val bytes = Chunk.array(hd.getBytes(charset))
-        val dropped = if (doDrop && bytes.startsWith(bom)) bytes.drop(bom.length) else bytes
+        val dropped =
+          if (doDrop && bytes.startsWith(Chunk.byteVector(bom))) bytes.drop(bom.length.toInt)
+          else bytes
         Pull.output1(dropped) >> encodeUsingBOMSlicing(tail, charset, bom, doDrop = true)
       case None => Pull.done
     }
