@@ -266,9 +266,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
 
+  /** Check to see if this starts with the items in the given chunk. */
+  def startsWith[O2 >: O](chunk: Chunk[O2]): Boolean =
+    take(chunk.size) == chunk
+
   /** Check to see if this starts with the items in the given seq. */
   def startsWith[O2 >: O](seq: Seq[O2]): Boolean =
-    take(seq.size) == Chunk.seq(seq)
+    startsWith(Chunk.seq(seq))
 
   /** Takes the first `n` elements of this chunk. */
   def take(n: Int): Chunk[O] = splitAt(n)._1
