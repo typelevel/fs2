@@ -4257,7 +4257,7 @@ object Stream extends StreamLowPriority {
       * `Pull.pure(None)` is returned if the end of the source stream is reached.
       */
     def unconsLimit(n: Int): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
-      if (n <= 0) Pull.pure(Some(Chunk.empty, self))
+      if (n <= 0) Pull.pure(Some(Chunk.empty -> self))
       else {
         uncons.flatMap {
           case Some((hd, tl)) =>
