@@ -978,8 +978,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: Unit = ()
     * }}}
     */
-  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] =
-    chunks.flatMap(o => Stream.evalUnChunk(o.traverse(f)))
+  def evalMapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O2] = {
+    def onChunk(o: Chunk[O]): Pull[F2, O2, Unit] =
+      Pull.eval(o.traverse(f)).flatMap(Pull.output(_))
+
+    underlying.unconsFlatMap(Pull.output1).scoped.flatMapOutput(onChunk).streamNoScope
+    // This could be quicker, but is it equivalent w.r.t. resource scopes?
+    // underlying.unconsFlatMap(onChunk).stream
+  }
 
   /** Like `[[Stream#mapAccumulate]]`, but accepts a function returning an `F[_]`.
     *
@@ -1052,8 +1058,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
-  def evalTapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O] =
-    evalMapChunk(o => f(o).as(o))
+  def evalTapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O] = {
+    def onChunk(ch: Chunk[O]): Pull[F2, O, Unit] =
+      Pull.eval(ch.traverse_(f)) >> Pull.output(ch)
+
+    underlying.unconsFlatMap(Pull.output1).scoped.flatMapOutput(onChunk).streamNoScope
+  }
 
   /** Emits `true` as soon as a matching element is received, else `false` if no input matches.
     * '''Pure''': this operation maps to `List.exists`

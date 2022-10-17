@@ -353,6 +353,7 @@ object Pull extends PullLowPriority {
         case _               => Uncons(self)
       }
 
+    private[fs2] def scoped: Pull[F, O, Unit] = Pull.scope(self)
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
