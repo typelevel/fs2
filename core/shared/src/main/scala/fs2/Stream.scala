@@ -434,31 +434,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Chunk[Int]] = List(Chunk(1, 2, 3, 4), Chunk(5, 6, 7))
     * }}}
     */
-  def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] = {
-    // Untyped Guarantee: accFull.size >= n | accFull.size == 0
-    def go[A](nextChunk: Chunk[A], s: Stream[F, A]): Pull[F, Chunk[A], Unit] =
-      s.pull.uncons.flatMap {
-        case None =>
-          if (allowFewerTotal && nextChunk.size > 0)
-            Pull.output1(nextChunk)
-          else
-            Pull.done
-        case Some((hd, tl)) =>
-          val next = nextChunk ++ hd
-          if (next.size >= n)
-            Pull.output1(next) >> go(Chunk.empty, tl)
-          else
-            go(next, tl)
+  def chunkMin(n: Int, allowFewerTotal: Boolean = true): Stream[F, Chunk[O]] =
+    this.repeatPull {
+      _.unconsMin(n, allowFewerTotal).flatMap {
+        case Some((hd, tl)) => Pull.output1(hd).as(Some(tl))
+        case None           => Pull.pure(None)
       }
-
-    this.pull.uncons.flatMap {
-      case None => Pull.done
-      case Some((hd, tl)) =>
-        if (hd.size >= n)
-          Pull.output1(hd) >> go(Chunk.empty, tl)
-        else go(hd, tl)
-    }.stream
-  }
+    }
 
   /** Outputs chunks of size `n`.
     *
@@ -4274,17 +4256,47 @@ object Stream extends StreamLowPriority {
       *
       * `Pull.pure(None)` is returned if the end of the source stream is reached.
       */
-    def unconsLimit(n: Int): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] = {
-      require(n > 0)
-      uncons.flatMap {
-        case Some((hd, tl)) =>
-          if (hd.size < n) Pull.pure(Some(hd -> tl))
-          else {
-            val (out, rem) = hd.splitAt(n)
-            Pull.pure(Some(out -> tl.cons(rem)))
-          }
-        case None => Pull.pure(None)
+    def unconsLimit(n: Int): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
+      if (n <= 0) Pull.pure(Some(Chunk.empty, self))
+      else {
+        uncons.flatMap {
+          case Some((hd, tl)) =>
+            if (hd.size < n) Pull.pure(Some(hd -> tl))
+            else {
+              val (out, rem) = hd.splitAt(n)
+              Pull.pure(Some(out -> tl.cons(rem)))
+            }
+          case None => Pull.pure(None)
+        }
       }
+
+    /** Like [[uncons]] but returns a chunk of at least `n` elements, concatenating and splitting as necessary.
+      *
+      * `Pull.pure(None)` is returned if the end of the source stream is reached.
+      *
+      * Note: the emitted chunk may be a composite chunk (i.e., an instance of `Chunk.Queue`) and
+      * hence may not have O(1) lookup by index. Consider calling `.map(_.compact)` if indexed
+      * lookup is important.
+      */
+    def unconsMin(
+        n: Int,
+        allowFewerTotal: Boolean = false
+    ): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] = {
+      def go(
+          acc: Chunk[O],
+          n: Int,
+          s: Stream[F, O]
+      ): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
+        s.pull.uncons.flatMap {
+          case None =>
+            if (allowFewerTotal && acc.nonEmpty) Pull.pure(Some(acc -> Stream.empty))
+            else Pull.pure(None)
+          case Some((hd, tl)) =>
+            if (hd.size < n) go(acc ++ hd, n - hd.size, tl)
+            else Pull.pure(Some((acc ++ hd) -> tl))
+        }
+      if (n <= 0) Pull.pure(Some(Chunk.empty -> self))
+      else go(Chunk.empty, n, self)
     }
 
     /** Like [[uncons]] but returns a chunk of exactly `n` elements, concatenating and splitting as necessary.
@@ -4298,28 +4310,14 @@ object Stream extends StreamLowPriority {
     def unconsN(
         n: Int,
         allowFewer: Boolean = false
-    ): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] = {
-      def go(
-          acc: Chunk[O],
-          n: Int,
-          s: Stream[F, O]
-      ): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
-        s.pull.uncons.flatMap {
-          case None =>
-            if (allowFewer && acc.nonEmpty)
-              Pull.pure(Some((acc, Stream.empty)))
-            else Pull.pure(None)
-          case Some((hd, tl)) =>
-            if (hd.size < n) go(acc ++ hd, n - hd.size, tl)
-            else if (hd.size == n) Pull.pure(Some((acc ++ hd) -> tl))
-            else {
-              val (pfx, sfx) = hd.splitAt(n)
-              Pull.pure(Some((acc ++ pfx) -> tl.cons(sfx)))
-            }
-        }
-      if (n <= 0) Pull.pure(Some((Chunk.empty, self)))
-      else go(Chunk.empty, n, self)
-    }
+    ): Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
+      if (n <= 0) Pull.pure(Some(Chunk.empty -> self))
+      else {
+        unconsMin(n, allowFewer).map(_.map { case (hd, tl) =>
+          val (pfx, sfx) = hd.splitAt(n)
+          (pfx, tl.cons(sfx))
+        })
+      }
 
     /** Drops the first `n` elements of this `Stream`, and returns the new `Stream`. */
     def drop(n: Long): Pull[F, Nothing, Option[Stream[F, O]]] =
