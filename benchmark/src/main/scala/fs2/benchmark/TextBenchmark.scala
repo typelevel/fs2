@@ -26,18 +26,30 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
 
+import java.nio.charset.Charset
+
 @State(Scope.Thread)
 class TextBenchmark {
-  @Param(Array("128", "1024", "4096"))
+  @Param(Array("128", "1024", "4096", "16384", "131072"))
   var asciiStringSize: Int = _
 
   var asciiBytes: Array[Byte] = _
+  var strings: Array[String] = _
+
+  @Param(Array("utf-8", "utf-16", "iso-2022-kr"))
+  var charsetName: String = _
+  var charset: Charset = _
+
   @Setup
   def setup(): Unit = {
     val rng = new java.util.Random(7919)
     asciiBytes = (0 until asciiStringSize).map { _ =>
       (rng.nextInt(126) + 1).toByte
     }.toArray
+    strings = new String(asciiBytes)
+      .grouped(asciiStringSize / 16) // chunk it up to be more real-world
+      .toArray
+    charset = Charset.forName(charsetName)
   }
 
   @Benchmark
@@ -49,4 +61,12 @@ class TextBenchmark {
       .last
       .unsafeRunSync()
       .get
+
+  @Benchmark
+  def asciiEncode(): Array[Byte] =
+    Stream
+      .emits(strings)
+      .through(text.encode(charset))
+      .compile
+      .to(Array)
 }

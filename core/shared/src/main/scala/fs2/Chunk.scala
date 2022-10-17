@@ -319,6 +319,23 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
 
+  /** Converts this chunk to a `java.nio.CharBuffer`. */
+  def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
+    this match {
+      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
+        JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
+      case c: Chunk.CharBuffer =>
+        val b = c.buf.asReadOnlyBuffer
+        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
+        else {
+          (b: JBuffer).position(c.offset.toInt)
+          (b: JBuffer).limit(c.offset.toInt + c.size)
+          b
+        }
+      case _ =>
+        JCharBuffer.wrap(this.asInstanceOf[Chunk[Char]].toArray, 0, size)
+    }
+
   /** Converts this chunk to a NonEmptyList */
   def toNel: Option[NonEmptyList[O]] =
     NonEmptyList.fromList(toList)
