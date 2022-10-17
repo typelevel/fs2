@@ -35,6 +35,7 @@ import cats.syntax.all._
 import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
+import Pull.StreamPullOps
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -401,7 +402,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def chunks: Stream[F, Chunk[O]] =
-    Pull.unconsFlatMap[F, F, O, Chunk[O]](underlying)(Pull.output1).stream
+    underlying.unconsFlatMap(Pull.output1).stream
 
   /** Outputs chunk with a limited maximum size, splitting as necessary.
     *
@@ -418,7 +419,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         Pull.output1(pre) >> breakup(rest)
       }
 
-    Pull.unconsFlatMap[F, F, O, Chunk[O]](underlying)(breakup).stream
+    underlying.unconsFlatMap(breakup).stream
   }
 
   /** Outputs chunks of size larger than N
@@ -804,7 +805,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def drain: Stream[F, Nothing] =
-    Pull.unconsFlatMap[F, F, O, Nothing](underlying)(_ => Pull.done).stream
+    underlying.unconsFlatMap(_ => Pull.done).stream
 
   /** Drops `n` elements of the input, then echoes the rest.
     *
@@ -961,8 +962,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   private[fs2] def enqueueNoneTerminatedChunks[F2[x] >: F[x], O2 >: O](
       queue: Queue[F2, Option[Chunk[O2]]]
   ): Stream[F2, Nothing] = enqueueNoneTerminatedChunks(queue: QueueSink[F2, Option[Chunk[O2]]])
-
-  import Pull.StreamPullOps
 
   /** Alias for `flatMap(o => Stream.eval(f(o)))`.
     *
@@ -1818,7 +1817,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def mapChunks[O2](f: Chunk[O] => Chunk[O2]): Stream[F, O2] =
-    Pull.unconsFlatMap[F, F, O, O2](underlying)((hd: Chunk[O]) => Pull.output(f(hd))).stream
+    underlying.unconsFlatMap((hd: Chunk[O]) => Pull.output(f(hd))).stream
 
   /** Behaves like the identity function but halts the stream on an error and does not return the error.
     *
