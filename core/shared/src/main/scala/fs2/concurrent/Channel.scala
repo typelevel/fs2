@@ -157,15 +157,17 @@ object Channel {
 
           // setting the flag means we won't accept any more sends
           val close: F[Either[Channel.Closed, Unit]] =
-            closedR.getAndSet(true).flatMap { b =>
-              if (b) {
-                LeftClosedF
-              } else {
-                leasesR.get.flatMap { leases =>
-                  if (leases <= 0)
-                    q.offer(Sentinel).start.as(RightUnit)
-                  else
-                    RightUnit.pure[F]
+            MonadCancel[F].uncancelable { _ =>
+              closedR.getAndSet(true).flatMap { b =>
+                if (b) {
+                  LeftClosedF
+                } else {
+                  leasesR.get.flatMap { leases =>
+                    if (leases <= 0)
+                      q.offer(Sentinel).start.as(RightUnit)
+                    else
+                      RightUnit.pure[F]
+                  }
                 }
               }
             }
