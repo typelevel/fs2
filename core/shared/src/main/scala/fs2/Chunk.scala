@@ -127,6 +127,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Maps `f` over the elements of this chunk and concatenates the result. */
   def flatMap[O2](f: O => Chunk[O2]): Chunk[O2] =
     if (isEmpty) Chunk.empty
+    else if (size == 1) f(apply(0))
     else {
       var acc = Chunk.Queue.empty[O2]
       foreach(o => acc = acc :+ f(o))
@@ -265,9 +266,13 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   /** Splits this chunk in to two chunks at the specified index `n`, which is guaranteed to be in-bounds. */
   protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O])
 
+  /** Check to see if this starts with the items in the given chunk. */
+  def startsWith[O2 >: O](chunk: Chunk[O2]): Boolean =
+    take(chunk.size) == chunk
+
   /** Check to see if this starts with the items in the given seq. */
   def startsWith[O2 >: O](seq: Seq[O2]): Boolean =
-    take(seq.size) == Chunk.seq(seq)
+    startsWith(Chunk.seq(seq))
 
   /** Takes the first `n` elements of this chunk. */
   def take(n: Int): Chunk[O] = splitAt(n)._1
@@ -316,6 +321,23 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
         }
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
+    }
+
+  /** Converts this chunk to a `java.nio.CharBuffer`. */
+  def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
+    this match {
+      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
+        JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
+      case c: Chunk.CharBuffer =>
+        val b = c.buf.asReadOnlyBuffer
+        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
+        else {
+          (b: JBuffer).position(c.offset.toInt)
+          (b: JBuffer).limit(c.offset.toInt + c.size)
+          b
+        }
+      case _ =>
+        JCharBuffer.wrap(this.asInstanceOf[Chunk[Char]].toArray, 0, size)
     }
 
   /** Converts this chunk to a NonEmptyList */
@@ -370,6 +392,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   def traverse[F[_], O2](f: O => F[O2])(implicit F: Applicative[F]): F[Chunk[O2]] =
     if (isEmpty) F.pure(Chunk.empty[O2])
+    else if (size == 1) f(apply(0)).map(Chunk.singleton)
     else {
       // we branch out by this factor
       val width = 128
@@ -526,6 +549,8 @@ object Chunk
     override def toString = "empty"
   }
 
+  private[fs2] val unit: Chunk[Unit] = singleton(())
+
   /** Chunk with no elements. */
   def empty[A]: Chunk[A] = empty_
 
@@ -544,6 +569,31 @@ object Chunk
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) =
       sys.error("impossible")
     override def map[O2](f: O => O2): Chunk[O2] = singleton(f(value))
+  }
+
+  def constant[A](value: A, size: Int): Chunk[A] =
+    if (size <= 0) empty
+    else if (size == 1) singleton(value)
+    else new Constant(value, size)
+
+  final class Constant[A](value: A, override val size: Int) extends Chunk[A] {
+
+    def apply(i: Int): A =
+      if (0 <= i && i < size) value else throw new IndexOutOfBoundsException()
+
+    def copyToArray[O2 >: A](xs: Array[O2], start: Int): Unit = {
+
+      @tailrec
+      def go(ix: Int): Unit =
+        if (ix < size) {
+          xs(start + ix) = value
+          go(ix + 1)
+        }
+      go(0)
+    }
+
+    protected def splitAtChunk_(n: Int): (Chunk[A], Chunk[A]) =
+      constant(value, n) -> constant(value, size - n)
   }
 
   /** Creates a chunk backed by a vector. */
@@ -1166,6 +1216,15 @@ object Chunk
           var acc = Chunk.Queue.empty[A]
           ffa.foreach(x => acc = acc :+ x)
           acc
+        }
+
+      override def traverse_[F[_], A, B](
+          fa: Chunk[A]
+      )(f: A => F[B])(implicit F: Applicative[F]): F[Unit] =
+        fa.size match {
+          case 0 => F.unit
+          case 1 => f(fa(0)).void
+          case _ => super.traverse_(fa)(f)
         }
 
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {

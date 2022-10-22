@@ -39,10 +39,14 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
     /** Creates a `TLSContext` from an `SSLContext`. */
     private[tls] final class AsyncBuilder[F[_]: Async] extends UnsealedBuilder[F] {
       def systemResource: Resource[F, TLSContext[F]] =
-        S2nConfig.builder.build.map(fromS2nConfig(_))
+        S2nConfig.builder.withCipherPreferences("default_tls13").build.map(fromS2nConfig(_))
 
       def insecureResource: Resource[F, TLSContext[F]] =
-        S2nConfig.builder.withDisabledX509Verification.build.map(fromS2nConfig(_))
+        S2nConfig.builder
+          .withCipherPreferences("default_tls13")
+          .withDisabledX509Verification
+          .build
+          .map(fromS2nConfig(_))
 
       def fromS2nConfig(cfg: S2nConfig): TLSContext[F] =
         new UnsealedTLSContext[F] {

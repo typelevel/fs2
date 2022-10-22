@@ -321,9 +321,29 @@ object Pull extends PullLowPriority {
       * Use `p.void.stream` to explicitly ignore the result of a pull.
       */
     def streamNoScope: Stream[F, O] = new Stream(self)
+
+    private[fs2] def flatMapOutput[F2[x] >: F[x], O2](
+        f: O => Pull[F2, O2, Unit]
+    ): Pull[F2, O2, Unit] =
+      self match {
+        case a: AlgEffect[F, Unit] => a
+        case r: Terminal[_]        => r
+        case _                     => FlatMapOutput(self, f)
+      }
+
+    private[fs2] def unconsFlatMap[F2[x] >: F[x], O2](
+        f: Chunk[O] => Pull[F2, O2, Unit]
+    ): Pull[F2, O2, Unit] =
+      uncons(self).flatMap {
+        case None           => Pull.done
+        case Some((hd, tl)) => f(hd) >> tl.unconsFlatMap(f)
+      }
+
   }
 
   private[this] val unit: Terminal[Unit] = Succeeded(())
+
+  private[fs2] val outUnit: Pull[Pure, Unit, Unit] = Output(Chunk.unit)
 
   /** A pull that performs no effects, emits no outputs, and
     * always terminates successfully with a unit result.
@@ -891,11 +911,8 @@ object Pull extends PullLowPriority {
         case interrupted: Interrupted => interrupted // impossible
         case _: Succeeded[_]          => interruption
         case failed: Fail =>
-          val mixed = CompositeFailure
-            .fromList(interruption.deferredError.toList :+ failed.error)
-            .getOrElse(failed.error)
-          Fail(mixed)
-
+          val errs = interruption.deferredError.toList :+ failed.error
+          Fail(CompositeFailure.fromList(errs).getOrElse(failed.error))
       }
 
     trait Run[-G[_], -X, +End] {
@@ -1022,16 +1039,26 @@ object Pull extends PullLowPriority {
           else {
             def go(idx: Int): Pull[G, X, Unit] =
               if (idx == chunk.size)
-                flatMapOutput[G, G, Y, X](tail, fun)
+                tail.flatMapOutput(fun)
               else {
-                try
-                  transformWith(fun(chunk(idx))) {
-                    case Succeeded(_) => go(idx + 1)
+                try {
+                  var j = idx
+                  @tailrec
+                  def loop: Pull[G, X, Unit] = fun(chunk(j)) match {
+                    case Succeeded(_) if j < chunk.size - 1 =>
+                      j += 1
+                      loop
+                    case p => p
+                  }
+
+                  val next: Pull[G, X, Unit] = loop
+                  transformWith(next) {
+                    case Succeeded(_) => go(j + 1)
                     case Fail(err)    => Fail(err)
                     case interruption @ Interrupted(_, _) =>
-                      flatMapOutput[G, G, Y, X](interruptBoundary(tail, interruption), fun)
+                      interruptBoundary(tail, interruption).flatMapOutput(fun)
                   }
-                catch { case NonFatal(e) => Fail(e) }
+                } catch { case NonFatal(e) => Fail(e) }
               }
 
             go(0)
@@ -1093,7 +1120,7 @@ object Pull extends PullLowPriority {
         )
         val cont = onScope.flatMap { outcome =>
           val result = outcome match {
-            case Outcome.Succeeded(Right(_))      => Succeeded(())
+            case Outcome.Succeeded(Right(_))      => unit
             case Outcome.Succeeded(Left(scopeId)) => Interrupted(scopeId, None)
             case Outcome.Canceled()               => Interrupted(scope.id, None)
             case Outcome.Errored(err)             => Fail(err)
@@ -1270,15 +1297,12 @@ object Pull extends PullLowPriority {
     go(initScope, None, initFk, new OuterRun(init), stream)
   }
 
+  @deprecated("use the extension method", "3.4.0")
   private[fs2] def flatMapOutput[F[_], F2[x] >: F[x], O, O2](
       p: Pull[F, O, Unit],
       f: O => Pull[F2, O2, Unit]
   ): Pull[F2, O2, Unit] =
-    p match {
-      case a: AlgEffect[F, Unit] => a
-      case r: Terminal[_]        => r
-      case _                     => FlatMapOutput(p, f)
-    }
+    p.flatMapOutput(f)
 
   private[fs2] def translate[F[_], G[_], O](
       stream: Pull[F, O, Unit],
@@ -1300,14 +1324,8 @@ object Pull extends PullLowPriority {
   private[fs2] def mapOutputNoScope[F[_], O, P](
       s: Stream[F, O],
       f: O => P
-  ): Pull[F, P, Unit] = {
-    def go(s: Stream[F, O]): Pull[F, P, Unit] =
-      s.pull.uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => Pull.output(hd.map(f)) >> go(tl)
-      }
-    go(s)
-  }
+  ): Pull[F, P, Unit] =
+    s.pull.echo.unconsFlatMap(hd => Pull.output(hd.map(f)))
 
   private[this] def transformWith[F[_], O, R, S](p: Pull[F, O, R])(
       f: Terminal[R] => Pull[F, O, S]
@@ -1342,6 +1360,7 @@ private[fs2] class PullMonadErrorInstance[F[_], O] extends MonadError[Pull[F, O,
   def pure[A](a: A): Pull[F, O, A] = Pull.pure(a)
   def flatMap[A, B](p: Pull[F, O, A])(f: A => Pull[F, O, B]): Pull[F, O, B] =
     p.flatMap(f)
+  override def unit: Pull[F, O, Unit] = Pull.done
   override def tailRecM[A, B](a: A)(f: A => Pull[F, O, Either[A, B]]): Pull[F, O, B] =
     f(a).flatMap {
       case Left(a)  => tailRecM(a)(f)

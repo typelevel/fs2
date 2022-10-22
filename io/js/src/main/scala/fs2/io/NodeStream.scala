@@ -23,14 +23,12 @@ package fs2.io
 
 import fs2.io.internal.facade.events.EventEmitter
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 
 /** A facade for Node.js `stream.Readable`. Extend or cast to/from your own bindings.
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-@nowarn
 trait Readable extends EventEmitter {
 
   protected[io] def read(): js.typedarray.Uint8Array = js.native
@@ -47,7 +45,6 @@ trait Readable extends EventEmitter {
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
-@nowarn
 trait Writable extends EventEmitter {
 
   protected[io] def destroy(): this.type = js.native

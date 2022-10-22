@@ -8,23 +8,15 @@ ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val NewScala = "2.13.8"
+val NewScala = "2.13.10"
 
 ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
-ThisBuild / githubWorkflowBuildPreamble +=
-  WorkflowStep.Run(
-    List("/home/linuxbrew/.linuxbrew/bin/brew install s2n"),
-    name = Some("Install s2n"),
-    cond = Some("startsWith(matrix.project, 'rootNative')")
-  )
-val isLinux = {
-  val osName = Option(System.getProperty("os.name"))
-  osName.exists(_.toLowerCase().contains("linux"))
-}
+ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
+ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
@@ -213,9 +205,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.8.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.4-148221d",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4-148221d" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4-148221d" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
@@ -262,23 +254,14 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.1.0").toMap,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
       "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
     ),
-    nativeConfig ~= { c =>
-      if (isLinux) { // brew-installed s2n
-        c.withLinkingOptions(c.linkingOptions :+ "-L/home/linuxbrew/.linuxbrew/lib")
-      } else c
-    },
-    Test / envVars ++= {
-      val ldLibPath =
-        if (isLinux)
-          Map("LD_LIBRARY_PATH" -> "/home/linuxbrew/.linuxbrew/lib")
-        else Map.empty
-      Map("S2N_DONT_MLOCK" -> "1") ++ ldLibPath
-    }
+    Test / nativeBrewFormulas += "s2n",
+    Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
   )
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(

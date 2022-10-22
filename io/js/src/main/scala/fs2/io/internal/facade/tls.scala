@@ -23,7 +23,6 @@ package fs2.io.internal.facade
 
 import fs2.io.net.tls.SecureContext
 
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -35,13 +34,11 @@ package object tls {
 
   @js.native
   @JSImport("tls", "connect")
-  @nowarn
   private[io] def connect(options: TLSConnectOptions): TLSSocket =
     js.native
 
   @js.native
   @JSImport("tls", "createSecureContext")
-  @nowarn
   private[io] def createSecureContext(
       options: js.UndefOr[SecureContextOptions] = js.undefined
   ): SecureContext =
