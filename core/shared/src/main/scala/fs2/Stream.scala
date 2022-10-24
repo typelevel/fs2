@@ -4234,7 +4234,7 @@ object Stream extends StreamLowPriority {
   ) extends AnyVal {
 
     /** Waits for a chunk of elements to be available in the source stream.
-      * The ''non-empty''' chunk of elements along with a new stream are provided as the resource of the returned pull.
+      * The '''non-empty''' chunk of elements along with a new stream are provided as the resource of the returned pull.
       * The new stream can be used for subsequent operations, like awaiting again.
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
