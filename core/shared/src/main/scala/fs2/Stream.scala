@@ -559,7 +559,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
       // stop background process but await for it to finalise with a result
       // We use F.fromEither to bring errors from the back into the fore
-      val stopBack: F2[Unit] = interrupt.complete(()) >> backResult.get.flatMap(F.fromEither)
+      val stopBack: F2[Unit] = interrupt.complete(()) >> {println("interrupting!"); backResult.get.flatMap(F.fromEither)}
 
       (Stream.bracket(compileBack.start)(_ => stopBack), watch(this))
     }
@@ -2106,7 +2106,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val action =
         (
           Semaphore[F2](concurrency.toLong),
-          Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency),
+          if (concurrency >= Short.MaxValue)
+            Channel.unbounded[F2, F2[Either[Throwable, O2]]]
+          else
+            Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency),
           Deferred[F2, Unit],
           Deferred[F2, Unit]
         ).mapN { (semaphore, channel, stop, end) =>
@@ -4154,11 +4157,12 @@ object Stream extends StreamLowPriority {
 
           def signalResult(fiber: Fiber[F, Throwable, Unit]): F[Unit] =
             done.get.flatMap { blah =>
-              blah.flatten.fold[F[Unit]](fiber.joinWithNever)(F.raiseError)
+              blah.flatten.fold[F[Unit]]({println("joining"); fiber.joinWithNever})(F.raiseError)
             }
 
           Stream
             .bracket(F.start(runOuter) >> F.start(outcomeJoiner)) { fiber =>
+              println("canceling parjoin")
               stop(None) >>
                 // in case of short-circuiting, the `fiberJoiner` would not have had a chance
                 // to wait until all fibers have been joined, so we need to do it manually

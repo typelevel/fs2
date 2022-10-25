@@ -124,13 +124,15 @@ object Channel {
   object Closed
 
   def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.unbounded[F, AnyRef].flatMap(impl(_))
+    Queue.unbounded[F, AnyRef].flatMap(impl(_, false))
 
   def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.synchronous[F, AnyRef].flatMap(impl(_))
+    Queue.synchronous[F, AnyRef].flatMap(impl(_, true))
 
-  def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] =
-    Queue.bounded[F, AnyRef](capacity).flatMap(impl(_))
+  def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
+    require(capacity < Short.MaxValue)
+    Queue.bounded[F, AnyRef](capacity).flatMap(impl(_, false))
+  }
 
   // used as a marker to wake up q.take when the channel is closed
   private[this] val Sentinel = new AnyRef
@@ -140,7 +142,7 @@ object Channel {
 
   // technically this should be A | Sentinel.type
   // the queue will consist of exclusively As until we shut down, when there will be one Sentinel
-  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, AnyRef]): F[Channel[F, A]] =
+  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, AnyRef], log: Boolean): F[Channel[F, A]] =
     (Concurrent[F].ref(0), Concurrent[F].ref(false), Concurrent[F].deferred[Unit]).mapN {
       (leasesR, closedR, closedLatch) =>
         new Channel[F, A] {
@@ -230,65 +232,59 @@ object Channel {
             }
 
           val stream: Stream[F, A] = {
-            val takeN: F[Chunk[A]] =
-              q.tryTakeN(None).flatMap {
+            lazy val loop: Pull[F, A, Unit] = {
+              if (log) println("looping!")
+
+              val pullF = q.tryTakeN(None).flatMap {
                 case Nil =>
                   // if we land here, it either means we're consuming faster than producing
                   // or it means we're actually closed and we need to shut down
                   // this is the unhappy path either way
 
-                  val fallback = q.take.flatMap { a =>
+                  val fallback = (leasesR.get, closedR.get, closedLatch.tryGet).tupled.map(p => if (log) println(s">>> taking: $p")) >> q.take.map { a =>
+                    if (log) println("<<< took")
                     // if we get the sentinel, shut down all the things, otherwise emit
                     if (a eq Sentinel)
-                      closedLatch.complete(()).as(Chunk.empty[A])
+                      Pull.eval(closedLatch.complete(()).void)
                     else
-                      Chunk.singleton(a.asInstanceOf[A]).pure[F]
+                      Pull.output1(a.asInstanceOf[A]) >> loop
                   }
 
                   // check to see if we're closed and done processing
                   // if we're all done, complete the latch and terminate the stream
-                  isQuiesced.flatMap { b =>
+                  isQuiesced.map { b =>
                     if (b)
-                      closedLatch.complete(()).as(Chunk.empty[A])
+                      Pull.eval(closedLatch.complete(()).void)
                     else
-                      fallback
+                      Pull.eval(fallback).flatten
                   }
 
                 case as =>
                   // this is the happy path: we were able to take a chunk
                   // meaning we're producing as fast or faster than we're consuming
+                  if (log) println(s"tookN $as")
 
-                  isClosed.flatMap { b =>
-                    val back = if (b) {
+                  isClosed.map { b =>
+                    if (b) {
                       // if we're closed, we have to check for the sentinel and strip it out
                       val as2 = as.filter(_ ne Sentinel)
 
                       // if it's empty, we definitely stripped a sentinel, so just be done
                       // if it's non-empty, we can't know without expensive comparisons, so fall through
                       if (as2.isEmpty)
-                        closedLatch.complete(()).as(Chunk.empty[A])
+                        Pull.eval(closedLatch.complete(()).void)
                       else
-                        Chunk.seq(as2).pure[F]
+                        Pull.output(Chunk.seq(as2.asInstanceOf[List[A]])) >> loop
                     } else {
-                      Chunk.seq(as).pure[F]
+                      Pull.output(Chunk.seq(as.asInstanceOf[List[A]])) >> loop
                     }
-
-                    back.asInstanceOf[F[Chunk[A]]]
                   }
               }
 
-            // we will emit non-empty chunks until we see the empty chunk sentinel
-            lazy val go: Stream[F, A] =
-              Stream.force {
-                takeN.map { c =>
-                  if (c.isEmpty)
-                    Stream.empty
-                  else
-                    Stream.chunk(c) ++ go
-                }
-              }
+              Pull.eval(pullF).flatten
+            }
 
-            go
+            loop.stream
           }
 
           // closedLatch solely exists to support this function

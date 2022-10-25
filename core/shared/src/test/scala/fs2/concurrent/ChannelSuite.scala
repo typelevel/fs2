@@ -230,4 +230,13 @@ class ChannelSuite extends Fs2Suite {
 
     test.replicateA_(if (isJVM) 10000 else 1)
   }
+
+  test("synchronous with many concurrents and close".only) {
+    val test = Channel.synchronous[IO, Int] flatMap { ch =>
+      0.until(20).toList.parTraverse_(i => ch.send(i).iterateWhile(_.isRight)) &>
+        ch.stream.concurrently(Stream.eval(ch.close.delayBy(1.seconds))).compile.drain
+    }
+
+    test.parReplicateA(100)
+  }
 }
