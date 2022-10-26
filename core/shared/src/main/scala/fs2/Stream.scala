@@ -2090,12 +2090,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       maxConcurrent: Int
   )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
 
-    val init = F.unit
-
     def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
       (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
 
-    parEvalMapAction(maxConcurrent, f)((ch, release) => init.as(send(ch, release)))
+    parEvalMapAction(maxConcurrent, f)((ch, release) => send(ch, release).pure[F2])
   }
 
   /** Like parEvalMapUnordered but with unbounded concurrency.
@@ -2104,12 +2102,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       f: O => F2[O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
 
-    val init = F.unit
-
     def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
       (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
 
-    parEvalMapUnboundedAction(f)((ch, release) => init.as(send(ch, release)))
+    parEvalMapUnboundedAction(f)((ch, release) => send(ch, release).pure[F2])
   }
 
   private def parEvalMapAction[F2[x] >: F[x], O2, T](
