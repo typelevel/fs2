@@ -24,7 +24,6 @@ package concurrent
 
 import cats.effect.IO
 import org.scalacheck.effect.PropF.forAllF
-import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.syntax.all._
 
@@ -51,14 +50,11 @@ class BroadcastSuite extends Fs2Suite {
     }
   }
 
-  test("all subscribers see all elements, pipe immediately interrupted".only) {
-    // forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
-      val source = Stream(-1, 1323912972, 2147483647, 1909897629, -2147483648, 0)
-      val concurrent0 = 19
+  test("all subscribers see all elements, pipe immediately interrupted") {
+    forAllF { (source: Stream[Pure, Int], concurrent0: Int) =>
       val concurrent = (concurrent0 % 20).abs.max(1)
       val interruptedPipe = 0
       val expected = source.compile.toVector.map(_.toString)
-      println(s"concurrent = $concurrent; expected = $expected")
 
       def pipe(idx: Int): Pipe[IO, Int, (Int, String)] =
         _.map(i => (idx, i.toString))
@@ -75,12 +71,7 @@ class BroadcastSuite extends Fs2Suite {
         .broadcastThrough(pipes: _*)
         .compile
         .toVector
-        .onCancel(IO.println("cancelation finished"))
-        .race(IO.sleep(5.seconds) *> IO.println("interruption fired"))
-        .flatMap {
-          case Left(r) => IO.pure(r)
-          case Right(_) => IO.raiseError(new TimeoutException)
-        }
+        .timeout(5.seconds)
         .map(x => (x.foldMap { case (k, v) => Map(k -> Vector(v)) } - interruptedPipe).values)
         .map { result =>
           if (expected.nonEmpty) {
@@ -88,9 +79,8 @@ class BroadcastSuite extends Fs2Suite {
             result.foreach(it => assertEquals(it, expected))
           } else assert(result.isEmpty)
         }
-        .flatMap(_ => IO.println("-----------------------"))
-        .replicateA(100)
-    // }
+    // .replicateA(100)
+    }
   }
 
   test("pipes should not be empty") {

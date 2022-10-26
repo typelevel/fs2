@@ -124,14 +124,14 @@ object Channel {
   object Closed
 
   def unbounded[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.unbounded[F, AnyRef].flatMap(impl(_, false))
+    Queue.unbounded[F, AnyRef].flatMap(impl(_))
 
   def synchronous[F[_]: Concurrent, A]: F[Channel[F, A]] =
-    Queue.synchronous[F, AnyRef].flatMap(impl(_, true))
+    Queue.synchronous[F, AnyRef].flatMap(impl(_))
 
   def bounded[F[_], A](capacity: Int)(implicit F: Concurrent[F]): F[Channel[F, A]] = {
     require(capacity < Short.MaxValue)
-    Queue.bounded[F, AnyRef](capacity).flatMap(impl(_, false))
+    Queue.bounded[F, AnyRef](capacity).flatMap(impl(_))
   }
 
   // used as a marker to wake up q.take when the channel is closed
@@ -142,7 +142,7 @@ object Channel {
 
   // technically this should be A | Sentinel.type
   // the queue will consist of exclusively As until we shut down, when there will be one Sentinel
-  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, AnyRef], log: Boolean): F[Channel[F, A]] =
+  private[this] def impl[F[_]: Concurrent, A](q: Queue[F, AnyRef]): F[Channel[F, A]] =
     (Concurrent[F].ref(0), Concurrent[F].ref(false), Concurrent[F].deferred[Unit]).mapN {
       (leasesR, closedR, closedLatch) =>
         new Channel[F, A] {
@@ -233,16 +233,13 @@ object Channel {
 
           val stream: Stream[F, A] = {
             lazy val loop: Pull[F, A, Unit] = {
-              if (log) println("looping!")
-
               val pullF = q.tryTakeN(None).flatMap {
                 case Nil =>
                   // if we land here, it either means we're consuming faster than producing
                   // or it means we're actually closed and we need to shut down
                   // this is the unhappy path either way
 
-                  val fallback = (leasesR.get, closedR.get, closedLatch.tryGet).tupled.map(p => if (log) println(s">>> taking: $p")) >> q.take.map { a =>
-                    if (log) println("<<< took")
+                  val fallback = q.take.map { a =>
                     // if we get the sentinel, shut down all the things, otherwise emit
                     if (a eq Sentinel)
                       Pull.eval(closedLatch.complete(()).void)
@@ -262,7 +259,6 @@ object Channel {
                 case as =>
                   // this is the happy path: we were able to take a chunk
                   // meaning we're producing as fast or faster than we're consuming
-                  if (log) println(s"tookN $as")
 
                   isClosed.map { b =>
                     if (b) {
