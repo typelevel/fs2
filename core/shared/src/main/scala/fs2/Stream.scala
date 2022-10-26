@@ -4055,7 +4055,7 @@ object Stream extends StreamLowPriority {
           // starts with 1 because outer stream is running by default
           running <- SignallingRef(1)
           outcomes <- Channel.unbounded[F, F[Unit]]
-          output <- Channel.synchronous[F, Chunk[O]]
+          output <- Channel.bounded[F, Chunk[O]](maxOpen)
         } yield {
           def stop(rslt: Option[Throwable]): F[Unit] =
             done.update {
@@ -4167,7 +4167,7 @@ object Stream extends StreamLowPriority {
                 signalResult(fiber)
             }
             .flatMap { _ =>
-              output.stream.flatMap(Stream.chunk)
+              output.stream.unchunks
             }
         }
 
