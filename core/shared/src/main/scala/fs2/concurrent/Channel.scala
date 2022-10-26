@@ -166,10 +166,10 @@ object Channel {
         val close: F[Either[Channel.Closed, Unit]] = {
           val modifyF = stateR.modify {
             case State(0, false) =>
-              State(0, true) -> q.offer(Sentinel).start.as(RightUnit)
+              State(0, true) -> closedLatch.complete(()) *> q.offer(Sentinel).start.as(RightUnit)
 
             case State(leases, false) =>
-              State(leases, true) -> RightUnit.pure[F]
+              State(leases, true) -> closedLatch.complete(()).as(RightUnit)
 
             case st @ State(_, true) =>
               st -> LeftClosedF
@@ -239,7 +239,7 @@ object Channel {
                 val fallback = q.take.map { a =>
                   // if we get the sentinel, shut down all the things, otherwise emit
                   if (a eq Sentinel)
-                    Pull.eval(closedLatch.complete(()).void)
+                    Pull.done
                   else
                     Pull.output1(a.asInstanceOf[A]) >> loop
                 }
@@ -248,7 +248,7 @@ object Channel {
                 // if we're all done, complete the latch and terminate the stream
                 isQuiesced.map { b =>
                   if (b)
-                    Pull.eval(closedLatch.complete(()).void)
+                    Pull.done
                   else
                     Pull.eval(fallback).flatten
                 }
@@ -265,7 +265,7 @@ object Channel {
                     // if it's empty, we definitely stripped a sentinel, so just be done
                     // if it's non-empty, we can't know without expensive comparisons, so fall through
                     if (as2.isEmpty)
-                      Pull.eval(closedLatch.complete(()).void)
+                      Pull.done
                     else
                       Pull.output(Chunk.seq(as2.asInstanceOf[List[A]])) >> loop
                   } else {

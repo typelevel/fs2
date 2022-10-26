@@ -239,4 +239,16 @@ class ChannelSuite extends Fs2Suite {
 
     test.parReplicateA(100)
   }
+
+  test("complete closed immediately without draining") {
+    val test = Channel.bounded[IO, Int](20).flatMap { ch =>
+      for {
+        _ <- 0.until(10).toList.parTraverse_(ch.send(_))
+        _ <- ch.close
+        _ <- ch.closed
+      } yield ()
+    }
+
+    TestControl.executeEmbed(test)
+  }
 }
