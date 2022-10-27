@@ -672,7 +672,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * and the timing they arrive.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global, cats.data.NonEmptyChain
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounceAccumulate(100.milliseconds)
     * scala> s2.compile.toVector.unsafeRunSync()
