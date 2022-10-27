@@ -663,29 +663,29 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       chan.stream.concurrently(debouncedSend)
     }
   }
- 
-  /**
-   * Like debounce, but group elements instead of dropping them
-   *
-   * @return A stream whose values contain the elements of this stream in order,
-   * and whose evaluation will force a delay `d` between emitting each value.
-   * The exact subsequence would depend on the chunk structure of this stream,
-   * and the timing they arrive.
-   *
-   * @example {{{
-   * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
-   * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
-   * scala> val s2 = s.debounceAccumulate(100.milliseconds)
-   * scala> s2.compile.toVector.unsafeRunSync()
-   * res0: Vector[Int] = Vector(NonEmptyChain(1, 2, 3), NonEmptyChain(4, 5, 6))
-   * }}}
-   */
-  def debounceAccumulate[F2[x] >: F[x]](d: FiniteDuration)(
-    implicit F: Temporal[F2]): Stream[F2, NonEmptyChain[O]] =
+
+  /** Like debounce, but group elements instead of dropping them
+    *
+    * @return A stream whose values contain the elements of this stream in order,
+    * and whose evaluation will force a delay `d` between emitting each value.
+    * The exact subsequence would depend on the chunk structure of this stream,
+    * and the timing they arrive.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
+    * scala> val s2 = s.debounceAccumulate(100.milliseconds)
+    * scala> s2.compile.toVector.unsafeRunSync()
+    * res0: Vector[Int] = Vector(NonEmptyChain(1, 2, 3), NonEmptyChain(4, 5, 6))
+    * }}}
+    */
+  def debounceAccumulate[F2[x] >: F[x]](
+      d: FiniteDuration
+  )(implicit F: Temporal[F2]): Stream[F2, NonEmptyChain[O]] =
     Stream.force {
       for {
         chan <- Channel.bounded[F, NonEmptyChain[O]](1)
-        ref  <- F.ref[Vector[O]](Vector.empty)
+        ref <- F.ref[Vector[O]](Vector.empty)
       } yield {
         val sendLatest: F[Unit] =
           ref.getAndSet(Vector.empty).flatMap(l => NonEmptyChain.fromSeq(l).traverse_(chan.send))
@@ -706,7 +706,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
         chan.stream.concurrently(debouncedSend)
       }
-   }
+    }
 
   /** Throttles the stream to the specified `rate`. Unlike [[debounce]], [[metered]] doesn't drop elements.
     *
