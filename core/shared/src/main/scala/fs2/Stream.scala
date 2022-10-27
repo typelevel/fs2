@@ -25,7 +25,7 @@ import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.{Eval => _, _}
-import cats.data.Ior
+import cats.data.{Ior, NonEmptyChain}
 import cats.effect.Concurrent
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
