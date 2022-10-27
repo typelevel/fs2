@@ -696,7 +696,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             case _        => F.unit
           }
 
-        def go(tl: Stream[F2, O]): Pull[F2, Nothing, Unit] =
+        def go(tl: Pull[F2, O, Unit]): Pull[F2, Nothing, Unit] =
           Pull.uncons(tl).flatMap {
             case Some((hd, tl)) => Pull.eval(hd.traverse_(sendItem)) >> go(tl)
             case None           => Pull.eval(sendLatest >> chan.close.void)
