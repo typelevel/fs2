@@ -684,25 +684,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F: Temporal[F2]): Stream[F2, NonEmptyChain[O]] =
     Stream.force {
       for {
-        chan <- Channel.bounded[F, NonEmptyChain[O]](1)
+        chan <- Channel.bounded[F2, NonEmptyChain[O]](1)
         ref <- F.ref[Vector[O]](Vector.empty)
       } yield {
-        val sendLatest: F[Unit] =
+        val sendLatest: F2[Unit] =
           ref.getAndSet(Vector.empty).flatMap(l => NonEmptyChain.fromSeq(l).traverse_(chan.send))
 
-        def sendItem(o: O): F[Unit] =
+        def sendItem(o: O): F2[Unit] =
           ref.getAndUpdate(_ :+ o).flatMap {
             case Vector() => (F.sleep(d) >> sendLatest).start.void
             case _        => F.unit
           }
 
-        def go(tl: Stream[F, O]): Pull[F, Nothing, Unit] =
+        def go(tl: Stream[F2, O]): Pull[F2, Nothing, Unit] =
           Pull.uncons(tl).flatMap {
             case Some((hd, tl)) => Pull.eval(hd.traverse_(sendItem)) >> go(tl)
             case None           => Pull.eval(sendLatest >> chan.close.void)
           }
 
-        val debouncedSend: Stream[F, Nothing] = new Stream(go(this.underlying))
+        val debouncedSend: Stream[F2, Nothing] = new Stream(go(this.underlying))
 
         chan.stream.concurrently(debouncedSend)
       }
