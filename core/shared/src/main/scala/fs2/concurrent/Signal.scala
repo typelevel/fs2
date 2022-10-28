@@ -24,6 +24,7 @@ package concurrent
 
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Deferred, Ref}
+import cats.effect.std.MapRef
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
 
@@ -379,6 +380,25 @@ object SignallingRef {
             fa.modifyState(state.dimap(f)(g))
         }
     }
+}
+
+/** A [[MapRef]] with a [[SignallingRef]] for each key. */
+trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
+  override def apply(k: K): Ref[F, V]
+}
+
+object SignallingMapRef {
+
+  def ofSingleImmutableMap[F[_]: Concurrent, K, V](
+      map: Map[K, V] = Map.empty[K, V]
+  ): F[SignallingMapRef[F, K, Option[V]]] =
+    SignallingRef(map).map(fromSingleImmutableMapRef[F, K, V](_))
+
+  def fromSingleImmutableMapRef[F[_]: Functor, K, V](
+      ref: SignallingRef[F, Map[K, V]]
+  ): SignallingMapRef[F, K, Option[V]] =
+    k => SignallingRef.lens(ref)(_.get(k), m => _.fold(m - k)(v => m + (k -> v)))
+
 }
 
 private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
