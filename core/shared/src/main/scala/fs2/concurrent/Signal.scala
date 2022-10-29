@@ -384,7 +384,7 @@ object SignallingRef {
 
 /** A [[MapRef]] with a [[SignallingRef]] for each key. */
 trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
-  override def apply(k: K): Ref[F, V]
+  override def apply(k: K): SignallingRef[F, V]
 }
 
 object SignallingMapRef {
