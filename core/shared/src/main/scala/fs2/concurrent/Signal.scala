@@ -389,15 +389,119 @@ trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
 
 object SignallingMapRef {
 
-  def ofSingleImmutableMap[F[_]: Concurrent, K, V](
-      map: Map[K, V] = Map.empty[K, V]
-  ): F[SignallingMapRef[F, K, Option[V]]] =
-    SignallingRef(map).map(fromSingleImmutableMapRef[F, K, V](_))
+  /** Builds a `SignallingMapRef` for effect `F`, initialized to the supplied value.
+    */
+  def ofSingleImmutableMap[F[_], K, V](
+      initial: Map[K, V] = Map.empty[K, V]
+  )(implicit F: Concurrent[F]): F[SignallingMapRef[F, K, Option[V]]] = {
+    case class State(
+        value: Map[K, V],
+        lastUpdate: Long,
+        listeners: Map[K, LongMap[Deferred[F, (Option[V], Long)]]]
+    )
 
-  def fromSingleImmutableMapRef[F[_]: Functor, K, V](
-      ref: SignallingRef[F, Map[K, V]]
-  ): SignallingMapRef[F, K, Option[V]] =
-    k => SignallingRef.lens(ref)(_.get(k), m => _.fold(m - k)(v => m + (k -> v)))
+    F.ref(State(initial, 0L, initial.flatMap(_ => Nil)))
+      .product(F.ref(1L))
+      .map { case (state, ids) =>
+        def newId = ids.getAndUpdate(_ + 1)
+
+        def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
+            : (State, F[U]) = {
+          val (newValue, result) = f(state.value.get(k))
+          val newMap = newValue.fold(state.value - k)(v => state.value + (k -> v))
+          val lastUpdate = state.lastUpdate + 1
+          val newListeners = state.listeners - k
+          val newState = State(newMap, lastUpdate, newListeners)
+          val notifyListeners = state.listeners.get(k).fold(F.unit) { listeners =>
+            listeners.values.toVector.traverse_ { listener =>
+              listener.complete(newValue -> lastUpdate)
+            }
+          }
+
+          newState -> notifyListeners.as(result)
+        }
+
+        k =>
+          new SignallingRef[F, Option[V]] {
+            def get: F[Option[V]] = state.get.map(_.value.get(k))
+
+            def continuous: Stream[F, Option[V]] = Stream.repeatEval(get)
+
+            def discrete: Stream[F, Option[V]] = {
+              def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
+                def getNext: F[(Option[V], Long)] =
+                  F.deferred[(Option[V], Long)].flatMap { wait =>
+                    state.modify { case state @ State(value, lastUpdate, listeners) =>
+                      if (lastUpdate != lastSeen)
+                        state -> (value.get(k) -> lastUpdate).pure[F]
+                      else {
+                        val newListeners =
+                          listeners
+                            .updatedWith(k)(l => Some(l.getOrElse(LongMap.empty) + (id -> wait)))
+                        state.copy(listeners = newListeners) -> wait.get
+                      }
+                    }.flatten
+                  }
+
+                Stream.eval(getNext).flatMap { case (v, lastUpdate) =>
+                  Stream.emit(v) ++ go(id, lastSeen = lastUpdate)
+                }
+              }
+
+              def cleanup(id: Long): F[Unit] =
+                state.update { s =>
+                  val newListeners = s.listeners.updatedWith(k) { l =>
+                    l.map(_ - id).filterNot(_.isEmpty)
+                  }
+                  s.copy(listeners = newListeners)
+                }
+
+              Stream.bracket(newId)(cleanup).flatMap { id =>
+                Stream.eval(state.get).flatMap { state =>
+                  Stream.emit(state.value.get(k)) ++ go(id, state.lastUpdate)
+                }
+              }
+            }
+
+            def set(v: Option[V]): F[Unit] = update(_ => v)
+
+            def update(f: Option[V] => Option[V]): F[Unit] = modify(v => (f(v), ()))
+
+            def modify[U](f: Option[V] => (Option[V], U)): F[U] =
+              state.modify(updateAndNotify(_, k, f)).flatten
+
+            def tryModify[U](f: Option[V] => (Option[V], U)): F[Option[U]] =
+              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence)
+
+            def tryUpdate(f: Option[V] => Option[V]): F[Boolean] =
+              tryModify(a => (f(a), ())).map(_.isDefined)
+
+            def access: F[(Option[V], Option[V] => F[Boolean])] =
+              state.access.map { case (state, set) =>
+                val setter = { (newValue: Option[V]) =>
+                  val (newState, notifyListeners) =
+                    updateAndNotify(state, k, _ => (newValue, ()))
+
+                  set(newState).flatTap { succeeded =>
+                    notifyListeners.whenA(succeeded)
+                  }
+                }
+
+                (state.value.get(k), setter)
+              }
+
+            def tryModifyState[U](state: cats.data.State[Option[V], U]): F[Option[U]] = {
+              val f = state.runF.value
+              tryModify(v => f(v).value)
+            }
+
+            def modifyState[U](state: cats.data.State[Option[V], U]): F[U] = {
+              val f = state.runF.value
+              modify(v => f(v).value)
+            }
+          }
+      }
+  }
 
 }
 
