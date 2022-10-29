@@ -437,7 +437,7 @@ object SignallingMapRef {
                       else {
                         val newListeners =
                           listeners
-                            .updatedWith(k)(l => Some(l.getOrElse(LongMap.empty) + (id -> wait)))
+                            .updated(k, listeners.getOrElse(k, LongMap.empty) + (id -> wait))
                         state.copy(listeners = newListeners) -> wait.get
                       }
                     }.flatten
@@ -450,9 +450,11 @@ object SignallingMapRef {
 
               def cleanup(id: Long): F[Unit] =
                 state.update { s =>
-                  val newListeners = s.listeners.updatedWith(k) { l =>
-                    l.map(_ - id).filterNot(_.isEmpty)
-                  }
+                  val newListeners = s.listeners
+                    .get(k)
+                    .map(_ - id)
+                    .filterNot(_.isEmpty)
+                    .fold(s.listeners - k)(s.listeners.updated(k, _))
                   s.copy(listeners = newListeners)
                 }
 
