@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.data.OptionT
-import cats.effect.kernel.{Concurrent, Deferred, Ref}
+import cats.effect.kernel.{Concurrent, Deferred, Ref, Spawn}
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
 
@@ -110,12 +110,15 @@ trait Signal[F[_], A] {
 }
 
 object Signal extends SignalInstances {
-  def constant[F[_], A](a: A)(implicit F: Concurrent[F]): Signal[F, A] =
+  def constant[F[_], A](a: A)(implicit F: Spawn[F]): Signal[F, A] =
     new Signal[F, A] {
       def get: F[A] = F.pure(a)
       def continuous: Stream[Pure, A] = Stream.constant(a)
       def discrete: Stream[F, A] = Stream(a) ++ Stream.never
     }
+
+  @deprecated("Use overload with Spawn constraint", "3.4.0")
+  def constant[F[_], A](a: A, F: Concurrent[F]): Signal[F, A] = constant(a)(F)
 
   def mapped[F[_]: Functor, A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] =
     new Signal[F, B] {
