@@ -114,7 +114,7 @@ package fs {
 
     def lchmod(path: String, mode: Double): js.Promise[Unit] = js.native
 
-    def lstat(path: String): js.Promise[Stats] = js.native
+    def lstat(path: String, options: StatOptions): js.Promise[BigIntStats] = js.native
 
     def mkdir(path: String, options: MkdirOptions): js.Promise[js.UndefOr[String]] = js.native
 
@@ -133,7 +133,7 @@ package fs {
 
     def rmdir(path: String): js.Promise[Unit] = js.native
 
-    def stat(path: String): js.Promise[Stats] = js.native
+    def stat(path: String, options: StatOptions): js.Promise[BigIntStats] = js.native
 
     def symlink(target: String, path: String): js.Promise[Unit] = js.native
 
@@ -157,6 +157,12 @@ package fs {
 
   }
 
+  private[io] trait StatOptions extends js.Object {
+
+    var bigint: js.UndefOr[Boolean] = js.undefined
+
+  }
+
   @js.native
   private[io] trait Dir extends js.Object {
 
@@ -174,21 +180,27 @@ package fs {
   }
 
   @js.native
-  private[io] trait Stats extends js.Object {
+  private[io] trait BigIntStats extends js.Object {
 
-    def dev: Double = js.native
+    def dev: js.BigInt = js.native
 
-    def ino: Double = js.native
+    def ino: js.BigInt = js.native
 
-    def mode: Double = js.native
+    def mode: js.BigInt = js.native
 
-    def size: Double = js.native
+    def size: js.BigInt = js.native
 
-    def atimeMs: Double = js.native
+    def atimeMs: js.BigInt = js.native
 
-    def ctimeMs: Double = js.native
+    def ctimeMs: js.BigInt = js.native
 
-    def mtimeMs: Double = js.native
+    def mtimeMs: js.BigInt = js.native
+
+    def atimeNs: js.BigInt = js.native
+
+    def ctimeNs: js.BigInt = js.native
+
+    def mtimeNs: js.BigInt = js.native
 
     def isFile(): Boolean = js.native
 
@@ -217,7 +229,7 @@ package fs {
         position: js.BigInt
     ): js.Promise[FileHandleWriteResult] = js.native
 
-    def stat(): js.Promise[Stats] = js.native
+    def stat(options: StatOptions): js.Promise[BigIntStats] = js.native
 
     def truncate(len: Double): js.Promise[Unit] = js.native
 

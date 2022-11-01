@@ -173,17 +173,20 @@ private[fs2] trait FilesCompanionPlatform {
       (if (followLinks)
          F.fromPromise(F.delay(facade.fs.promises.access(path.toString)))
        else
-         F.fromPromise(F.delay(facade.fs.promises.lstat(path.toString))))
+         F.fromPromise(
+           F.delay(facade.fs.promises.lstat(path.toString, new facade.fs.StatOptions {}))
+         ))
         .as(true)
         .recover { case _ => false }
 
-    private def stat(path: Path, followLinks: Boolean = false): F[facade.fs.Stats] =
+    private def stat(path: Path, followLinks: Boolean = false): F[facade.fs.BigIntStats] =
       F.fromPromise {
         F.delay {
+          val options = new facade.fs.StatOptions { bigint = true }
           if (followLinks)
-            facade.fs.promises.stat(path.toString)
+            facade.fs.promises.stat(path.toString, options)
           else
-            facade.fs.promises.lstat(path.toString)
+            facade.fs.promises.lstat(path.toString, options)
         }
       }.adaptError { case IOException(ex) => ex }
         .widen
@@ -200,25 +203,25 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def getLastModifiedTime(path: Path, followLinks: Boolean): F[FiniteDuration] =
       stat(path, followLinks).map { stats =>
-        stats.mtimeMs.milliseconds
+        stats.mtimeNs.toString.toLong.nanos
       }
 
     def getPosixFileAttributes(path: Path, followLinks: Boolean): F[PosixFileAttributes] =
       stat(path, followLinks).map { stats =>
         new PosixFileAttributes.UnsealedPosixFileAttributes {
-          def creationTime: FiniteDuration = stats.ctimeMs.milliseconds
-          def fileKey: Option[FileKey] = if (stats.dev != 0 || stats.ino != 0)
-            Some(PosixFileKey(stats.dev.toLong, stats.ino.toLong))
+          def creationTime: FiniteDuration = stats.ctimeNs.toString.toLong.nanos
+          def fileKey: Option[FileKey] = if (stats.dev != js.BigInt(0) || stats.ino != js.BigInt(0))
+            Some(PosixFileKey(stats.dev.toString.toLong, stats.ino.toString.toLong))
           else None
           def isDirectory: Boolean = stats.isDirectory()
           def isOther: Boolean = !isDirectory && !isRegularFile && !isSymbolicLink
           def isRegularFile: Boolean = stats.isFile()
           def isSymbolicLink: Boolean = stats.isSymbolicLink()
-          def lastAccessTime: FiniteDuration = stats.atimeMs.milliseconds
-          def lastModifiedTime: FiniteDuration = stats.mtimeMs.milliseconds
-          def size: Long = stats.size.toLong
+          def lastAccessTime: FiniteDuration = stats.atimeNs.toString.toLong.nanos
+          def lastModifiedTime: FiniteDuration = stats.mtimeNs.toString.toLong.nanos
+          def size: Long = stats.size.toString.toLong
           def permissions: PosixPermissions = {
-            val value = stats.mode.toInt & 511
+            val value = stats.mode.toString.toInt & 511
             PosixPermissions.fromInt(value).get
           }
         }
@@ -341,8 +344,8 @@ private[fs2] trait FilesCompanionPlatform {
           F.delay(
             facade.fs.promises.utimes(
               path.toString,
-              lastAccess.fold(stats.atimeMs)(_.toMillis.toDouble),
-              lastModified.fold(stats.mtimeMs)(_.toMillis.toDouble)
+              lastAccess.fold(stats.atimeMs.toString.toDouble)(_.toMillis.toDouble),
+              lastModified.fold(stats.mtimeMs.toString.toDouble)(_.toMillis.toDouble)
             )
           )
         )
@@ -354,7 +357,7 @@ private[fs2] trait FilesCompanionPlatform {
         .adaptError { case IOException(ex) => ex }
 
     override def size(path: Path): F[Long] =
-      stat(path).map(_.size.toLong)
+      stat(path).map(_.size.toString.toLong)
 
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>

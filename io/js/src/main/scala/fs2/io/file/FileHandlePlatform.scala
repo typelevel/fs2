@@ -52,7 +52,8 @@ private[file] trait FileHandleCompanionPlatform {
         }
 
       override def size: F[Long] =
-        F.fromPromise(F.delay(fd.stat())).map(_.size.toLong)
+        F.fromPromise(F.delay(fd.stat(new facade.fs.StatOptions { bigint = true })))
+          .map(_.size.toString.toLong)
 
       override def truncate(size: Long): F[Unit] =
         F.fromPromise(F.delay(fd.truncate(size.toDouble)))
