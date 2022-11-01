@@ -207,14 +207,14 @@ package fs {
         buffer: Uint8Array,
         offset: Int,
         length: Int,
-        position: Double
+        position: js.BigInt
     ): js.Promise[FileHandleReadResult] = js.native
 
     def write(
         buffer: Uint8Array,
         offset: Int,
         length: Int,
-        position: Double
+        position: js.BigInt
     ): js.Promise[FileHandleWriteResult] = js.native
 
     def stat(): js.Promise[Stats] = js.native

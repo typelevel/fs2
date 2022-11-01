@@ -27,6 +27,7 @@ import cats.effect.kernel.Async
 import cats.syntax.all._
 import fs2.io.internal.facade
 
+import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
 
 private[file] trait FileHandlePlatform[F[_]]
@@ -42,10 +43,10 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
         F.fromPromise(
-          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes, offset.toDouble))
+          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes, js.BigInt(offset.toString)))
         ).map { res =>
-          if (res.bytesRead < 0) None
-          else if (res.bytesRead == 0) Some(Chunk.empty)
+          if (res.bytesRead == 0)
+            if (numBytes > 0) None else Some(Chunk.empty)
           else
             Some(Chunk.uint8Array(res.buffer).take(res.bytesRead))
         }
@@ -58,7 +59,7 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.fromPromise(
-          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size, offset.toDouble))
+          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size, js.BigInt(offset.toString)))
         ).map(_.bytesWritten.toInt)
     }
 }

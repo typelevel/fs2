@@ -324,13 +324,6 @@ private[fs2] trait FilesCompanionPlatform {
     override def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
       readStream(path, chunkSize, flags)(identity)
 
-    override def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
-      readStream(path, chunkSize, Flags.Read) { options =>
-        options.start = start.toDouble
-        options.end = (end - 1).toDouble
-        options
-      }
-
     def realPath(path: Path): F[Path] =
       F.fromPromise(F.delay(facade.fs.promises.realpath(path.toString))).map(Path(_)).adaptError {
         case NoSuchFileException(e) => e
