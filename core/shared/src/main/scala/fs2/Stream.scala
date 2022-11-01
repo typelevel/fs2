@@ -555,7 +555,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         // IF result of back-stream was failed, interrupt fore. Otherwise, let it be
         case Outcome.Errored(t) => backResult.complete(Left(t)) >> interrupt.complete(()).void
         case _                  => backResult.complete(Right(())).void
-      }
+      }.voidError
 
       // stop background process but await for it to finalise with a result
       // We use F.fromEither to bring errors from the back into the fore
@@ -1653,7 +1653,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
         backResult.complete(r) >> interruptL.complete(()).void
 
-      }
+      }.voidError
 
       // fromEither: bring to the fore errors from the back-sleeper.
       val stopWatch = interruptR.complete(()) >> backResult.get.flatMap(F.fromEither)
@@ -4114,7 +4114,7 @@ object Stream extends StreamLowPriority {
                           }
                           .forceR(available.release >> decrementRunning)
                       }
-                      .handleError(_ => ())
+                      .voidError
                   }.void
                 }
             }
@@ -4132,7 +4132,7 @@ object Stream extends StreamLowPriority {
                 .compile
                 .drain
                 .guaranteeCase(onOutcome(_, Either.unit) >> decrementRunning)
-                .handleError(_ => ())
+                .voidError
             }
 
           def outcomeJoiner: F[Unit] =
@@ -4150,7 +4150,7 @@ object Stream extends StreamLowPriority {
                 case Outcome.Canceled() =>
                   stop(None) >> output.close.void
               }
-              .handleError(_ => ())
+              .voidError
 
           def signalResult(fiber: Fiber[F, Throwable, Unit]): F[Unit] =
             done.get.flatMap { blah =>
