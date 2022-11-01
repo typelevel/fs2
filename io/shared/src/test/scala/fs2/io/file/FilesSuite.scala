@@ -79,6 +79,15 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .foldMonoid
         .assertEquals(4)
     }
+    test("can handle Long range endpoints") {
+      Stream
+        .resource(tempFile.evalMap(modify))
+        .flatMap(path => Files[IO].readRange(path, 4096, 0, Long.MaxValue))
+        .map(_ => 1)
+        .compile
+        .foldMonoid
+        .assertEquals(4)
+    }
   }
 
   group("writeAll") {
