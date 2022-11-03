@@ -1545,12 +1545,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def holdResource[F2[x] >: F[x]: Concurrent, O2 >: O](
       initial: O2
   ): Resource[F2, Signal[F2, O2]] =
-    Stream
+    Resource
       .eval(SignallingRef.of[F2, O2](initial))
-      .flatMap(sig => Stream(sig).concurrently(evalMap(sig.set)))
-      .compile
-      .resource
-      .lastOrError
+      .flatTap(sig => foreach(sig.set).compile.drain.background)
 
   /**  Like [[holdResource]] but does not require an initial value,
     *  and hence all output elements are wrapped in `Some`.
