@@ -241,10 +241,9 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.bracket(newId)(cleanup).flatMap { id =>
-              Stream.eval(state.get).flatMap { state =>
-                Stream.emit(state.value) ++ go(id, state.lastUpdate)
-              }
+            Stream.eval(state.get).flatMap { state =>
+              Stream.emit(state.value) ++
+                Stream.bracket(newId)(cleanup).flatMap(go(_, state.lastUpdate))
             }
           }
 
