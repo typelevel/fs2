@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        scala: [3.2.0, 2.12.17, 2.13.10]
+        scala: [3.2.1, 2.12.17, 2.13.10]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
     runs-on: ${{ matrix.os }}
