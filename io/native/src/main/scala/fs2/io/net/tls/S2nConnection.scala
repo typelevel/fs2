@@ -27,6 +27,7 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.syntax.all._
 import cats.syntax.all._
+import fs2.io.internal.ResizableBuffer
 import scodec.bits.ByteVector
 
 import java.util.concurrent.atomic.AtomicBoolean
@@ -44,7 +45,7 @@ private[tls] trait S2nConnection[F[_]] {
 
   def handshake: F[Unit]
 
-  def read(n: Long): F[Option[Chunk[Byte]]]
+  def read(n: Int): F[Option[Chunk[Byte]]]
 
   def write(bytes: Chunk[Byte]): F[Unit]
 
@@ -85,6 +86,8 @@ private[tls] object S2nConnection {
           gcRoot.add(ctx)
         }
       }
+
+      readBuffer <- ResizableBuffer[F](8192)
 
       recvBuffer <- Resource.eval {
         F.delay(new AtomicReference[Option[ByteVector]](Some(ByteVector.empty)))
@@ -133,35 +136,32 @@ private[tls] object S2nConnection {
         }.iterateUntil(_.toInt == S2N_NOT_BLOCKED) *>
           F.delay(guard_(s2n_connection_free_handshake(conn)))
 
-      def read(n: Long) = zone.use { implicit z =>
-        F.delay(alloc[Byte](n)).flatMap { buf =>
-          def go(i: Long): F[Option[Chunk[Byte]]] =
-            F.delay {
-              readTasks.set(F.unit)
-              val blocked = stackalloc[s2n_blocked_status]()
-              val readed = guard(s2n_recv(conn, buf + i, n - i, blocked))
-              (!blocked, Math.max(readed, 0))
-            }.guaranteeCase { oc =>
-              blindingSleep.whenA(oc.isError)
-            }.productL(F.delay(readTasks.get).flatten)
-              .flatMap { case (blocked, readed) =>
-                val total = i + readed
+      def read(n: Int) = readBuffer.get(n).flatMap { buf =>
+        def go(i: Int): F[Option[Chunk[Byte]]] =
+          F.delay {
+            readTasks.set(F.unit)
+            val blocked = stackalloc[s2n_blocked_status]()
+            val readed = guard(s2n_recv(conn, buf + i.toLong, (n - i).toLong, blocked))
+            (!blocked, Math.max(readed, 0))
+          }.guaranteeCase { oc =>
+            blindingSleep.whenA(oc.isError)
+          }.productL(F.delay(readTasks.get).flatten)
+            .flatMap { case (blocked, readed) =>
+              val total = i + readed
 
-                def chunk: F[Option[Chunk[Byte]]] =
-                  F.pure(Some(Chunk.byteVector(ByteVector.fromPtr(buf, total))))
+              def chunk: F[Option[Chunk[Byte]]] =
+                F.pure(Some(Chunk.fromBytePtr(buf, total)))
 
-                if (total >= n)
+              if (total >= n)
+                chunk
+              else if (blocked.toInt == S2N_NOT_BLOCKED) {
+                if (total > 0)
                   chunk
-                else if (blocked.toInt == S2N_NOT_BLOCKED) {
-                  if (total > 0)
-                    chunk
-                  else
-                    F.pure(None)
-                } else go(total)
-              }
-          go(0)
-        }
-
+                else
+                  F.pure(None)
+              } else go(total)
+            }
+        go(0)
       }
 
       def write(bytes: Chunk[Byte]) = {
@@ -205,9 +205,6 @@ private[tls] object S2nConnection {
         val copied = guard(s2n_connection_get_session(conn, buf.at(0), len.toUInt))
         new SSLSession(ByteVector.view(buf, 0, copied))
       }
-
-      private def zone: Resource[F, Zone] =
-        Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
 
       private def blindingSleep: F[Unit] =
         F.delay(s2n_connection_get_delay(conn).toLong.nanos)
