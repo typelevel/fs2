@@ -68,6 +68,9 @@ private[tls] object s2nutil {
   @alwaysinline def fromPtr[A](ptr: Ptr[Byte]): A =
     Intrinsics.castRawPtrToObject(runtime.toRawPtr(ptr)).asInstanceOf[A]
 
+  @alwaysinline def toCStringArray(str: String): Array[Byte] =
+    (str + 0.toChar).getBytes()
+
   def mkGcRoot[F[_]](implicit F: Sync[F]) = Resource.make(
     F.delay(Collections.newSetFromMap[Any](new IdentityHashMap))
   )(gcr => F.delay(gcr.clear()))
