@@ -95,9 +95,7 @@ object S2nConfig {
 
       _ <- pems.traverse_ { pem =>
         F.delay {
-          Zone { implicit z =>
-            guard_(s2n_config_add_pem_to_trust_store(cfg, toCString(pem)))
-          }
+          guard_(s2n_config_add_pem_to_trust_store(cfg, toCStringArray(pem).at(0)))
         }
       }.toResource
 
@@ -123,17 +121,13 @@ object S2nConfig {
 
       _ <- dhParams.traverse_ { pem =>
         F.delay {
-          Zone { implicit z =>
-            guard_(s2n_config_add_dhparams(cfg, toCString(pem)))
-          }
+          guard_(s2n_config_add_dhparams(cfg, toCStringArray(pem).at(0)))
         }
       }.toResource
 
       _ <- cipherPreferences.traverse_ { version =>
         F.delay {
-          Zone { implicit z =>
-            guard_(s2n_config_set_cipher_preferences(cfg, toCString(version)))
-          }
+          guard_(s2n_config_set_cipher_preferences(cfg, toCStringArray(version).at(0)))
         }
       }.toResource
     } yield new S2nConfig(cfg)
