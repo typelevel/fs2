@@ -203,12 +203,10 @@ private[tls] object S2nConnection {
         F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
 
       def session = F.delay {
-        Zone { implicit z =>
-          val len = guard(s2n_connection_get_session_length(conn)).toUInt
-          val buf = alloc[Byte](len)
-          val copied = guard(s2n_connection_get_session(conn, buf, len))
-          new SSLSession(ByteVector.fromPtr(buf, copied.toLong))
-        }
+        val len = guard(s2n_connection_get_session_length(conn))
+        val buf = new Array[Byte](len)
+        val copied = guard(s2n_connection_get_session(conn, buf.at(0), len.toUInt))
+        new SSLSession(ByteVector.view(buf, 0, copied))
       }
 
       private def zone: Resource[F, Zone] =
