@@ -86,13 +86,13 @@ private[tls] object S2nConnection {
         }
       }
 
-      readBuffer <- Resource.eval {
+      recvBuffer <- Resource.eval {
         F.delay(new AtomicReference[Option[ByteVector]](Some(ByteVector.empty)))
       }
       readTasks <- F.delay(new AtomicReference[F[Unit]](F.unit)).toResource
       _ <- Resource.eval {
         F.delay {
-          val ctx = RecvCallbackContext(readBuffer, readTasks, socket, F)
+          val ctx = RecvCallbackContext(recvBuffer, readTasks, socket, F)
           guard_(s2n_connection_set_recv_ctx(conn, toPtr(ctx)))
           guard_(s2n_connection_set_recv_cb(conn, recvCallback[F](_, _, _)))
           gcRoot.add(ctx)
@@ -221,7 +221,7 @@ private[tls] object S2nConnection {
   )
 
   private final case class RecvCallbackContext[F[_]](
-      readBuffer: AtomicReference[Option[ByteVector]],
+      recvBuffer: AtomicReference[Option[ByteVector]],
       readTasks: AtomicReference[F[Unit]],
       socket: Socket[F],
       async: Async[F]
@@ -232,7 +232,7 @@ private[tls] object S2nConnection {
     import ctx._
     implicit val F = async
 
-    val read = readBuffer.getAndUpdate(_.map(_.drop(len.toLong))).map(_.take(len.toLong))
+    val read = recvBuffer.getAndUpdate(_.map(_.drop(len.toLong))).map(_.take(len.toLong))
 
     read match {
       case Some(bytes) if bytes.nonEmpty =>
@@ -240,7 +240,7 @@ private[tls] object S2nConnection {
         bytes.length.toInt
       case Some(_) =>
         val readTask =
-          socket.read(len.toInt).flatMap(b => F.delay(readBuffer.set(b.map(_.toByteVector)))).void
+          socket.read(len.toInt).flatMap(b => F.delay(recvBuffer.set(b.map(_.toByteVector)))).void
         readTasks.getAndUpdate(_ *> readTask)
         libc.errno.errno = posix.errno.EWOULDBLOCK
         S2N_FAILURE
