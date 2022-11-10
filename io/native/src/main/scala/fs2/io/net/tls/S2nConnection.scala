@@ -164,25 +164,22 @@ private[tls] object S2nConnection {
 
       }
 
-      def write(bytes: Chunk[Byte]) = zone.use { implicit z =>
-        val n = bytes.size.toLong
-        F.delay(alloc[Byte](n))
-          .flatTap(buf => F.delay(bytes.toByteVector.copyToPtr(buf, 0)))
-          .flatMap { buf =>
-            def go(i: Long): F[Unit] =
-              F.delay {
-                writeTasks.set(F.unit)
-                val blocked = stackalloc[s2n_blocked_status]()
-                val wrote = guard(s2n_send(conn, buf + i, n - i, blocked))
-                (!blocked, Math.max(wrote, 0))
-              }.productL(F.delay(writeTasks.get).flatten)
-                .flatMap { case (blocked, wrote) =>
-                  val total = i + wrote
-                  go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
-                }
+      def write(bytes: Chunk[Byte]) = {
+        val Chunk.ArraySlice(buf, offset, n) = bytes.toArraySlice
 
-            go(0)
-          }
+        def go(i: Int): F[Unit] =
+          F.delay {
+            writeTasks.set(F.unit)
+            val blocked = stackalloc[s2n_blocked_status]()
+            val wrote = guard(s2n_send(conn, buf.at(offset + i), (n - i).toLong, blocked))
+            (!blocked, Math.max(wrote, 0))
+          }.productL(F.delay(writeTasks.get).flatten)
+            .flatMap { case (blocked, wrote) =>
+              val total = i + wrote
+              go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
+            }
+
+        go(0)
       }
 
       def shutdown =
