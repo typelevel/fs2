@@ -39,16 +39,14 @@ final class CertChainAndKey private (chainPem: ByteVector, privateKeyPem: ByteVe
       )
       .evalTap { certChainAndKey =>
         F.delay {
-          Zone { implicit z =>
-            guard_ {
-              s2n_cert_chain_and_key_load_pem_bytes(
-                certChainAndKey,
-                chainPem.toPtr,
-                chainPem.length.toUInt,
-                privateKeyPem.toPtr,
-                privateKeyPem.length.toUInt
-              )
-            }
+          guard_ {
+            s2n_cert_chain_and_key_load_pem_bytes(
+              certChainAndKey,
+              chainPem.toArray.at(0),
+              chainPem.length.toUInt,
+              privateKeyPem.toArray.at(0),
+              privateKeyPem.length.toUInt
+            )
           }
         }
       }
