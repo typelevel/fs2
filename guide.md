@@ -590,10 +590,10 @@ val program =
 // program: Stream[[x]IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 13:50:51.652845640
-// 13:50:52.651586207
-// 13:50:53.651274849
-// 13:50:54.651252046
+// 23:40:06.579170898
+// 23:40:07.578009301
+// 23:40:08.577405115
+// 23:40:09.577165872
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -635,10 +635,11 @@ val program1 =
 // program1: Stream[[x]IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 13:50:56.652937053
-// 13:50:57.653001484
-// 13:50:58.652992163
-// 13:50:59.652998351
+// 23:40:11.579128897
+// 23:40:12.579179993
+// 23:40:13.579221788
+// 23:40:14.579218582
+// 23:40:15.578758568
 ```
 
 ### Talking to the external world
@@ -671,7 +672,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@49537099
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$4@26b8cfe8
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[[x]IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -804,13 +805,13 @@ stream.toUnicastPublisher
 //   source = Bind(
 //     source = Bind(
 //       source = Pure(
-//         a = cats.effect.std.Dispatcher$$$Lambda$11833/0x0000000802bd77c8@620837b
+//         a = cats.effect.std.Dispatcher$$$Lambda$12625/0x0000000802cb05a0@5ab9d957
 //       ),
-//       fs = cats.effect.std.Dispatcher$$$Lambda$11834/0x0000000802bd7b98@69046cd9
+//       fs = cats.effect.std.Dispatcher$$$Lambda$12626/0x0000000802cb0970@190374f4
 //     ),
-//     fs = cats.FlatMap$$Lambda$11188/0x0000000802a41530@5784dd63
+//     fs = cats.FlatMap$$Lambda$12001/0x0000000802b17098@32d5c3a
 //   ),
-//   fs = cats.Monad$$Lambda$11265/0x0000000802a97298@581a8b2
+//   fs = cats.Monad$$Lambda$12078/0x0000000802b743a0@630a0438
 // )
 ```
 
@@ -822,23 +823,23 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //   source = Bind(
 //     source = Bind(
 //       source = Pure(
-//         a = cats.effect.std.Dispatcher$$$Lambda$11833/0x0000000802bd77c8@738c822
+//         a = cats.effect.std.Dispatcher$$$Lambda$12625/0x0000000802cb05a0@776d1a6f
 //       ),
-//       fs = cats.effect.std.Dispatcher$$$Lambda$11834/0x0000000802bd7b98@4d901eb8
+//       fs = cats.effect.std.Dispatcher$$$Lambda$12626/0x0000000802cb0970@754b64a2
 //     ),
-//     fs = cats.FlatMap$$Lambda$11188/0x0000000802a41530@3c0ebdac
+//     fs = cats.FlatMap$$Lambda$12001/0x0000000802b17098@1c6e3abd
 //   ),
-//   fs = cats.Monad$$Lambda$11265/0x0000000802a97298@34c256a7
+//   fs = cats.Monad$$Lambda$12078/0x0000000802b743a0@2f76d6cc
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res56: IO[List[Int]] = FlatMap(
 //   ioe = Delay(
-//     thunk = cats.effect.std.Dispatcher$$$Lambda$11836/0x0000000802bdedc8@75fae1c5,
+//     thunk = cats.effect.std.Dispatcher$$$Lambda$12628/0x0000000802cb3b08@30d70f2f,
 //     event = cats.effect.tracing.TracingEvent$StackTrace
 //   ),
-//   f = cats.effect.kernel.Resource$$Lambda$11838/0x0000000802bdf450@3852441c,
+//   f = cats.effect.kernel.Resource$$Lambda$12630/0x0000000802cb8000@1e1713e3,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
