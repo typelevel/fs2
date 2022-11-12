@@ -13,8 +13,6 @@ val NewScala = "2.13.10"
 ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
-ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
-
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
@@ -205,7 +203,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.9-583cf8e-SNAPSHOT",
+      "org.typelevel" %%% "cats-core" % "2.9.0",
       "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
       "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
       "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
