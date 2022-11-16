@@ -246,7 +246,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.17" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.19" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
