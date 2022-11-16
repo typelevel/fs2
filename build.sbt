@@ -311,9 +311,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
-  .nativeSettings(
-    nativeConfig ~= { _.withEmbedResources(true) }
-  )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("scodec"))
