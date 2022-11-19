@@ -1540,6 +1540,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def holdOption[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, Option[O2]]] =
     map(Some(_): Option[O2]).hold(None)
 
+  /** Like [[hold]] but does not require an initial value. The signal is not emitted until the initial value is emitted from this stream */
+  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] =
+    this.pull.uncons1.flatMap {
+      case Some((o, tail)) => tail.hold[F2, O2](o).underlying
+      case None            => Pull.done
+    }.streamNoScope
+
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
   def holdResource[F2[x] >: F[x]: Concurrent, O2 >: O](
@@ -1548,6 +1555,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Resource
       .eval(SignallingRef.of[F2, O2](initial))
       .flatTap(sig => foreach(sig.set).compile.drain.background)
+
+  /** Like [[hold1]] but returns a `Resource` rather than a single element stream. */
+  def hold1Resource[F2[x] >: F[x]: Concurrent, O2 >: O]: Resource[F2, Signal[F2, O2]] =
+    hold1[F2, O2].compile.resource.lastOrError
 
   /**  Like [[holdResource]] but does not require an initial value,
     *  and hence all output elements are wrapped in `Some`.
