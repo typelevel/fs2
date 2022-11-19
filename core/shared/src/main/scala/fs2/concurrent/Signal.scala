@@ -34,9 +34,10 @@ trait Signal[F[_], A] {
 
   /** Returns a stream of the updates to this signal.
     *
-    * Updates that are very close together may result in only the last update appearing
-    * in the stream. If you want to be notified about every single update, use
-    * a `Queue` or `Channel` instead.
+    * Even if you are pulling as fast as possible, updates that are very close together may
+    * result in only the last update appearing in the stream. In general, when you pull
+    * from this stream you may be notified of only the latest update since your last pull.
+    * If you want to be notified about every single update, use a `Queue` or `Channel` instead.
     */
   def discrete: Stream[F, A]
 
@@ -240,10 +241,9 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.bracket(newId)(cleanup).flatMap { id =>
-              Stream.eval(state.get).flatMap { state =>
-                Stream.emit(state.value) ++ go(id, state.lastUpdate)
-              }
+            Stream.eval(state.get).flatMap { state =>
+              Stream.emit(state.value) ++
+                Stream.bracket(newId)(cleanup).flatMap(go(_, state.lastUpdate))
             }
           }
 

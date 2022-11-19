@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.3"
+ThisBuild / tlBaseVersion := "3.4"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.1", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
@@ -204,10 +204,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "fs2-core",
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.9.0",
-      "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
+      "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.4.1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.1" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
@@ -246,7 +246,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.17" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.19" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
@@ -310,9 +310,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ),
       ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
-  )
-  .nativeSettings(
-    nativeConfig ~= { _.withEmbedResources(true) }
   )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
