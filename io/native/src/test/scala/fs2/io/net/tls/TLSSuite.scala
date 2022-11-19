@@ -26,15 +26,17 @@ package tls
 
 import cats.effect.IO
 import cats.effect.kernel.Resource
+import fs2.io.file.Files
+import fs2.io.file.Path
 import scodec.bits.ByteVector
 
 abstract class TLSSuite extends Fs2IoSuite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
     cert <- Resource.eval {
-      readClassResource[IO, TLSSuite]("/cert.pem").compile.to(ByteVector)
+      Files[IO].readAll(Path("io/shared/src/test/resources/cert.pem")).compile.to(ByteVector)
     }
     key <- Resource.eval {
-      readClassResource[IO, TLSSuite]("/key.pem").compile.to(ByteVector)
+      Files[IO].readAll(Path("io/shared/src/test/resources/key.pem")).compile.to(ByteVector)
     }
     cfg <- S2nConfig.builder
       .withCertChainAndKeysToStore(List(CertChainAndKey(cert, key)))
@@ -44,7 +46,7 @@ abstract class TLSSuite extends Fs2IoSuite {
 
   def testClientTlsContext: Resource[IO, TLSContext[IO]] = for {
     cert <- Resource.eval {
-      readClassResource[IO, TLSSuite]("/cert.pem").compile.to(ByteVector)
+      Files[IO].readAll(Path("io/shared/src/test/resources/cert.pem")).compile.to(ByteVector)
     }
     cfg <- S2nConfig.builder
       .withPemsToTrustStore(List(cert.decodeAscii.toOption.get))

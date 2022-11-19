@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.1", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
@@ -203,8 +203,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.8.0",
-      "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
+      "org.typelevel" %%% "cats-core" % "2.9.0",
+      "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
       "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
       "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
@@ -246,7 +246,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.17" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.19" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
@@ -258,7 +258,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.2" % Test
     ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
@@ -310,9 +310,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ),
       ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
-  )
-  .nativeSettings(
-    nativeConfig ~= { _.withEmbedResources(true) }
   )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
