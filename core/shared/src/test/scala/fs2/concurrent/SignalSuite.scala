@@ -59,6 +59,33 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("get/set/discrete lens") {
+    case class Foo(bar: Long, baz: Long)
+    object Foo {
+      def get(foo: Foo): Long = foo.bar
+      def set(foo: Foo)(bar: Long): Foo = foo.copy(bar = bar)
+    }
+
+    forAllF { (vs0: List[Long]) =>
+      val vs = vs0.map(n => if (n == 0) 1 else n)
+      SignallingRef[IO].of(Foo(0L, -1L)).flatMap { s =>
+        val l = SignallingRef.lens(s)(Foo.get, Foo.set)
+        Ref.of[IO, Foo](Foo(0L, -1L)).flatMap { r =>
+          val publisher = s.discrete.evalMap(r.set)
+          val consumer = vs.traverse { v =>
+            l.set(v) >> waitFor(l.get.map(_ == v)) >> waitFor(
+              r.get.flatMap(rval =>
+                if (rval == Foo(0L, -1L)) IO.pure(true)
+                else waitFor(r.get.map(_ == Foo(v, -1L))).as(true)
+              )
+            )
+          }
+          Stream.eval(consumer).concurrently(publisher).compile.drain
+        }
+      }
+    }
+  }
+
   test("discrete") {
     // verifies that discrete always receives the most recent value, even when updates occur rapidly
     forAllF { (v0: Long, vsTl: List[Long]) =>

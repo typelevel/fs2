@@ -287,6 +287,70 @@ object SignallingRef {
       }
   }
 
+  /** Creates an instance focused on a component of another SignallingRef's value. Delegates every get and
+    * modification to underlying SignallingRef, so both instances are always in sync.
+    */
+  def lens[F[_], A, B](
+      ref: SignallingRef[F, A]
+  )(get: A => B, set: A => B => A)(implicit F: Functor[F]): SignallingRef[F, B] =
+    new LensSignallingRef(ref)(get, set)
+
+  private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
+      lensGet: A => B,
+      lensSet: A => B => A
+  )(implicit F: Functor[F])
+      extends SignallingRef[F, B] {
+
+    def discrete: Stream[F, B] = underlying.discrete.map(lensGet)
+
+    def continuous: Stream[F, B] = underlying.continuous.map(lensGet)
+
+    def get: F[B] = F.map(underlying.get)(a => lensGet(a))
+
+    def set(b: B): F[Unit] = underlying.update(a => lensModify(a)(_ => b))
+
+    override def getAndSet(b: B): F[B] =
+      underlying.modify(a => (lensModify(a)(_ => b), lensGet(a)))
+
+    def update(f: B => B): F[Unit] =
+      underlying.update(a => lensModify(a)(f))
+
+    def modify[C](f: B => (B, C)): F[C] =
+      underlying.modify { a =>
+        val oldB = lensGet(a)
+        val (b, c) = f(oldB)
+        (lensSet(a)(b), c)
+      }
+
+    def tryUpdate(f: B => B): F[Boolean] =
+      F.map(tryModify(a => (f(a), ())))(_.isDefined)
+
+    def tryModify[C](f: B => (B, C)): F[Option[C]] =
+      underlying.tryModify { a =>
+        val oldB = lensGet(a)
+        val (b, result) = f(oldB)
+        (lensSet(a)(b), result)
+      }
+
+    def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] = {
+      val f = state.runF.value
+      tryModify(a => f(a).value)
+    }
+
+    def modifyState[C](state: cats.data.State[B, C]): F[C] = {
+      val f = state.runF.value
+      modify(a => f(a).value)
+    }
+
+    val access: F[(B, B => F[Boolean])] =
+      F.map(underlying.access) { case (a, update) =>
+        (lensGet(a), b => update(lensSet(a)(b)))
+      }
+
+    private def lensModify(s: A)(f: B => B): A = lensSet(s)(f(lensGet(s)))
+
+  }
+
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
     new Invariant[SignallingRef[F, *]] {
       override def imap[A, B](fa: SignallingRef[F, A])(f: A => B)(g: B => A): SignallingRef[F, B] =
