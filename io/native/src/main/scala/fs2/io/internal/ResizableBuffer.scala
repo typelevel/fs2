@@ -19,20 +19,46 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.io.internal
 
-import scala.scalanative.libc.string._
+import cats.effect.kernel.Resource
+import cats.effect.kernel.Sync
+import cats.syntax.all._
+
+import scala.scalanative.libc.errno._
+import scala.scalanative.libc.stdlib._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
-private[fs2] trait ChunkRuntimePlatform[+O]
+private[io] final class ResizableBuffer[F[_]] private (
+    private var ptr: Ptr[Byte],
+    private[this] var size: Int
+)(implicit F: Sync[F]) {
 
-private[fs2] trait ChunkCompanionRuntimePlatform {
+  def get(size: Int): F[Ptr[Byte]] = F.delay {
+    if (size <= this.size)
+      F.pure(ptr)
+    else {
+      ptr = realloc(ptr, size.toUInt)
+      this.size = size
+      if (ptr == null)
+        F.raiseError[Ptr[Byte]](new RuntimeException(s"realloc: ${errno}"))
+      else F.pure(ptr)
+    }
+  }.flatten
 
-  def fromBytePtr(ptr: Ptr[Byte], length: Int): Chunk[Byte] = {
-    val bytes = new Array[Byte](length)
-    memcpy(bytes.at(0), ptr, length.toULong)
-    Chunk.ArraySlice(bytes, 0, length)
-  }
+}
+
+private[io] object ResizableBuffer {
+
+  def apply[F[_]](size: Int)(implicit F: Sync[F]): Resource[F, ResizableBuffer[F]] =
+    Resource.make {
+      F.delay {
+        val ptr = malloc(size.toUInt)
+        if (ptr == null)
+          throw new RuntimeException(s"malloc: ${errno}")
+        else new ResizableBuffer(ptr, size)
+      }
+    }(buf => F.delay(free(buf.ptr)))
 
 }

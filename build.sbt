@@ -171,6 +171,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]( // something funky in Scala 3.2.0 ...
     "fs2.io.net.SocketGroupCompanionPlatform#AsyncSocketGroup.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
   )
 )
 

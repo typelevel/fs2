@@ -29,7 +29,6 @@ import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import scodec.bits.ByteVector
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -54,34 +53,26 @@ sealed trait TLSParameters {
       gcRoot <- mkGcRoot
 
       _ <- protocolPreferences.toList.flatten.traverse { protocol =>
-        ByteVector.encodeAscii(protocol).liftTo[F].flatMap { protocolBytes =>
-          F.delay {
-            Zone { implicit z =>
-              guard_ {
-                s2n_connection_append_protocol_preference(
-                  conn,
-                  protocolBytes.toPtr,
-                  protocolBytes.length.toByte
-                )
-              }
-            }
+        F.delay {
+          guard_ {
+            s2n_connection_append_protocol_preference(
+              conn,
+              protocol.getBytes().at(0),
+              protocol.length.toByte
+            )
           }
         }
       }.toResource
 
       _ <- cipherPreferences.traverse_ { version =>
         F.delay {
-          Zone { implicit z =>
-            guard_(s2n_connection_set_cipher_preferences(conn, toCString(version)))
-          }
+          guard_(s2n_connection_set_cipher_preferences(conn, toCStringArray(version).at(0)))
         }
       }.toResource
 
       _ <- serverName.traverse { sn =>
         F.delay {
-          Zone { implicit z =>
-            guard_(s2n_set_server_name(conn, toCString(sn)))
-          }
+          guard_(s2n_set_server_name(conn, toCStringArray(sn).at(0)))
         }
       }.toResource
 

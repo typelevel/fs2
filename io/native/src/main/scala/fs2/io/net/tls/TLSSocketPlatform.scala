@@ -56,7 +56,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         writeSem.permit.surround(connection.write(bytes))
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
-        connection.read(maxBytes.toLong)
+        connection.read(maxBytes)
 
       def readN(numBytes: Int): F[Chunk[Byte]] =
         readSem.permit.use { _ =>
