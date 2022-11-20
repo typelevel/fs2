@@ -13,9 +13,7 @@ object Converter extends IOApp.Simple {
     def fahrenheitToCelsius(f: Double): Double =
       (f - 32.0) * (5.0/9.0)
 
-    Files[IO].readAll(Path("testdata/fahrenheit.txt"))
-      .through(text.utf8.decode)
-      .through(text.lines)
+    Files[IO].readUtf8Lines(Path("testdata/fahrenheit.txt"))
       .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
       .map(line => fahrenheitToCelsius(line.toDouble).toString)
       .intersperse("\n")
