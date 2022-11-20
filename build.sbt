@@ -205,9 +205,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.9.0",
       "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.4.1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.1" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
@@ -258,7 +258,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.2" % Test
     ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")

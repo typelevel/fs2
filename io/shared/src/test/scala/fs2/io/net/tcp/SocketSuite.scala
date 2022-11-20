@@ -31,6 +31,7 @@ import com.comcast.ip4s._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
+// Note: OS X doesn't currently work with IPv6 so server resources must explicitly bind v4 addresses
 class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
 
   val timeout = 30.seconds
@@ -177,10 +178,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
           }
       } yield ()).use_ >> (for {
         _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_.recover {
-          case ex: UnknownHostException =>
-            assert(
-              ex.getMessage == "not.example.com: Name or service not known" || ex.getMessage == "not.example.com: nodename nor servname provided, or not known"
-            )
+          case _: UnknownHostException => ()
         }
       } yield ())
     }
@@ -255,7 +253,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
     }
 
     test("can shutdown a socket that's pending a read") {
-      Network[IO].serverResource().use { case (bindAddress, clients) =>
+      Network[IO].serverResource(Some(ip"127.0.0.1")).use { case (bindAddress, clients) =>
         Network[IO].client(bindAddress).use { _ =>
           clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).recover {
             case _: TimeoutException => ()

@@ -45,7 +45,7 @@ class TopicSuite extends Fs2Suite {
       // Ensures all subs are registered before consuming
       val subscriptions =
         Vector
-          .fill(subs)(topic.subscribeAwait(Int.MaxValue))
+          .fill(subs)(topic.subscribeAwaitUnbounded)
           .sequence
           .map(_.zipWithIndex)
 
@@ -89,7 +89,7 @@ class TopicSuite extends Fs2Suite {
       // Ensures all subs are registered before consuming
       val subscriptions =
         Vector
-          .fill(subs)(topic.subscribeAwait(Int.MaxValue))
+          .fill(subs)(topic.subscribeAwaitUnbounded)
           .sequence
           .map(_.zipWithIndex)
 
