@@ -178,14 +178,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
           }
       } yield ()).use_ >> (for {
         _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_.recover {
-          case ex: UnknownHostException =>
-            ex.getMessage match {
-              case "not.example.com: Name or service not known"                    => ()
-              case "not.example.com: nodename nor servname provided, or not known" => ()
-              case "Name or service not known"                                     => ()
-              case "nodename nor servname provided, or not known"                  => ()
-              case other => fail(s"unexpected message: [$other]")
-            }
+          case _: UnknownHostException => ()
         }
       } yield ())
     }
