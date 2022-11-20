@@ -182,7 +182,8 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
             ex.getMessage match {
               case "not.example.com: Name or service not known"                    => ()
               case "not.example.com: nodename nor servname provided, or not known" => ()
-              case "nodename nor servname provided, or not known"                  => () // OS X
+              case "Name or service not known"                                     => ()
+              case "nodename nor servname provided, or not known"                  => ()
               case other => fail(s"unexpected message: [$other]")
             }
         }
