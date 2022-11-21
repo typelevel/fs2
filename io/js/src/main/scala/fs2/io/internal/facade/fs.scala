@@ -46,6 +46,28 @@ package object fs {
   private[io] def createWriteStream(path: String, options: WriteStreamOptions): fs2.io.Writable =
     js.native
 
+  @js.native
+  @JSImport("fs", "read")
+  private[io] def read(
+      fd: Int,
+      buffer: Uint8Array,
+      offset: Int,
+      length: Int,
+      position: js.BigInt,
+      cb: js.Function3[js.Error, Int, Uint8Array, Unit]
+  ): Unit = js.native
+
+  @js.native
+  @JSImport("fs", "write")
+  private[io] def write(
+      fd: Int,
+      buffer: Uint8Array,
+      offset: Int,
+      length: Int,
+      position: js.BigInt,
+      cb: js.Function3[js.Error, Int, Uint8Array, Unit]
+  ): Unit = js.native
+
 }
 
 package fs {
@@ -213,21 +235,9 @@ package fs {
   @js.native
   private[io] trait FileHandle extends js.Object {
 
+    def fd: Int = js.native
+
     def datasync(): js.Promise[Unit] = js.native
-
-    def read(
-        buffer: Uint8Array,
-        offset: Int,
-        length: Int,
-        position: js.BigInt
-    ): js.Promise[FileHandleReadResult] = js.native
-
-    def write(
-        buffer: Uint8Array,
-        offset: Int,
-        length: Int,
-        position: js.BigInt
-    ): js.Promise[FileHandleWriteResult] = js.native
 
     def stat(options: StatOptions): js.Promise[BigIntStats] = js.native
 

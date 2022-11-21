@@ -42,13 +42,21 @@ private[file] trait FileHandleCompanionPlatform {
         F.fromPromise(F.delay(fd.datasync()))
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.fromPromise(
-          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes, js.BigInt(offset.toString)))
-        ).map { res =>
-          if (res.bytesRead == 0)
+        F.async_[(Int, Uint8Array)] { cb =>
+          facade.fs.read(
+            fd.fd,
+            new Uint8Array(numBytes),
+            0,
+            numBytes,
+            js.BigInt(offset.toString),
+            (err, bytesRead, buffer) =>
+              cb(Option(err).map(js.JavaScriptException(_)).toLeft((bytesRead, buffer)))
+          )
+        }.map { case (bytesRead, buffer) =>
+          if (bytesRead == 0)
             if (numBytes > 0) None else Some(Chunk.empty)
           else
-            Some(Chunk.uint8Array(res.buffer).take(res.bytesRead))
+            Some(Chunk.uint8Array(buffer).take(bytesRead))
         }
 
       override def size: F[Long] =
@@ -59,8 +67,16 @@ private[file] trait FileHandleCompanionPlatform {
         F.fromPromise(F.delay(fd.truncate(size.toDouble)))
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.fromPromise(
-          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size, js.BigInt(offset.toString)))
-        ).map(_.bytesWritten.toInt)
+        F.async_[Int] { cb =>
+          facade.fs.write(
+            fd.fd,
+            bytes.toUint8Array,
+            0,
+            bytes.size,
+            js.BigInt(offset.toString),
+            (err, bytesWritten, _) =>
+              cb(Option(err).map(js.JavaScriptException(_)).toLeft(bytesWritten))
+          )
+        }
     }
 }
