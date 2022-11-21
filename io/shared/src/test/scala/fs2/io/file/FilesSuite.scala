@@ -64,11 +64,10 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("reads half of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => Files[IO].readRange(path, 4096, 0, 2))
-        .map(_ => 1)
+        .flatMap(path => Files[IO].readRange(path, 4096, 2, 4))
         .compile
-        .foldMonoid
-        .assertEquals(2)
+        .toList
+        .assertEquals(List[Byte](2, 3))
     }
     test("reads full file if end is bigger than file size") {
       Stream

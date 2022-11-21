@@ -39,28 +39,48 @@ private[file] trait FileHandleCompanionPlatform {
     new FileHandle[F] {
 
       override def force(metaData: Boolean): F[Unit] =
-        F.fromPromise(F.delay(fd.datasync()))
+        F.fromPromise(F.delay(fd.datasync())).adaptError { case IOException(ex) => ex }
 
       override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.fromPromise(
-          F.delay(fd.read(new Uint8Array(numBytes), 0, numBytes, js.BigInt(offset.toString)))
-        ).map { res =>
-          if (res.bytesRead == 0)
-            if (numBytes > 0) None else Some(Chunk.empty)
-          else
-            Some(Chunk.uint8Array(res.buffer).take(res.bytesRead))
-        }
+        F.async_[Option[Chunk[Byte]]] { cb =>
+          facade.fs.read(
+            fd.fd,
+            new Uint8Array(numBytes),
+            0,
+            numBytes,
+            js.BigInt(offset.toString),
+            (err, bytesRead, buffer) =>
+              cb {
+                Option(err).map(js.JavaScriptException(_)).toLeft {
+                  if (bytesRead == 0)
+                    if (numBytes > 0) None else Some(Chunk.empty)
+                  else
+                    Some(Chunk.uint8Array(buffer).take(bytesRead))
+                }
+              }
+          )
+        }.adaptError { case IOException(ex) => ex }
 
       override def size: F[Long] =
         F.fromPromise(F.delay(fd.stat(new facade.fs.StatOptions { bigint = true })))
           .map(_.size.toString.toLong)
+          .adaptError { case IOException(ex) => ex }
 
       override def truncate(size: Long): F[Unit] =
         F.fromPromise(F.delay(fd.truncate(size.toDouble)))
+          .adaptError { case IOException(ex) => ex }
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.fromPromise(
-          F.delay(fd.write(bytes.toUint8Array, 0, bytes.size, js.BigInt(offset.toString)))
-        ).map(_.bytesWritten.toInt)
+        F.async_[Int] { cb =>
+          facade.fs.write(
+            fd.fd,
+            bytes.toUint8Array,
+            0,
+            bytes.size,
+            js.BigInt(offset.toString),
+            (err, bytesWritten, _) =>
+              cb(Option(err).map(js.JavaScriptException(_)).toLeft(bytesWritten))
+          )
+        }.adaptError { case IOException(ex) => ex }
     }
 }
