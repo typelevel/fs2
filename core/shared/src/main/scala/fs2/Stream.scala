@@ -688,7 +688,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         ref <- F.ref[Vector[O]](Vector.empty)
       } yield {
         val sendLatest: F2[Unit] =
-          ref.getAndSet(Vector.empty).flatMap(l => F.whenA(l.nonEmpty)(chan.send(Chunk.indexedSeq(l))))
+          ref
+            .getAndSet(Vector.empty)
+            .flatMap(l => F.whenA(l.nonEmpty)(chan.send(Chunk.indexedSeq(l))))
 
         def sendItem(o: O): F2[Unit] =
           ref.getAndUpdate(_ :+ o).flatMap {
