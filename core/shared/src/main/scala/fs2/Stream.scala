@@ -25,7 +25,7 @@ import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
 import cats.{Eval => _, _}
-import cats.data.{Ior, NonEmptyChain}
+import cats.data.Ior
 import cats.effect.Concurrent
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
@@ -672,23 +672,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * and the timing they arrive.
     *
     * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global, cats.data.NonEmptyChain
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
     * scala> val s = Stream(1, 2, 3) ++ Stream.sleep_[IO](500.millis) ++ Stream(4, 5) ++ Stream.sleep_[IO](10.millis) ++ Stream(6)
     * scala> val s2 = s.debounceAccumulate(100.milliseconds)
     * scala> s2.compile.toVector.unsafeRunSync()
-    * res0: Vector[NonEmptyChain[Int]] = Vector(Chain(1, 2, 3), Chain(4, 5, 6))
+    * res0: Vector[Chunk[Int]] = Vector(Chunk(1, 2, 3), Chunk(4, 5, 6))
     * }}}
     */
   def debounceAccumulate[F2[x] >: F[x]](
       d: FiniteDuration
-  )(implicit F: Temporal[F2]): Stream[F2, NonEmptyChain[O]] =
+  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
     Stream.force {
       for {
-        chan <- Channel.bounded[F2, NonEmptyChain[O]](1)
+        chan <- Channel.bounded[F2, Chunk[O]](1)
         ref <- F.ref[Vector[O]](Vector.empty)
       } yield {
         val sendLatest: F2[Unit] =
-          ref.getAndSet(Vector.empty).flatMap(l => NonEmptyChain.fromSeq(l).traverse_(chan.send))
+          ref.getAndSet(Vector.empty).flatMap(l => F.whenA(l.nonEmpty)(chan.send(Chunk.indexedSeq(l))))
 
         def sendItem(o: O): F2[Unit] =
           ref.getAndUpdate(_ :+ o).flatMap {
