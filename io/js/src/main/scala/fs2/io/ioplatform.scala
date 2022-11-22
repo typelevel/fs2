@@ -161,8 +161,9 @@ private[fs2] trait ioplatform {
           val end =
             if (endAfterUse)
               Stream.exec {
-                F.async_[Unit] { cb =>
-                  writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                F.async[Unit] { cb =>
+                  F.delay(writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException))))
+                    .as(Some(F.unit))
                 }
               }
             else Stream.empty
