@@ -129,9 +129,10 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 ```scala
 import scala.concurrent.duration._
 import scala.language.higherKinds
-import cats.effect.{Concurrent, IO, IOApp}
+import cats.effect.std.Console
+import cats.effect.{Clock, IO, IOApp, Temporal}
 import cats.syntax.all._
-import fs2.{Pipe, Stream, INothing}
+import fs2.{Pipe, Stream}
 import fs2.concurrent.{SignallingRef, Topic}
 
 sealed trait Event
@@ -157,7 +158,7 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 
   // Creating 3 subscribers in a different period of time and join them to run concurrently
   def startSubscribers: Stream[F, Unit] = {
-    def processEvent(subscriberNumber: Int): Pipe[F, Event, INothing] =
+    def processEvent(subscriberNumber: Int): Pipe[F, Event, Nothing] =
       _.foreach {
         case e @ Text(_) =>
            console.println(s"Subscriber #$subscriberNumber processing event: $e")
