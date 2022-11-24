@@ -8,7 +8,3 @@ addSbtPlugin("com.armanbilge" % "sbt-scala-native-config-brew-github-actions" % 
 addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.3")
 addSbtPlugin("org.scalameta" % "sbt-mdoc" % "2.3.6")
-
-libraryDependencySchemes ++= Seq(
-  "org.scala-native" % "sbt-scala-native" % VersionScheme.Always
-)
