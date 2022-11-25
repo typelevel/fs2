@@ -159,6 +159,8 @@ package fs {
 
     def symlink(target: String, path: String): js.Promise[Unit] = js.native
 
+    def link(target: String, path: String): js.Promise[Unit] = js.native
+
     def utimes(path: String, atime: Double, mtime: Double): js.Promise[Unit] = js.native
 
   }

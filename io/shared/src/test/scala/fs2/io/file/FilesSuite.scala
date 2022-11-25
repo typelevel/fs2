@@ -737,6 +737,29 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     }
   }
 
+  group("createLink") {
+    test("returns a link to the same file") {
+      (tempFile, tempDirectory).tupled
+        .use { case (filePath, tempDir) =>
+          val link = tempDir / "newlink"
+          Files[IO].getBasicFileAttributes(filePath).map(_.fileKey).flatMap { key =>
+            Files[IO]
+              .createLink(link, filePath) >>
+              Files[IO]
+                .getBasicFileAttributes(link)
+                .map(_.fileKey)
+                .assertEquals(key)
+          }
+        }
+    }
+
+    test("fails with NoSuchFileException if the target doesn't exist") {
+      tempDirectory
+        .use(d => Files[IO].createLink(d.resolve("link"), d.resolve("non-existant")))
+        .intercept[NoSuchFileException]
+    }
+  }
+
   group("realPath") {
 
     test("doesn't fail if the path is for a file") {

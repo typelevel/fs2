@@ -78,6 +78,14 @@ private[fs2] trait FilesCompanionPlatform {
     override def createFile(path: Path, permissions: Option[Permissions]): F[Unit] =
       open(path, Flags(Flag.CreateNew), permissions).use_
 
+    override def createLink(
+        link: Path,
+        existing: Path
+    ): F[Unit] =
+      F.fromPromise(
+        F.delay(facade.fs.promises.link(existing.toString, link.toString))
+      ).adaptError { case IOException(ex) => ex }
+
     override def createSymbolicLink(
         link: Path,
         target: Path,
