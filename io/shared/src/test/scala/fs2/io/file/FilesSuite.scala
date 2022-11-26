@@ -753,10 +753,12 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         }
     }
 
-    test("fails with NoSuchFileException if the target doesn't exist") {
+    // Should be NoSuchFileException, but that fails on Scala native
+    // (see https://github.com/scala-native/scala-native/pull/3012)
+    test("fails with IOException if the target doesn't exist") {
       tempDirectory
         .use(d => Files[IO].createLink(d.resolve("link"), d.resolve("non-existant")))
-        .intercept[NoSuchFileException]
+        .intercept[IOException]
     }
   }
 
