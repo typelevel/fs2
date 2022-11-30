@@ -31,31 +31,27 @@ object hash {
   import openssl._
 
   /** Computes an MD2 digest. */
-  def md2[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(EVP_get_digestbyname(c"MD2"))
+  def md2[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"MD2")
 
   /** Computes an MD5 digest. */
-  def md5[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(EVP_get_digestbyname(c"MD5"))
+  def md5[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"MD5")
 
   /** Computes a SHA-1 digest. */
-  def sha1[F[_]: Sync]: Pipe[F, Byte, Byte] =
-    digest(EVP_get_digestbyname(c"SHA1"))
+  def sha1[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"SHA1")
 
   /** Computes a SHA-256 digest. */
-  def sha256[F[_]: Sync]: Pipe[F, Byte, Byte] =
-    digest(EVP_get_digestbyname(c"SHA256"))
+  def sha256[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"SHA256")
 
   /** Computes a SHA-384 digest. */
-  def sha384[F[_]: Sync]: Pipe[F, Byte, Byte] =
-    digest(EVP_get_digestbyname(c"SHA384"))
+  def sha384[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"SHA384")
 
   /** Computes a SHA-512 digest. */
-  def sha512[F[_]: Sync]: Pipe[F, Byte, Byte] =
-    digest(EVP_get_digestbyname(c"SHA512"))
+  def sha512[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(c"SHA512")
 
   /** Computes the digest of the source stream, emitting the digest as a chunk
     * after completion of the source stream.
     */
-  private[this] def digest[F[_]](digest: => Ptr[EVP_MD])(implicit F: Sync[F]): Pipe[F, Byte, Byte] =
+  private[this] def digest[F[_]](digest: CString)(implicit F: Sync[F]): Pipe[F, Byte, Byte] =
     in =>
       Stream
         .bracket(F.delay {
@@ -66,9 +62,9 @@ object hash {
         })(ctx => F.delay(EVP_MD_CTX_free(ctx)))
         .evalTap { ctx =>
           F.delay {
-            val `type` = digest
+            val `type` = EVP_get_digestbyname(digest)
             if (`type` == null)
-              throw new NullPointerException("digest was null")
+              throw new RuntimeException(s"EVP_get_digestbyname: ${getError()}")
             if (EVP_DigestInit_ex(ctx, `type`, null) != 1)
               throw new RuntimeException(s"EVP_DigestInit_ex: ${getError()}")
           }
