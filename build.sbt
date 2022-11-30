@@ -236,8 +236,12 @@ lazy val coreJS = core.js
   )
 
 lazy val coreNative = core.native
+  .enablePlugins(ScalaNativeBrewedConfigPlugin)
   .disablePlugins(DoctestPlugin)
   .settings(commonNativeSettings)
+  .settings(
+    Test / nativeBrewFormulas += "openssl"
+  )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
