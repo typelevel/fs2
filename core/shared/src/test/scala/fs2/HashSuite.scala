@@ -23,15 +23,12 @@ package fs2
 
 import cats.effect.IO
 import cats.syntax.all._
-import java.security.MessageDigest
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
 import hash._
 
-class HashSuite extends Fs2Suite {
-  def digest(algo: String, str: String): List[Byte] =
-    MessageDigest.getInstance(algo).digest(str.getBytes).toList
+class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
 
   def checkDigest[A](h: Pipe[Pure, Byte, Byte], algo: String, str: String) = {
     val n =
@@ -49,7 +46,8 @@ class HashSuite extends Fs2Suite {
   }
 
   group("digests") {
-    test("md2")(forAll((s: String) => checkDigest(md2, "MD2", s)))
+    if (isJVM || isNative)
+      test("md2")(forAll((s: String) => checkDigest(md2, "MD2", s)))
     test("md5")(forAll((s: String) => checkDigest(md5, "MD5", s)))
     test("sha1")(forAll((s: String) => checkDigest(sha1, "SHA-1", s)))
     test("sha256")(forAll((s: String) => checkDigest(sha256, "SHA-256", s)))
