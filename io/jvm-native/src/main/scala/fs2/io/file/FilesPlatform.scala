@@ -121,6 +121,15 @@ private[file] trait FilesCompanionPlatform {
         ()
       }
 
+    def createLink(link: Path, existing: Path): F[Unit] =
+      Sync[F].blocking {
+        JFiles.createLink(
+          link.toNioPath,
+          existing.toNioPath
+        )
+        ()
+      }
+
     def createTempFile(
         dir: Option[Path],
         prefix: String,

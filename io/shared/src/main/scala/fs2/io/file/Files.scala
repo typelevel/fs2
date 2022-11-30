@@ -81,6 +81,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   def createFile(path: Path, permissions: Option[Permissions]): F[Unit]
 
+  /** Creates a hard link with an existing file. */
+  def createLink(link: Path, existing: Path): F[Unit]
+
   /** Creates a symbolic link which points to the supplied target. */
   def createSymbolicLink(link: Path, target: Path): F[Unit] = createSymbolicLink(link, target, None)
 

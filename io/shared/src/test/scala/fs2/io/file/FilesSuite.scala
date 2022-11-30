@@ -737,6 +737,31 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     }
   }
 
+  group("createLink") {
+    test("returns a link to the same file") {
+      (tempFile, tempDirectory).tupled
+        .use { case (filePath, tempDir) =>
+          val link = tempDir / "newlink"
+          Files[IO].getBasicFileAttributes(filePath).map(_.fileKey).flatMap { key =>
+            Files[IO]
+              .createLink(link, filePath) >>
+              Files[IO]
+                .getBasicFileAttributes(link)
+                .map(_.fileKey)
+                .assertEquals(key)
+          }
+        }
+    }
+
+    // Should be NoSuchFileException, but that fails on Scala native
+    // (see https://github.com/scala-native/scala-native/pull/3012)
+    test("fails with IOException if the target doesn't exist") {
+      tempDirectory
+        .use(d => Files[IO].createLink(d.resolve("link"), d.resolve("non-existant")))
+        .intercept[IOException]
+    }
+  }
+
   group("realPath") {
 
     test("doesn't fail if the path is for a file") {
