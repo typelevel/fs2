@@ -34,7 +34,7 @@ class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
     test("copy from local filesystem to in-memory filesystem") {
       val fs = Jimfs.newFileSystem(Configuration.unix)
       tempFile.evalMap(modify).use { src =>
-        val dst = Path.fromNioPath(fs.getPath("copied"))
+        val dst = Path.fromFsPath(fs, "copied")
         Files[IO].copy(src, dst) *> (Files[IO].size(src), Files[IO].size(dst)).tupled.map {
           case (srcSize, dstSize) => assertEquals(dstSize, srcSize)
         }

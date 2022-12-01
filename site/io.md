@@ -353,6 +353,8 @@ def scalaLineCount[F[_]: Files: Concurrent](path: Path): F[Long] =
   }.compile.foldMonoid
 ```
 
+Note that the `Files` object is file system agnostic. It is possible to use a custom one, i.e. mounted inside JAR file, to get access to the resources. Given there's already a `java.nio.file.FileSystem` created, interacting with the files can be made possible by calling `Path.fromFsPath` to get the `Path` object.
+
 # Console Operations
 
 Writing to the console is often as simple as `s.evalMap(o => IO.println(o))`. This works fine for quick tests but can be problematic in large applications. The call to `println` blocks until data can be written to the output stream for standard out. This can cause fairness issues with other, non-blocking, operations running on the main thread pool. For such situations, `fs2-io` provides a couple of utilities:
