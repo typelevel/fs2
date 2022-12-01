@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import java.nio.file.{FileSystems, Path => JPath, Paths}
+import java.nio.file.{FileSystem, FileSystems, Path => JPath, Paths}
 
 /** Path to a file or directory on a file system.
   *
@@ -88,4 +88,5 @@ object Path extends PathCompanionApi {
   private def apply(path: JPath): Path = new Path(path)
   def apply(path: String): Path = fromNioPath(FileSystems.getDefault.getPath(path))
   def fromNioPath(path: JPath): Path = Path(path)
+  def fromFsPath(fs: FileSystem, path: String): Path = fromNioPath(fs.getPath(path))
 }
