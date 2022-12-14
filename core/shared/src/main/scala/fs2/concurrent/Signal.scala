@@ -390,17 +390,28 @@ trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
 object SignallingMapRef {
 
   /** Builds a `SignallingMapRef` for effect `F`, initialized to the supplied value.
+    *
+    * Update semantics for `discrete` are the same as `SignallingRef`, with one exception:
+    * if you delete a key by setting its value to `None`, this will only notify once per listener
+    * i.e. setting it to `None` again will not trigger another update. Furthermore, if a listener's
+    * last pull returned `None`, and by the time it pulls again the current value is `None`,
+    * then it will not be notified regardless of any non-`None` updates that may have happened
+    * between the pulls. This special semantic for `None` is necessary to prevent memory leaks at
+    * keys with no values and no listeners.
     */
   def ofSingleImmutableMap[F[_], K, V](
       initial: Map[K, V] = Map.empty[K, V]
   )(implicit F: Concurrent[F]): F[SignallingMapRef[F, K, Option[V]]] = {
     case class State(
         value: Map[K, V],
-        lastUpdate: Long,
-        listeners: Map[K, LongMap[Deferred[F, (Option[V], Long)]]]
+        keyState: Map[K, KeyState]
     )
 
-    F.ref(State(initial, 0L, initial.flatMap(_ => Nil)))
+    // fix lastUpdate at -1 when the key is not present in the value map
+    // so we don't have to keep an update counter when the key has neither a value nor any listeners
+    case class KeyState(lastUpdate: Long, listeners: LongMap[Deferred[F, (Option[V], Long)]])
+
+    F.ref(State(initial, initial.flatMap(_ => Nil)))
       .product(F.ref(1L))
       .map { case (state, ids) =>
         def newId = ids.getAndUpdate(_ + 1)
@@ -408,11 +419,20 @@ object SignallingMapRef {
         def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
             : (State, F[U]) = {
           val (newValue, result) = f(state.value.get(k))
+
           val newMap = newValue.fold(state.value - k)(v => state.value + (k -> v))
-          val lastUpdate = state.lastUpdate + 1
-          val newListeners = state.listeners - k
-          val newState = State(newMap, lastUpdate, newListeners)
-          val notifyListeners = state.listeners.get(k).fold(F.unit) { listeners =>
+
+          val keyState = state.keyState.get(k)
+          val lastUpdate = keyState.fold(if (newValue.isDefined) 0L else -1L)(_.lastUpdate + 1)
+
+          val newKeyState =
+            if (newValue.isDefined)
+              state.keyState.updated(k, KeyState(lastUpdate, LongMap.empty))
+            else
+              state.keyState - k // prevent memory leak
+
+          val newState = State(newMap, keyState)
+          val notifyListeners = keyState.fold(F.unit) { listeners =>
             listeners.values.toVector.traverse_ { listener =>
               listener.complete(newValue -> lastUpdate)
             }
