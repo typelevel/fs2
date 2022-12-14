@@ -403,38 +403,50 @@ object SignallingMapRef {
       initial: Map[K, V] = Map.empty[K, V]
   )(implicit F: Concurrent[F]): F[SignallingMapRef[F, K, Option[V]]] = {
     case class State(
-        value: Map[K, V],
-        keyState: Map[K, KeyState]
+        lastUpdate: Long,
+        keys: Map[K, KeyState]
     )
 
-    // fix lastUpdate at -1 when the key is not present in the value map
-    // so we don't have to keep an update counter when the key has neither a value nor any listeners
-    case class KeyState(lastUpdate: Long, listeners: LongMap[Deferred[F, (Option[V], Long)]])
+    type Listener = Deferred[F, (Option[V], Long)]
 
-    F.ref(State(initial, initial.flatMap(_ => Nil)))
+    // fix lastUpdate at -1 when the value is not present
+    // so we don't have to keep an update counter when the key has neither a value nor any listeners
+    case class KeyState(
+        value: Option[V],
+        lastUpdate: Long,
+        listeners: LongMap[Listener]
+    )
+
+    F.ref(State(0L, initial.map { case (k, v) => k -> KeyState(Some(v), 0L, LongMap.empty) }))
       .product(F.ref(1L))
       .map { case (state, ids) =>
         def newId = ids.getAndUpdate(_ + 1)
 
         def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
             : (State, F[U]) = {
-          val (newValue, result) = f(state.value.get(k))
 
-          val newMap = newValue.fold(state.value - k)(v => state.value + (k -> v))
+          val keyState = state.keys.get(k)
 
-          val keyState = state.keyState.get(k)
-          val lastUpdate = keyState.fold(if (newValue.isDefined) 0L else -1L)(_.lastUpdate + 1)
+          val (newValue, result) = f(keyState.flatMap(_.value))
 
-          val newKeyState =
+          val lastUpdate = {
+            val lu = state.lastUpdate + 1
+            // skip -1 b/c of its special semantic
+            if (lu == -1L) 0L else lu
+          }
+
+          val lastKeyUpdate = if (newValue.isDefined) lastUpdate else -1L
+
+          val newKeys =
             if (newValue.isDefined)
-              state.keyState.updated(k, KeyState(lastUpdate, LongMap.empty))
+              state.keys.updated(k, KeyState(newValue, lastKeyUpdate, LongMap.empty))
             else
-              state.keyState - k // prevent memory leak
+              state.keys - k // prevent memory leak
 
-          val newState = State(newMap, keyState)
-          val notifyListeners = keyState.fold(F.unit) { listeners =>
-            listeners.values.toVector.traverse_ { listener =>
-              listener.complete(newValue -> lastUpdate)
+          val newState = State(lastUpdate, newKeys)
+          val notifyListeners = keyState.fold(F.unit) { keyState =>
+            keyState.listeners.values.toVector.traverse_ { listener =>
+              listener.complete(newValue -> lastKeyUpdate)
             }
           }
 
@@ -443,7 +455,7 @@ object SignallingMapRef {
 
         k =>
           new SignallingRef[F, Option[V]] {
-            def get: F[Option[V]] = state.get.map(_.value.get(k))
+            def get: F[Option[V]] = state.get.map(_.keys.get(k).flatMap(_.value))
 
             def continuous: Stream[F, Option[V]] = Stream.repeatEval(get)
 
@@ -451,14 +463,19 @@ object SignallingMapRef {
               def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
                 def getNext: F[(Option[V], Long)] =
                   F.deferred[(Option[V], Long)].flatMap { wait =>
-                    state.modify { case state @ State(value, lastUpdate, listeners) =>
+                    state.modify { state =>
+                      val keyState = state.keys.get(k)
+                      val value = keyState.flatMap(_.value)
+                      val lastUpdate = keyState.fold(-1L)(_.lastUpdate)
+                      val listeners = keyState.fold(LongMap.empty[Listener])(_.listeners)
+
                       if (lastUpdate != lastSeen)
-                        state -> (value.get(k) -> lastUpdate).pure[F]
+                        state -> (value -> lastUpdate).pure[F]
                       else {
-                        val newListeners =
-                          listeners
-                            .updated(k, listeners.getOrElse(k, LongMap.empty) + (id -> wait))
-                        state.copy(listeners = newListeners) -> wait.get
+                        val newKeys =
+                          state.keys
+                            .updated(k, KeyState(value, lastUpdate, listeners.updated(id, wait)))
+                        state.copy(keys = newKeys) -> wait.get
                       }
                     }.flatten
                   }
@@ -469,19 +486,23 @@ object SignallingMapRef {
               }
 
               def cleanup(id: Long): F[Unit] =
-                state.update { s =>
-                  val newListeners = s.listeners
-                    .get(k)
-                    .map(_ - id)
-                    .filterNot(_.isEmpty)
-                    .fold(s.listeners - k)(s.listeners.updated(k, _))
-                  s.copy(listeners = newListeners)
+                state.update { state =>
+                  state.keys.get(k).fold(state) { case KeyState(value, lastUpdate, listeners) =>
+                    val newListeners = listeners - id
+                    val newKeys =
+                      if (value.isEmpty && newListeners.isEmpty)
+                        state.keys - k // prevent memory leak
+                      else
+                        state.keys.updated(k, KeyState(value, lastUpdate, newListeners))
+                    state.copy(keys = newKeys)
+                  }
                 }
 
-              Stream.bracket(newId)(cleanup).flatMap { id =>
-                Stream.eval(state.get).flatMap { state =>
-                  Stream.emit(state.value.get(k)) ++ go(id, state.lastUpdate)
-                }
+              Stream.eval(state.get).flatMap { state =>
+                Stream.emit(state.keys.get(k).flatMap(_.value)) ++
+                  Stream
+                    .bracket(newId)(cleanup)
+                    .flatMap(go(_, state.keys.get(k).fold(-1L)(_.lastUpdate)))
               }
             }
 
@@ -509,7 +530,7 @@ object SignallingMapRef {
                   }
                 }
 
-                (state.value.get(k), setter)
+                (state.keys.get(k).flatMap(_.value), setter)
               }
 
             def tryModifyState[U](state: cats.data.State[Option[V], U]): F[Option[U]] = {
