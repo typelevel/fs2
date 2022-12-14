@@ -392,12 +392,14 @@ object SignallingMapRef {
   /** Builds a `SignallingMapRef` for effect `F`, initialized to the supplied value.
     *
     * Update semantics for `discrete` are the same as `SignallingRef`, with one exception:
-    * if you delete a key by setting its value to `None`, this will only notify once per listener
-    * i.e. setting it to `None` again will not trigger another update. Furthermore, if a listener's
-    * last pull returned `None`, and by the time it pulls again the current value is `None`,
-    * then it will not be notified regardless of any non-`None` updates that may have happened
-    * between the pulls. This special semantic for `None` is necessary to prevent memory leaks at
-    * keys with no values and no listeners.
+    * it cannot distinguish updates that remove a key (by setting its value to `None`).
+    *
+    * More specifically: if you remove a key, this will only notify once per listener
+    * i.e. setting it to `None` again will not trigger another update.
+    * Furthermore, if a listener's last pull returned `None`, and by the time it pulls again the
+    * current value is `None`, then it will not be notified regardless of any non-`None` updates
+    * that may have happened between the pulls. This special semantic for `None` is necessary to
+    * prevent memory leaks at keys with no values and no listeners.
     */
   def ofSingleImmutableMap[F[_], K, V](
       initial: Map[K, V] = Map.empty[K, V]
