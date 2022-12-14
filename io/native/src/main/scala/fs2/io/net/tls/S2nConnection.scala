@@ -189,6 +189,8 @@ private[tls] object S2nConnection {
           val blocked = stackalloc[s2n_blocked_status]()
           guard_(s2n_shutdown(conn, blocked))
           !blocked
+        }.guaranteeCase { oc =>
+          blindingSleep.whenA(oc.isError)
         }.productL {
           val reads = F.delay(readTasks.get).flatten
           val writes = F.delay(writeTasks.get).flatten
