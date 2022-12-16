@@ -190,8 +190,9 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val commonNativeSettings = Seq(
-  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap
+lazy val commonNativeSettings = Seq[Setting[_]](
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
+  Test / nativeBrewFormulas += "openssl"
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -239,9 +240,6 @@ lazy val coreNative = core.native
   .enablePlugins(ScalaNativeBrewedConfigPlugin)
   .disablePlugins(DoctestPlugin)
   .settings(commonNativeSettings)
-  .settings(
-    Test / nativeBrewFormulas += "openssl"
-  )
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
@@ -334,6 +332,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
@@ -347,6 +346,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", scodec, io)
 
