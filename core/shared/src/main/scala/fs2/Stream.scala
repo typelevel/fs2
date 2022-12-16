@@ -1542,10 +1542,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Like [[hold]] but does not require an initial value. The signal is not emitted until the initial value is emitted from this stream */
   def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] =
-    this.pull.uncons1.flatMap {
-      case Some((o, tail)) => tail.hold[F2, O2](o).underlying
-      case None            => Pull.done
-    }.streamNoScope
+    this.pull.stepLeg
+      .flatMap {
+        case Some(leg) =>
+          val hd = leg.head
+          val tl = leg.next
+          val ntl = if (hd.size == 1) tl else Pull.output(hd.drop(1)) >> tl
+          Pull.output1(ntl.stream.hold[F2, O2](hd(0)))
+        case None => Pull.done
+      }
+      .stream
+      .flatten
 
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
