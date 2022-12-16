@@ -219,6 +219,11 @@ class SignalSuite extends Fs2Suite {
     s.compile.drain
   }
 
+  test("hold1".only) {
+    val s = Stream.range(1, 10).metered[IO](1.second).hold1
+    TestControl.executeEmbed(s.compile.drain)
+  }
+
   test("waitUntil") {
     val target = 5
     val expected = 1
