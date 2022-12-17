@@ -29,6 +29,7 @@ import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
+import fs2.io.internal.SocketAddressHelpers._
 
 import scala.scalanative.posix.unistd
 import java.util.concurrent.atomic.AtomicReference
@@ -37,6 +38,7 @@ import FdPollingSocket._
 
 private final class FdPollingSocket[F[_]](
     fd: Int,
+    _remoteAddress: SocketAddress[IpAddress],
     readBuffer: ResizableBuffer[F],
     readMutex: Mutex[F],
     writeMutex: Mutex[F]
@@ -53,8 +55,8 @@ private final class FdPollingSocket[F[_]](
     guard_(unistd.close(fd))
   }
 
-  def localAddress: F[SocketAddress[IpAddress]] = ???
-  def remoteAddress: F[SocketAddress[IpAddress]] = ???
+  def localAddress: F[SocketAddress[IpAddress]] = getLocalAddress(fd)
+  def remoteAddress: F[SocketAddress[IpAddress]] = F.pure(_remoteAddress)
 
   def endOfInput: F[Unit] = ???
   def endOfOutput: F[Unit] = ???
