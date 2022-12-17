@@ -23,10 +23,10 @@ package fs2.io.internal
 
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
-import cats.syntax.all._
 
 import scala.scalanative.libc.errno._
 import scala.scalanative.libc.stdlib._
+import scala.scalanative.posix.string._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
@@ -37,15 +37,15 @@ private[io] final class ResizableBuffer[F[_]] private (
 
   def get(size: Int): F[Ptr[Byte]] = F.delay {
     if (size <= this.size)
-      F.pure(ptr)
+      ptr
     else {
       ptr = realloc(ptr, size.toUInt)
       this.size = size
       if (ptr == null)
-        F.raiseError[Ptr[Byte]](new RuntimeException(s"realloc: ${errno}"))
-      else F.pure(ptr)
+        throw new RuntimeException(fromCString(strerror(errno)))
+      else ptr
     }
-  }.flatten
+  }
 
 }
 
@@ -56,7 +56,7 @@ private[io] object ResizableBuffer {
       F.delay {
         val ptr = malloc(size.toUInt)
         if (ptr == null)
-          throw new RuntimeException(s"malloc: ${errno}")
+          throw new RuntimeException(fromCString(strerror(errno)))
         else new ResizableBuffer(ptr, size)
       }
     }(buf => F.delay(free(buf.ptr)))
