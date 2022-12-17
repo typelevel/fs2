@@ -25,6 +25,7 @@ package io.net
 import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.effect.unsafe.FileDescriptorPoller
+import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
 import fs2.io.internal.NativeUtil._
@@ -33,6 +34,7 @@ import fs2.io.internal.SocketAddressHelpers._
 
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
+import scala.scalanative.unsafe._
 import java.util.concurrent.atomic.AtomicReference
 
 import FdPollingSocket._
@@ -65,7 +67,27 @@ private final class FdPollingSocket[F[_]](
   private[this] val readCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
   private[this] val writeCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
 
-  def notifyFileDescriptorEvents(readReady: Boolean, writeReady: Boolean): Unit = ???
+  def notifyFileDescriptorEvents(readReady: Boolean, writeReady: Boolean): Unit = {
+    if (readReady) {
+      val cb = readCallback.getAndSet(ReadySentinel)
+      if (cb ne null) cb(Either.unit)
+    }
+    if (writeReady) {
+      val cb = writeCallback.getAndSet(ReadySentinel)
+      if (cb ne null) cb(Either.unit)
+    }
+  }
+
+  def awaitReadReady: F[Unit] = F.async { cb =>
+    F.delay {
+      if (readCallback.compareAndSet(null, cb))
+        Some(F.delay(readCallback.compareAndSet(cb, null)))
+      else {
+        cb(Either.unit)
+        None
+      }
+    }
+  }
 
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] = ???
   def readN(numBytes: Int): F[Chunk[Byte]] = ???
