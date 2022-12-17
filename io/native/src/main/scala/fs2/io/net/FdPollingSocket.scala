@@ -31,6 +31,7 @@ import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
 import fs2.io.internal.SocketAddressHelpers._
 
+import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
 import java.util.concurrent.atomic.AtomicReference
 
@@ -58,8 +59,8 @@ private final class FdPollingSocket[F[_]](
   def localAddress: F[SocketAddress[IpAddress]] = getLocalAddress(fd)
   def remoteAddress: F[SocketAddress[IpAddress]] = F.pure(_remoteAddress)
 
-  def endOfInput: F[Unit] = ???
-  def endOfOutput: F[Unit] = ???
+  def endOfInput: F[Unit] = F.delay(guard_(shutdown(fd, 0)))
+  def endOfOutput: F[Unit] = F.delay(guard_(shutdown(fd, 1)))
 
   private[this] val readCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
   private[this] val writeCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
