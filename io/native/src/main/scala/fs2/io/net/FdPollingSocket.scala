@@ -22,12 +22,15 @@
 package fs2
 package io.net
 
+import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.effect.unsafe.FileDescriptorPoller
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
+import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
 
+import scala.scalanative.posix.unistd
 import java.util.concurrent.atomic.AtomicReference
 
 import FdPollingSocket._
@@ -37,10 +40,18 @@ private final class FdPollingSocket[F[_]](
     readBuffer: ResizableBuffer[F],
     readMutex: Mutex[F],
     writeMutex: Mutex[F]
-) extends Socket[F]
+)(implicit F: Async[F])
+    extends Socket[F]
     with FileDescriptorPoller.Callback {
 
-  def isOpen: F[Boolean] = ???
+  @volatile private[this] var open = true
+
+  def isOpen: F[Boolean] = F.delay(open)
+
+  def close: F[Unit] = F.delay {
+    open = false
+    guard_(unistd.close(fd))
+  }
 
   def localAddress: F[SocketAddress[IpAddress]] = ???
   def remoteAddress: F[SocketAddress[IpAddress]] = ???
@@ -49,7 +60,7 @@ private final class FdPollingSocket[F[_]](
   def endOfOutput: F[Unit] = ???
 
   private[this] val readCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
-  private[this] val writeCallback = new AtomicReference[Either[Throwable, Unit] => Unit] 
+  private[this] val writeCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
 
   def notifyFileDescriptorEvents(readReady: Boolean, writeReady: Boolean): Unit = ???
 
