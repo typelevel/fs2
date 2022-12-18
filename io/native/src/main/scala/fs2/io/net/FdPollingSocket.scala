@@ -94,10 +94,10 @@ private final class FdPollingSocket[F[_]](
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readMutex.lock.surround {
     readBuffer.get(maxBytes).flatMap { buf =>
       def go: F[Option[Chunk[Byte]]] =
-        F.delay(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { rtn =>
-          if (rtn > 0)
-            F.delay(Some(Chunk.fromBytePtr(buf, rtn)))
-          else if (rtn == 0)
+        F.delay(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { readed =>
+          if (readed > 0)
+            F.delay(Some(Chunk.fromBytePtr(buf, readed)))
+          else if (readed == 0)
             F.pure(None)
           else
             awaitReadReady *> go
@@ -110,16 +110,17 @@ private final class FdPollingSocket[F[_]](
   def readN(numBytes: Int): F[Chunk[Byte]] = readMutex.lock.surround {
     readBuffer.get(numBytes).flatMap { buf =>
       def go(pos: Int): F[Chunk[Byte]] =
-        F.delay(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong))).flatMap { rtn =>
-          if (rtn > 0) {
-            val newPos = pos + rtn
-            if (newPos < numBytes) go(newPos)
-            else F.delay(Chunk.fromBytePtr(buf, newPos))
-          } else if (rtn == 0)
-            F.delay(Chunk.fromBytePtr(buf, pos))
-          else
-            awaitReadReady *> go(pos)
-        }
+        F.delay(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong)))
+          .flatMap { readed =>
+            if (readed > 0) {
+              val newPos = pos + readed
+              if (newPos < numBytes) go(newPos)
+              else F.delay(Chunk.fromBytePtr(buf, newPos))
+            } else if (readed == 0)
+              F.delay(Chunk.fromBytePtr(buf, pos))
+            else
+              awaitReadReady *> go(pos)
+          }
 
       go(0)
     }
