@@ -30,11 +30,9 @@ import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
-import fs2.io.internal.SocketAddressHelpers._
 
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
-import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 import java.util.concurrent.atomic.AtomicReference
 
@@ -80,7 +78,12 @@ private final class FdPollingSocket[F[_]](
   def awaitReadReady: F[Unit] = F.async { cb =>
     F.delay {
       if (readCallback.compareAndSet(null, cb))
-        Some(F.delay(readCallback.compareAndSet(cb, null)))
+        Some(
+          F.delay {
+            readCallback.compareAndSet(cb, null)
+            ()
+          }
+        )
       else {
         cb(Either.unit)
         None
