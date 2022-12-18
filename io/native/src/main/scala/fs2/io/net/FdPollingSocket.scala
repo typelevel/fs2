@@ -31,8 +31,10 @@ import com.comcast.ip4s.SocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
 
+import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
+import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 import java.util.concurrent.atomic.AtomicReference
 
@@ -128,8 +130,46 @@ private final class FdPollingSocket[F[_]](
 
   def reads: Stream[F, Byte] = Stream.repeatEval(read(DefaultReadSize)).unNoneTerminate.unchunks
 
-  def write(bytes: Chunk[Byte]): F[Unit] = ???
-  def writes: Pipe[F, Byte, Nothing] = ???
+  def awaitWriteReady: F[Unit] = F.async { cb =>
+    F.delay {
+      if (writeCallback.compareAndSet(null, cb))
+        Some(
+          F.delay {
+            writeCallback.compareAndSet(cb, null)
+            ()
+          }
+        )
+      else {
+        cb(Either.unit)
+        None
+      }
+    }
+  }
+
+  def write(bytes: Chunk[Byte]): F[Unit] = writeMutex.lock.surround {
+    val Chunk.ArraySlice(buf, offset, length) = bytes.toArraySlice
+
+    def go(pos: Int): F[Unit] =
+      F.delay {
+        if (LinktimeInfo.isLinux)
+          send(fd, buf.at(offset + pos), (length - pos).toULong, MSG_NOSIGNAL).toInt
+        else
+          unistd.write(fd, buf.at(offset + pos), (length - pos).toULong)
+      }.flatMap { wrote =>
+        if (wrote > 0) {
+          val newPos = pos + wrote
+          if (newPos < length)
+            go(newPos)
+          else
+            F.unit
+        } else
+          awaitWriteReady *> go(pos)
+      }
+
+    go(0)
+  }
+
+  def writes: Pipe[F, Byte, Nothing] = _.chunks.foreach(write(_))
 
 }
 
