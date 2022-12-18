@@ -23,6 +23,7 @@ package fs2.io.internal
 
 import scala.scalanative.annotation.alwaysinline
 import scala.scalanative.libc.errno._
+import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._
 import scala.scalanative.unsafe._
 import java.io.IOException
@@ -36,9 +37,13 @@ private[io] object NativeUtil {
 
   @alwaysinline def guard(thunk: => CInt): CInt = {
     val rtn = thunk
-    if (rtn < 0)
-      throw new IOException(fromCString(strerror(errno)))
-    else
+    if (rtn < 0) {
+      val en = errno
+      if (en == EAGAIN || en == EWOULDBLOCK)
+        rtn
+      else
+        throw new IOException(fromCString(strerror(errno)))
+    } else
       rtn
   }
 

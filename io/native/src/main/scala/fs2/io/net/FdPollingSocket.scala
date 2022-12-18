@@ -35,6 +35,7 @@ import fs2.io.internal.SocketAddressHelpers._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
 import scala.scalanative.unsafe._
+import scala.scalanative.unsigned._
 import java.util.concurrent.atomic.AtomicReference
 
 import FdPollingSocket._
@@ -87,9 +88,41 @@ private final class FdPollingSocket[F[_]](
     }
   }
 
-  def read(maxBytes: Int): F[Option[Chunk[Byte]]] = ???
-  def readN(numBytes: Int): F[Chunk[Byte]] = ???
-  def reads: Stream[F, Byte] = ???
+  def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readMutex.lock.surround {
+    readBuffer.get(maxBytes).flatMap { buf =>
+      def go: F[Option[Chunk[Byte]]] =
+        F.delay(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { rtn =>
+          if (rtn > 0)
+            F.delay(Some(Chunk.fromBytePtr(buf, rtn)))
+          else if (rtn == 0)
+            F.pure(None)
+          else
+            awaitReadReady *> go
+        }
+
+      go
+    }
+  }
+
+  def readN(numBytes: Int): F[Chunk[Byte]] = readMutex.lock.surround {
+    readBuffer.get(numBytes).flatMap { buf =>
+      def go(pos: Int): F[Chunk[Byte]] =
+        F.delay(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong))).flatMap { rtn =>
+          if (rtn > 0) {
+            val newPos = pos + rtn
+            if (newPos < numBytes) go(newPos)
+            else F.delay(Chunk.fromBytePtr(buf, newPos))
+          } else if (rtn == 0)
+            F.delay(Chunk.fromBytePtr(buf, pos))
+          else
+            awaitReadReady *> go(pos)
+        }
+
+      go(0)
+    }
+  }
+
+  def reads: Stream[F, Byte] = Stream.repeatEval(read(DefaultReadSize)).unNoneTerminate.unchunks
 
   def write(bytes: Chunk[Byte]): F[Unit] = ???
   def writes: Pipe[F, Byte, Nothing] = ???
@@ -97,6 +130,8 @@ private final class FdPollingSocket[F[_]](
 }
 
 private object FdPollingSocket {
+
+  private final val DefaultReadSize = 8192
 
   private val ReadySentinel: Either[Throwable, Unit] => Unit = _ => ()
 
