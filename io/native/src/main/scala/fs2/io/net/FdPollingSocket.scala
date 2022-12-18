@@ -41,10 +41,11 @@ import FdPollingSocket._
 
 private final class FdPollingSocket[F[_]](
     fd: Int,
-    _remoteAddress: SocketAddress[IpAddress],
     readBuffer: ResizableBuffer[F],
     readMutex: Mutex[F],
-    writeMutex: Mutex[F]
+    writeMutex: Mutex[F],
+    val localAddress: F[SocketAddress[IpAddress]],
+    val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
     extends Socket[F]
     with FileDescriptorPoller.Callback {
@@ -57,9 +58,6 @@ private final class FdPollingSocket[F[_]](
     open = false
     guard_(unistd.close(fd))
   }
-
-  def localAddress: F[SocketAddress[IpAddress]] = getLocalAddress(fd)
-  def remoteAddress: F[SocketAddress[IpAddress]] = F.pure(_remoteAddress)
 
   def endOfInput: F[Unit] = F.delay(guard_(shutdown(fd, 0)))
   def endOfOutput: F[Unit] = F.delay(guard_(shutdown(fd, 1)))
