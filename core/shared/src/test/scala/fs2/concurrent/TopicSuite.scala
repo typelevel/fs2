@@ -177,7 +177,7 @@ class TopicSuite extends Fs2Suite {
   test("return empty stream if closed") {
     val program = for {
       topic <- Topic[IO, Int]
-      _ <- Stream(1, 2, 3).through(topic.publish).compile.drain
+      _ <- topic.close
       _ <- topic.subscribeUnbounded.compile.drain
     } yield ()
     
