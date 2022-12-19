@@ -181,7 +181,7 @@ class TopicSuite extends Fs2Suite {
       _ <- topic.close
       _ <- topic.subscribeUnbounded.compile.drain
     } yield ()
-    
+
     TestControl.executeEmbed(program) // will fail if program is deadlocked
   }
 }
