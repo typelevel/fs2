@@ -4650,7 +4650,6 @@ object Stream extends StreamLowPriority {
       *      |  }.stream.compile.toVector.unsafeRunSync()
       * res0: Vector[String] = Vector(elem, late!, elem, late!, elem)
       * }}}
-      *
       */
     def timed[O2, R](
         pull: Pull.Timed[F, O] => Pull[F, O2, R]
