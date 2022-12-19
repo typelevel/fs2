@@ -173,4 +173,14 @@ class TopicSuite extends Fs2Suite {
       .map(it => assert(it.size <= 11))
     // if the stream won't be discrete we will get much more size notifications
   }
+
+  test("return empty stream if closed") {
+    val program = for {
+      topic <- Topic[IO, Int]
+      _ <- Stream(1, 2, 3).through(topic.publish).compile.drain
+      _ <- topic.subscribeUnbounded.compile.drain
+    } yield ()
+    
+    program.timeout(5.seconds) // will timeout if program is deadlocked
+  }
 }
