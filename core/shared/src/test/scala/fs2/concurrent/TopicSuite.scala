@@ -25,6 +25,7 @@ package concurrent
 import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
+import cats.effect.testkit.TestControl
 
 class TopicSuite extends Fs2Suite {
   test("subscribers see all elements published") {
@@ -181,6 +182,6 @@ class TopicSuite extends Fs2Suite {
       _ <- topic.subscribeUnbounded.compile.drain
     } yield ()
     
-    program.timeout(5.seconds) // will timeout if program is deadlocked
+    TestControl.executeEmbed(program)
   }
 }
