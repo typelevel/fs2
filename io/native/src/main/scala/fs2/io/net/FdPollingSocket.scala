@@ -22,9 +22,10 @@
 package fs2
 package io.net
 
+import cats.effect.FileDescriptorPollHandle
+import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.Async
-import cats.effect.std.Mutex
-import cats.effect.unsafe.FileDescriptorPoller
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
@@ -36,20 +37,15 @@ import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
-import java.util.concurrent.atomic.AtomicReference
 
-import FdPollingSocket._
-
-private final class FdPollingSocket[F[_]](
+private final class FdPollingSocket[F[_]: LiftIO](
     fd: Int,
+    handle: FileDescriptorPollHandle,
     readBuffer: ResizableBuffer[F],
-    readMutex: Mutex[F],
-    writeMutex: Mutex[F],
     val localAddress: F[SocketAddress[IpAddress]],
     val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
-    extends Socket[F]
-    with FileDescriptorPoller.Callback {
+    extends Socket[F] {
 
   @volatile private[this] var open = true
 
@@ -63,120 +59,65 @@ private final class FdPollingSocket[F[_]](
   def endOfInput: F[Unit] = F.delay(guard_(shutdown(fd, 0)))
   def endOfOutput: F[Unit] = F.delay(guard_(shutdown(fd, 1)))
 
-  private[this] val readCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
-  private[this] val writeCallback = new AtomicReference[Either[Throwable, Unit] => Unit]
-
-  def notifyFileDescriptorEvents(readReady: Boolean, writeReady: Boolean): Unit = {
-    if (readReady) {
-      val cb = readCallback.getAndSet(ReadySentinel)
-      if (cb ne null) cb(Either.unit)
-    }
-    if (writeReady) {
-      val cb = writeCallback.getAndSet(ReadySentinel)
-      if (cb ne null) cb(Either.unit)
-    }
-  }
-
-  def awaitReadReady: F[Unit] = F.async { cb =>
-    F.delay {
-      if (readCallback.compareAndSet(null, cb))
-        Some(
-          F.delay {
-            readCallback.compareAndSet(cb, null)
-            ()
-          }
-        )
-      else {
-        cb(Either.unit)
-        None
-      }
-    }
-  }
-
-  def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readMutex.lock.surround {
-    readBuffer.get(maxBytes).flatMap { buf =>
-      def go: F[Option[Chunk[Byte]]] =
-        F.delay(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { readed =>
+  def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readBuffer.get(maxBytes).use { buf =>
+    handle
+      .pollReadRec(()) { _ =>
+        IO(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { readed =>
           if (readed > 0)
-            F.delay(Some(Chunk.fromBytePtr(buf, readed)))
+            IO(Right(Some(Chunk.fromBytePtr(buf, readed))))
           else if (readed == 0)
-            F.pure(None)
+            IO.pure(Right(None))
           else
-            awaitReadReady *> go
+            IO.pure(Left(()))
+        }
+      }
+      .to
+  }
+
+  def readN(numBytes: Int): F[Chunk[Byte]] =
+    readBuffer.get(numBytes).use { buf =>
+      def go(pos: Int): IO[Either[Int, Chunk[Byte]]] =
+        IO(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong))).flatMap { readed =>
+          if (readed > 0) {
+            val newPos = pos + readed
+            if (newPos < numBytes) go(newPos)
+            else IO(Right(Chunk.fromBytePtr(buf, newPos)))
+          } else if (readed == 0)
+            IO(Right(Chunk.fromBytePtr(buf, pos)))
+          else
+            IO.pure(Left(pos))
         }
 
-      go
+      handle.pollReadRec(0)(go(_)).to
     }
-  }
 
-  def readN(numBytes: Int): F[Chunk[Byte]] = readMutex.lock.surround {
-    readBuffer.get(numBytes).flatMap { buf =>
-      def go(pos: Int): F[Chunk[Byte]] =
-        F.delay(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong)))
-          .flatMap { readed =>
-            if (readed > 0) {
-              val newPos = pos + readed
-              if (newPos < numBytes) go(newPos)
-              else F.delay(Chunk.fromBytePtr(buf, newPos))
-            } else if (readed == 0)
-              F.delay(Chunk.fromBytePtr(buf, pos))
-            else
-              awaitReadReady *> go(pos)
-          }
-
-      go(0)
-    }
-  }
+  private[this] final val DefaultReadSize = 8192
 
   def reads: Stream[F, Byte] = Stream.repeatEval(read(DefaultReadSize)).unNoneTerminate.unchunks
 
-  def awaitWriteReady: F[Unit] = F.async { cb =>
-    F.delay {
-      if (writeCallback.compareAndSet(null, cb))
-        Some(
-          F.delay {
-            writeCallback.compareAndSet(cb, null)
-            ()
-          }
-        )
-      else {
-        cb(Either.unit)
-        None
-      }
-    }
-  }
-
-  def write(bytes: Chunk[Byte]): F[Unit] = writeMutex.lock.surround {
+  def write(bytes: Chunk[Byte]): F[Unit] = {
     val Chunk.ArraySlice(buf, offset, length) = bytes.toArraySlice
 
-    def go(pos: Int): F[Unit] =
-      F.delay {
+    def go(pos: Int): IO[Either[Int, Unit]] =
+      IO {
         if (LinktimeInfo.isLinux)
           send(fd, buf.at(offset + pos), (length - pos).toULong, MSG_NOSIGNAL).toInt
         else
           unistd.write(fd, buf.at(offset + pos), (length - pos).toULong)
       }.flatMap { wrote =>
-        if (wrote > 0) {
+        if (wrote >= 0) {
           val newPos = pos + wrote
           if (newPos < length)
             go(newPos)
           else
-            F.unit
+            IO.pure(Either.unit)
         } else
-          awaitWriteReady *> go(pos)
+          IO.pure(Left(pos))
       }
 
-    go(0)
+    handle.pollWriteRec(0)(go(_)).to
   }
 
   def writes: Pipe[F, Byte, Nothing] = _.chunks.foreach(write(_))
-
-}
-
-private object FdPollingSocket {
-
-  private final val DefaultReadSize = 8192
-
-  private val ReadySentinel: Either[Throwable, Unit] => Unit = _ => ()
 
 }
