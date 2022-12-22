@@ -37,9 +37,7 @@ import fs2.io.internal.syssocket._
 import fs2.io.internal.sysun._
 import fs2.io.internal.sysunOps._
 
-import scala.scalanative.libc.errno._
 import scala.scalanative.meta.LinktimeInfo
-import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
 import scala.scalanative.posix.unistd._
@@ -60,16 +58,8 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
             if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
             else
               IO {
-                if (connect(fd, addr, sizeof[sockaddr_un].toUInt) < 0) {
-                  val e = errno
-                  if (e == EAGAIN)
-                    Left(true) // we will be connected when we unblock
-                  else if (e == ECONNREFUSED)
-                    throw new ConnectException(fromCString(strerror(errno)))
-                  else
-                    throw new IOException(fromCString(strerror(errno)))
-                } else
-                  Either.unit
+                guard_(connect(fd, addr, sizeof[sockaddr_un].toUInt))
+                Either.unit[Boolean]
               }
           }
           .to
