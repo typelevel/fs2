@@ -21,8 +21,11 @@
 
 package fs2.io.internal
 
+import cats.effect.Sync
+
 import scala.scalanative.annotation.alwaysinline
 import scala.scalanative.libc.errno._
+import scala.scalanative.posix.fcntl._
 import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._
 import scala.scalanative.unsafe._
@@ -45,6 +48,10 @@ private[io] object NativeUtil {
         throw new IOException(fromCString(strerror(errno)))
     } else
       rtn
+  }
+
+  def setNonBlocking[F[_]](fd: CInt)(implicit F: Sync[F]): F[Unit] = F.delay {
+    guard_(fcntl(fd, F_SETFL, O_NONBLOCK))
   }
 
 }

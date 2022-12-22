@@ -31,20 +31,59 @@ import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 
 import java.io.IOException
+import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.arpa.inet._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.sys.socketOps._
+import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import NativeUtil._
 import netinetin._
 import netinetinOps._
+import syssocket._
 
-private[io] object SocketAddressHelpers {
+private[io] object SocketHelpers {
+
+  def openNonBlocking[F[_]](domain: CInt, `type`: CInt)(implicit F: Sync[F]): Resource[F, CInt] =
+    Resource
+      .make {
+        F.delay {
+          val SOCK_NONBLOCK =
+            if (LinktimeInfo.isLinux)
+              syssocket.SOCK_NONBLOCK
+            else 0
+
+          guard(socket(domain, `type` | SOCK_NONBLOCK, 0))
+        }
+      }(fd => F.delay(guard_(close(fd))))
+      .evalTap { fd =>
+        (if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit) *>
+          (if (LinktimeInfo.isMac) setNoSigPipe(fd) else F.unit)
+      }
+
+  // macOS-only
+  def setNoSigPipe[F[_]: Sync](fd: CInt): F[Unit] =
+    setOption(fd, SO_NOSIGPIPE, true)
+
+  def setOption[F[_]](fd: CInt, option: CInt, value: Boolean)(implicit F: Sync[F]): F[Unit] =
+    F.delay {
+      val ptr = stackalloc[CInt]()
+      !ptr = if (value.asInstanceOf[java.lang.Boolean]) 1 else 0
+      guard_(
+        setsockopt(
+          fd,
+          SOL_SOCKET,
+          option,
+          ptr.asInstanceOf[Ptr[Byte]],
+          sizeof[CInt].toUInt
+        )
+      )
+    }
 
   def getLocalAddress[F[_]](fd: Int)(implicit F: Sync[F]): F[SocketAddress[IpAddress]] =
-    SocketAddressHelpers.toSocketAddress { (addr, len) =>
+    SocketHelpers.toSocketAddress { (addr, len) =>
       F.delay(guard_(getsockname(fd, addr, len)))
     }
 

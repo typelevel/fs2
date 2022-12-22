@@ -26,6 +26,7 @@ import cats.effect.FileDescriptorPollHandle
 import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.Async
+import cats.effect.kernel.Resource
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
@@ -38,23 +39,17 @@ import scala.scalanative.posix.unistd
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
-private final class FdPollingSocket[F[_]: LiftIO](
+import FdPollingSocket._
+
+private final class FdPollingSocket[F[_]: LiftIO] private (
     fd: Int,
     handle: FileDescriptorPollHandle,
     readBuffer: ResizableBuffer[F],
+    val isOpen: F[Boolean],
     val localAddress: F[SocketAddress[IpAddress]],
     val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
     extends Socket[F] {
-
-  @volatile private[this] var open = true
-
-  def isOpen: F[Boolean] = F.delay(open)
-
-  def close: F[Unit] = F.delay {
-    open = false
-    guard_(unistd.close(fd))
-  }
 
   def endOfInput: F[Unit] = F.delay(guard_(shutdown(fd, 0)))
   def endOfOutput: F[Unit] = F.delay(guard_(shutdown(fd, 1)))
@@ -91,8 +86,6 @@ private final class FdPollingSocket[F[_]: LiftIO](
       handle.pollReadRec(0)(go(_)).to
     }
 
-  private[this] final val DefaultReadSize = 8192
-
   def reads: Stream[F, Byte] = Stream.repeatEval(read(DefaultReadSize)).unNoneTerminate.unchunks
 
   def write(bytes: Chunk[Byte]): F[Unit] = {
@@ -120,4 +113,18 @@ private final class FdPollingSocket[F[_]: LiftIO](
 
   def writes: Pipe[F, Byte, Nothing] = _.chunks.foreach(write(_))
 
+}
+
+private object FdPollingSocket {
+  private final val DefaultReadSize = 8192
+
+  def apply[F[_]: LiftIO](
+      fd: Int,
+      handle: FileDescriptorPollHandle,
+      localAddress: F[SocketAddress[IpAddress]],
+      remoteAddress: F[SocketAddress[IpAddress]]
+  )(implicit F: Async[F]): Resource[F, Socket[F]] = for {
+    buffer <- ResizableBuffer(DefaultReadSize)
+    isOpen <- Resource.make(F.ref(true))(_.set(false))
+  } yield new FdPollingSocket(fd, handle, buffer, isOpen.get, localAddress, remoteAddress)
 }
