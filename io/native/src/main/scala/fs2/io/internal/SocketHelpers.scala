@@ -270,18 +270,13 @@ private[io] object SocketHelpers {
   }
 
   def toSocketAddress(addr: Ptr[sockaddr]): SocketAddress[IpAddress] = {
-    val sa_family =
-      if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
-        addr.sa_family.asInstanceOf[bsd_len_family]._2.toInt
-      else
-        addr.sa_family.toInt
-
+    val sa_family = addr.sa_family.toInt
     if (sa_family == AF_INET)
       toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
     else if (sa_family == AF_INET6)
       toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
     else
-      throw new IOException(s"Unsupported sa_family: ${addr.sa_family}")
+      throw new IOException(s"Unsupported sa_family: $sa_family")
   }
 
   private[this] def toIpv4SocketAddress(addr: Ptr[sockaddr_in]): SocketAddress[Ipv4Address] = {

@@ -66,12 +66,12 @@ private[io] object netinetinOps {
   implicit final class sockaddr_inOps(val sockaddr_in: Ptr[sockaddr_in]) extends AnyVal {
     def sin_family: sa_family_t =
       if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
-        sockaddr_in.at1.asInstanceOf[bsd_len_family]._2
+        sockaddr_in.at1.asInstanceOf[Ptr[bsd_len_family]]._2
       else
         sockaddr_in._1
     def sin_family_=(sin_family: sa_family_t): Unit =
       if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
-        sockaddr_in.at1.asInstanceOf[bsd_len_family]._2 = sin_family.toUByte
+        sockaddr_in.at1.asInstanceOf[Ptr[bsd_len_family]]._2 = sin_family.toUByte
       else
         sockaddr_in._1 = sin_family
     def sin_port: in_port_t = sockaddr_in._2
@@ -87,12 +87,12 @@ private[io] object netinetinOps {
 
   implicit final class sockaddr_in6Ops(val sockaddr_in6: Ptr[sockaddr_in6]) extends AnyVal {
     def sin6_family: sa_family_t = if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
-      sockaddr_in6.asInstanceOf[bsd_len_family]._2
+      sockaddr_in6.asInstanceOf[Ptr[bsd_len_family]]._2
     else
       sockaddr_in6._1
     def sin6_family_=(sin6_family: sa_family_t): Unit =
       if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
-        sockaddr_in6.at1.asInstanceOf[bsd_len_family]._2 = sin6_family.toUByte
+        sockaddr_in6.at1.asInstanceOf[Ptr[bsd_len_family]]._2 = sin6_family.toUByte
       else sockaddr_in6._1 = sin6_family
     def sin6_port: in_port_t = sockaddr_in6._2
     def sin6_port_=(sin6_port: in_port_t): Unit = sockaddr_in6._2 = sin6_port
