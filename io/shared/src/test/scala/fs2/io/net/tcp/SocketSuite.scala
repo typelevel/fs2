@@ -218,7 +218,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
 
-    test("read after timed out read not allowed on JVM or Native") {
+    test("read after timed out read not allowed on JVM") {
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (bindAddress, server) = serverSetup
@@ -239,7 +239,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               client
                 .readN(msg.size)
                 .flatMap { c =>
-                  if (isJVM || isNative) {
+                  if (isJVM) {
                     assertEquals(c.size, 0)
                     // Read again now that the pending read is no longer pending
                     client.readN(msg.size).map(c => assertEquals(c.size, 0))

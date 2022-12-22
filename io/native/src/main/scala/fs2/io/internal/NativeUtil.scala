@@ -23,13 +23,15 @@ package fs2.io.internal
 
 import cats.effect.Sync
 
+import java.io.IOException
+import java.net.BindException
+import java.net.ConnectException
 import scala.scalanative.annotation.alwaysinline
 import scala.scalanative.libc.errno._
 import scala.scalanative.posix.fcntl._
 import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._
 import scala.scalanative.unsafe._
-import java.io.IOException
 
 private[io] object NativeUtil {
 
@@ -41,11 +43,18 @@ private[io] object NativeUtil {
   @alwaysinline def guard(thunk: => CInt): CInt = {
     val rtn = thunk
     if (rtn < 0) {
-      val en = errno
-      if (en == EAGAIN || en == EWOULDBLOCK)
+      val e = errno
+      if (e == EAGAIN || e == EWOULDBLOCK)
         rtn
-      else
-        throw new IOException(fromCString(strerror(errno)))
+      else {
+        val msg = fromCString(strerror(e))
+        if (e == EADDRINUSE /* || e == EADDRNOTAVAIL */ )
+          throw new BindException(msg)
+        else if (e == ECONNREFUSED)
+          throw new ConnectException(msg)
+        else
+          throw new IOException(msg)
+      }
     } else
       rtn
   }
