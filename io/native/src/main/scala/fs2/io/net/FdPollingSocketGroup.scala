@@ -36,10 +36,8 @@ import fs2.io.internal.syssocket._
 import scala.scalanative.libc.errno._
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.errno._
-import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
 import scala.scalanative.posix.unistd._
-import scala.scalanative.unsafe._
 
 private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F])
     extends SocketGroup[F] {
@@ -62,10 +60,8 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
                   val e = errno
                   if (e == EINPROGRESS)
                     Left(true) // we will be connected when we unblock
-                  else if (e == ECONNREFUSED)
-                    throw new ConnectException(fromCString(strerror(errno)))
                   else
-                    throw new IOException(fromCString(strerror(errno)))
+                    throw errnoToThrowable(e)
                 } else
                   Either.unit
               }

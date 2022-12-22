@@ -94,9 +94,9 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     def go(pos: Int): IO[Either[Int, Unit]] =
       IO {
         if (LinktimeInfo.isLinux)
-          send(fd, buf.at(offset + pos), (length - pos).toULong, MSG_NOSIGNAL).toInt
+          guardSSize(send(fd, buf.at(offset + pos), (length - pos).toULong, MSG_NOSIGNAL)).toInt
         else
-          unistd.write(fd, buf.at(offset + pos), (length - pos).toULong)
+          guard(unistd.write(fd, buf.at(offset + pos), (length - pos).toULong))
       }.flatMap { wrote =>
         if (wrote >= 0) {
           val newPos = pos + wrote

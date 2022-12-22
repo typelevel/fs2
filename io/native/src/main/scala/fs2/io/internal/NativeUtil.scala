@@ -46,17 +46,30 @@ private[io] object NativeUtil {
       val e = errno
       if (e == EAGAIN || e == EWOULDBLOCK)
         rtn
-      else {
-        val msg = fromCString(strerror(e))
-        if (e == EADDRINUSE /* || e == EADDRNOTAVAIL */ )
-          throw new BindException(msg)
-        else if (e == ECONNREFUSED)
-          throw new ConnectException(msg)
-        else
-          throw new IOException(msg)
-      }
+      else throw errnoToThrowable(e)
     } else
       rtn
+  }
+
+  @alwaysinline def guardSSize(thunk: => CSSize): CSSize = {
+    val rtn = thunk
+    if (rtn < 0) {
+      val e = errno
+      if (e == EAGAIN || e == EWOULDBLOCK)
+        rtn
+      else throw errnoToThrowable(e)
+    } else
+      rtn
+  }
+
+  @alwaysinline def errnoToThrowable(e: CInt): Throwable = {
+    val msg = fromCString(strerror(e))
+    if (e == EADDRINUSE /* || e == EADDRNOTAVAIL */ )
+      new BindException(msg)
+    else if (e == ECONNREFUSED)
+      new ConnectException(msg)
+    else
+      new IOException(msg)
   }
 
   def setNonBlocking[F[_]](fd: CInt)(implicit F: Sync[F]): F[Unit] = F.delay {
