@@ -35,6 +35,9 @@ private[io] object syssocket {
   def bind(sockfd: CInt, addr: Ptr[sockaddr], addrlen: socklen_t): CInt =
     extern
 
+  def connect(sockfd: CInt, addr: Ptr[sockaddr], addrlen: socklen_t): CInt =
+    extern
+
   def accept(sockfd: CInt, addr: Ptr[sockaddr], addrlen: Ptr[socklen_t]): CInt =
     extern
 
