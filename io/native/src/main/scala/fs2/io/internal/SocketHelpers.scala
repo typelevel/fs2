@@ -160,8 +160,10 @@ private[io] object SocketHelpers {
   }
 
   def getLocalAddress[F[_]](fd: Int)(implicit F: Sync[F]): F[SocketAddress[IpAddress]] =
-    SocketHelpers.toSocketAddress { (addr, len) =>
-      F.delay(guard_(getsockname(fd, addr, len)))
+    F.delay {
+      SocketHelpers.toSocketAddress { (addr, len) =>
+        guard_(getsockname(fd, addr, len))
+      }
     }
 
   def toSockaddr[A](
@@ -249,24 +251,31 @@ private[io] object SocketHelpers {
     }
   }
 
-  def toSocketAddress[F[_]](
-      f: (Ptr[sockaddr], Ptr[socklen_t]) => F[Unit]
-  )(implicit F: Sync[F]): F[SocketAddress[IpAddress]] = {
+  def allocateSockaddr[A](
+      f: (Ptr[sockaddr], Ptr[socklen_t]) => A
+  ): A = {
     val addr = // allocate enough for an IPv6
       stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]]
     val len = stackalloc[socklen_t]()
     !len = sizeof[sockaddr_in6].toUInt
 
-    f(addr, len) *> toSocketAddress(addr)
+    f(addr, len)
   }
 
-  def toSocketAddress[F[_]](addr: Ptr[sockaddr])(implicit F: Sync[F]): F[SocketAddress[IpAddress]] =
+  def toSocketAddress[A](
+      f: (Ptr[sockaddr], Ptr[socklen_t]) => Unit
+  ): SocketAddress[IpAddress] = allocateSockaddr { (addr, len) =>
+    f(addr, len)
+    toSocketAddress(addr)
+  }
+
+  def toSocketAddress(addr: Ptr[sockaddr]): SocketAddress[IpAddress] =
     if (addr.sa_family.toInt == AF_INET)
-      F.pure(toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]]))
+      toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
     else if (addr.sa_family.toInt == AF_INET6)
-      F.pure(toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]]))
+      toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
     else
-      F.raiseError(new IOException(s"Unsupported sa_family: ${addr.sa_family}"))
+      throw new IOException(s"Unsupported sa_family: ${addr.sa_family}")
 
   private[this] def toIpv4SocketAddress(addr: Ptr[sockaddr_in]): SocketAddress[Ipv4Address] = {
     val port = Port.fromInt(ntohs(addr.sin_port).toInt).get
