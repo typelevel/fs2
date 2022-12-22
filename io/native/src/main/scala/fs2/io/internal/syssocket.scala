@@ -25,8 +25,6 @@ import scala.scalanative.posix.inttypes._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.unsafe._
 
-import syssocket._
-
 @extern
 private[io] object syssocket {
   type bsd_len_family = CStruct2[uint8_t, uint8_t]
