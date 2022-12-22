@@ -31,8 +31,12 @@ import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 
 import java.io.IOException
+import java.net.SocketOption
+import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.arpa.inet._
+import scala.scalanative.posix.netinet.in.IPPROTO_TCP
+import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.sys.socketOps._
@@ -68,14 +72,70 @@ private[io] object SocketHelpers {
   def setNoSigPipe[F[_]: Sync](fd: CInt): F[Unit] =
     setOption(fd, SO_NOSIGPIPE, true)
 
+  def setOption[F[_]: Sync, T](fd: CInt, name: SocketOption[T], value: T): F[Unit] = name match {
+    case StandardSocketOptions.SO_SNDBUF =>
+      setOption(
+        fd,
+        SO_SNDBUF,
+        value.asInstanceOf[java.lang.Integer]
+      )
+    case StandardSocketOptions.SO_RCVBUF =>
+      setOption(
+        fd,
+        SO_RCVBUF,
+        value.asInstanceOf[java.lang.Integer]
+      )
+    case StandardSocketOptions.SO_REUSEADDR =>
+      setOption(
+        fd,
+        SO_REUSEADDR,
+        value.asInstanceOf[java.lang.Boolean]
+      )
+    case StandardSocketOptions.SO_REUSEPORT =>
+      SocketHelpers.setOption(
+        fd,
+        SO_REUSEPORT,
+        value.asInstanceOf[java.lang.Boolean]
+      )
+    case StandardSocketOptions.SO_KEEPALIVE =>
+      SocketHelpers.setOption(
+        fd,
+        SO_KEEPALIVE,
+        value.asInstanceOf[java.lang.Boolean]
+      )
+    case StandardSocketOptions.TCP_NODELAY =>
+      setTcpOption(
+        fd,
+        TCP_NODELAY,
+        value.asInstanceOf[java.lang.Boolean]
+      )
+    case _ => throw new IllegalArgumentException
+  }
+
   def setOption[F[_]](fd: CInt, option: CInt, value: Boolean)(implicit F: Sync[F]): F[Unit] =
+    setOptionImpl(fd, SOL_SOCKET, option, if (value) 1 else 0)
+
+  def setOption[F[_]](fd: CInt, option: CInt, value: CInt)(implicit F: Sync[F]): F[Unit] =
+    setOptionImpl(fd, SOL_SOCKET, option, value)
+
+  def setTcpOption[F[_]](fd: CInt, option: CInt, value: Boolean)(implicit F: Sync[F]): F[Unit] =
+    setOptionImpl(
+      fd,
+      IPPROTO_TCP, // aka SOL_TCP
+      option,
+      if (value) 1 else 0
+    )
+
+  def setOptionImpl[F[_]](fd: CInt, level: CInt, option: CInt, value: CInt)(implicit
+      F: Sync[F]
+  ): F[Unit] =
     F.delay {
       val ptr = stackalloc[CInt]()
-      !ptr = if (value.asInstanceOf[java.lang.Boolean]) 1 else 0
+      !ptr = value
       guard_(
         setsockopt(
           fd,
-          SOL_SOCKET,
+          level,
           option,
           ptr.asInstanceOf[Ptr[Byte]],
           sizeof[CInt].toUInt
@@ -103,18 +163,6 @@ private[io] object SocketHelpers {
     SocketHelpers.toSocketAddress { (addr, len) =>
       F.delay(guard_(getsockname(fd, addr, len)))
     }
-
-  def allocateSockaddr[F[_]](implicit F: Sync[F]): Resource[F, (Ptr[sockaddr], Ptr[socklen_t])] =
-    Resource
-      .make(F.delay(Zone.open()))(z => F.delay(z.close()))
-      .evalMap { implicit z =>
-        F.delay {
-          val addr = // allocate enough for an IPv6
-            alloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]]
-          val len = alloc[socklen_t]()
-          (addr, len)
-        }
-      }
 
   def toSockaddr[A](
       address: SocketAddress[IpAddress]
