@@ -143,7 +143,7 @@ private[io] object SocketHelpers {
       )
     }
 
-  def raiseSocketError[F[_]](fd: Int)(implicit F: Sync[F]): F[Unit] = F.delay {
+  def checkSocketError[F[_]](fd: Int)(implicit F: Sync[F]): F[Unit] = F.delay {
     val optval = stackalloc[CInt]()
     val optlen = stackalloc[socklen_t]()
     guard_ {

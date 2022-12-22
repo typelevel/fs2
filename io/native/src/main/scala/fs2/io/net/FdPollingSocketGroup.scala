@@ -54,7 +54,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
     _ <- Resource.eval {
       handle
         .pollWriteRec(false) { connected =>
-          if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
+          if (connected) SocketHelpers.checkSocketError[IO](fd).as(Either.unit)
           else
             IO {
               SocketHelpers.toSockaddr(address) { (addr, len) =>

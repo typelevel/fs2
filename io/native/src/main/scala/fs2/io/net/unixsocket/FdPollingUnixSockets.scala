@@ -54,7 +54,7 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
     _ <- Resource.eval {
       handle
         .pollWriteRec(false) { connected =>
-          if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
+          if (connected) SocketHelpers.checkSocketError[IO](fd).as(Either.unit)
           else
             IO {
               toSockaddrUn(address.path) { addr =>
