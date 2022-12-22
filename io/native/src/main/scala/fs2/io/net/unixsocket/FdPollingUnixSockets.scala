@@ -100,9 +100,9 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
                   IO {
                     val clientFd =
                       if (LinktimeInfo.isLinux)
-                        guard(accept(fd, null, null))
-                      else
                         guard(accept4(fd, null, null, SOCK_NONBLOCK))
+                      else
+                        guard(accept(fd, null, null))
 
                     if (clientFd >= 0)
                       Right(clientFd)
