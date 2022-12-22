@@ -58,8 +58,10 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
             if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
             else
               IO {
-                guard_(connect(fd, addr, sizeof[sockaddr_un].toUInt))
-                Either.unit[Boolean]
+                if (guard(connect(fd, addr, sizeof[sockaddr_un].toUInt)) < 0)
+                  Left(true) // we will be connected when unblocked
+                else
+                  Either.unit[Boolean]
               }
           }
           .to
