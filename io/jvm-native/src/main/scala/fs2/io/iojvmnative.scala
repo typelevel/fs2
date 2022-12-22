@@ -22,45 +22,15 @@
 package fs2
 package io
 
-import cats._
 import cats.effect.kernel.Sync
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
 
-import java.nio.charset.Charset
-import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
 
 private[fs2] trait iojvmnative {
   type InterruptedIOException = java.io.InterruptedIOException
   type ClosedChannelException = java.nio.channels.ClosedChannelException
-
-  //
-  // STDIN/STDOUT Helpers
-
-  /** Stream of bytes read asynchronously from standard input. */
-  def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
-    readInputStream(Sync[F].blocking(System.in), bufSize, false)
-
-  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
-  def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] =
-    writeOutputStream(Sync[F].blocking(System.out), false)
-
-  /** Pipe of bytes that writes emitted values to standard error asynchronously. */
-  def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
-    writeOutputStream(Sync[F].blocking(System.err), false)
-
-  /** Writes this stream to standard output asynchronously, converting each element to
-    * a sequence of bytes via `Show` and the given `Charset`.
-    */
-  def stdoutLines[F[_]: Sync, O: Show](
-      charset: Charset = StandardCharsets.UTF_8
-  ): Pipe[F, O, Nothing] =
-    _.map(_.show).through(text.encode(charset)).through(stdout)
-
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
-    stdin(bufSize).through(text.utf8.decode)
 
   /** Stream of bytes read asynchronously from the specified resource relative to the class `C`.
     * @see [[readClassLoaderResource]] for a resource relative to a classloader.
