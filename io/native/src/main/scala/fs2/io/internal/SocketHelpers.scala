@@ -33,6 +33,7 @@ import com.comcast.ip4s.SocketAddress
 import java.io.IOException
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.arpa.inet._
+import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.sys.socketOps._
 import scala.scalanative.posix.unistd._
@@ -81,6 +82,22 @@ private[io] object SocketHelpers {
         )
       )
     }
+
+  def raiseSocketError[F[_]](fd: Int)(implicit F: Sync[F]): F[Unit] = F.delay {
+    val optval = stackalloc[CInt]()
+    val optlen = stackalloc[socklen_t]()
+    guard_ {
+      getsockopt(
+        fd,
+        SOL_SOCKET,
+        SO_ERROR,
+        optval.asInstanceOf[Ptr[Byte]],
+        optlen
+      )
+    }
+    if (!optval != 0)
+      throw new IOException(fromCString(strerror(!optval)))
+  }
 
   def getLocalAddress[F[_]](fd: Int)(implicit F: Sync[F]): F[SocketAddress[IpAddress]] =
     SocketHelpers.toSocketAddress { (addr, len) =>

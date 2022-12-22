@@ -57,12 +57,12 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
       toSockaddrUn(address.path).use { addr =>
         handle
           .pollWriteRec(false) { connected =>
-            if (connected) IO.pure(Either.unit)
+            if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
             else
               IO {
                 if (connect(fd, addr, sizeof[sockaddr_un].toUInt) < 0) {
                   val e = errno
-                  if (e == EINPROGRESS)
+                  if (e == EAGAIN)
                     Left(true) // we will be connected when we unblock
                   else if (e == ECONNREFUSED)
                     throw new ConnectException(fromCString(strerror(errno)))
