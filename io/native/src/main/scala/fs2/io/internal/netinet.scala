@@ -21,9 +21,12 @@
 
 package fs2.io.internal
 
-import scalanative.unsafe._
-import scalanative.posix.inttypes._
-import scalanative.posix.sys.socket._
+import scala.scalanative.meta.LinktimeInfo
+import scala.scalanative.posix.inttypes._
+import scala.scalanative.posix.sys.socket._
+import scala.scalanative.unsafe._
+
+import syssocket.bsd_len_family
 
 private[io] object netinetin {
   import Nat._
@@ -61,8 +64,16 @@ private[io] object netinetinOps {
   }
 
   implicit final class sockaddr_inOps(val sockaddr_in: Ptr[sockaddr_in]) extends AnyVal {
-    def sin_family: sa_family_t = sockaddr_in._1
-    def sin_family_=(sin_family: sa_family_t): Unit = sockaddr_in._1 = sin_family
+    def sin_family: sa_family_t =
+      if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
+        sockaddr_in.at1.asInstanceOf[bsd_len_family]._2
+      else
+        sockaddr_in._1
+    def sin_family_=(sin_family: sa_family_t): Unit =
+      if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
+        sockaddr_in.at1.asInstanceOf[bsd_len_family]._2 = sin_family.toUByte
+      else
+        sockaddr_in._1 = sin_family
     def sin_port: in_port_t = sockaddr_in._2
     def sin_port_=(sin_port: in_port_t): Unit = sockaddr_in._2 = sin_port
     def sin_addr: in_addr = sockaddr_in._3
@@ -75,8 +86,14 @@ private[io] object netinetinOps {
   }
 
   implicit final class sockaddr_in6Ops(val sockaddr_in6: Ptr[sockaddr_in6]) extends AnyVal {
-    def sin6_family: sa_family_t = sockaddr_in6._1
-    def sin6_family_=(sin6_family: sa_family_t): Unit = sockaddr_in6._1 = sin6_family
+    def sin6_family: sa_family_t = if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
+      sockaddr_in6.asInstanceOf[bsd_len_family]._2
+    else
+      sockaddr_in6._1
+    def sin6_family_=(sin6_family: sa_family_t): Unit =
+      if (LinktimeInfo.isMac || LinktimeInfo.isFreeBSD)
+        sockaddr_in6.at1.asInstanceOf[bsd_len_family]._2 = sin6_family.toUByte
+      else sockaddr_in6._1 = sin6_family
     def sin6_port: in_port_t = sockaddr_in6._2
     def sin6_port_=(sin6_port: in_port_t): Unit = sockaddr_in6._2 = sin6_port
     def sin6_flowinfo: uint32_t = sockaddr_in6._3
