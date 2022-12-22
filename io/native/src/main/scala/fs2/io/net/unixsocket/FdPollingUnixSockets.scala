@@ -52,20 +52,20 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
     fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
     handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
     _ <- Resource.eval {
-      toSockaddrUn(address.path).use { addr =>
-        handle
-          .pollWriteRec(false) { connected =>
-            if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
-            else
-              IO {
+      handle
+        .pollWriteRec(false) { connected =>
+          if (connected) SocketHelpers.raiseSocketError[IO](fd).as(Either.unit)
+          else
+            IO {
+              toSockaddrUn(address.path) { addr =>
                 if (guard(connect(fd, addr, sizeof[sockaddr_un].toUInt)) < 0)
                   Left(true) // we will be connected when unblocked
                 else
                   Either.unit[Boolean]
               }
-          }
-          .to
-      }
+            }
+        }
+        .to
     }
     socket <- FdPollingSocket[F](fd, handle, raiseIpAddressError, raiseIpAddressError)
   } yield socket
@@ -85,8 +85,8 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
     handle <- Stream.resource(poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK))
 
     _ <- Stream.eval {
-      toSockaddrUn(address.path).use { addr =>
-        F.delay(guard_(bind(fd, addr, sizeof[sockaddr_un].toUInt)))
+      F.delay {
+        toSockaddrUn(address.path)(addr => guard_(bind(fd, addr, sizeof[sockaddr_un].toUInt)))
       } *> F.delay(guard_(listen(fd, 0)))
     }
 
@@ -129,20 +129,17 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
 
   } yield socket
 
-  private def toSockaddrUn(path: String): Resource[F, Ptr[sockaddr]] =
-    Resource.make(F.delay(Zone.open()))(z => F.delay(z.close())).evalMap[Ptr[sockaddr]] {
-      implicit z =>
-        val pathBytes = path.getBytes
-        if (pathBytes.length > 107)
-          F.raiseError(new IllegalArgumentException(s"Path too long: $path"))
-        else
-          F.delay {
-            val addr = alloc[sockaddr_un]()
-            addr.sun_family = AF_UNIX.toUShort
-            memcpy(addr.sun_path.at(0), pathBytes.at(0), pathBytes.length.toULong)
-            addr.asInstanceOf[Ptr[sockaddr]]
-          }
-    }
+  private def toSockaddrUn[A](path: String)(f: Ptr[sockaddr] => A): A = {
+    val pathBytes = path.getBytes
+    if (pathBytes.length > 107)
+      throw new IllegalArgumentException(s"Path too long: $path")
+
+    val addr = stackalloc[sockaddr_un]()
+    addr.sun_family = AF_UNIX.toUShort
+    memcpy(addr.sun_path.at(0), pathBytes.at(0), pathBytes.length.toULong)
+
+    f(addr.asInstanceOf[Ptr[sockaddr]])
+  }
 
   private def raiseIpAddressError[A]: F[A] =
     F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
