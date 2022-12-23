@@ -4650,8 +4650,6 @@ object Stream extends StreamLowPriority {
       *      |  }.stream.compile.toVector.unsafeRunSync()
       * res0: Vector[String] = Vector(elem, late!, elem, late!, elem)
       * }}}
-      *
-      * For a more complex example, look at the implementation of [[Stream.groupWithin]].
       */
     def timed[O2, R](
         pull: Pull.Timed[F, O] => Pull[F, O2, R]
