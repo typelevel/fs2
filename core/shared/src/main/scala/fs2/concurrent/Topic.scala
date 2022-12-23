@@ -198,9 +198,13 @@ object Topic {
               (subs - id, nextId) -> drainChannel
             }.flatten >> subscriberCount.update(_ - 1)
 
-          Resource
-            .make(subscribe)(unsubscribe)
-            .as(chan.stream)
+          Resource.eval(signalClosure.tryGet).flatMap {
+            case Some(_) => Resource.pure(Stream.empty)
+            case None =>
+              Resource
+                .make(subscribe)(unsubscribe)
+                .as(chan.stream)
+          }
         }
 
         def publish: Pipe[F, A, Nothing] = { in =>

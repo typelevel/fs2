@@ -25,6 +25,7 @@ package concurrent
 import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
+import cats.effect.testkit.TestControl
 
 class TopicSuite extends Fs2Suite {
   test("subscribers see all elements published") {
@@ -172,5 +173,15 @@ class TopicSuite extends Fs2Suite {
     p.compile.toList
       .map(it => assert(it.size <= 11))
     // if the stream won't be discrete we will get much more size notifications
+  }
+
+  test("return empty stream if closed") {
+    val program = for {
+      topic <- Topic[IO, Int]
+      _ <- topic.close
+      _ <- topic.subscribeUnbounded.compile.drain
+    } yield ()
+
+    TestControl.executeEmbed(program) // will fail if program is deadlocked
   }
 }
