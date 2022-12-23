@@ -141,7 +141,7 @@ private[fs2] trait ioplatform extends iojvmnative {
   def stdoutLines[F[_]: Async: LiftIO, O: Show](
       charset: Charset = StandardCharsets.UTF_8
   ): Pipe[F, O, Nothing] =
-    _.map(_.show).through(text.encode(charset)).through(stdout)
+    _.map(_.show).through(text.encode(charset)).through(stdout(implicitly, implicitly))
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
   def stdinUtf8[F[_]: Async: LiftIO](bufSize: Int): Stream[F, String] =
