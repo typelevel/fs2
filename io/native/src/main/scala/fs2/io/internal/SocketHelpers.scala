@@ -39,7 +39,6 @@ import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket._
-import scala.scalanative.posix.sys.socketOps._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -159,9 +158,11 @@ private[io] object SocketHelpers {
       throw new IOException(fromCString(strerror(!optval)))
   }
 
-  def getLocalAddress[F[_]](fd: Int)(implicit F: Sync[F]): F[SocketAddress[IpAddress]] =
+  def getLocalAddress[F[_]](fd: Int, ipv4: Boolean)(implicit
+      F: Sync[F]
+  ): F[SocketAddress[IpAddress]] =
     F.delay {
-      SocketHelpers.toSocketAddress { (addr, len) =>
+      SocketHelpers.toSocketAddress(ipv4) { (addr, len) =>
         guard_(getsockname(fd, addr, len))
       }
     }
@@ -262,20 +263,18 @@ private[io] object SocketHelpers {
     f(addr, len)
   }
 
-  def toSocketAddress[A](
+  def toSocketAddress[A](ipv4: Boolean)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => Unit
   ): SocketAddress[IpAddress] = allocateSockaddr { (addr, len) =>
     f(addr, len)
-    toSocketAddress(addr)
+    toSocketAddress(addr, ipv4)
   }
 
-  def toSocketAddress(addr: Ptr[sockaddr]): SocketAddress[IpAddress] =
-    if (addr.sa_family.toInt == AF_INET)
+  def toSocketAddress(addr: Ptr[sockaddr], ipv4: Boolean): SocketAddress[IpAddress] =
+    if (ipv4)
       toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
-    else if (addr.sa_family.toInt == AF_INET6)
-      toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
     else
-      throw new IOException(s"Unsupported sa_family: ${addr.sa_family}")
+      toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
 
   private[this] def toIpv4SocketAddress(addr: Ptr[sockaddr_in]): SocketAddress[Ipv4Address] = {
     val port = Port.fromInt(ntohs(addr.sin_port).toInt).get

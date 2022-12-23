@@ -69,7 +69,12 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
         }
         .to
     }
-    socket <- FdPollingSocket[F](fd, handle, SocketHelpers.getLocalAddress(fd), F.pure(address))
+    socket <- FdPollingSocket[F](
+      fd,
+      handle,
+      SocketHelpers.getLocalAddress(fd, ipv4),
+      F.pure(address)
+    )
   } yield socket
 
   def server(
@@ -114,7 +119,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
                           guard(accept(fd, addr, len))
 
                       if (clientFd >= 0) {
-                        val address = SocketHelpers.toSocketAddress(addr)
+                        val address = SocketHelpers.toSocketAddress(addr, ipv4)
                         Right((address, clientFd))
                       } else
                         Left(())
@@ -133,7 +138,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
           socket <- FdPollingSocket[F](
             fd,
             handle,
-            SocketHelpers.getLocalAddress(fd),
+            SocketHelpers.getLocalAddress(fd, ipv4),
             F.pure(address)
           )
         } yield socket
@@ -143,7 +148,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
       .repeat
       .unNone
 
-    serverAddress <- Resource.eval(SocketHelpers.getLocalAddress(fd))
+    serverAddress <- Resource.eval(SocketHelpers.getLocalAddress(fd, ipv4))
   } yield (serverAddress, sockets)
 
 }
