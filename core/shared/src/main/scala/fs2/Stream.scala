@@ -4791,6 +4791,36 @@ object Stream extends StreamLowPriority {
     def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
 
+    /** Compiles this stream in to a value of the target effect type `G`,
+      * raising a `NoSuchElementException` if the stream emitted no values, `IllegalStateException`
+      * if the stream emits more than one value and returning the only value emitted otherwise.
+      * Note that the stream execution will not short-circuit once it emits more than one element, it will still
+      * be evaluated to its end before raising the exception.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.SyncIO
+      * scala> Stream(1).covary[SyncIO].compile.singletonOrError.unsafeRunSync()
+      * res0: Int = 1
+      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.singletonOrError.attempt.unsafeRunSync()
+      * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
+      * scala> Stream.range(0,10).covary[SyncIO].compile.singletonOrError.attempt.unsafeRunSync()
+      * res2: Either[Throwable, Int] = Left(java.lang.IllegalStateException: Expected singleton stream)
+      * }}}
+      */
+    def singletonOrError(implicit G: MonadError[G, Throwable]): G[O] =
+      foldChunks(Either.right[Throwable, Option[O]](None)) {
+        case (Right(None), chunk) if chunk.size == 1 => Right(chunk.head)
+        case (a, chunk) if chunk.isEmpty             => a
+        case (l @ Left(_), _)                        => l
+        case (Right(Some(_)), chunk) if chunk.nonEmpty =>
+          Left(new IllegalStateException("Expected singleton stream"))
+        case (Right(_), _) /* previous guards imply chunk.size > 1 */ =>
+          Left(new IllegalStateException("Expected singleton stream"))
+      }.rethrow.flatMap(_.fold(G.raiseError[O](new NoSuchElementException))(G.pure))
+
     /** Gives access to the whole compilation api, where the result is
       * expressed as a `cats.effect.Resource`, instead of bare `G`.
       *
