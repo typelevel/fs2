@@ -102,11 +102,11 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
       .make(F.delay(poller.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
       }
-      .evalTap { ch =>
-        address.traverse(_.resolve).flatMap { ip =>
+      .evalMap { serverCh =>
+        val configure = address.traverse(_.resolve).flatMap { ip =>
           F.delay {
-            ch.configureBlocking(false)
-            ch.bind(
+            serverCh.configureBlocking(false)
+            serverCh.bind(
               new InetSocketAddress(
                 ip.map(_.toInetAddress).orNull,
                 port.map(_.value).getOrElse(0)
@@ -114,8 +114,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
             )
           }
         }
-      }
-      .evalMap { serverCh =>
+
         def acceptLoop: Stream[F, SocketChannel] = Stream
           .bracket {
             def go: F[SocketChannel] =
@@ -147,13 +146,13 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
           )
         }
 
-        val address = F.delay {
+        val socketAddress = F.delay {
           SocketAddress.fromInetSocketAddress(
             serverCh.getLocalAddress.asInstanceOf[InetSocketAddress]
           )
         }
 
-        address.tupleRight(clients)
+        configure *> socketAddress.tupleRight(clients)
       }
 
   private def localAddress(ch: SocketChannel) =
