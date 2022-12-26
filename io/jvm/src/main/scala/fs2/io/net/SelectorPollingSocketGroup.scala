@@ -165,7 +165,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
   private def remoteAddress(ch: SocketChannel) =
     F.delay {
       SocketAddress.fromInetSocketAddress(
-        ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+        ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
       )
     }
 
