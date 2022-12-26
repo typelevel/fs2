@@ -23,6 +23,9 @@ package fs2
 package io
 package net
 
+import cats.effect.IO
+import cats.effect.LiftIO
+import cats.effect.SelectorPoller
 import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
@@ -66,7 +69,66 @@ private[net] trait NetworkPlatform[F[_]] {
 
 }
 
-private[net] trait NetworkCompanionPlatform { self: Network.type =>
+private[net] trait NetworkCompanionPlatform extends NetworkCompanionPlatformLowPriority {
+  self: Network.type =>
+
+  implicit def forLiftIO[F[_]: LiftIO](implicit F: Async[F]): Network[F] =
+    new UnsealedNetwork[F] {
+      private lazy val fallback = forAsync[F]
+
+      private def tryGetPoller = IO.poller[SelectorPoller].to[F]
+
+      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
+        Resource.eval(tryGetPoller).flatMap {
+          case Some(poller) => Resource.pure(new SelectorPollingSocketGroup[F](poller))
+          case None         => fallback.socketGroup(threadCount, threadFactory)
+        }
+
+      def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
+        fallback.datagramSocketGroup(threadFactory)
+
+      def client(
+          to: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] = Resource.eval(tryGetPoller).flatMap {
+        case Some(poller) => new SelectorPollingSocketGroup(poller).client(to, options)
+        case None         => fallback.client(to, options)
+      }
+
+      def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] = Stream.eval(tryGetPoller).flatMap {
+        case Some(poller) => new SelectorPollingSocketGroup(poller).server(address, port, options)
+        case None         => fallback.server(address, port, options)
+      }
+
+      def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        Resource.eval(tryGetPoller).flatMap {
+          case Some(poller) =>
+            new SelectorPollingSocketGroup(poller).serverResource(address, port, options)
+          case None => fallback.serverResource(address, port, options)
+        }
+
+      def openDatagramSocket(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption],
+          protocolFamily: Option[ProtocolFamily]
+      ): Resource[F, DatagramSocket[F]] =
+        fallback.openDatagramSocket(address, port, options, protocolFamily)
+
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+    }
+
+}
+
+private[net] trait NetworkCompanionPlatformLowPriority { self: Network.type =>
   private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
     1,
     ThreadFactories.named("fs2-global-tcp", true)
