@@ -89,7 +89,6 @@ private object SelectorPollingSocket {
   )(implicit F: Async[F]): F[Socket[F]] =
     (Semaphore[F](1), Semaphore[F](1)).flatMapN { (readSemaphore, writeSemaphore) =>
       F.delay {
-        ch.configureBlocking(false)
         new SelectorPollingSocket[F](
           poller,
           ch,
