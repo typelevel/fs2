@@ -116,14 +116,14 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
         }
 
         def acceptLoop: Stream[F, SocketChannel] = Stream
-          .bracket {
+          .bracketFull[F, SocketChannel] { poll =>
             def go: F[SocketChannel] =
               F.delay(serverCh.accept()).flatMap {
-                case null => poller.select(serverCh, OP_ACCEPT).to *> go
+                case null => poll(poller.select(serverCh, OP_ACCEPT).to) *> go
                 case ch   => F.pure(ch)
               }
             go
-          }(ch => F.delay(ch.close()))
+          }((ch, _) => F.delay(ch.close()))
           .attempt
           .flatMap {
             case Right(ch) =>
