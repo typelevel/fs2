@@ -23,9 +23,11 @@ package fs2
 package io
 
 import cats._
+import cats.effect.kernel.Async
 import cats.effect.kernel.Sync
 import cats.effect.kernel.implicits._
 import cats.syntax.all._
+import fs2.concurrent.Channel
 
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
@@ -38,9 +40,31 @@ private[fs2] trait iojvmnative {
   //
   // STDIN/STDOUT Helpers
 
-  /** Stream of bytes read asynchronously from standard input. */
-  def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
-    readInputStream(Sync[F].blocking(System.in), bufSize, false)
+  /** Stream of bytes read asynchronously from standard input.
+    *
+    * @note this stream may leak a blocking thread on cancelation because it is not
+    * possible to interrupt a blocked read from `System.in`.
+    *
+    * Ideally this stream should be compiled at most once in a program to avoid
+    * losing bytes and unboundedly leaking threads.
+    */
+  def stdin[F[_]](bufSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
+    Stream.eval(Channel.synchronous[F, Chunk[Byte]]).flatMap { ch =>
+      Stream.bracket {
+        readInputStream(F.blocking(System.in), bufSize, false).chunks
+          .through(ch.sendAll)
+          .compile
+          .drain
+          .start
+      } { fiber =>
+        // cancelation may hang so we leak :(
+        fiber.cancel.start.void
+      } >> ch.stream.unchunks
+    }
+
+  @deprecated("Use overload with Async, which is cancelable", "3.5.0")
+  def stdin[F[_]](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
+    readInputStream(F.blocking(System.in), bufSize, false)(F)
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
   def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] =
@@ -58,9 +82,16 @@ private[fs2] trait iojvmnative {
   ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout)
 
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
+    *
+    * @note see caveats documented at [[stdin]].
+    */
+  def stdinUtf8[F[_]: Async](bufSize: Int): Stream[F, String] =
     stdin(bufSize).through(text.utf8.decode)
+
+  @deprecated("Use overload with Async, which is cancelable", "3.5.0")
+  def stdinUtf8[F[_]](bufSize: Int, F: Sync[F]): Stream[F, String] =
+    stdin(bufSize, F).through(text.utf8.decode)
 
   /** Stream of bytes read asynchronously from the specified resource relative to the class `C`.
     * @see [[readClassLoaderResource]] for a resource relative to a classloader.
