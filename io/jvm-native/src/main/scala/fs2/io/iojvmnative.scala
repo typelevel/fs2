@@ -84,7 +84,7 @@ private[fs2] trait iojvmnative {
 
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
     *
-    * @note see caveats documented at [[stdin]].
+    * @note see caveats documented at [[[[stdin[F[_]](bufSize:Int)*]]]].
     */
   def stdinUtf8[F[_]: Async](bufSize: Int): Stream[F, String] =
     stdin(bufSize).through(text.utf8.decode)
