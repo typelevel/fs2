@@ -1059,10 +1059,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res1: List[Boolean] = List(false)
     * }}}
     * @return Either a singleton stream, or a `never` stream.
-    *  - If `this` is a finite stream, the result is a singleton stream, with after yielding one single value.
-    *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
-    *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
-    *    equivalent to the `Stream.never`: it never terminates nor yields any value.
+    *  - If `this` is a finite stream, the result is a singleton stream, yielding a single boolean value.
+    *  - If `this` is empty, the result is a singleton stream, yielding a `true` value.
+    *  - If `this` is a non-terminating stream which contains a value matching the predicate, the result is a singleton
+    *    stream containing `true`.
+    *  - If `this` is a non-terminating stream which never contains a value matching the predicate, the result is a
+    *    `never` stream.
     */
   def exists(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(!p(_)).flatMap(r => Pull.output1(!r)).stream
