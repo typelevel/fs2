@@ -23,17 +23,14 @@ package fs2
 
 import cats.effect.IO
 import cats.syntax.all._
-import java.security.MessageDigest
 import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import org.scalacheck.effect.PropF.forAllF
 
 import hash._
 
-class HashSuite extends Fs2Suite {
-  def digest(algo: String, str: String): List[Byte] =
-    MessageDigest.getInstance(algo).digest(str.getBytes).toList
+class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
 
-  def checkDigest[A](h: Pipe[Pure, Byte, Byte], algo: String, str: String) = {
+  def checkDigest[A](h: Pipe[IO, Byte, Byte], algo: String, str: String) = {
     val n =
       if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
     val s =
@@ -45,30 +42,30 @@ class HashSuite extends Fs2Suite {
             acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    assertEquals(s.through(h).toList, digest(algo, str))
+    s.through(h).compile.toList.assertEquals(digest(algo, str))
   }
 
   group("digests") {
-    test("md2")(forAll((s: String) => checkDigest(md2, "MD2", s)))
-    test("md5")(forAll((s: String) => checkDigest(md5, "MD5", s)))
-    test("sha1")(forAll((s: String) => checkDigest(sha1, "SHA-1", s)))
-    test("sha256")(forAll((s: String) => checkDigest(sha256, "SHA-256", s)))
-    test("sha384")(forAll((s: String) => checkDigest(sha384, "SHA-384", s)))
-    test("sha512")(forAll((s: String) => checkDigest(sha512, "SHA-512", s)))
+    if (isJVM) test("md2")(forAllF((s: String) => checkDigest(md2, "MD2", s)))
+    test("md5")(forAllF((s: String) => checkDigest(md5, "MD5", s)))
+    test("sha1")(forAllF((s: String) => checkDigest(sha1, "SHA-1", s)))
+    test("sha256")(forAllF((s: String) => checkDigest(sha256, "SHA-256", s)))
+    test("sha384")(forAllF((s: String) => checkDigest(sha384, "SHA-384", s)))
+    test("sha512")(forAllF((s: String) => checkDigest(sha512, "SHA-512", s)))
   }
 
   test("empty input") {
-    assertEquals(Stream.empty.through(sha1).toList.size, 20)
+    Stream.empty[IO].through(sha1).compile.count.assertEquals(20L)
   }
 
   test("zero or one output") {
-    forAll { (lb: List[Array[Byte]]) =>
+    forAllF { (lb: List[Array[Byte]]) =>
       val size = lb
         .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
-        .through(sha1)
-        .toList
-        .size
-      assertEquals(size, 20)
+        .through(sha1[IO])
+        .compile
+        .count
+      size.assertEquals(20L)
     }
   }
 

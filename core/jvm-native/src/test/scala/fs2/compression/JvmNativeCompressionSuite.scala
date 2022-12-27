@@ -30,10 +30,13 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.zip._
 import scala.collection.mutable
+import scala.concurrent.duration._
 import scodec.bits.crc
 import scodec.bits.ByteVector
 
-class JvmCompressionSuite extends CompressionSuite {
+class JvmNativeCompressionSuite extends CompressionSuite {
+
+  override def munitIOTimeout = 1.minute
 
   def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] = {
     val byteArrayStream = new ByteArrayOutputStream()

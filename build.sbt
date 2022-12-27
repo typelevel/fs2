@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.3"
+ThisBuild / tlBaseVersion := "3.4"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.0", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.1", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
@@ -171,6 +171,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]( // something funky in Scala 3.2.0 ...
     "fs2.io.net.SocketGroupCompanionPlatform#AsyncSocketGroup.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
   )
 )
 
@@ -187,8 +190,9 @@ lazy val root = tlCrossRootProject
 
 lazy val IntegrationTest = config("it").extend(Test)
 
-lazy val commonNativeSettings = Seq(
-  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap
+lazy val commonNativeSettings = Seq[Setting[_]](
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
+  Test / nativeBrewFormulas += "openssl"
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -203,11 +207,11 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.8.0",
-      "org.typelevel" %%% "cats-laws" % "2.8.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.4.0-RC2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4.0-RC2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4.0-RC2" % Test,
+      "org.typelevel" %%% "cats-core" % "2.9.0",
+      "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.4.3",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.3" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.3" % Test,
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
@@ -233,6 +237,7 @@ lazy val coreJS = core.js
   )
 
 lazy val coreNative = core.native
+  .enablePlugins(ScalaNativeBrewedConfigPlugin)
   .disablePlugins(DoctestPlugin)
   .settings(commonNativeSettings)
 
@@ -246,7 +251,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.17" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.19" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
@@ -258,7 +263,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.1" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.3" % Test
     ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
@@ -311,9 +316,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
     )
   )
-  .nativeSettings(
-    nativeConfig ~= { _.withEmbedResources(true) }
-  )
 
 lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("scodec"))
@@ -330,6 +332,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", io % "test")
 
@@ -343,6 +346,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
   )
+  .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .dependsOn(core % "compile->compile;test->test", scodec, io)
 

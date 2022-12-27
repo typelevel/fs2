@@ -59,12 +59,80 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("lens - get/set/discrete") {
+    case class Foo(bar: Long, baz: Long)
+    object Foo {
+      def get(foo: Foo): Long = foo.bar
+      def set(foo: Foo)(bar: Long): Foo = foo.copy(bar = bar)
+    }
+
+    forAllF { (vs0: List[Long]) =>
+      val vs = vs0.map(n => if (n == 0) 1 else n)
+      SignallingRef[IO].of(Foo(0L, -1L)).flatMap { s =>
+        val l = SignallingRef.lens(s)(Foo.get, Foo.set)
+        Ref.of[IO, Foo](Foo(0L, -1L)).flatMap { r =>
+          val publisher = s.discrete.evalMap(r.set)
+          val consumer = vs.traverse { v =>
+            l.set(v) >> waitFor(l.get.map(_ == v)) >> waitFor(
+              r.get.flatMap(rval =>
+                if (rval == Foo(0L, -1L)) IO.pure(true)
+                else waitFor(r.get.map(_ == Foo(v, -1L))).as(true)
+              )
+            )
+          }
+          Stream.eval(consumer).concurrently(publisher).compile.drain
+        }
+      }
+    }
+  }
+
+  test("mapref - get/set/discrete") {
+    forAllF { (vs0: List[Option[Long]]) =>
+      val vs = vs0.map(_.map(n => if (n == 0) 1 else n))
+      SignallingMapRef.ofSingleImmutableMap[IO, Unit, Long](Map(() -> 0L)).map(_(())).flatMap { s =>
+        Ref.of[IO, Option[Long]](Some(0)).flatMap { r =>
+          val publisher = s.discrete.evalMap(r.set)
+          val consumer = vs.traverse { v =>
+            s.set(v) >> waitFor(s.get.map(_ == v)) >> waitFor(
+              r.get.flatMap(rval =>
+                if (rval == Some(0)) IO.pure(true)
+                else waitFor(r.get.map(_ == v)).as(true)
+              )
+            )
+          }
+          Stream.eval(consumer).concurrently(publisher).compile.drain
+        }
+      }
+    }
+  }
+
   test("discrete") {
     // verifies that discrete always receives the most recent value, even when updates occur rapidly
     forAllF { (v0: Long, vsTl: List[Long]) =>
       val vs = v0 :: vsTl
       SignallingRef[IO, Long](0L).flatMap { s =>
         Ref.of[IO, Long](0L).flatMap { r =>
+          val publisherR = s.discrete.evalMap(i => IO.sleep(10.millis) >> r.set(i))
+          val publisherS = vs.traverse(s.set)
+          val last = vs.last
+          val consumer = waitFor(r.get.map(_ == last))
+          Stream
+            .eval(consumer)
+            .concurrently(publisherR)
+            .concurrently(Stream.eval(publisherS))
+            .compile
+            .drain
+        }
+      }
+    }
+  }
+
+  test("mapref - discrete") {
+    // verifies that discrete always receives the most recent value, even when updates occur rapidly
+    forAllF { (v0: Option[Long], vsTl: List[Option[Long]]) =>
+      val vs = v0 :: vsTl
+      SignallingMapRef.ofSingleImmutableMap[IO, Unit, Long](Map(() -> 0L)).map(_(())).flatMap { s =>
+        Ref.of[IO, Option[Long]](Some(0L)).flatMap { r =>
           val publisherR = s.discrete.evalMap(i => IO.sleep(10.millis) >> r.set(i))
           val publisherS = vs.traverse(s.set)
           val last = vs.last
@@ -97,6 +165,23 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("mapref - access cannot be used twice") {
+    for {
+      s <- SignallingMapRef.ofSingleImmutableMap[IO, Unit, Long](Map(() -> 0L)).map(_(()))
+      access <- s.access
+      (v, set) = access
+      v1 = v.map(_ + 1)
+      v2 = v1.map(_ + 1)
+      r1 <- set(v1)
+      r2 <- set(v2)
+      r3 <- s.get
+    } yield {
+      assert(r1)
+      assert(!r2)
+      assertEquals(r3, v1)
+    }
+  }
+
   test("access updates discrete") {
     SignallingRef[IO, Int](0).flatMap { s =>
       def cas: IO[Unit] =
@@ -106,6 +191,22 @@ class SignalSuite extends Fs2Suite {
 
       def updates =
         s.discrete.takeWhile(_ != 1).compile.drain
+
+      updates.start.flatMap { fiber =>
+        cas >> fiber.join.timeout(5.seconds)
+      }
+    }
+  }
+
+  test("mapref - access updates discrete") {
+    SignallingMapRef.ofSingleImmutableMap[IO, Unit, Int](Map(() -> 0)).map(_(())).flatMap { s =>
+      def cas: IO[Unit] =
+        s.access.flatMap { case (v, set) =>
+          set(v.map(_ + 1)).ifM(IO.unit, cas)
+        }
+
+      def updates =
+        s.discrete.takeWhile(_ != Some(1)).compile.drain
 
       updates.start.flatMap { fiber =>
         cas >> fiber.join.timeout(5.seconds)

@@ -64,16 +64,24 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("reads half of a file") {
       Stream
         .resource(tempFile.evalMap(modify))
-        .flatMap(path => Files[IO].readRange(path, 4096, 0, 2))
-        .map(_ => 1)
+        .flatMap(path => Files[IO].readRange(path, 4096, 2, 4))
         .compile
-        .foldMonoid
-        .assertEquals(2)
+        .toList
+        .assertEquals(List[Byte](2, 3))
     }
     test("reads full file if end is bigger than file size") {
       Stream
         .resource(tempFile.evalMap(modify))
         .flatMap(path => Files[IO].readRange(path, 4096, 0, 100))
+        .map(_ => 1)
+        .compile
+        .foldMonoid
+        .assertEquals(4)
+    }
+    test("can handle Long range endpoints") {
+      Stream
+        .resource(tempFile.evalMap(modify))
+        .flatMap(path => Files[IO].readRange(path, 4096, 0, Long.MaxValue))
         .map(_ => 1)
         .compile
         .foldMonoid
@@ -726,6 +734,31 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .map(_.resolve("non-existent-file"))
         .use(Files[IO].isSymbolicLink(_))
         .assertEquals(false)
+    }
+  }
+
+  group("createLink") {
+    test("returns a link to the same file") {
+      (tempFile, tempDirectory).tupled
+        .use { case (filePath, tempDir) =>
+          val link = tempDir / "newlink"
+          Files[IO].getBasicFileAttributes(filePath).map(_.fileKey).flatMap { key =>
+            Files[IO]
+              .createLink(link, filePath) >>
+              Files[IO]
+                .getBasicFileAttributes(link)
+                .map(_.fileKey)
+                .assertEquals(key)
+          }
+        }
+    }
+
+    // Should be NoSuchFileException, but that fails on Scala native
+    // (see https://github.com/scala-native/scala-native/pull/3012)
+    test("fails with IOException if the target doesn't exist") {
+      tempDirectory
+        .use(d => Files[IO].createLink(d.resolve("link"), d.resolve("non-existant")))
+        .intercept[IOException]
     }
   }
 

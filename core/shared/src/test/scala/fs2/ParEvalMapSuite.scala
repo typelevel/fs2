@@ -61,12 +61,12 @@ class ParEvalMapSuite extends Fs2Suite {
     test("should be preserved in parEvalMap") {
       forAllF { (s: Stream[Pure, Int]) =>
         def sleepMillis(i: Int): IO[Int] = IO.sleep(math.abs(i % 3).millis).as(i)
-        s.covary[IO].parEvalMap(Int.MaxValue)(sleepMillis).assertEmitsSameAs(s)
+        s.covary[IO].parEvalMapUnbounded(sleepMillis).assertEmitsSameAs(s)
       }
     }
 
     test("may not be preserved in parEvalMapUnordered") {
-      run(_.parEvalMapUnordered(Int.MaxValue)(identity)).assertEquals(List(1, 2, 3))
+      run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3))
     }
 
     def run(pipe: Pipe[IO, IO[Int], Int]) =
@@ -102,12 +102,12 @@ class ParEvalMapSuite extends Fs2Suite {
     }
 
     test("parEvalMapUnordered can't launch more than Stream size") {
-      val action = runWithLatch(100, 101, _.parEvalMapUnordered(Int.MaxValue)(identity))
+      val action = runWithLatch(100, 101, _.parEvalMapUnorderedUnbounded(identity))
       action.assertNotCompletes()
     }
 
     test("parEvalMap can't launch more than Stream size") {
-      val action = runWithLatch(100, 101, _.parEvalMap(Int.MaxValue)(identity))
+      val action = runWithLatch(100, 101, _.parEvalMapUnbounded(identity))
       action.assertNotCompletes()
     }
 
@@ -161,11 +161,11 @@ class ParEvalMapSuite extends Fs2Suite {
   group("if error happens after stream succeeds error should be lost") {
 
     test("parEvalMapUnordered") {
-      check(_.parEvalMapUnordered(Int.MaxValue)(identity))
+      check(_.parEvalMapUnorderedUnbounded(identity))
     }
 
     test("parEvalMap") {
-      check(_.parEvalMap(Int.MaxValue)(identity))
+      check(_.parEvalMapUnbounded(identity))
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]) =
@@ -181,11 +181,11 @@ class ParEvalMapSuite extends Fs2Suite {
   group("cancels running computations when error raised") {
 
     test("parEvalMapUnordered") {
-      check(_.parEvalMap(Int.MaxValue)(identity))
+      check(_.parEvalMapUnbounded(identity))
     }
 
     test("parEvalMap") {
-      check(_.parEvalMap(Int.MaxValue)(identity))
+      check(_.parEvalMapUnbounded(identity))
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]) =
@@ -254,11 +254,11 @@ class ParEvalMapSuite extends Fs2Suite {
   group("issue-2726, Stream shouldn't hang after exceptions in") {
 
     test("parEvalMapUnordered") {
-      check(_.parEvalMapUnordered(Int.MaxValue)(identity))
+      check(_.parEvalMapUnorderedUnbounded(identity))
     }
 
     test("parEvalMap") {
-      check(_.parEvalMap(Int.MaxValue)(identity))
+      check(_.parEvalMapUnbounded(identity))
     }
 
     def check(pipe: Pipe[IO, IO[Unit], Unit]): IO[Unit] = {
@@ -273,7 +273,7 @@ class ParEvalMapSuite extends Fs2Suite {
     test("parEvalMapUnordered") {
       Stream
         .eval(IO.unit)
-        .parEvalMapUnordered(Int.MaxValue)(_ => throw new RuntimeException)
+        .parEvalMapUnorderedUnbounded(_ => throw new RuntimeException)
         .compile
         .drain
         .attempt
@@ -283,7 +283,7 @@ class ParEvalMapSuite extends Fs2Suite {
     test("parEvalMap") {
       Stream
         .eval(IO.unit)
-        .parEvalMap(Int.MaxValue)(_ => throw new RuntimeException)
+        .parEvalMapUnbounded(_ => throw new RuntimeException)
         .compile
         .drain
         .attempt

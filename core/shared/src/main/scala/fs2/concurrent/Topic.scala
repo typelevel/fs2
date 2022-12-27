@@ -78,11 +78,23 @@ abstract class Topic[F[_], A] { self =>
     */
   def subscribe(maxQueued: Int): Stream[F, A]
 
+  /** Like `subscribe`, but allows an unbounded number of elements to enqueue to the subscription
+    * queue.
+    */
+  def subscribeUnbounded: Stream[F, A] =
+    subscribe(Int.MaxValue)
+
   /** Like `subscribe`, but represents the subscription explicitly as
     * a `Resource` which returns after the subscriber is subscribed,
     * but before it has started pulling elements.
     */
   def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]]
+
+  /** Like `subscribeAwait`, but allows an unbounded number of elements to enqueue to the subscription
+    * queue.
+    */
+  def subscribeAwaitUnbounded: Resource[F, Stream[F, A]] =
+    subscribeAwait(Int.MaxValue)
 
   /** Signal of current active subscribers.
     */
@@ -160,29 +172,40 @@ object Topic {
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
           Resource
             .eval(Channel.bounded[F, A](maxQueued))
-            .flatMap { chan =>
-              val subscribe = state.modify { case (subs, id) =>
-                (subs.updated(id, chan), id + 1) -> id
-              } <* subscriberCount.update(_ + 1)
+            .flatMap(subscribeAwaitImpl)
 
-              def unsubscribe(id: Long) =
-                state.modify { case (subs, nextId) =>
-                  // _After_ we remove the bounded channel for this
-                  // subscriber, we need to drain it to unblock to
-                  // publish loop which might have already enqueued
-                  // something.
-                  def drainChannel: F[Unit] =
-                    subs.get(id).traverse_ { chan =>
-                      chan.close >> chan.stream.compile.drain
-                    }
+        override def subscribeAwaitUnbounded: Resource[F, Stream[F, A]] =
+          Resource
+            .eval(Channel.unbounded[F, A])
+            .flatMap(subscribeAwaitImpl)
 
-                  (subs - id, nextId) -> drainChannel
-                }.flatten >> subscriberCount.update(_ - 1)
+        def subscribeAwaitImpl(chan: Channel[F, A]): Resource[F, Stream[F, A]] = {
+          val subscribe = state.modify { case (subs, id) =>
+            (subs.updated(id, chan), id + 1) -> id
+          } <* subscriberCount.update(_ + 1)
 
+          def unsubscribe(id: Long) =
+            state.modify { case (subs, nextId) =>
+              // _After_ we remove the bounded channel for this
+              // subscriber, we need to drain it to unblock to
+              // publish loop which might have already enqueued
+              // something.
+              def drainChannel: F[Unit] =
+                subs.get(id).traverse_ { chan =>
+                  chan.close >> chan.stream.compile.drain
+                }
+
+              (subs - id, nextId) -> drainChannel
+            }.flatten >> subscriberCount.update(_ - 1)
+
+          Resource.eval(signalClosure.tryGet).flatMap {
+            case Some(_) => Resource.pure(Stream.empty)
+            case None =>
               Resource
                 .make(subscribe)(unsubscribe)
                 .as(chan.stream)
-            }
+          }
+        }
 
         def publish: Pipe[F, A, Nothing] = { in =>
           (in ++ Stream.exec(close.void))
@@ -193,6 +216,9 @@ object Topic {
 
         def subscribe(maxQueued: Int): Stream[F, A] =
           Stream.resource(subscribeAwait(maxQueued)).flatten
+
+        override def subscribeUnbounded: Stream[F, A] =
+          Stream.resource(subscribeAwaitUnbounded).flatten
 
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 

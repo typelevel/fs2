@@ -24,6 +24,7 @@ package concurrent
 
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Deferred, Ref, Spawn}
+import cats.effect.std.MapRef
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
 
@@ -34,9 +35,10 @@ trait Signal[F[_], A] {
 
   /** Returns a stream of the updates to this signal.
     *
-    * Updates that are very close together may result in only the last update appearing
-    * in the stream. If you want to be notified about every single update, use
-    * a `Queue` or `Channel` instead.
+    * Even if you are pulling as fast as possible, updates that are very close together may
+    * result in only the last update appearing in the stream. In general, when you pull
+    * from this stream you may be notified of only the latest update since your last pull.
+    * If you want to be notified about every single update, use a `Queue` or `Channel` instead.
     */
   def discrete: Stream[F, A]
 
@@ -243,10 +245,9 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.bracket(newId)(cleanup).flatMap { id =>
-              Stream.eval(state.get).flatMap { state =>
-                Stream.emit(state.value) ++ go(id, state.lastUpdate)
-              }
+            Stream.eval(state.get).flatMap { state =>
+              Stream.emit(state.value) ++
+                Stream.bracket(newId)(cleanup).flatMap(go(_, state.lastUpdate))
             }
           }
 
@@ -290,6 +291,70 @@ object SignallingRef {
       }
   }
 
+  /** Creates an instance focused on a component of another SignallingRef's value. Delegates every get and
+    * modification to underlying SignallingRef, so both instances are always in sync.
+    */
+  def lens[F[_], A, B](
+      ref: SignallingRef[F, A]
+  )(get: A => B, set: A => B => A)(implicit F: Functor[F]): SignallingRef[F, B] =
+    new LensSignallingRef(ref)(get, set)
+
+  private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
+      lensGet: A => B,
+      lensSet: A => B => A
+  )(implicit F: Functor[F])
+      extends SignallingRef[F, B] {
+
+    def discrete: Stream[F, B] = underlying.discrete.map(lensGet)
+
+    def continuous: Stream[F, B] = underlying.continuous.map(lensGet)
+
+    def get: F[B] = F.map(underlying.get)(a => lensGet(a))
+
+    def set(b: B): F[Unit] = underlying.update(a => lensModify(a)(_ => b))
+
+    override def getAndSet(b: B): F[B] =
+      underlying.modify(a => (lensModify(a)(_ => b), lensGet(a)))
+
+    def update(f: B => B): F[Unit] =
+      underlying.update(a => lensModify(a)(f))
+
+    def modify[C](f: B => (B, C)): F[C] =
+      underlying.modify { a =>
+        val oldB = lensGet(a)
+        val (b, c) = f(oldB)
+        (lensSet(a)(b), c)
+      }
+
+    def tryUpdate(f: B => B): F[Boolean] =
+      F.map(tryModify(a => (f(a), ())))(_.isDefined)
+
+    def tryModify[C](f: B => (B, C)): F[Option[C]] =
+      underlying.tryModify { a =>
+        val oldB = lensGet(a)
+        val (b, result) = f(oldB)
+        (lensSet(a)(b), result)
+      }
+
+    def tryModifyState[C](state: cats.data.State[B, C]): F[Option[C]] = {
+      val f = state.runF.value
+      tryModify(a => f(a).value)
+    }
+
+    def modifyState[C](state: cats.data.State[B, C]): F[C] = {
+      val f = state.runF.value
+      modify(a => f(a).value)
+    }
+
+    val access: F[(B, B => F[Boolean])] =
+      F.map(underlying.access) { case (a, update) =>
+        (lensGet(a), b => update(lensSet(a)(b)))
+      }
+
+    private def lensModify(s: A)(f: B => B): A = lensSet(s)(f(lensGet(s)))
+
+  }
+
   implicit def invariantInstance[F[_]: Functor]: Invariant[SignallingRef[F, *]] =
     new Invariant[SignallingRef[F, *]] {
       override def imap[A, B](fa: SignallingRef[F, A])(f: A => B)(g: B => A): SignallingRef[F, B] =
@@ -318,6 +383,131 @@ object SignallingRef {
             fa.modifyState(state.dimap(f)(g))
         }
     }
+}
+
+/** A [[MapRef]] with a [[SignallingRef]] for each key. */
+trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
+  override def apply(k: K): SignallingRef[F, V]
+}
+
+object SignallingMapRef {
+
+  /** Builds a `SignallingMapRef` for effect `F`, initialized to the supplied value.
+    */
+  def ofSingleImmutableMap[F[_], K, V](
+      initial: Map[K, V] = Map.empty[K, V]
+  )(implicit F: Concurrent[F]): F[SignallingMapRef[F, K, Option[V]]] = {
+    case class State(
+        value: Map[K, V],
+        lastUpdate: Long,
+        listeners: Map[K, LongMap[Deferred[F, (Option[V], Long)]]]
+    )
+
+    F.ref(State(initial, 0L, initial.flatMap(_ => Nil)))
+      .product(F.ref(1L))
+      .map { case (state, ids) =>
+        def newId = ids.getAndUpdate(_ + 1)
+
+        def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
+            : (State, F[U]) = {
+          val (newValue, result) = f(state.value.get(k))
+          val newMap = newValue.fold(state.value - k)(v => state.value + (k -> v))
+          val lastUpdate = state.lastUpdate + 1
+          val newListeners = state.listeners - k
+          val newState = State(newMap, lastUpdate, newListeners)
+          val notifyListeners = state.listeners.get(k).fold(F.unit) { listeners =>
+            listeners.values.toVector.traverse_ { listener =>
+              listener.complete(newValue -> lastUpdate)
+            }
+          }
+
+          newState -> notifyListeners.as(result)
+        }
+
+        k =>
+          new SignallingRef[F, Option[V]] {
+            def get: F[Option[V]] = state.get.map(_.value.get(k))
+
+            def continuous: Stream[F, Option[V]] = Stream.repeatEval(get)
+
+            def discrete: Stream[F, Option[V]] = {
+              def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
+                def getNext: F[(Option[V], Long)] =
+                  F.deferred[(Option[V], Long)].flatMap { wait =>
+                    state.modify { case state @ State(value, lastUpdate, listeners) =>
+                      if (lastUpdate != lastSeen)
+                        state -> (value.get(k) -> lastUpdate).pure[F]
+                      else {
+                        val newListeners =
+                          listeners
+                            .updated(k, listeners.getOrElse(k, LongMap.empty) + (id -> wait))
+                        state.copy(listeners = newListeners) -> wait.get
+                      }
+                    }.flatten
+                  }
+
+                Stream.eval(getNext).flatMap { case (v, lastUpdate) =>
+                  Stream.emit(v) ++ go(id, lastSeen = lastUpdate)
+                }
+              }
+
+              def cleanup(id: Long): F[Unit] =
+                state.update { s =>
+                  val newListeners = s.listeners
+                    .get(k)
+                    .map(_ - id)
+                    .filterNot(_.isEmpty)
+                    .fold(s.listeners - k)(s.listeners.updated(k, _))
+                  s.copy(listeners = newListeners)
+                }
+
+              Stream.bracket(newId)(cleanup).flatMap { id =>
+                Stream.eval(state.get).flatMap { state =>
+                  Stream.emit(state.value.get(k)) ++ go(id, state.lastUpdate)
+                }
+              }
+            }
+
+            def set(v: Option[V]): F[Unit] = update(_ => v)
+
+            def update(f: Option[V] => Option[V]): F[Unit] = modify(v => (f(v), ()))
+
+            def modify[U](f: Option[V] => (Option[V], U)): F[U] =
+              state.modify(updateAndNotify(_, k, f)).flatten
+
+            def tryModify[U](f: Option[V] => (Option[V], U)): F[Option[U]] =
+              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence)
+
+            def tryUpdate(f: Option[V] => Option[V]): F[Boolean] =
+              tryModify(a => (f(a), ())).map(_.isDefined)
+
+            def access: F[(Option[V], Option[V] => F[Boolean])] =
+              state.access.map { case (state, set) =>
+                val setter = { (newValue: Option[V]) =>
+                  val (newState, notifyListeners) =
+                    updateAndNotify(state, k, _ => (newValue, ()))
+
+                  set(newState).flatTap { succeeded =>
+                    notifyListeners.whenA(succeeded)
+                  }
+                }
+
+                (state.value.get(k), setter)
+              }
+
+            def tryModifyState[U](state: cats.data.State[Option[V], U]): F[Option[U]] = {
+              val f = state.runF.value
+              tryModify(v => f(v).value)
+            }
+
+            def modifyState[U](state: cats.data.State[Option[V], U]): F[U] = {
+              val f = state.runF.value
+              modify(v => f(v).value)
+            }
+          }
+      }
+  }
+
 }
 
 private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {

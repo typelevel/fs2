@@ -58,7 +58,7 @@ def measureAverageBitrate[F[_]](store: Ref[F, Long], input: Stream[F, Byte]): St
 
 ## Time Series
 
-All good, right? But wait, what happens if we stop receiving data for a while? There will be no input to `TimeStamped.withPerSecondRate`, which means there will be no output as well, and that means our `Ref` will not be updated -- it will be frozen with the last value! We need to `Ref` to accurately reflect the loss of data, which means we need some way to all `withPerSecondRate` to emit zero values as time passes.
+All good, right? But wait, what happens if we stop receiving data for a while? There will be no input to `TimeStamped.withPerSecondRate`, which means there will be no output as well, and that means our `Ref` will not be updated -- it will be frozen with the last value! We need the `Ref` to accurately reflect the loss of data, which means we need some way to allow `withPerSecondRate` to emit zero values as time passes.
 
 To accomplish this, we can modify our bitrate calculation to operate on values of type `TimeStamped[Option[ByteVector]]`, where a timestamped `None` represents a "tick" of the clock. A stream of timestamped options is referred to as a "time series" and the `fs2.timeseries.TimeSeries` object defines various ways to build such streams.
 
