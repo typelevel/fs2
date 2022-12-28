@@ -26,6 +26,7 @@ import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
 import cats.syntax.all._
+import fs2.internal.ThreadFactories
 import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
@@ -33,7 +34,8 @@ import java.util.concurrent.Executors
 
 private[fs2] trait ioplatform extends iojvmnative {
 
-  private[this] lazy val stdinExecutor = Executors.newSingleThreadExecutor()
+  private[this] lazy val stdinExecutor =
+    Executors.newSingleThreadExecutor(ThreadFactories.named("fs2-stdin", true))
 
   /** Stream of bytes read asynchronously from standard input. */
   def stdin[F[_]](bufSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
