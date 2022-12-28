@@ -35,14 +35,7 @@ private[fs2] trait ioplatform extends iojvmnative {
 
   private[this] lazy val stdinExecutor = Executors.newSingleThreadExecutor()
 
-  /** Stream of bytes read asynchronously from standard input.
-    *
-    * @note this stream may leak a blocking thread on cancelation because it is not
-    * possible to interrupt a blocked read from `System.in`.
-    *
-    * Ideally this stream should be compiled at most once in a program to avoid
-    * losing bytes and unboundedly leaking threads.
-    */
+  /** Stream of bytes read asynchronously from standard input. */
   def stdin[F[_]](bufSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
     readInputStreamGeneric(
       F.pure(System.in),
@@ -66,10 +59,7 @@ private[fs2] trait ioplatform extends iojvmnative {
   def stdin[F[_]](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
     readInputStream(F.blocking(System.in), bufSize, false)(F)
 
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
-    *
-    * @note see caveats documented at [[[[stdin[F[_]](bufSize:Int)*]]]].
-    */
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
   def stdinUtf8[F[_]: Async](bufSize: Int): Stream[F, String] =
     stdin(bufSize).through(text.utf8.decode)
 
