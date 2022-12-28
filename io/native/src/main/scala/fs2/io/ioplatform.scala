@@ -22,4 +22,14 @@
 package fs2
 package io
 
-private[fs2] trait ioplatform extends iojvmnative
+import cats.effect.kernel.Sync
+
+private[fs2] trait ioplatform extends iojvmnative {
+
+  def stdin[F[_]](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
+    readInputStream(F.blocking(System.in), bufSize, false)(F)
+
+  def stdinUtf8[F[_]](bufSize: Int, F: Sync[F]): Stream[F, String] =
+    stdin(bufSize, F).through(text.utf8.decode)
+
+}
