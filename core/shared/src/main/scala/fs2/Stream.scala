@@ -2305,30 +2305,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val random = new scala.util.Random(seed)
       def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
 
-      def go(acc: Chunk[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
-        def nextSize(chunk: Chunk[O]): Pull[F2, Nothing, Int] =
-          size match {
-            case Some(size) => Pull.pure(size)
-            case None       => Pull.pure((factor * chunk.size).toInt)
-          }
+      def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
-        s.pull.uncons1.flatMap {
+      def go(acc: Chunk[O], sizeOpt: Int, s: Pull[F2, O, Unit]): Pull[F2, O, Unit] =
+        Pull.uncons(s).flatMap {
           case Some((hd, tl)) =>
-            nextSize(hd).flatMap { size =>
-              if (acc.size < size) go(acc ++ hd, size.some, tl)
-              else if (acc.size == size)
-                Pull.output(acc) >> go(hd, size.some, tl)
-              else {
-                val (out, rem) = acc.splitAt(size - 1)
-                Pull.output(out) >> go(rem ++ hd, None, tl)
-              }
+            val size = if (sizeOpt > 0) sizeOpt else nextSize(hd.size)
+            if (acc.size < size)
+              go(acc ++ hd, size, tl)
+            else if (acc.size == size)
+              Pull.output(acc) >> go(hd, size, tl)
+            else {
+              val (out, rem) = acc.splitAt(size - 1)
+              Pull.output(out) >> go(rem ++ hd, -1, tl)
             }
           case None =>
             Pull.output(acc)
         }
-      }
 
-      go(Chunk.empty, None, chunks).stream
+      go(Chunk.empty, -1, underlying).stream
     }
 
   /** Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
