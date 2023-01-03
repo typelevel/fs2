@@ -4802,15 +4802,15 @@ object Stream extends StreamLowPriority {
       *
       * @example {{{
       * scala> import cats.effect.SyncIO
-      * scala> Stream(1).covary[SyncIO].compile.singletonOrError.unsafeRunSync()
+      * scala> Stream(1).covary[SyncIO].compile.onlyOrError.unsafeRunSync()
       * res0: Int = 1
-      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.singletonOrError.attempt.unsafeRunSync()
+      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.onlyOrError.attempt.unsafeRunSync()
       * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
-      * scala> Stream.range(0,10).covary[SyncIO].compile.singletonOrError.attempt.unsafeRunSync()
+      * scala> Stream.range(0,10).covary[SyncIO].compile.onlyOrError.attempt.unsafeRunSync()
       * res2: Either[Throwable, Int] = Left(java.lang.IllegalStateException: Expected singleton stream)
       * }}}
       */
-    def singletonOrError(implicit G: MonadError[G, Throwable]): G[O] =
+    def onlyOrError(implicit G: MonadError[G, Throwable]): G[O] =
       foldChunks(Either.right[Throwable, Option[O]](None)) {
         case (Right(None), chunk) if chunk.size == 1 => Right(chunk.head)
         case (a, chunk) if chunk.isEmpty             => a
