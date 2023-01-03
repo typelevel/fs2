@@ -50,6 +50,8 @@ private[fs2] trait ioplatform extends iojvmnative {
           stdinExecutor.submit(task)
         }.map { fut =>
           Some(F.delay {
+            // if the read has not started, cancelation will succeed
+            // if it has started, we cannot interrupt it, so we just leak
             fut.cancel(false)
             ()
           })
