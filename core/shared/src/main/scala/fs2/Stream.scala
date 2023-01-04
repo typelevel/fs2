@@ -652,7 +652,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, Nothing, Unit] =
-        Pull.uncons(tl).flatMap {
+        tl.uncons.flatMap {
           // Note: hd is non-empty, so hd.last.get is safe
           case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
           case None           => Pull.eval(sendLatest >> chan.close.void)
@@ -2308,7 +2308,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
       def go(acc: Chunk[O], sizeOpt: Int, s: Pull[F2, O, Unit]): Pull[F2, O, Unit] =
-        Pull.uncons(s).flatMap {
+        s.uncons.flatMap {
           case Some((hd, tl)) =>
             val size = if (sizeOpt > 0) sizeOpt else nextSize(hd.size)
             if (acc.size < size)
@@ -4053,7 +4053,7 @@ object Stream extends StreamLowPriority {
       */
     def unNoneTerminate: Stream[F, O] = {
       def loop(p: Pull[F, Option[O], Unit]): Pull[F, O, Unit] =
-        Pull.uncons(p).flatMap {
+        p.uncons.flatMap {
           case None => Pull.done
           case Some((hd, tl)) =>
             hd.indexWhere(_.isEmpty) match {
@@ -4295,7 +4295,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
-      Pull.uncons(self.underlying).map {
+      self.underlying.uncons.map {
         _.map { case (hd, tl) => (hd, new Stream(tl)) }
       }
 
