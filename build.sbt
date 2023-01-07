@@ -217,7 +217,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
     ),
-    tlJdkRelease := Some(8),
+    tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
