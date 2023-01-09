@@ -41,6 +41,14 @@ import org.reactivestreams._
   * }}}
   *
   * @see [[http://www.reactive-streams.org/]]
+  *
+  * @deprecated
+  *   The next major version of fs2 will drop these converters.
+  *   Rather, users will be encouraged to use the new [[fs2.interop.flow]] package,
+  *   which provides support for the `java.util.concurrent.Flow` types;
+  *   that superseded the `reactive-streams` library.
+  *   In case you need to interop with a library that only provides `reactive-streams` types,
+  *   you may use the [[FlowAdapters]].
   */
 package object reactivestreams {
 
