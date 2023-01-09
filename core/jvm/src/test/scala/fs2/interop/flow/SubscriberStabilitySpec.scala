@@ -23,13 +23,12 @@ package fs2
 package interop
 package flow
 
-import cats.effect._
+import cats.effect.IO
 import cats.effect.std.Random
 
-import scala.concurrent.duration._
-
 import java.nio.ByteBuffer
-import java.util.concurrent.Flow._
+import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
+import scala.concurrent.duration._
 
 class SubscriberStabilitySpec extends Fs2Suite {
   test("StreamSubscriber has no race condition") {

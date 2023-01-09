@@ -23,7 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect._
+import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import org.reactivestreams.tck.TestEnvironment
 import org.reactivestreams.tck.SubscriberWhiteboxVerification.{
@@ -38,7 +38,7 @@ import org.scalatestplus.testng._
 
 import scala.concurrent.duration._
 
-import java.util.concurrent.Flow._
+import java.util.concurrent.Flow.{Subscriber, Subscription}
 import java.util.concurrent.atomic.AtomicInteger
 
 final class SubscriberWhiteboxSpec

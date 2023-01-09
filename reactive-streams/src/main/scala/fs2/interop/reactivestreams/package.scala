@@ -48,7 +48,7 @@ import org.reactivestreams._
   *   which provides support for the `java.util.concurrent.Flow` types;
   *   that superseded the `reactive-streams` library.
   *   In case you need to interop with a library that only provides `reactive-streams` types,
-  *   you may use the [[FlowAdapters]].
+  *   you may use the [[org.reactivestreams.FlowAdapters]].
   */
 package object reactivestreams {
 

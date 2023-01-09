@@ -43,23 +43,23 @@ private[flow] final class StreamSubscriber[F[_], A](
 ) extends Subscriber[A] {
 
   /** Called by an upstream reactive-streams system. */
-  def onSubscribe(subscription: Subscription): Unit = {
+  override def onSubscribe(subscription: Subscription): Unit = {
     nonNull(subscription)
     subscriber.onSubscribe(subscription)
   }
 
   /** Called by an upstream reactive-streams system. */
-  def onNext(a: A): Unit = {
+  override def onNext(a: A): Unit = {
     nonNull(a)
     subscriber.onNext(a)
   }
 
   /** Called by an upstream reactive-streams system. */
-  def onComplete(): Unit =
+  override def onComplete(): Unit =
     subscriber.onComplete()
 
   /** Called by an upstream reactive-streams system. */
-  def onError(t: Throwable): Unit = {
+  override def onError(t: Throwable): Unit = {
     nonNull(t)
     subscriber.onError(t)
   }
@@ -231,22 +231,22 @@ private[flow] object StreamSubscriber {
           effect()
         }
 
-        def onSubscribe(s: Subscription): Unit =
+        override final def onSubscribe(s: Subscription): Unit =
           nextState(OnSubscribe(s))
 
-        def onNext(a: A): Unit =
+        override final def onNext(a: A): Unit =
           nextState(OnNext(a))
 
-        def onError(t: Throwable): Unit =
+        override final def onError(t: Throwable): Unit =
           nextState(OnError(t))
 
-        def onComplete(): Unit =
+        override final def onComplete(): Unit =
           nextState(OnComplete)
 
-        def onFinalize: F[Unit] =
+        override final val onFinalize: F[Unit] =
           F.delay(nextState(OnFinalize))
 
-        def dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
+        override final val dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
           F.async_ { cb =>
             nextState(OnDequeue(out => cb(Right(out))))
           }

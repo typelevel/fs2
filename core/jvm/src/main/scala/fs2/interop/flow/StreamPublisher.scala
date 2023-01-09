@@ -25,9 +25,9 @@ package flow
 
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Dispatcher
-import cats.syntax.all._
 
-import java.util.concurrent.Flow.{Publisher, Subscriber}
+import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
+import scala.util.control.NoStackTrace
 
 /** Implementation of a [[Publisher]].
   *
@@ -35,43 +35,39 @@ import java.util.concurrent.Flow.{Publisher, Subscriber}
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-private[flow] final class StreamUnicastPublisher[F[_], A] private (
+private[flow] final class StreamPublisher[F[_], A] private (
     stream: Stream[F, A],
-    startDispatcher: Dispatcher[F],
-    requestDispatcher: Dispatcher[F]
-)(implicit
-    F: Async[F]
-) extends Publisher[A] {
-  def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+    startDispatcher: Dispatcher[F]
+)(implicit F: Async[F])
+    extends Publisher[A] {
+  override def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    startDispatcher.unsafeRunAndForget {
-      StreamSubscription(
-        subscriber,
-        stream,
-        startDispatcher,
-        requestDispatcher
-      ).flatMap { subscription =>
-        F.delay {
-          subscriber.onSubscribe(subscription)
-          subscription.unsafeStart()
-        }
-      }
+    try
+      startDispatcher.unsafeRunAndForget(
+        StreamSubscription.subscribe(stream, subscriber)
+      )
+    catch {
+      case _: IllegalStateException =>
+        subscriber.onSubscribe(new Subscription {
+          override def cancel(): Unit = ()
+          override def request(x$1: Long): Unit = ()
+        })
+        subscriber.onError(StreamPublisher.CanceledStreamPublisherException)
     }
   }
 }
 
-private[flow] object StreamUnicastPublisher {
+private[flow] object StreamPublisher {
   def apply[F[_], A](
       stream: Stream[F, A]
-  )(implicit F: Async[F]): Resource[F, StreamUnicastPublisher[F, A]] =
-    (
-      Dispatcher.sequential[F],
-      Dispatcher.sequential[F]
-    ).mapN { case (startDispatcher, requestDispatcher) =>
-      new StreamUnicastPublisher(
-        stream,
-        startDispatcher,
-        requestDispatcher
-      )
+  )(implicit F: Async[F]): Resource[F, StreamPublisher[F, A]] =
+    Dispatcher.parallel[F](await = false).map { startDispatcher =>
+      new StreamPublisher(stream, startDispatcher)
     }
+
+  private object CanceledStreamPublisherException
+      extends IllegalStateException(
+        "This StreamPublisher is not longer accepting subscribers"
+      )
+      with NoStackTrace
 }

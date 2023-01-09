@@ -23,7 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect._
+import cats.effect.IO
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 
