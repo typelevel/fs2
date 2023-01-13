@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.4"
+ThisBuild / tlBaseVersion := "3.5"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -174,7 +174,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
-  )
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>")
 )
 
 lazy val root = tlCrossRootProject
