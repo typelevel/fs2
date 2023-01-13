@@ -214,6 +214,26 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("mapref - does not emit spurious events") {
+    SignallingMapRef.ofSingleImmutableMap[IO, Boolean, Int](Map(false -> 0, true -> 0)).flatMap {
+      s =>
+        val events =
+          s(false).discrete.evalTap(_ => IO.sleep(1.seconds)).unNoneTerminate.compile.toList
+
+        val updates =
+          IO.sleep(1100.millis) *>
+            s(false).update(_.map(_ + 1)) *>
+            IO.sleep(1.second) *>
+            s(true).update(_.map(_ + 1)) *>
+            IO.sleep(1.seconds) *>
+            s(false).update(_.map(_ + 1)) *>
+            IO.sleep(1.seconds) *>
+            s(false).set(None)
+
+        TestControl.executeEmbed(updates.background.surround(events)).assertEquals(List(0, 1, 2))
+    }
+  }
+
   test("holdOption") {
     val s = Stream.range(1, 10).covary[IO].holdOption
     s.compile.drain
