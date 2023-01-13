@@ -160,7 +160,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * If `this` stream is infinite, then the result is equivalent to `this`.
     */
   def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(underlying >> s2.underlying)
+    (underlying >> s2.underlying).streamNoScope
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
@@ -652,13 +652,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, Nothing, Unit] =
-        Pull.uncons(tl).flatMap {
+        tl.uncons.flatMap {
           // Note: hd is non-empty, so hd.last.get is safe
           case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
           case None           => Pull.eval(sendLatest >> chan.close.void)
         }
 
-      val debouncedSend: Stream[F2, Nothing] = new Stream(go(this.underlying))
+      val debouncedSend: Stream[F2, Nothing] = go(this.underlying).streamNoScope
 
       chan.stream.concurrently(debouncedSend)
     }
@@ -1514,7 +1514,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(Pull.scope(underlying).handleErrorWith(e => h(e).underlying))
+    Pull.scope(underlying).handleErrorWith(e => h(e).underlying).streamNoScope
 
   /** Emits the first element of this stream (if non-empty) and then halts.
     *
@@ -1695,7 +1695,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
   def interruptScope: Stream[F, O] =
-    new Stream(Pull.interruptScope(underlying))
+    Pull.interruptScope(underlying).streamNoScope
 
   /** Emits the specified separator between every pair of elements in the source stream.
     *
@@ -2038,7 +2038,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: Resource.ExitCase => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
+    Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying).streamNoScope
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream in the same order as the input stream. The number of concurrent effects
@@ -2308,7 +2308,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
       def go(acc: Chunk[O], sizeOpt: Int, s: Pull[F2, O, Unit]): Pull[F2, O, Unit] =
-        Pull.uncons(s).flatMap {
+        s.uncons.flatMap {
           case Some((hd, tl)) =>
             val size = if (sizeOpt > 0) sizeOpt else nextSize(hd.size)
             if (acc.size < size)
@@ -2528,7 +2528,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * is introduced.
     */
   def scope: Stream[F, O] =
-    new Stream(Pull.scope(underlying))
+    Pull.scope(underlying).streamNoScope
 
   /** Groups inputs in fixed size chunks by passing a "sliding window"
     * of size `n` over them. If the input contains less than or equal to
@@ -2731,13 +2731,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(Pull.translate[F2, G, O](underlying, u))
+    Pull.translate[F2, G, O](underlying, u).streamNoScope
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   @deprecated("Use translate instead", "3.0")
   def translateInterruptible[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(Pull.translate[F2, G, O](underlying, u))
+    Pull.translate[F2, G, O](underlying, u).streamNoScope
 
   /** Converts the input to a stream of 1-element chunks.
     */
@@ -3006,7 +3006,7 @@ object Stream extends StreamLowPriority {
 
   /** A pure stream that just emits the unit value once and ends.
     */
-  val unit: Stream[Pure, Unit] = new Stream(Pull.outUnit)
+  val unit: Stream[Pure, Unit] = Pull.outUnit.streamNoScope
 
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
     * is emitted. Otherwise, a `Right` is emitted.
@@ -3022,7 +3022,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def attemptEval[F[_], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
-    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
+    Pull.attemptEval(fo).flatMap(Pull.output1).streamNoScope
 
   /** Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
     */
@@ -3105,7 +3105,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[_], R](
       acquire: F[R]
   )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
-    new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
+    Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)).streamNoScope
 
   /** Like [[bracketCase]] but the acquire action may be canceled.
     */
@@ -3124,7 +3124,7 @@ object Stream extends StreamLowPriority {
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
       F: MonadCancel[F, _]
   ): Stream[F, R] =
-    new Stream(Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1))
+    Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1).streamNoScope
 
   /** Creates a pure stream that emits the elements of the supplied chunk.
     *
@@ -3134,7 +3134,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    new Stream(Pull.output(os))
+    Pull.output(os).streamNoScope
 
   /** Creates an infinite pure stream that always returns the supplied value.
     *
@@ -3166,7 +3166,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = Pull.output1(o).streamNoScope
 
   /** Creates a pure stream that emits the supplied values.
     *
@@ -3179,12 +3179,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil               => empty
       case collection.Seq(x) => emit(x)
-      case _                 => new Stream(Pull.output(Chunk.seq(os)))
+      case _                 => Pull.output(Chunk.seq(os)).streamNoScope
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, Nothing] =
-    new Stream(Pull.done)
+    Pull.done.streamNoScope
 
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
     * the returned stream fails.
@@ -3200,7 +3200,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval[F[_], O](fo: F[O]): Stream[F, O] =
-    new Stream(Pull.eval(fo).flatMap(Pull.output1))
+    Pull.eval(fo).flatMap(Pull.output1).streamNoScope
 
   /** Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
     * As a result, the returned stream emits no elements and hence has output type `Nothing`.
@@ -3209,11 +3209,11 @@ object Stream extends StreamLowPriority {
     */
   @deprecated("Use exec if passing an F[Unit] or eval(fa).drain if passing an F[A]", "2.5.0")
   def eval_[F[_], A](fa: F[A]): Stream[F, Nothing] =
-    new Stream(Pull.eval(fa).map(_ => ()))
+    Pull.eval(fa).map(_ => ()).streamNoScope
 
   /** Like `eval` but resulting chunk is flatten efficiently. */
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
-    new Stream(Pull.eval(fo).flatMap(Pull.output(_)))
+    Pull.eval(fo).flatMap(Pull.output(_)).streamNoScope
 
   /** Like `eval`, but lifts a foldable structure. */
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
@@ -3248,7 +3248,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def exec[F[_]](action: F[Unit]): Stream[F, Nothing] =
-    new Stream(Pull.eval(action))
+    Pull.eval(action).streamNoScope
 
   /** Light weight alternative to [[fixedRate]] that sleeps for duration `d` before each pulled element.
     *
@@ -3641,7 +3641,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, Nothing] =
-    new Stream(Pull.raiseError(e))
+    Pull.raiseError(e).streamNoScope
 
   /** Lazily produces the sequence `[start, start + 1, start + 2, ..., stopExclusive)`.
     * If you want to produce the sequence in one chunk, instead of lazily, use
@@ -3821,7 +3821,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def suspend[F[_], O](s: => Stream[F, O]): Stream[F, O] =
-    new Stream(Pull.suspend(s.underlying))
+    Pull.suspend(s.underlying).streamNoScope
 
   /** Creates a stream by successively applying `f` until a `None` is returned, emitting
     * each output `O` and using each output `S` as input to the next invocation of `f`.
@@ -4053,7 +4053,7 @@ object Stream extends StreamLowPriority {
       */
     def unNoneTerminate: Stream[F, O] = {
       def loop(p: Pull[F, Option[O], Unit]): Pull[F, O, Unit] =
-        Pull.uncons(p).flatMap {
+        p.uncons.flatMap {
           case None => Pull.done
           case Some((hd, tl)) =>
             hd.indexWhere(_.isEmpty) match {
@@ -4179,9 +4179,10 @@ object Stream extends StreamLowPriority {
             F.uncancelable { _ =>
               outer
                 .flatMap(inner =>
-                  new Stream(
-                    Pull.getScope[F].flatMap(outerScope => Pull.eval(runInner(inner, outerScope)))
-                  )
+                  Pull
+                    .getScope[F]
+                    .flatMap(outerScope => Pull.eval(runInner(inner, outerScope)))
+                    .streamNoScope
                 )
                 .drain
                 .interruptWhen(done.map(_.nonEmpty))
@@ -4295,9 +4296,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
-      Pull.uncons(self.underlying).map {
-        _.map { case (hd, tl) => (hd, new Stream(tl)) }
-      }
+      self.underlying.uncons.map(_.map { case (hd, tl) => (hd, tl.streamNoScope) })
 
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
     def uncons1: Pull[F, Nothing, Option[(O, Stream[F, O])]] =

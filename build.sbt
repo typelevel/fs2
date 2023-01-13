@@ -70,6 +70,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectAbstractMethodProblem]("fs2.Pull#CloseScope.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#BindBind.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#CloseScope.*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.uncons"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$CloseScope$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$EvalView"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$View"),
