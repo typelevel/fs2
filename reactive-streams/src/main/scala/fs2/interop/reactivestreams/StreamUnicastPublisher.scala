@@ -51,11 +51,11 @@ final class StreamUnicastPublisher[F[_]: Async, A] private (
 
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
-    try {
+    try
       startDispatcher.unsafeRunAndForget(
         StreamSubscription.subscribe(stream, subscriber)
       )
-    } catch {
+    catch {
       case _: IllegalStateException =>
         subscriber.onSubscribe(new Subscription {
           override def cancel(): Unit = ()

@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
-private[reactivestreams] final class StreamSubscription[F[_], A](
+private[reactivestreams] final class StreamSubscription[F[_], A] private (
     requests: Queue[F, StreamSubscription.Request],
     cancelled: SignallingRef[F, Boolean],
     sub: Subscriber[A],
