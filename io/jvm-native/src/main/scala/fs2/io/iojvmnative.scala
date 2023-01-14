@@ -38,10 +38,6 @@ private[fs2] trait iojvmnative {
   //
   // STDIN/STDOUT Helpers
 
-  /** Stream of bytes read asynchronously from standard input. */
-  def stdin[F[_]: Sync](bufSize: Int): Stream[F, Byte] =
-    readInputStream(Sync[F].blocking(System.in), bufSize, false)
-
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
   def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] =
     writeOutputStream(Sync[F].blocking(System.out), false)
@@ -57,10 +53,6 @@ private[fs2] trait iojvmnative {
       charset: Charset = StandardCharsets.UTF_8
   ): Pipe[F, O, Nothing] =
     _.map(_.show).through(text.encode(charset)).through(stdout)
-
-  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
-  def stdinUtf8[F[_]: Sync](bufSize: Int): Stream[F, String] =
-    stdin(bufSize).through(text.utf8.decode)
 
   /** Stream of bytes read asynchronously from the specified resource relative to the class `C`.
     * @see [[readClassLoaderResource]] for a resource relative to a classloader.

@@ -43,7 +43,7 @@ package object io extends ioplatform {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       closeAfterUse
-    )
+    )((is, buf) => F.blocking(is.read(buf)))
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -62,26 +62,28 @@ package object io extends ioplatform {
       fis,
       F.pure(new Array[Byte](chunkSize)),
       closeAfterUse
-    )
+    )((is, buf) => F.blocking(is.read(buf)))
 
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit
+  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
+      read: (InputStream, Array[Byte]) => F[Int]
+  )(implicit
       F: Sync[F]
   ): F[Option[Chunk[Byte]]] =
-    F.blocking(is.read(buf)).map { numBytes =>
+    read(is, buf).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.array(buf, 0, numBytes))
       else Some(Chunk.array(buf))
     }
 
-  private def readInputStreamGeneric[F[_]](
+  private[fs2] def readInputStreamGeneric[F[_]](
       fis: F[InputStream],
       buf: F[Array[Byte]],
       closeAfterUse: Boolean
-  )(implicit F: Sync[F]): Stream[F, Byte] = {
+  )(read: (InputStream, Array[Byte]) => F[Int])(implicit F: Sync[F]): Stream[F, Byte] = {
     def useIs(is: InputStream) =
       Stream
-        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)))
+        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)(read)))
         .repeat
         .unNoneTerminate
         .flatMap(c => Stream.chunk(c))

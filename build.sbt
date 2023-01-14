@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.4"
+ThisBuild / tlBaseVersion := "3.5"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -70,6 +70,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectAbstractMethodProblem]("fs2.Pull#CloseScope.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#BindBind.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#CloseScope.*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.uncons"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$CloseScope$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$EvalView"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$View"),
@@ -175,6 +176,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
   ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>"),
   // Private cosntructor.
   // Added in #3107
   ProblemFilters.exclude[DirectMissingMethodProblem](
