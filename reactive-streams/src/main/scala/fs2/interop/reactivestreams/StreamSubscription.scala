@@ -123,7 +123,7 @@ private[reactivestreams] object StreamSubscription {
   /** Represents a downstream subscriber's request to publish elements */
   private sealed trait Request
   private case object Infinite extends Request
-  private final case class Finite(n: Long) extends Request
+  private case class Finite(n: Long) extends Request
 
   // Mostly for testing purposes.
   def apply[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit

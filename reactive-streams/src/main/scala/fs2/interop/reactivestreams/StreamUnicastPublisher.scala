@@ -38,17 +38,10 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-final class StreamUnicastPublisher[F[_]: Async, A] private (
+final class StreamUnicastPublisher[F[_]: Async, A](
     val stream: Stream[F, A],
     startDispatcher: Dispatcher[F]
 ) extends Publisher[A] {
-
-  /** Constructor is defined twice
-    *  @deprecated("Use StreamUnicastPublisher.apply", "3.4.0")
-    *  def this(stream: Stream[F, A], dispatcher: Dispatcher[F]) =
-    *    this(stream, dispatcher)
-    */
-
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     try

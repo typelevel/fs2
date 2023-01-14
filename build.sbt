@@ -174,6 +174,11 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
+  ),
+  // Private cosntructor.
+  // Added in #3107
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.interop.reactivestreams.StreamUnicastPublisher.this"
   )
 )
 
