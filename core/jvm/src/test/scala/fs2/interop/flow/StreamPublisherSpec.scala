@@ -42,9 +42,8 @@ final class StreamPublisherSpec
   }
 
   override def createFailedFlowPublisher(): StreamPublisher[IO, Int] = {
-    val (publisher, close) =
-      StreamPublisher[IO, Int](stream = Stream.empty).allocated.unsafeRunSync()
-    close.unsafeRunSync() // If the resource is closed then the publisher is failed.
+    val publisher = // If the resource is closed then the publisher is failed.
+      StreamPublisher[IO, Int](Stream.empty).use(IO.pure).unsafeRunSync()
     publisher
   }
 }

@@ -23,10 +23,10 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.kernel.{Async, Deferred, Resource, Outcome}
 import cats.effect.std.{Dispatcher, Queue}
+import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.concurrent.SignallingRef
 
 import java.util.concurrent.Flow.{Subscription, Subscriber}
 
@@ -41,12 +41,12 @@ private[flow] final class StreamSubscription[F[_], A] private (
     sub: Subscriber[A],
     requestDispatcher: Dispatcher[F],
     requests: Queue[F, StreamSubscription.Request],
-    canceled: SignallingRef[F, Boolean]
+    canceled: Deferred[F, Unit]
 )(implicit F: Async[F])
     extends Subscription {
-  // Ensure we are on a terminal state before signaling the subscriber.
-  private def onError(e: Throwable): F[Unit] =
-    cancelMe >> F.delay(sub.onError(e))
+  // Ensure we are on a terminal state; i.e. set `canceled`, before signaling the subscriber.
+  private def onError(ex: Throwable): F[Unit] =
+    cancelMe >> F.delay(sub.onError(ex))
 
   private def onComplete: F[Unit] =
     cancelMe >> F.delay(sub.onComplete())
@@ -69,28 +69,25 @@ private[flow] final class StreamSubscription[F[_], A] private (
         go(in).stream
       }
 
-    stream
-      .through(subscriptionPipe)
-      .foreach(a => F.delay(sub.onNext(a)))
-      .interruptWhen(canceled)
-      .onFinalizeCase {
-        case Resource.ExitCase.Succeeded =>
-          canceled.get.flatMap {
-            case true =>
-              F.unit
+    val events =
+      stream
+        .through(subscriptionPipe)
+        .foreach(x => F.delay(sub.onNext(x)))
+        .compile
+        .drain
 
-            case false =>
-              onComplete
+    events
+      .race(canceled.get)
+      .guaranteeCase {
+        case Outcome.Succeeded(result) =>
+          result.flatMap {
+            case Left(())  => onComplete // Events finished normally.
+            case Right(()) => F.unit // Events was canceled.
           }
-
-        case Resource.ExitCase.Errored(e) =>
-          onError(e)
-
-        case Resource.ExitCase.Canceled =>
-          F.unit
+        case Outcome.Errored(ex) => onError(ex)
+        case Outcome.Canceled()  => cancelMe
       }
-      .compile
-      .drain
+      .void
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -100,7 +97,8 @@ private[flow] final class StreamSubscription[F[_], A] private (
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   private def cancelMe: F[Unit] =
-    canceled.set(true)
+    canceled.complete(()).void
+
   override def cancel(): Unit =
     try
       requestDispatcher.unsafeRunAndForget(cancelMe)
@@ -111,15 +109,18 @@ private[flow] final class StreamSubscription[F[_], A] private (
 
   override def request(n: Long): Unit = {
     val prog =
-      canceled.get.flatMap {
-        case false =>
+      canceled.tryGet.flatMap {
+        case None =>
           if (n == java.lang.Long.MAX_VALUE)
             requests.offer(StreamSubscription.Request.Infinite)
           else if (n > 0)
             requests.offer(StreamSubscription.Request.Finite(n))
           else
-            onError(new IllegalArgumentException(s"Invalid number of elements [${n}]"))
-        case true =>
+            onError(
+              ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
+            )
+
+        case Some(()) =>
           F.unit
       }
     try
@@ -147,7 +148,7 @@ private[flow] object StreamSubscription {
     (
       Dispatcher.sequential[F](await = true),
       Resource.eval(Queue.unbounded[F, Request]),
-      Resource.eval(SignallingRef(false))
+      Resource.eval(Deferred[F, Unit])
     ).mapN { case (requestDispatcher, requests, canceled) =>
       new StreamSubscription(
         stream,
@@ -164,6 +165,6 @@ private[flow] object StreamSubscription {
       F: Async[F]
   ): F[Unit] =
     apply(stream, subscriber).use { subscription =>
-      F.onCancel(subscription.run, subscription.cancelMe)
+      subscription.run
     }
 }

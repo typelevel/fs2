@@ -190,6 +190,9 @@ package object flow {
     * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
     * Thus, no more elements will be published.
     *
+    * @note This Publisher can be reused for multiple Subscribers,
+    *       each subscription will re-run the [[Stream]] from the beginning.
+    *
     * @see [[subscribeStream]] for a simpler version that only requires a [[Subscriber]].
     *
     * @param stream The [[Stream]] to transform.
@@ -225,6 +228,9 @@ package object flow {
       * The stream is only ran when elements are requested.
       * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
       * Thus, no more elements will be published.
+      *
+      * @note This Publisher can be reused for multiple Subscribers,
+      *       each subscription will re-run the [[Stream]] from the beginning.
       *
       * @see [[subscribe]] for a simpler version that only requires a [[Subscriber]].
       */

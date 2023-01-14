@@ -33,6 +33,9 @@ import scala.util.control.NoStackTrace
   *
   * This is used to publish elements from a [[Stream]] to a downstream reactive-streams system.
   *
+  * @note This Publisher can be reused for multiple Subscribers,
+  *       each subscription will re-run the [[Stream]] from the beginning.
+  *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
 private[flow] final class StreamPublisher[F[_], A] private (
