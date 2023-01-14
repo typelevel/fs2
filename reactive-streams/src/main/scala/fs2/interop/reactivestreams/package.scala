@@ -92,14 +92,14 @@ package object reactivestreams {
       fromPublisher(publisher)
   }
 
-  /** Allows subscribing a [[Subscriber]] to a [[Stream]].
+  /** Allows subscribing a `org.reactivestreams.Subscriber` to a [[Stream]].
     *
     * The returned program will run until
     * all the stream elements were consumed.
     * Cancelling this program will gracefully shutdown the subscription.
     *
     * @param stream the [[Stream]] that will be consumed by the subscriber.
-    * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
+    * @param subscriber the Subscriber that will receive the elements of the stream.
     */
   def subscribeStream[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
       F: Async[F]
@@ -117,9 +117,9 @@ package object reactivestreams {
     ): Resource[F, StreamUnicastPublisher[F, A]] =
       StreamUnicastPublisher(stream)
 
-    /** Subscribes the provided [[Subscriber]] to this stream.
+    /** Subscribes the provided `org.reactivestreams.Subscriber` to this stream.
       *
-      * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
+      * @param subscriber the Subscriber that will receive the elements of the stream.
       */
     def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
       reactivestreams.subscribeStream(stream, subscriber)
