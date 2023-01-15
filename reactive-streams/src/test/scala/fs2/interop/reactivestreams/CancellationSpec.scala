@@ -59,8 +59,8 @@ class CancellationSpec extends Fs2Suite {
       }
       .replicateA_(attempts)
 
-  test("After subscription is cancelled request must be noOps") {
-    testStreamSubscription(clue = "onNext was called after the subscription was cancelled") { sub =>
+  test("After subscription is canceled request must be NOOPs") {
+    testStreamSubscription(clue = "onNext was called after the subscription was canceled") { sub =>
       sub.cancel()
       sub.request(1)
       sub.request(1)
@@ -68,8 +68,8 @@ class CancellationSpec extends Fs2Suite {
     }
   }
 
-  test("after subscription is cancelled additional cancelations must be noOps") {
-    testStreamSubscription(clue = "onComplete was called after the subscription was cancelled") {
+  test("after subscription is canceled additional cancellations must be NOOPs") {
+    testStreamSubscription(clue = "onComplete was called after the subscription was canceled") {
       sub =>
         sub.cancel()
         sub.cancel()

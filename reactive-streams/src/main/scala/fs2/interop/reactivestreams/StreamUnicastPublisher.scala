@@ -32,9 +32,12 @@ import scala.util.control.NoStackTrace
 
 /** Implementation of a `org.reactivestreams.Publisher`
   *
-  * This is used to publish elements from a `fs2.Stream` to a downstream reactivestreams system.
+  * This is used to publish elements from a [[Stream]] to a downstream reactive-streams system.
   *
-  * @note Not longer unicast, this Publisher can be reused for multiple Subscribers.
+  * @note Not longer unicast, this Publisher can be reused for multiple Subscribers:
+  *       each subscription will re-run the [[Stream]] from the beginning.
+  *       However, a _parallel_ `Dispatcher` is required to allow concurrent subscriptions.
+  *       Please, refer to the `apply` factory in the companion object that only requires a stream.
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
@@ -42,6 +45,14 @@ final class StreamUnicastPublisher[F[_]: Async, A](
     val stream: Stream[F, A],
     startDispatcher: Dispatcher[F]
 ) extends Publisher[A] {
+  // Added only for bincompat, effectively deprecated.
+  private[reactivestreams] def this(
+      stream: Stream[F, A],
+      startDispatcher: Dispatcher[F],
+      requestDispatcher: Dispatcher[F]
+  ) =
+    this(stream, startDispatcher)
+
   def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     nonNull(subscriber)
     try

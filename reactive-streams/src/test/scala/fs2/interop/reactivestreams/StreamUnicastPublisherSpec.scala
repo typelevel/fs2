@@ -41,9 +41,8 @@ final class StreamUnicastPublisherSpec
   }
 
   override def createFailedPublisher(): StreamUnicastPublisher[IO, Int] = {
-    val (publisher, close) =
-      StreamUnicastPublisher[IO, Int](Stream.empty).allocated.unsafeRunSync()
-    close.unsafeRunSync() // If the resource is closed then the publisher is failed.
+    val publisher = // If the resource is closed then the publisher is failed.
+      StreamUnicastPublisher[IO, Int](Stream.empty).use(IO.pure).unsafeRunSync()
     publisher
   }
 }

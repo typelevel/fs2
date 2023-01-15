@@ -178,12 +178,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>"),
-  // Private cosntructor.
-  // Added in #3107
-  ProblemFilters.exclude[DirectMissingMethodProblem](
-    "fs2.interop.reactivestreams.StreamUnicastPublisher.this"
-  )
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>")
 )
 
 lazy val root = tlCrossRootProject
