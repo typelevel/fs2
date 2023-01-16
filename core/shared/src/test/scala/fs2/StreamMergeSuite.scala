@@ -22,10 +22,11 @@
 package fs2
 
 import scala.concurrent.duration._
-
 import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
 import cats.syntax.all._
+import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamMergeSuite extends Fs2Suite {
@@ -242,4 +243,29 @@ class StreamMergeSuite extends Fs2Suite {
         }
     }
   }
+
+  test("mergeSorted") {
+    type SortedData = Vector[Chunk[Int]]
+    def mkStream(parts: SortedData): Stream[Pure, Int] = parts.map(Stream.chunk).combineAll
+
+    implicit val arbSortedData: Arbitrary[SortedData] = Arbitrary(
+      for {
+        sortedData <- Arbitrary.arbContainer[Array, Int].arbitrary.map(_.sorted)
+        splitIdxs <- Gen.someOf(sortedData.indices).map(_.sorted)
+        borders = (0 +: splitIdxs).zip(splitIdxs :+ sortedData.length)
+      } yield borders.toVector
+        .map { case (from, to) =>
+          Chunk.array(sortedData, from, to - from)
+        }
+    )
+
+    forAll { (sortedL: SortedData, sortedR: SortedData) =>
+      mkStream(sortedL)
+        .mergeSorted(mkStream(sortedR))
+        .assertEmits(
+          (sortedL ++ sortedR).toList.flatMap(_.toList).sorted
+        )
+    }
+  }
+
 }

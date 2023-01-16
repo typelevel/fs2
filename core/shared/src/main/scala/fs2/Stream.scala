@@ -1979,6 +1979,57 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     that.mergeHaltL(this)
 
+  /** Given two sorted streams emits a single sorted stream, like in merge-sort.
+    * For entries that are considered equal by the Order, left stream element is emmitted first.
+    * Note: both this and another streams MUST BE ORDERED already
+    * @example {{{
+    * scala> Stream(1, 2, 5, 6).mergeSorted(Stream(0, 2, 3, 4)).toList
+    * res0: List[Int] = List(0, 1, 2, 2, 3, 4, 5, 6)
+    * }}}
+    */
+  def mergeSorted[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
+    val order = Order[O2].toOrdering // collections API needs Ordering, not cats.Order
+
+    def go(
+        leftLeg: Stream.StepLeg[F2, O2],
+        rightLeg: Stream.StepLeg[F2, O2]
+    ): Pull[F2, O2, Unit] = {
+      val lChunk = leftLeg.head
+      val rChunk = rightLeg.head
+      if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
+        val emitUpTo = order.min(lChunk(lChunk.size - 1), rChunk(rChunk.size - 1))
+        val emitLeftCount = lChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(lChunk.size)
+        val emitRightCount = rChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(rChunk.size)
+        val (emitLeft, keepLeft) = lChunk.splitAt(emitLeftCount)
+        val (emitRight, keepRight) = rChunk.splitAt(emitRightCount)
+        Pull.output(
+          Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
+        ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
+      } else { // otherwise, we need to shift leg
+        if (lChunk.isEmpty) {
+          leftLeg.stepLeg.flatMap {
+            case Some(nextLl) => go(nextLl, rightLeg)
+            case None         => Pull.output(rChunk) >> rightLeg.next
+          }
+        } else {
+          rightLeg.stepLeg.flatMap {
+            case Some(nextRl) => go(leftLeg, nextRl)
+            case None         => Pull.output(lChunk) >> leftLeg.next
+          }
+        }
+      }
+    }
+
+    val thisPull = covaryAll[F2, O2].pull
+    val thatPull = that.pull
+
+    (thisPull.stepLeg, thatPull.stepLeg).tupled.flatMap {
+      case (Some(leg1), Some(leg2)) => go(leg1, leg2)
+      case (_, None)                => thisPull.echo
+      case (None, _)                => thatPull.echo
+    }.stream
+  }
+
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
     *
     * `s.noneTerminate.unNoneTerminate == s`
@@ -5020,7 +5071,7 @@ object Stream extends StreamLowPriority {
     def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
       new StepLeg[F, O2](nextHead, scopeId, next)
 
-    /** Provides an `uncons`-like operation on this leg of the stream. */
+    /** Provides an `uncons`-like operation on this leg of the stream, dropping current `head` */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull.stepLeg(self)
   }

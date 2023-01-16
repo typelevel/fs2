@@ -837,6 +837,7 @@ object Pull extends PullLowPriority {
 
   private final case class GetScope[F[_]]() extends AlgEffect[Nothing, Scope[F]]
 
+  /** Ignores current stepLeg head, goes on with remaining data */
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
