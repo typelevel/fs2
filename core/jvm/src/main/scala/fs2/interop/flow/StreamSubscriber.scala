@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-private[flow] final class StreamSubscriber[F[_], A](
+private[flow] final class StreamSubscriber[F[_], A] private (
     private[flow] val subscriber: StreamSubscriber.FSM[F, A]
 )(implicit
     F: MonadThrow[F]
@@ -107,7 +107,7 @@ private[flow] object StreamSubscriber {
           .unchunks
   }
 
-  private[flow] def fsm[F[_], A](
+  private def fsm[F[_], A](
       bufferSize: Int
   )(implicit F: Async[F]): F[FSM[F, A]] = {
     type Out = Either[Throwable, Option[Chunk[A]]]
