@@ -92,16 +92,39 @@ package object reactivestreams {
       fromPublisher(publisher)
   }
 
+  /** Allows subscribing a `org.reactivestreams.Subscriber` to a [[Stream]].
+    *
+    * The returned program will run until
+    * all the stream elements were consumed.
+    * Cancelling this program will gracefully shutdown the subscription.
+    *
+    * @param stream the [[Stream]] that will be consumed by the subscriber.
+    * @param subscriber the Subscriber that will receive the elements of the stream.
+    */
+  def subscribeStream[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
+      F: Async[F]
+  ): F[Unit] =
+    StreamSubscription.subscribe(stream, subscriber)
+
   implicit final class StreamOps[F[_], A](val stream: Stream[F, A]) {
 
-    /** Creates a [[StreamUnicastPublisher]] from a stream.
+    /** Creates a [[StreamUnicastPublisher]] from a [[Stream]].
       *
-      * This publisher can only have a single subscription.
       * The stream is only ran when elements are requested.
+      *
+      * @note Not longer unicast, this Publisher can be reused for multiple Subscribers:
+      *       each subscription will re-run the [[Stream]] from the beginning.
       */
     def toUnicastPublisher(implicit
         F: Async[F]
     ): Resource[F, StreamUnicastPublisher[F, A]] =
       StreamUnicastPublisher(stream)
+
+    /** Subscribes the provided `org.reactivestreams.Subscriber` to this stream.
+      *
+      * @param subscriber the Subscriber that will receive the elements of the stream.
+      */
+    def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
+      reactivestreams.subscribeStream(stream, subscriber)
   }
 }
