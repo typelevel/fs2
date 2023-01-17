@@ -23,12 +23,11 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect.kernel._
+import cats.effect.kernel.{Async, Deferred, Resource, Outcome}
 import cats.effect.std.{Dispatcher, Queue}
 import cats.syntax.all._
-
-import fs2.concurrent.SignallingRef
-import org.reactivestreams._
+import cats.effect.syntax.all._
+import org.reactivestreams.{Subscription, Subscriber}
 
 /** Implementation of a `org.reactivestreams.Subscription`.
   *
@@ -36,22 +35,24 @@ import org.reactivestreams._
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
-private[reactivestreams] final class StreamSubscription[F[_], A](
+private[reactivestreams] final class StreamSubscription[F[_], A] private (
     requests: Queue[F, StreamSubscription.Request],
-    cancelled: SignallingRef[F, Boolean],
+    canceled: Deferred[F, Unit],
     sub: Subscriber[A],
     stream: Stream[F, A],
-    startDispatcher: Dispatcher[F],
     requestDispatcher: Dispatcher[F]
 )(implicit F: Async[F])
     extends Subscription {
   import StreamSubscription._
 
-  // We want to make sure `cancelled` is set _before_ signalling the subscriber
-  def onError(e: Throwable) = cancelled.set(true) >> F.delay(sub.onError(e))
-  def onComplete = cancelled.set(true) >> F.delay(sub.onComplete)
+  // Ensure we are on a terminal state; i.e. set `canceled`, before signaling the subscriber.
+  private def onError(ex: Throwable): F[Unit] =
+    cancelMe >> F.delay(sub.onError(ex))
 
-  def unsafeStart(): Unit = {
+  private def onComplete: F[Unit] =
+    cancelMe >> F.delay(sub.onComplete)
+
+  private[reactivestreams] def run: F[Unit] = {
     def subscriptionPipe: Pipe[F, A, A] =
       in => {
         def go(s: Stream[F, A]): Pull[F, A, Unit] =
@@ -67,57 +68,101 @@ private[reactivestreams] final class StreamSubscription[F[_], A](
         go(in).stream
       }
 
-    val s =
+    val events =
       stream
         .through(subscriptionPipe)
-        .interruptWhen(cancelled)
-        .evalMap(x => F.delay(sub.onNext(x)))
-        .handleErrorWith(e => Stream.eval(onError(e)))
-        .onFinalize(cancelled.get.ifM(ifTrue = F.unit, ifFalse = onComplete))
+        .foreach(x => F.delay(sub.onNext(x)))
         .compile
         .drain
 
-    startDispatcher.unsafeRunAndForget(s)
+    events
+      .race(canceled.get)
+      .guaranteeCase {
+        case Outcome.Succeeded(result) =>
+          result.flatMap {
+            case Left(())  => onComplete // Events finished normally.
+            case Right(()) => F.unit // Events was canceled.
+          }
+        case Outcome.Errored(ex) => onError(ex)
+        case Outcome.Canceled()  => cancelMe
+      }
+      .void
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
   // be processed immediately, but if you have synchronous `cancel();
-  // request()`, then the request _must_ be a no op. Fortunately,
-  // ordering is guaranteed by a sequential d
+  // request()`, then the request _must_ be a NOOP. Fortunately,
+  // ordering is guaranteed by a sequential dispatcher.
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
-  def cancel(): Unit =
-    requestDispatcher.unsafeRunAndForget(cancelled.set(true))
+  private def cancelMe: F[Unit] =
+    canceled.complete(()).void
 
-  def request(n: Long): Unit = {
-    val request: F[Request] =
-      if (n == java.lang.Long.MAX_VALUE) (Infinite: Request).pure[F]
-      else if (n > 0) (Finite(n): Request).pure[F]
-      else F.raiseError(new IllegalArgumentException(s"3.9 - invalid number of elements [$n]"))
+  override def cancel(): Unit =
+    try
+      requestDispatcher.unsafeRunAndForget(cancelMe)
+    catch {
+      case _: IllegalStateException =>
+      // Dispatcher already shutdown, we are on terminal state, NOOP.
+    }
 
-    val prog = cancelled.get
-      .ifM(ifTrue = F.unit, ifFalse = request.flatMap(requests.offer).handleErrorWith(onError))
+  override def request(n: Long): Unit = {
+    val prog =
+      canceled.tryGet.flatMap {
+        case None =>
+          if (n == java.lang.Long.MAX_VALUE)
+            requests.offer(Infinite)
+          else if (n > 0)
+            requests.offer(Finite(n))
+          else
+            onError(
+              ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
+            )
 
-    requestDispatcher.unsafeRunAndForget(prog)
+        case Some(()) =>
+          F.unit
+      }
+
+    try
+      requestDispatcher.unsafeRunAndForget(prog)
+    catch {
+      case _: IllegalStateException =>
+      // Dispatcher already shutdown, we are on terminal state, NOOP.
+    }
   }
 }
 
 private[reactivestreams] object StreamSubscription {
 
   /** Represents a downstream subscriber's request to publish elements */
-  sealed trait Request
-  case object Infinite extends Request
-  case class Finite(n: Long) extends Request
+  private sealed trait Request
+  private case object Infinite extends Request
+  private case class Finite(n: Long) extends Request
 
-  def apply[F[_]: Async, A](
-      sub: Subscriber[A],
-      stream: Stream[F, A],
-      startDispatcher: Dispatcher[F],
-      requestDispatcher: Dispatcher[F]
-  ): F[StreamSubscription[F, A]] =
-    SignallingRef(false).flatMap { cancelled =>
-      Queue.unbounded[F, Request].map { requests =>
-        new StreamSubscription(requests, cancelled, sub, stream, startDispatcher, requestDispatcher)
-      }
+  // Mostly for testing purposes.
+  def apply[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
+      F: Async[F]
+  ): Resource[F, StreamSubscription[F, A]] =
+    (
+      Dispatcher.sequential[F](await = true),
+      Resource.eval(Deferred[F, Unit]),
+      Resource.eval(Queue.unbounded[F, Request])
+    ).mapN { case (requestDispatcher, canceled, requests) =>
+      new StreamSubscription(
+        requests,
+        canceled,
+        subscriber,
+        stream,
+        requestDispatcher
+      )
+    }.evalTap { subscription =>
+      F.delay(subscriber.onSubscribe(subscription))
+    }
+
+  def subscribe[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
+      F: Async[F]
+  ): F[Unit] =
+    apply(stream, subscriber).use { subscription =>
+      subscription.run
     }
 }

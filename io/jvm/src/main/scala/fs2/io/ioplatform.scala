@@ -26,11 +26,50 @@ import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
 import cats.syntax.all._
+import fs2.internal.ThreadFactories
 import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
+import java.util.concurrent.Executors
 
 private[fs2] trait ioplatform extends iojvmnative {
+
+  private[this] lazy val stdinExecutor =
+    Executors.newSingleThreadExecutor(ThreadFactories.named("fs2-stdin", true))
+
+  /** Stream of bytes read asynchronously from standard input. */
+  def stdin[F[_]](bufSize: Int)(implicit F: Async[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      F.pure(System.in),
+      F.delay(new Array[Byte](bufSize)),
+      false
+    ) { (is, buf) =>
+      F.async[Int] { cb =>
+        F.delay {
+          val task: Runnable = () => cb(Right(is.read(buf)))
+          stdinExecutor.submit(task)
+        }.map { fut =>
+          Some(F.delay {
+            // if the read has not started, cancelation will succeed
+            // if it has started, we cannot interrupt it, so we just leak
+            fut.cancel(false)
+            ()
+          })
+        }
+      }
+    }
+
+  @deprecated("Use overload with Async, which is cancelable", "3.5.0")
+  def stdin[F[_]](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
+    readInputStream(F.blocking(System.in), bufSize, false)(F)
+
+  /** Stream of `String` read asynchronously from standard input decoded in UTF-8. */
+  def stdinUtf8[F[_]: Async](bufSize: Int): Stream[F, String] =
+    stdin(bufSize).through(text.utf8.decode)
+
+  @deprecated("Use overload with Async, which is cancelable", "3.5.0")
+  def stdinUtf8[F[_]](bufSize: Int, F: Sync[F]): Stream[F, String] =
+    stdin(bufSize, F).through(text.utf8.decode)
 
   /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.
