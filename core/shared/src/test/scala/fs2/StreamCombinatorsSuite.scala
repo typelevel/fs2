@@ -29,7 +29,7 @@ import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 import fs2.concurrent.SignallingRef
 import org.scalacheck.effect.PropF.forAllF
-import org.scalacheck.Gen
+import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 
 import scala.concurrent.duration._
@@ -888,6 +888,32 @@ class StreamCombinatorsSuite extends Fs2Suite {
           ones.interleaveAll(as).take(n.toLong).toVector,
           ones.interleave(as).take(n.toLong).toVector
         )
+      }
+    }
+
+    property("interleaveOrdered for ordered streams emits ordered stream with same data") {
+
+      type SortedData = Vector[Chunk[Int]]
+
+      implicit val arbSortedData: Arbitrary[SortedData] = Arbitrary(
+        for {
+          sortedData <- Arbitrary.arbContainer[Array, Int].arbitrary.map(_.sorted)
+          splitIdxs <- Gen.someOf(sortedData.indices).map(_.sorted)
+          borders = (0 +: splitIdxs).zip(splitIdxs :+ sortedData.length)
+        } yield borders.toVector
+          .map { case (from, to) =>
+            Chunk.array(sortedData, from, to - from)
+          }
+      )
+
+      def mkStream(parts: SortedData): Stream[Pure, Int] = parts.map(Stream.chunk).combineAll
+
+      forAll { (sortedL: SortedData, sortedR: SortedData) =>
+        mkStream(sortedL)
+          .interleaveOrdered(mkStream(sortedR))
+          .assertEmits(
+            (sortedL ++ sortedR).toList.flatMap(_.toList).sorted
+          )
       }
     }
   }

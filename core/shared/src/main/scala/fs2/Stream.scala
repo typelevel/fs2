@@ -1980,14 +1980,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     that.mergeHaltL(this)
 
   /** Given two sorted streams emits a single sorted stream, like in merge-sort.
-    * For entries that are considered equal by the Order, left stream element is emmitted first.
+    * For entries that are considered equal by the Order, left stream element is emitted first.
     * Note: both this and another streams MUST BE ORDERED already
     * @example {{{
-    * scala> Stream(1, 2, 5, 6).mergeSorted(Stream(0, 2, 3, 4)).toList
+    * scala> Stream(1, 2, 5, 6).interleaveOrdered(Stream(0, 2, 3, 4)).toList
     * res0: List[Int] = List(0, 1, 2, 2, 3, 4, 5, 6)
     * }}}
     */
-  def mergeSorted[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
+  def interleaveOrdered[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
     val order = Order[O2].toOrdering // collections API needs Ordering, not cats.Order
 
     def go(
