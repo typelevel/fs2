@@ -37,6 +37,8 @@ import scala.concurrent.TimeoutException
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
+  override def scalaCheckInitialSeed = "CGcLMAcUebElb0kzuHuoGp8ZwxhJT9ztcbnWc_4sYHK="
+
   group("awakeEvery") {
     test("basic") {
       Stream
@@ -891,13 +893,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }
     }
 
-    property("interleaveOrdered for ordered streams emits ordered stream with same data") {
+    property("interleaveOrdered for ordered streams emits stable-sorted stream with same data") {
+      // stability estimating element type and ordering
+      type Elem = (Int, Byte)
+      implicit val ordering: Ordering[Elem] = Ordering.by(_._1)
+      implicit val order: cats.Order[Elem] = cats.Order.fromOrdering
 
-      type SortedData = Vector[Chunk[Int]]
-
+      type SortedData = Vector[Chunk[Elem]]
       implicit val arbSortedData: Arbitrary[SortedData] = Arbitrary(
         for {
-          sortedData <- Arbitrary.arbContainer[Array, Int].arbitrary.map(_.sorted)
+          sortedData <- Arbitrary.arbContainer[Array, Elem].arbitrary.map(_.sorted)
           splitIdxs <- Gen.someOf(sortedData.indices).map(_.sorted)
           borders = (0 +: splitIdxs).zip(splitIdxs :+ sortedData.length)
         } yield borders.toVector
@@ -906,13 +911,13 @@ class StreamCombinatorsSuite extends Fs2Suite {
           }
       )
 
-      def mkStream(parts: SortedData): Stream[Pure, Int] = parts.map(Stream.chunk).combineAll
+      def mkStream(parts: SortedData): Stream[Pure, Elem] = parts.map(Stream.chunk).combineAll
 
       forAll { (sortedL: SortedData, sortedR: SortedData) =>
         mkStream(sortedL)
           .interleaveOrdered(mkStream(sortedR))
           .assertEmits(
-            (sortedL ++ sortedR).toList.flatMap(_.toList).sorted
+            (sortedL ++ sortedR).toList.flatMap(_.toList).sorted // std .sorted is stable
           )
       }
     }

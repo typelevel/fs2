@@ -1997,11 +1997,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val lChunk = leftLeg.head
       val rChunk = rightLeg.head
       if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
-        val emitUpTo = order.min(lChunk(lChunk.size - 1), rChunk(rChunk.size - 1))
-        val emitLeftCount = lChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(lChunk.size)
-        val emitRightCount = rChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(rChunk.size)
-        val (emitLeft, keepLeft) = lChunk.splitAt(emitLeftCount)
-        val (emitRight, keepRight) = rChunk.splitAt(emitRightCount)
+        val lLast = lChunk(lChunk.size - 1)
+        val rLast = rChunk(rChunk.size - 1)
+        val wholeLeftSide = Order.lteqv(lLast, rLast) // otherwise we can emit whole right
+        val (emitLeft, keepLeft) =
+          if (wholeLeftSide) (lChunk, Chunk.empty)
+          else
+            lChunk.splitAt(
+              lChunk.indexWhere(order.gt(_, rLast)).getOrElse(lChunk.size)
+            )
+        val (emitRight, keepRight) =
+          if (!wholeLeftSide) (rChunk, Chunk.empty)
+          else
+            rChunk.splitAt( // not emitting equal from right side to keep stable sorting
+              rChunk.indexWhere(order.gteq(_, lLast)).getOrElse(rChunk.size)
+            )
         Pull.output(
           Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
         ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
