@@ -165,10 +165,4 @@ package object flow {
       F: Async[F]
   ): F[Unit] =
     StreamSubscription.subscribe(stream, subscriber)
-
-  /** Ensures a value is not null. */
-  private[flow] def nonNull[A](a: A): Unit =
-    if (a == null) {
-      throw new NullPointerException()
-    }
 }

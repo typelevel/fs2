@@ -27,6 +27,7 @@ import cats.MonadThrow
 import cats.effect.kernel.Async
 import cats.syntax.all._
 
+import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Subscriber, Subscription}
 import java.util.concurrent.atomic.AtomicReference
 
@@ -44,13 +45,19 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
   /** Called by an upstream reactive-streams system. */
   override def onSubscribe(subscription: Subscription): Unit = {
-    nonNull(subscription)
+    requireNonNull(
+      subscription,
+      "The subscription provided to onSubscribe must not be null"
+    )
     subscriber.onSubscribe(subscription)
   }
 
   /** Called by an upstream reactive-streams system. */
   override def onNext(a: A): Unit = {
-    nonNull(a)
+    requireNonNull(
+      a,
+      "The element provided to onNext must not be null"
+    )
     subscriber.onNext(a)
   }
 
@@ -60,7 +67,10 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
   /** Called by an upstream reactive-streams system. */
   override def onError(t: Throwable): Unit = {
-    nonNull(t)
+    requireNonNull(
+      t,
+      "The throwable provided to onError must not be null"
+    )
     subscriber.onError(t)
   }
 
@@ -72,8 +82,10 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 private[flow] object StreamSubscriber {
 
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */
-  def apply[F[_], A](bufferSize: Int)(implicit F: Async[F]): F[StreamSubscriber[F, A]] =
+  def apply[F[_], A](bufferSize: Int)(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
+    require(bufferSize > 0, "The buffer size MUST be positive")
     fsm[F, A](bufferSize).map(fsm => new StreamSubscriber(subscriber = fsm))
+  }
 
   /** A finite state machine describing the subscriber. */
   private[flow] trait FSM[F[_], A] {

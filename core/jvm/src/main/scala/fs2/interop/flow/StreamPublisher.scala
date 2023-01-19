@@ -26,6 +26,7 @@ package flow
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Dispatcher
 
+import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
 import scala.util.control.NoStackTrace
 
@@ -44,7 +45,10 @@ private[flow] final class StreamPublisher[F[_], A] private (
 )(implicit F: Async[F])
     extends Publisher[A] {
   override def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
-    nonNull(subscriber)
+    requireNonNull(
+      subscriber,
+      "The subscriber provided to subscribe must not be null"
+    )
     try
       startDispatcher.unsafeRunAndForget(
         StreamSubscription.subscribe(stream, subscriber)
