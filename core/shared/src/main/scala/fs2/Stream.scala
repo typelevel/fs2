@@ -1990,25 +1990,44 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def interleaveOrdered[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
     val order = Order[O2].toOrdering // collections API needs Ordering, not cats.Order
 
-    def go(left: Pull[F2, O2, Unit], right: Pull[F2, O2, Unit]): Pull[F2, O2, Unit] =
-      left.uncons.flatMap {
-        case Some((lChunk, lNext)) =>
-          right.uncons.flatMap {
-            case Some((rChunk, rNext)) =>
-              val emitUpTo = order.min(lChunk(lChunk.size - 1), rChunk(rChunk.size - 1))
-              val emitLeftCount = lChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(lChunk.size)
-              val emitRightCount = rChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(rChunk.size)
-              val (emitLeft, keepLeft) = lChunk.splitAt(emitLeftCount)
-              val (emitRight, keepRight) = rChunk.splitAt(emitRightCount)
-              Pull.output(Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))) >> go(
-                if (keepLeft.isEmpty) lNext else Pull.output(keepLeft) >> lNext,
-                if (keepRight.isEmpty) rNext else Pull.output(keepRight) >> rNext
-              )
-            case None => Pull.output(lChunk) >> lNext
+    def go(
+        leftLeg: Stream.StepLeg[F2, O2],
+        rightLeg: Stream.StepLeg[F2, O2]
+    ): Pull[F2, O2, Unit] = {
+      val lChunk = leftLeg.head
+      val rChunk = rightLeg.head
+      if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
+        val emitUpTo = order.min(lChunk(lChunk.size - 1), rChunk(rChunk.size - 1))
+        val emitLeftCount = lChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(lChunk.size)
+        val emitRightCount = rChunk.indexWhere(order.gt(_, emitUpTo)).getOrElse(rChunk.size)
+        val (emitLeft, keepLeft) = lChunk.splitAt(emitLeftCount)
+        val (emitRight, keepRight) = rChunk.splitAt(emitRightCount)
+        Pull.output(
+          Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
+        ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
+      } else { // otherwise, we need to shift leg
+        if (lChunk.isEmpty) {
+          leftLeg.stepLeg.flatMap {
+            case Some(nextLl) => go(nextLl, rightLeg)
+            case None         => Pull.output(rChunk) >> rightLeg.next
           }
-        case None => right
+        } else {
+          rightLeg.stepLeg.flatMap {
+            case Some(nextRl) => go(leftLeg, nextRl)
+            case None         => Pull.output(lChunk) >> leftLeg.next
+          }
+        }
       }
-    go(this.underlying, that.underlying).stream
+    }
+
+    val thisPull = covaryAll[F2, O2].pull
+    val thatPull = that.pull
+
+    (thisPull.stepLeg, thatPull.stepLeg).tupled.flatMap {
+      case (Some(leg1), Some(leg2)) => go(leg1, leg2)
+      case (_, None)                => thisPull.echo
+      case (None, _)                => thatPull.echo
+    }.stream
   }
 
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
