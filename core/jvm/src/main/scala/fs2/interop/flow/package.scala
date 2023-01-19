@@ -110,7 +110,7 @@ package object flow {
     * scala>
     * scala> // Interop with the third party library.
     * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-    *      |   fs2.interop.flow.fromPublisher[IO, Int](publisher, bufferSize = 16)
+    *      |   fs2.interop.flow.fromPublisher[IO](publisher, bufferSize = 16)
     *      | }
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
@@ -126,15 +126,8 @@ package object flow {
     *                   The publisher can use this `bufferSize` to query elements in batch.
     *                   A high number will also lead to more elements in memory.
     */
-  def fromPublisher[F[_], A](
-      publisher: Publisher[A],
-      bufferSize: Int
-  )(implicit
-      F: Async[F]
-  ): Stream[F, A] =
-    fromPublisher[F, A](bufferSize) { subscriber =>
-      F.delay(publisher.subscribe(subscriber))
-    }
+  def fromPublisher[F[_]]: syntax.FromPublisherPartiallyApplied[F] =
+    new syntax.FromPublisherPartiallyApplied(dummy = true)
 
   /** Creates a [[Publisher]] from a [[Stream]].
     *

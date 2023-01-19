@@ -84,4 +84,16 @@ object syntax {
     def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
       flow.subscribeStream(stream, subscriber)
   }
+
+  final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
+    def apply[A](
+        publisher: Publisher[A],
+        bufferSize: Int
+    )(implicit
+        F: Async[F]
+    ): Stream[F, A] =
+      fromPublisher[F, A](bufferSize) { subscriber =>
+        F.delay(publisher.subscribe(subscriber))
+      }
+  }
 }
