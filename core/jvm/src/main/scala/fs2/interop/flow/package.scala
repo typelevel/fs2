@@ -49,22 +49,24 @@ import java.util.concurrent.Flow.{Publisher, Subscriber}
   */
 package object flow {
 
-  /** Creates a [[Stream]] from a function exposing a [[Subscriber]].
+  /** Creates a [[Stream]] from a `subscribe` function;
+    * analogous to a `Publisher`, but effectual.
     *
     * This function is useful when you actually need to provide a subscriber to a third-party.
-    * The subscription process is uncancelable.
     *
     * @example {{{
     * scala> import cats.effect.IO
     * scala> import fs2.Stream
-    * scala> import fs2.interop.flow.fromSubscriber
-    * scala> import java.util.concurrent.Flow.Subscriber
+    * scala> import fs2.interop.flow.fromPublisher
+    * scala> import java.util.concurrent.Flow.{Publisher, Subscriber}
     * scala>
-    * scala> // This internally calls somePublisher.subscribe(subscriber)
-    * scala> def thirdPartyLibrary(subscriber: Subscriber[Int]): Unit = ???
+    * scala> def thirdPartyLibrary(subscriber: Subscriber[Int]): Unit = {
+    *      |  def somePublisher: Publisher[Int] = ???
+    *      |  somePublisher.subscribe(subscriber)
+    *      | }
     * scala>
     * scala> // Interop with the third party library.
-    * scala> fromSubscriber[IO, Int](bufferSize = 16) { subscriber =>
+    * scala> fromPublisher[IO, Int](bufferSize = 16) { subscriber =>
     *      |   IO.println("Subscribing!") >>
     *      |   IO.delay(thirdPartyLibrary(subscriber)) >>
     *      |   IO.println("Subscribed!")
@@ -72,20 +74,20 @@ package object flow {
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
     *
-    * @note The publisher only receives a subscriber when the stream is run.
+    * @note The subscribe function will not be executed until the stream is run.
     *
-    * @see [[fromPublisher]] for a simpler version that only requires a [[Publisher]].
+    * @see the overload that only requires a [[Publisher]].
     *
     * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
     *                   A high number can be useful if the publisher is triggering from IO,
     *                   like requesting elements from a database.
     *                   The publisher can use this `bufferSize` to query elements in batch.
     *                   A high number will also lead to more elements in memory.
-    * @param onSubscribe The effectual function to run during the subscription process,
-    *                    receives a [[Subscriber]] that should be used to subscribe to a [[Publisher]].
-    *                    The `subscribe` operation must be called exactly once.
+    * @param subscribe The effectual function that will be used to initiate the consumption process,
+    *                  it receives a [[Subscriber]] that should be used to subscribe to a [[Publisher]].
+    *                  The `subscribe` operation must be called exactly once.
     */
-  def fromSubscriber[F[_], A](
+  def fromPublisher[F[_], A](
       bufferSize: Int
   )(
       subscribe: Subscriber[A] => F[Unit]
@@ -95,65 +97,31 @@ package object flow {
     Stream
       .eval(StreamSubscriber[F, A](bufferSize))
       .flatMap { subscriber =>
-        subscriber.stream(
-          F.uncancelable(_ => subscribe(subscriber))
-        )
+        subscriber.stream(subscribe(subscriber))
       }
 
-  /** Creates a [[Stream]] from an `onSubscribe` effectual function.
-    *
-    * This function is useful when you need to perform some effectual actions during the subscription process.
-    * The subscription process is uncancelable.
+  /** Creates a [[Stream]] from an [[Publisher]].
     *
     * @example {{{
     * scala> import cats.effect.IO
     * scala> import fs2.Stream
-    * scala> import fs2.interop.flow.fromOnSubscribe
+    * scala> import fs2.interop.flow.fromPublisher
     * scala> import java.util.concurrent.Flow.Publisher
     * scala>
+    * scala> def getThirdPartyPublisher(): Publisher[Int] = ???
+    * scala>
     * scala> // Interop with the third party library.
-    * scala> def thirdPartyPublisher(): Publisher[Int] = ???
-    * scala> fromOnSubscribe[IO, Int](bufferSize = 16) { subscribe =>
-    *      |   IO.println("Subscribing!") >>
-    *      |   subscribe(thirdPartyPublisher()) >>
-    *      |   IO.println("Subscribed!")
+    * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
+    *      |   fromPublisher[IO, Int](publisher, bufferSize = 16)
     *      | }
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
     *
-    * @note The publisher only receives a subscriber when the stream is run.
+    * @note The publisher will not receive a subscriber until the stream is run.
     *
-    * @see [[fromPublisher]] for a simpler version that only requires a [[Publisher]].
+    * @see the `toStream` extension method added to `Publisher`
     *
-    * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
-    *                   A high number can be useful if the publisher is triggering from IO,
-    *                   like requesting elements from a database.
-    *                   The publisher can use this `bufferSize` to query elements in batch.
-    *                   A high number will also lead to more elements in memory.
-    * @param onSubscribe The effectual action to run during the subscription process,
-    *                    represented as a function that receives as an argument
-    *                    the actual `subscribe` operation; as another function receiving the [[Publisher]].
-    *                    The `subscribe` operation must be called exactly once.
-    */
-  def fromOnSubscribe[F[_], A](
-      bufferSize: Int
-  )(
-      onSubscribe: (Publisher[A] => F[Unit]) => F[Unit]
-  )(implicit
-      F: Async[F]
-  ): Stream[F, A] =
-    fromSubscriber[F, A](bufferSize) { subscriber =>
-      val subscribe: Publisher[A] => F[Unit] =
-        publisher => F.delay(publisher.subscribe(subscriber))
-
-      onSubscribe(subscribe)
-    }
-
-  /** Creates a [[Stream]] from an [[Publisher]].
-    *
-    * @note The publisher only receives a subscriber when the stream is run.
-    *
-    * @param publisher The [[Publisher]] to transform.
+    * @param publisher The [[Publisher]] to consume.
     * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
     *                   A high number can be useful if the publisher is triggering from IO,
     *                   like requesting elements from a database.
@@ -166,13 +134,28 @@ package object flow {
   )(implicit
       F: Async[F]
   ): Stream[F, A] =
-    fromOnSubscribe[F, A](bufferSize) { subscribe =>
-      subscribe(publisher)
+    fromPublisher[F, A](bufferSize) { subscriber =>
+      F.delay(publisher.subscribe(subscriber))
     }
 
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
 
     /** Creates a [[Stream]] from an [[Publisher]].
+      *
+      * @example {{{
+      * scala> import cats.effect.IO
+      * scala> import fs2.Stream
+      * scala> import fs2.interop.flow._
+      * scala> import java.util.concurrent.Flow.Publisher
+      * scala>
+      * scala> def getThirdPartyPublisher(): Publisher[Int] = ???
+      * scala>
+      * scala> // Interop with the third party library.
+      * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
+      *      |   publisher.toStream[IO](bufferSize = 16)
+      *      | }
+      * res0: Stream[IO, Int] = Stream(..)
+      * }}}
       *
       * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
       *                   A high number can be useful is the publisher is triggering from IO,
