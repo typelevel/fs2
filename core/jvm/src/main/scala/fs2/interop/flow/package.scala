@@ -31,7 +31,7 @@ import java.util.concurrent.Flow.{Publisher, Subscriber}
   * @example {{{
   * scala> import cats.effect.{IO, Resource}
   * scala> import fs2.Stream
-  * scala> import fs2.interop.flow._
+  * scala> import fs2.interop.flow.syntax._
   * scala> import java.util.concurrent.Flow.Publisher
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
@@ -57,7 +57,6 @@ package object flow {
     * @example {{{
     * scala> import cats.effect.IO
     * scala> import fs2.Stream
-    * scala> import fs2.interop.flow.fromPublisher
     * scala> import java.util.concurrent.Flow.{Publisher, Subscriber}
     * scala>
     * scala> def thirdPartyLibrary(subscriber: Subscriber[Int]): Unit = {
@@ -66,7 +65,7 @@ package object flow {
     *      | }
     * scala>
     * scala> // Interop with the third party library.
-    * scala> fromPublisher[IO, Int](bufferSize = 16) { subscriber =>
+    * scala> fs2.interop.flow.fromPublisher[IO, Int](bufferSize = 16) { subscriber =>
     *      |   IO.println("Subscribing!") >>
     *      |   IO.delay(thirdPartyLibrary(subscriber)) >>
     *      |   IO.println("Subscribed!")
@@ -105,14 +104,13 @@ package object flow {
     * @example {{{
     * scala> import cats.effect.IO
     * scala> import fs2.Stream
-    * scala> import fs2.interop.flow.fromPublisher
     * scala> import java.util.concurrent.Flow.Publisher
     * scala>
     * scala> def getThirdPartyPublisher(): Publisher[Int] = ???
     * scala>
     * scala> // Interop with the third party library.
     * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-    *      |   fromPublisher[IO, Int](publisher, bufferSize = 16)
+    *      |   fs2.interop.flow.fromPublisher[IO, Int](publisher, bufferSize = 16)
     *      | }
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
@@ -137,35 +135,6 @@ package object flow {
     fromPublisher[F, A](bufferSize) { subscriber =>
       F.delay(publisher.subscribe(subscriber))
     }
-
-  implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
-
-    /** Creates a [[Stream]] from an [[Publisher]].
-      *
-      * @example {{{
-      * scala> import cats.effect.IO
-      * scala> import fs2.Stream
-      * scala> import fs2.interop.flow._
-      * scala> import java.util.concurrent.Flow.Publisher
-      * scala>
-      * scala> def getThirdPartyPublisher(): Publisher[Int] = ???
-      * scala>
-      * scala> // Interop with the third party library.
-      * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-      *      |   publisher.toStream[IO](bufferSize = 16)
-      *      | }
-      * res0: Stream[IO, Int] = Stream(..)
-      * }}}
-      *
-      * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
-      *                   A high number can be useful is the publisher is triggering from IO,
-      *                   like requesting elements from a database.
-      *                   The publisher can use this `bufferSize` to query elements in batch.
-      *                   A high number will also lead to more elements in memory.
-      */
-    def toStream[F[_]](bufferSize: Int)(implicit F: Async[F]): Stream[F, A] =
-      flow.fromPublisher(publisher, bufferSize)
-  }
 
   /** Creates a [[Publisher]] from a [[Stream]].
     *
@@ -203,34 +172,6 @@ package object flow {
       F: Async[F]
   ): F[Unit] =
     StreamSubscription.subscribe(stream, subscriber)
-
-  implicit final class StreamOps[F[_], A](private val stream: Stream[F, A]) extends AnyVal {
-
-    /** Creates a [[Publisher]] from a [[Stream]].
-      *
-      * The stream is only ran when elements are requested.
-      * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
-      * Thus, no more elements will be published.
-      *
-      * @note This Publisher can be reused for multiple Subscribers,
-      *       each subscription will re-run the [[Stream]] from the beginning.
-      *
-      * @see [[subscribe]] for a simpler version that only requires a [[Subscriber]].
-      */
-    def toPublisher(implicit F: Async[F]): Resource[F, Publisher[A]] =
-      flow.toPublisher(stream)
-
-    /** Subscribes the provided [[Subscriber]] to this stream.
-      *
-      * The returned program will run until
-      * all the stream elements were consumed.
-      * Cancelling this program will gracefully shutdown the subscription.
-      *
-      * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
-      */
-    def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
-      flow.subscribeStream(stream, subscriber)
-  }
 
   /** Ensures a value is not null. */
   private[flow] def nonNull[A](a: A): Unit =

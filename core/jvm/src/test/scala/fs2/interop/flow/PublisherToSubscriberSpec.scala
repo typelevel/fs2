@@ -34,8 +34,8 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
     forAll(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
       val subscriberStream =
         Stream
-          .resource(Stream.emits(ints).covary[IO].toPublisher)
-          .flatMap(_.toStream[IO](bufferSize))
+          .resource(toPublisher(Stream.emits(ints).covary[IO]))
+          .flatMap(p => fromPublisher[IO, Int](p, bufferSize))
 
       assert(subscriberStream.compile.toVector.unsafeRunSync() == (ints.toVector))
     }
@@ -44,7 +44,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
   test("should propagate errors downstream") {
     val input: Stream[IO, Int] = Stream(1, 2, 3) ++ Stream.raiseError[IO](TestError)
     val output: Stream[IO, Int] =
-      Stream.resource(input.toPublisher).flatMap(_.toStream[IO](1))
+      Stream.resource(toPublisher(input)).flatMap(p => fromPublisher[IO, Int](p, 1))
 
     assert(output.compile.drain.attempt.unsafeRunSync() == (Left(TestError)))
   }
@@ -54,8 +54,8 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
       (as, bs, bufferSize) =>
         val subscriberStream =
           Stream
-            .resource(Stream.emits(as ++ bs).covary[IO].toPublisher)
-            .flatMap(_.toStream[IO](bufferSize).take(as.size.toLong))
+            .resource(toPublisher(Stream.emits(as ++ bs).covary[IO]))
+            .flatMap(p => fromPublisher[IO, Int](p, bufferSize).take(as.size.toLong))
 
         assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
     }
