@@ -219,7 +219,7 @@ class SignalSuite extends Fs2Suite {
     s.compile.drain
   }
 
-  test("hold1".only) {
+  test("hold1") {
     Stream.range(1, 10).zip(Stream.range(1, 10)).covary[IO].hold1.compile.drain
   }
 
