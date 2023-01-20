@@ -37,8 +37,6 @@ import scala.concurrent.TimeoutException
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
-  override def scalaCheckInitialSeed = "CGcLMAcUebElb0kzuHuoGp8ZwxhJT9ztcbnWc_4sYHK="
-
   group("awakeEvery") {
     test("basic") {
       Stream
