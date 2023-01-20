@@ -29,7 +29,7 @@ import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 import fs2.concurrent.SignallingRef
 import org.scalacheck.effect.PropF.forAllF
-import org.scalacheck.Gen
+import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 
 import scala.concurrent.duration._
@@ -888,6 +888,35 @@ class StreamCombinatorsSuite extends Fs2Suite {
           ones.interleaveAll(as).take(n.toLong).toVector,
           ones.interleave(as).take(n.toLong).toVector
         )
+      }
+    }
+
+    property("interleaveOrdered for ordered streams emits stable-sorted stream with same data") {
+      // stability estimating element type and ordering
+      type Elem = (Int, Byte)
+      implicit val ordering: Ordering[Elem] = Ordering.by(_._1)
+      implicit val order: cats.Order[Elem] = cats.Order.fromOrdering
+
+      type SortedData = Vector[Chunk[Elem]]
+      implicit val arbSortedData: Arbitrary[SortedData] = Arbitrary(
+        for {
+          sortedData <- Arbitrary.arbContainer[Array, Elem].arbitrary.map(_.sorted)
+          splitIdxs <- Gen.someOf(sortedData.indices).map(_.sorted)
+          borders = (0 +: splitIdxs).zip(splitIdxs :+ sortedData.length)
+        } yield borders.toVector
+          .map { case (from, to) =>
+            Chunk.array(sortedData, from, to - from)
+          }
+      )
+
+      def mkStream(parts: SortedData): Stream[Pure, Elem] = parts.map(Stream.chunk).combineAll
+
+      forAll { (sortedL: SortedData, sortedR: SortedData) =>
+        mkStream(sortedL)
+          .interleaveOrdered(mkStream(sortedR))
+          .assertEmits(
+            (sortedL ++ sortedR).toList.flatMap(_.toList).sorted // std .sorted is stable
+          )
       }
     }
   }
