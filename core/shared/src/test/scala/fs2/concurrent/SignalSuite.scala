@@ -220,8 +220,7 @@ class SignalSuite extends Fs2Suite {
   }
 
   test("hold1".only) {
-    val s = Stream.range(1, 10).metered[IO](1.second).hold1
-    TestControl.executeEmbed(s.compile.drain)
+    Stream.range(1, 10).zip(Stream.range(1, 10)).covary[IO].hold1.compile.drain
   }
 
   test("waitUntil") {
