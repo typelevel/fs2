@@ -1465,6 +1465,49 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  group("limit") {
+    test("limit a stream with > n elements, leaving chunks untouched") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](5)
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3, 4)))
+    }
+
+    test("allow a stream with exactly n elements, leaving chunks untouched") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](4)
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3, 4)))
+    }
+
+    test("emit exactly n elements in case of error") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](3)
+        .recoverWith { case _: IllegalStateException => Stream.empty }
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3)))
+    }
+
+    test("raise IllegalStateException when stream exceeds n elements") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](3)
+        .chunks
+        .map(_.toList)
+        .compile
+        .last
+        .intercept[IllegalStateException]
+        .void
+        .assert
+    }
+  }
+
   private val constTrue: Int => IO[Boolean] = _ => IO.pure(true)
   private def constFalse: Int => IO[Boolean] = _ => IO.pure(false)
   private def isEven(e: Int): IO[Boolean] = IO(e % 2 == 0)
