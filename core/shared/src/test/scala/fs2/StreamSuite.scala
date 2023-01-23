@@ -1001,7 +1001,7 @@ class StreamSuite extends Fs2Suite {
         }
 
         test("2") {
-          val p = (Deferred[IO, Outcome[IO, Throwable, Unit]]).flatMap { stop =>
+          val p = Deferred[IO, Outcome[IO, Throwable, Unit]].flatMap { stop =>
             val r = Stream
               .never[IO]
               .compile
