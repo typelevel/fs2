@@ -1764,8 +1764,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       .flatMap {
         case Some(s) =>
           s.pull.uncons.flatMap {
-            case Some(_) => Pull.raiseError(new IllegalStateException)
-            case None    => Pull.done
+            case Some(_) =>
+              Pull.raiseError(new IllegalStateException(s"limit($n) emitted more than $n elements"))
+            case None => Pull.done
           }
         case _ => Pull.done
       }
