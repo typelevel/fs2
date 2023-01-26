@@ -136,6 +136,38 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
+    test("empty".only) {
+      val setup = for {
+        tlsContext <- testTlsContext
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(TLSParameters(serverName = Some("Unknown")))
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
+
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(Chunk.empty))
+          }
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .drain
+    }
+
     test("error") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
