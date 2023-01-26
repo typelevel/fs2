@@ -136,7 +136,7 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    test("empty".only) {
+    test("empty") {
       val setup = for {
         tlsContext <- testTlsContext
         addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
