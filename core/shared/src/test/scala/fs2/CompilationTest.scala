@@ -50,8 +50,8 @@ object ThisModuleShouldCompile {
   Stream.eval(IO.pure(4)) ++ Stream(1, 2, 3).covary[IO]
   Stream.eval(IO.pure(4)) ++ (Stream(1, 2, 3): Stream[IO, Int])
   Stream(1, 2, 3).flatMap(i => Stream.eval(IO.pure(i)))
-  (Stream(1, 2, 3)
-    .covary[IO])
+  Stream(1, 2, 3)
+    .covary[IO]
     .pull
     .uncons1
     .flatMap {
@@ -82,7 +82,7 @@ object ThisModuleShouldCompile {
   val q: Pull[IO, Nothing, Option[(Chunk[Int], Stream[Pure, Int])]] = p
 
   val streamId: Stream[Id, Int] = Stream(1, 2, 3)
-  (streamId.covaryId[IO]): Stream[IO, Int]
+  streamId.covaryId[IO]: Stream[IO, Int]
 
   def polyId[F[_]: Applicative, A](stream: Stream[Id, A]): Stream[F, A] =
     stream.covaryId[F].through(_.take(2))
