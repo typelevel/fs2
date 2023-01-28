@@ -1755,6 +1755,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case None    => Pull.output1(fallback)
     }.stream
 
+  /** Emits the first `n` elements of this stream,
+    * raising an IllegalStateException if there are more elements.
+    */
+  def limit[F2[x] >: F[x]](n: Long)(implicit rt: RaiseThrowable[F2]): Stream[F2, O] =
+    this.pull
+      .take(n)
+      .flatMap {
+        case Some(s) =>
+          s.pull.uncons.flatMap {
+            case Some(_) =>
+              Pull.raiseError(new IllegalStateException(s"limit($n) emitted more than $n elements"))
+            case None => Pull.done
+          }
+        case _ => Pull.done
+      }
+      .stream
+
   /** Applies the specified pure function to each input and emits the result.
     *
     * @example {{{
