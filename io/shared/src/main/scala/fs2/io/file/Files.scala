@@ -468,27 +468,28 @@ object Files extends FilesCompanionPlatform {
         Stream.emit(start) ++ {
           if (maxDepth == 0) Stream.empty
           else
-            Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
+            Stream.eval(getBasicFileAttributes(start, followLinks = false)).mask.flatMap { attr =>
               if (attr.isDirectory)
                 list(start).flatMap { path =>
                   go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
                 }.mask
               else if (attr.isSymbolicLink && followLinks)
-                Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
-                  val fileKey = attr.fileKey
-                  val isCycle = Traverse[List].existsM(ancestry) {
-                    case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
-                    case Left(ancestorPath) => isSameFile(start, ancestorPath)
-                  }
+                Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap {
+                  attr =>
+                    val fileKey = attr.fileKey
+                    val isCycle = Traverse[List].existsM(ancestry) {
+                      case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                      case Left(ancestorPath) => isSameFile(start, ancestorPath)
+                    }
 
-                  Stream.eval(isCycle).flatMap { isCycle =>
-                    if (!isCycle)
-                      list(start).flatMap { path =>
-                        go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                      }.mask
-                    else
-                      Stream.raiseError(new FileSystemLoopException(start.toString))
-                  }
+                    Stream.eval(isCycle).flatMap { isCycle =>
+                      if (!isCycle)
+                        list(start).flatMap { path =>
+                          go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                        }.mask
+                      else
+                        Stream.raiseError(new FileSystemLoopException(start.toString))
+                    }
 
                 }
               else
