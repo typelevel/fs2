@@ -1548,7 +1548,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           tail.foreach(ref.set(_)).underlying
         }
 
-      case None => Pull.done
+      case None => Pull.raiseError(new NoSuchElementException)
     }.streamNoScope
 
     Stream.eval(Deferred[F2, Signal[F2, O2]]).flatMap { signal =>

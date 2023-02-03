@@ -225,7 +225,7 @@ class SignalSuite extends Fs2Suite {
     Stream.range(1, 10).zip(Stream.range(1, 10)).covary[IO].hold1.compile.drain
   }
 
-  test("hold1 empty".only) {
+  test("hold1 empty") {
     TestControl
       .executeEmbed(Stream.empty.covary[IO].hold1.compile.drain)
       .intercept[NoSuchElementException]
