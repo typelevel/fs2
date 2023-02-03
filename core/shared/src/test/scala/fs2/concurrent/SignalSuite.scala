@@ -30,6 +30,8 @@ import cats.effect.testkit.TestControl
 import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
 
+import java.util.NoSuchElementException
+
 class SignalSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -219,8 +221,14 @@ class SignalSuite extends Fs2Suite {
     s.compile.drain
   }
 
-  test("hold1") {
+  test("hold1 zip") {
     Stream.range(1, 10).zip(Stream.range(1, 10)).covary[IO].hold1.compile.drain
+  }
+
+  test("hold1 empty".only) {
+    TestControl
+      .executeEmbed(Stream.empty.covary[IO].hold1.compile.drain)
+      .intercept[NoSuchElementException]
   }
 
   test("waitUntil") {
