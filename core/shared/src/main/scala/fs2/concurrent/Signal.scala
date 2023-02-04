@@ -643,10 +643,11 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
 
           override def getAndDiscreteUpdates(implicit
               ev: Concurrent[F]
-          ): Resource[F, (B, Stream[F, B])] =
-            (ff.getAndDiscreteUpdates(ev), fa.getAndDiscreteUpdates(ev)).mapN {
-              case ((f, fs), (a, as)) =>
-                (f(a), nondeterministicZip(fs, as).map { case (f, a) => f(a) })
+          ): Resource[F, (B, Stream[F, B])] = getAndDiscreteUpdatesImpl
+
+          private[this] def getAndDiscreteUpdatesImpl =
+            (ff.getAndDiscreteUpdates, fa.getAndDiscreteUpdates).mapN { case ((f, fs), (a, as)) =>
+              (f(a), nondeterministicZip(fs, as).map { case (f, a) => f(a) })
             }
         }
     }
