@@ -42,19 +42,20 @@ object syntax {
       * scala>
       * scala> // Interop with the third party library.
       * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-      *      |   publisher.toStream[IO](bufferSize = 16)
+      *      |   publisher.toStream[IO](chunkSize = 16)
       *      | }
       * res0: Stream[IO, Int] = Stream(..)
       * }}}
       *
-      * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
-      *                   A high number can be useful is the publisher is triggering from IO,
-      *                   like requesting elements from a database.
-      *                   The publisher can use this `bufferSize` to query elements in batch.
-      *                   A high number will also lead to more elements in memory.
+      * @param chunkSize setup the number of elements asked each time from the [[Publisher]].
+      *                  A high number may be useful if the publisher is triggering from IO,
+      *                  like requesting elements from a database.
+      *                  A high number will also lead to more elements in memory.
+      *                  The stream will not emit new element until,
+      *                  either the `Chunk` is filled or the publisher finishes.
       */
-    def toStream[F[_]](bufferSize: Int)(implicit F: Async[F]): Stream[F, A] =
-      flow.fromPublisher(publisher, bufferSize)
+    def toStream[F[_]](chunkSize: Int)(implicit F: Async[F]): Stream[F, A] =
+      flow.fromPublisher(publisher, chunkSize)
   }
 
   implicit final class StreamOps[F[_], A](private val stream: Stream[F, A]) extends AnyVal {
@@ -88,11 +89,11 @@ object syntax {
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
     def apply[A](
         publisher: Publisher[A],
-        bufferSize: Int
+        chunkSize: Int
     )(implicit
         F: Async[F]
     ): Stream[F, A] =
-      fromPublisher[F, A](bufferSize) { subscriber =>
+      fromPublisher[F, A](chunkSize) { subscriber =>
         F.delay(publisher.subscribe(subscriber))
       }
   }

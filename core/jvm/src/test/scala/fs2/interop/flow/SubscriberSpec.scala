@@ -50,7 +50,7 @@ final class SubscriberWhiteboxSpec
   override def createFlowSubscriber(
       p: WhiteboxSubscriberProbe[Int]
   ): Subscriber[Int] =
-    StreamSubscriber[IO, Int](bufferSize = 1)
+    StreamSubscriber[IO, Int](chunkSize = 1)
       .map(s => new WhiteboxSubscriber(s, p))
       .unsafeRunSync()
 
@@ -97,7 +97,7 @@ final class SubscriberBlackboxSpec
   private val counter = new AtomicInteger()
 
   override def createFlowSubscriber(): StreamSubscriber[IO, Int] =
-    StreamSubscriber[IO, Int](bufferSize = 1).unsafeRunSync()
+    StreamSubscriber[IO, Int](chunkSize = 1).unsafeRunSync()
 
   override def triggerFlowRequest(s: Subscriber[_ >: Int]): Unit = {
     val req = s.asInstanceOf[StreamSubscriber[IO, Int]].subscriber.dequeue1

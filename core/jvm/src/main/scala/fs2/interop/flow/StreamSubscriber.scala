@@ -82,9 +82,9 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 private[flow] object StreamSubscriber {
 
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */
-  def apply[F[_], A](bufferSize: Int)(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
-    require(bufferSize > 0, "The buffer size MUST be positive")
-    fsm[F, A](bufferSize).map(fsm => new StreamSubscriber(subscriber = fsm))
+  def apply[F[_], A](chunkSize: Int)(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
+    require(chunkSize > 0, "The buffer size MUST be positive")
+    fsm[F, A](chunkSize).map(fsm => new StreamSubscriber(subscriber = fsm))
   }
 
   /** A finite state machine describing the subscriber. */
@@ -112,15 +112,14 @@ private[flow] object StreamSubscriber {
     final def stream(subscribe: F[Unit])(implicit ev: MonadThrow[F]): Stream[F, A] =
       Stream.bracket(subscribe)(_ => onFinalize) >>
         Stream
-          .eval(dequeue1)
-          .repeat
+          .repeatEval(dequeue1)
           .rethrow
           .unNoneTerminate
           .unchunks
   }
 
   private def fsm[F[_], A](
-      bufferSize: Int
+      chunkSize: Int
   )(implicit F: Async[F]): F[FSM[F, A]] = {
     type Out = Either[Throwable, Option[Chunk[A]]]
 
@@ -155,7 +154,7 @@ private[flow] object StreamSubscriber {
       in match {
         case OnSubscribe(s) => {
           case RequestBeforeSubscription(req) =>
-            WaitingOnUpstream(s, Chunk.empty, req) -> (() => s.request(bufferSize.toLong))
+            WaitingOnUpstream(s, Chunk.empty, req) -> (() => s.request(chunkSize.toLong))
 
           case Uninitialized =>
             Idle(s, Chunk.empty) -> (() => ())
@@ -170,8 +169,8 @@ private[flow] object StreamSubscriber {
 
         case OnNext(a) => {
           case WaitingOnUpstream(s, buffer, r) =>
-            val newBuffer = buffer ++ Chunk(a)
-            if (newBuffer.size == bufferSize)
+            val newBuffer = buffer ++ Chunk.singleton(a)
+            if (newBuffer.size == chunkSize)
               Idle(s, Chunk.empty) -> (() => r(newBuffer.some.asRight))
             else
               WaitingOnUpstream(s, newBuffer, r) -> (() => ())
@@ -221,7 +220,7 @@ private[flow] object StreamSubscriber {
             RequestBeforeSubscription(r) -> (() => ())
 
           case Idle(sub, buffer) =>
-            WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize.toLong))
+            WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(chunkSize.toLong))
 
           case err @ UpstreamError(e) =>
             err -> (() => r(e.asLeft))

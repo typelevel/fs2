@@ -24,7 +24,7 @@ package interop
 
 import cats.effect.kernel.{Async, Resource}
 
-import java.util.concurrent.Flow.{Publisher, Subscriber}
+import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
 
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
   *
@@ -37,7 +37,7 @@ import java.util.concurrent.Flow.{Publisher, Subscriber}
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
   * scala> val publisher: Resource[IO, Publisher[Int]] = upstream.toPublisher
   * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap { publisher =>
-  *      |   publisher.toStream[IO](bufferSize = 16)
+  *      |   publisher.toStream[IO](chunkSize = 16)
   *      | }
   * scala>
   * scala> import cats.effect.unsafe.implicits.global
@@ -65,7 +65,7 @@ package object flow {
     *      | }
     * scala>
     * scala> // Interop with the third party library.
-    * scala> fs2.interop.flow.fromPublisher[IO, Int](bufferSize = 16) { subscriber =>
+    * scala> fs2.interop.flow.fromPublisher[IO, Int](chunkSize = 16) { subscriber =>
     *      |   IO.println("Subscribing!") >>
     *      |   IO.delay(thirdPartyLibrary(subscriber)) >>
     *      |   IO.println("Subscribed!")
@@ -77,24 +77,25 @@ package object flow {
     *
     * @see the overload that only requires a [[Publisher]].
     *
-    * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
-    *                   A high number can be useful if the publisher is triggering from IO,
-    *                   like requesting elements from a database.
-    *                   The publisher can use this `bufferSize` to query elements in batch.
-    *                   A high number will also lead to more elements in memory.
+    * @param chunkSize setup the number of elements asked each time from the [[Publisher]].
+    *                  A high number may be useful if the publisher is triggering from IO,
+    *                  like requesting elements from a database.
+    *                  A high number will also lead to more elements in memory.
+    *                  The stream will not emit new element until,
+    *                  either the `Chunk` is filled or the publisher finishes.
     * @param subscribe The effectual function that will be used to initiate the consumption process,
     *                  it receives a [[Subscriber]] that should be used to subscribe to a [[Publisher]].
     *                  The `subscribe` operation must be called exactly once.
     */
   def fromPublisher[F[_], A](
-      bufferSize: Int
+      chunkSize: Int
   )(
       subscribe: Subscriber[A] => F[Unit]
   )(implicit
       F: Async[F]
   ): Stream[F, A] =
     Stream
-      .eval(StreamSubscriber[F, A](bufferSize))
+      .eval(StreamSubscriber[F, A](chunkSize))
       .flatMap { subscriber =>
         subscriber.stream(subscribe(subscriber))
       }
@@ -110,7 +111,7 @@ package object flow {
     * scala>
     * scala> // Interop with the third party library.
     * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-    *      |   fs2.interop.flow.fromPublisher[IO](publisher, bufferSize = 16)
+    *      |   fs2.interop.flow.fromPublisher[IO](publisher, chunkSize = 16)
     *      | }
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
@@ -120,11 +121,12 @@ package object flow {
     * @see the `toStream` extension method added to `Publisher`
     *
     * @param publisher The [[Publisher]] to consume.
-    * @param bufferSize setup the number of elements asked each time from the [[Publisher]].
-    *                   A high number can be useful if the publisher is triggering from IO,
-    *                   like requesting elements from a database.
-    *                   The publisher can use this `bufferSize` to query elements in batch.
-    *                   A high number will also lead to more elements in memory.
+    * @param chunkSize setup the number of elements asked each time from the [[Publisher]].
+    *                  A high number may be useful if the publisher is triggering from IO,
+    *                  like requesting elements from a database.
+    *                  A high number will also lead to more elements in memory.
+    *                  The stream will not emit new element until,
+    *                  either the `Chunk` is filled or the publisher finishes.
     */
   def fromPublisher[F[_]]: syntax.FromPublisherPartiallyApplied[F] =
     new syntax.FromPublisherPartiallyApplied(dummy = true)
@@ -165,4 +167,13 @@ package object flow {
       F: Async[F]
   ): F[Unit] =
     StreamSubscription.subscribe(stream, subscriber)
+
+  /** A default value for the `chunkSize` argument,
+    * that may be used in the absence of other constraints;
+    * we encourage choosing an appropriate value consciously.
+    * Alias for [[defaultBufferSize]].
+    *
+    * @note the current value is `256`.
+    */
+  val defaultChunkSize: Int = defaultBufferSize
 }
