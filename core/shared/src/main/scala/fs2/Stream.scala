@@ -1541,7 +1541,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       initial: O2
   ): Stream[F2, Signal[F2, O2]] =
     Stream.eval(SignallingRef.of[F2, O2](initial)).flatMap { sig =>
-      Stream(sig).concurrently(evalMap(sig.set))
+      def setAll(ch: Chunk[O]): Pull[F2, Nothing, Unit] = Pull.eval(ch.traverse_(sig.set))
+      Stream(sig).concurrently(underlying.unconsFlatMap(setAll).streamNoScope)
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
