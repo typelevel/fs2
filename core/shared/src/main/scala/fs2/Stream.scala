@@ -821,7 +821,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         case Some((hd, tl)) =>
           Pull.output(last) >> go(hd, tl)
         case None =>
-          val o = last(last.size - 1)
+          val o = getLast(last)
           if (p(o)) {
             val (prefix, _) = last.splitAt(last.size - 1)
             Pull.output(prefix)
@@ -1535,7 +1535,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       initial: O2
   ): Stream[F2, Signal[F2, O2]] =
     Stream.eval(SignallingRef.of[F2, O2](initial)).flatMap { sig =>
-      Stream(sig).concurrently(evalMap(sig.set))
+      def updateChunk(ch: Chunk[O]): Pull[F2, Nothing, Unit] = Pull.eval(sig.set(getLast(ch)))
+      val backgroundUpdate = underlying.unconsFlatMap(updateChunk).streamNoScope
+      Stream(sig).concurrently(backgroundUpdate)
     }
 
   /** Like [[hold]] but does not require an initial value, and hence all output elements are wrapped in `Some`. */
@@ -2023,8 +2025,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val lChunk = leftLeg.head
       val rChunk = rightLeg.head
       if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
-        val lLast = lChunk(lChunk.size - 1)
-        val rLast = rChunk(rChunk.size - 1)
+        val lLast = getLast(lChunk)
+        val rLast = getLast(rChunk)
         val wholeLeftSide = Order.lteqv(lLast, rLast) // otherwise we can emit whole right
         val (emitLeft, keepLeft) =
           if (wholeLeftSide) (lChunk, Chunk.empty)
@@ -3084,6 +3086,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       .map(_._2)
 
   override def toString: String = "Stream(..)"
+
+  // WARN: only use if ch is non-empty, as all chunks from stream must be.
+  private[this] def getLast[O](ch: Chunk[O]): O = ch(ch.size - 1)
 }
 
 object Stream extends StreamLowPriority {
