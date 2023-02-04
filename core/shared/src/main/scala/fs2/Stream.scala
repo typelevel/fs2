@@ -1543,11 +1543,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     map(Some(_): Option[O2]).hold(None)
 
   /** Like [[hold]] but does not require an initial value. The signal is not emitted until the initial value is emitted from this stream */
-  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] =
-    this.pull.uncons1.flatMap {
-      case Some((o, tail)) => tail.hold[F2, O2](o).underlying
-      case None            => Pull.done
+  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] = {
+    def go(signal: Deferred[F2, Signal[F2, O2]]) = this.pull.uncons1.flatMap {
+      case Some((o, tail)) =>
+        Pull.eval(SignallingRef.of[F2, O2](o).flatTap(signal.complete(_))).flatMap { ref =>
+          tail.foreach(ref.set(_)).underlying
+        }
+
+      case None => Pull.raiseError(new NoSuchElementException)
     }.streamNoScope
+
+    Stream.eval(Deferred[F2, Signal[F2, O2]]).flatMap { signal =>
+      Stream.eval(signal.get).concurrently(go(signal))
+    }
+  }
 
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
