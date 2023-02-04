@@ -251,6 +251,23 @@ class SignalSuite extends Fs2Suite {
       .intercept[NoSuchElementException]
   }
 
+  test("hold consistent with getAndDiscreteUpdates") {
+    forAllF { (init: Int, stream: Stream[Pure, Int]) =>
+      TestControl.executeEmbed {
+        stream.evalMap(IO.sleep(1.second).as(_)).holdResource(init).use { sig =>
+          sig.getAndDiscreteUpdates.use { case (got, updates) =>
+            IO(assertEquals(got, init)) *>
+              updates
+                .interruptAfter(Long.MaxValue.nanos)
+                .compile
+                .toVector
+                .assertEquals(stream.compile.toVector)
+          }
+        }
+      }
+    }
+  }
+
   test("waitUntil") {
     val target = 5
     val expected = 1

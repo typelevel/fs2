@@ -23,7 +23,7 @@ package fs2
 package concurrent
 
 import cats.data.OptionT
-import cats.effect.kernel.{Concurrent, Deferred, Ref}
+import cats.effect.kernel.{Concurrent, Deferred, Ref, Resource}
 import cats.effect.std.MapRef
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
@@ -33,7 +33,7 @@ import scala.collection.immutable.LongMap
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
 trait Signal[F[_], A] {
 
-  /** Returns a stream of the updates to this signal.
+  /** Returns a stream of the current value and subsequent updates to this signal.
     *
     * Even if you are pulling as fast as possible, updates that are very close together may
     * result in only the last update appearing in the stream. In general, when you pull
@@ -47,9 +47,21 @@ trait Signal[F[_], A] {
     */
   def continuous: Stream[F, A]
 
-  /** Asynchronously gets the current value of this `Signal`.
+  /** Gets the current value of this `Signal`.
     */
   def get: F[A]
+
+  /** Returns the current value of this `Signal` and a `Stream` to subscribe to
+    * subsequent updates, with the same semantics as [[discrete]]. The updates
+    * stream should be compiled at most once.
+    */
+  def getAndDiscreteUpdates(implicit F: Concurrent[F]): Resource[F, (A, Stream[F, A])] =
+    discrete.pull.uncons1
+      .flatMap(Pull.outputOption1(_))
+      .streamNoScope
+      .compile
+      .resource
+      .onlyOrError
 
   /** Returns when the condition becomes true, semantically blocking
     * in the meantime.
@@ -116,6 +128,10 @@ object Signal extends SignalInstances {
     new Signal[F, A] {
       def get: F[A] = F.pure(a)
       def continuous: Stream[Pure, A] = Stream.constant(a)
+      override def getAndDiscreteUpdates(implicit
+          ev: Concurrent[F]
+      ): Resource[F, (A, Stream[F, A])] =
+        Resource.pure((a, Stream.never(F)))
       def discrete: Stream[F, A] = Stream(a) ++ Stream.never
     }
 
@@ -123,6 +139,12 @@ object Signal extends SignalInstances {
     new Signal[F, B] {
       def continuous: Stream[F, B] = fa.continuous.map(f)
       def discrete: Stream[F, B] = fa.discrete.map(f)
+      override def getAndDiscreteUpdates(implicit
+          ev: Concurrent[F]
+      ): Resource[F, (B, Stream[F, B])] =
+        fa.getAndDiscreteUpdates(ev).map { case (a, updates) =>
+          (f(a), updates.map(f))
+        }
       def get: F[B] = Functor[F].map(fa.get)(f)
     }
 
@@ -222,7 +244,16 @@ object SignallingRef {
 
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
-          def discrete: Stream[F, A] = {
+          def discrete: Stream[F, A] =
+            Stream.resource(getAndDiscreteUpdates).flatMap { case (a, updates) =>
+              Stream.emit(a) ++ updates
+            }
+
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (A, Stream[F, A])] =
+            getAndDiscreteUpdatesImpl
+          private[this] def getAndDiscreteUpdatesImpl = {
             def go(id: Long, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 F.deferred[(A, Long)].flatMap { wait =>
@@ -242,9 +273,8 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.eval(state.get).flatMap { state =>
-              Stream.emit(state.value) ++
-                Stream.bracket(newId)(cleanup).flatMap(go(_, state.lastUpdate))
+            Resource.eval(state.get).map { s =>
+              (s.value, Stream.bracket(newId)(cleanup).flatMap(go(_, s.lastUpdate)))
             }
           }
 
@@ -308,6 +338,11 @@ object SignallingRef {
 
     def get: F[B] = F.map(underlying.get)(a => lensGet(a))
 
+    override def getAndDiscreteUpdates(implicit ev: Concurrent[F]): Resource[F, (B, Stream[F, B])] =
+      underlying.getAndDiscreteUpdates.map { case (a, updates) =>
+        (lensGet(a), updates.map(lensGet))
+      }
+
     def set(b: B): F[Unit] = underlying.update(a => lensModify(a)(_ => b))
 
     override def getAndSet(b: B): F[B] =
@@ -359,6 +394,12 @@ object SignallingRef {
           def get: F[B] = fa.get.map(f)
           def discrete: Stream[F, B] = fa.discrete.map(f)
           def continuous: Stream[F, B] = fa.continuous.map(f)
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (B, Stream[F, B])] =
+            fa.getAndDiscreteUpdates(ev).map { case (a, updates) =>
+              (f(a), updates.map(f))
+            }
           def set(b: B): F[Unit] = fa.set(g(b))
           def access: F[(B, B => F[Boolean])] =
             fa.access.map { case (getter, setter) =>
@@ -461,7 +502,17 @@ object SignallingMapRef {
 
             def continuous: Stream[F, Option[V]] = Stream.repeatEval(get)
 
-            def discrete: Stream[F, Option[V]] = {
+            def discrete: Stream[F, Option[V]] =
+              Stream.resource(getAndDiscreteUpdates).flatMap { case (a, updates) =>
+                Stream.emit(a) ++ updates
+              }
+
+            override def getAndDiscreteUpdates(implicit
+                ev: Concurrent[F]
+            ): Resource[F, (Option[V], Stream[F, Option[V]])] =
+              getAndDiscreteUpdatesImpl
+
+            private[this] def getAndDiscreteUpdatesImpl = {
               def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
                 def getNext: F[(Option[V], Long)] =
                   F.deferred[(Option[V], Long)].flatMap { wait =>
@@ -500,11 +551,13 @@ object SignallingMapRef {
                   }
                 }
 
-              Stream.eval(state.get).flatMap { state =>
-                Stream.emit(state.keys.get(k).flatMap(_.value)) ++
+              Resource.eval(state.get).map { state =>
+                (
+                  state.keys.get(k).flatMap(_.value),
                   Stream
                     .bracket(newId)(cleanup)
                     .flatMap(go(_, state.keys.get(k).fold(-1L)(_.lastUpdate)))
+                )
               }
             }
 
@@ -587,6 +640,14 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
           def continuous: Stream[F, B] = Stream.repeatEval(get)
 
           def get: F[B] = ff.get.ap(fa.get)
+
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (B, Stream[F, B])] =
+            (ff.getAndDiscreteUpdates(ev), fa.getAndDiscreteUpdates(ev)).mapN {
+              case ((f, fs), (a, as)) =>
+                (f(a), nondeterministicZip(fs, as).map { case (f, a) => f(a) })
+            }
         }
     }
   }
