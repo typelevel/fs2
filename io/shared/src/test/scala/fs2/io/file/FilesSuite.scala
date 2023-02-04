@@ -519,6 +519,23 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .assertEquals(31) // the root + 5 children + 5 files per child directory
     }
 
+    test("can delete files in a nested tree") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .flatMap { topDir =>
+          Files[IO].walk(topDir).evalMap { path =>
+            Files[IO]
+              .isRegularFile(path)
+              .ifM(
+                Files[IO].deleteIfExists(path).as(1),
+                IO.pure(0)
+              )
+          }
+        }
+        .compile
+        .foldMonoid
+        .assertEquals(25)
+    }
   }
 
   test("writeRotate") {
@@ -753,12 +770,10 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         }
     }
 
-    // Should be NoSuchFileException, but that fails on Scala native
-    // (see https://github.com/scala-native/scala-native/pull/3012)
     test("fails with IOException if the target doesn't exist") {
       tempDirectory
         .use(d => Files[IO].createLink(d.resolve("link"), d.resolve("non-existant")))
-        .intercept[IOException]
+        .intercept[NoSuchFileException]
     }
   }
 

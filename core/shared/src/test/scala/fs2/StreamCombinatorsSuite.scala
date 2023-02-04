@@ -29,7 +29,7 @@ import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
 import fs2.concurrent.SignallingRef
 import org.scalacheck.effect.PropF.forAllF
-import org.scalacheck.Gen
+import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll
 
 import scala.concurrent.duration._
@@ -890,6 +890,35 @@ class StreamCombinatorsSuite extends Fs2Suite {
         )
       }
     }
+
+    property("interleaveOrdered for ordered streams emits stable-sorted stream with same data") {
+      // stability estimating element type and ordering
+      type Elem = (Int, Byte)
+      implicit val ordering: Ordering[Elem] = Ordering.by(_._1)
+      implicit val order: cats.Order[Elem] = cats.Order.fromOrdering
+
+      type SortedData = Vector[Chunk[Elem]]
+      implicit val arbSortedData: Arbitrary[SortedData] = Arbitrary(
+        for {
+          sortedData <- Arbitrary.arbContainer[Array, Elem].arbitrary.map(_.sorted)
+          splitIdxs <- Gen.someOf(sortedData.indices).map(_.sorted)
+          borders = (0 +: splitIdxs).zip(splitIdxs :+ sortedData.length)
+        } yield borders.toVector
+          .map { case (from, to) =>
+            Chunk.array(sortedData, from, to - from)
+          }
+      )
+
+      def mkStream(parts: SortedData): Stream[Pure, Elem] = parts.map(Stream.chunk).combineAll
+
+      forAll { (sortedL: SortedData, sortedR: SortedData) =>
+        mkStream(sortedL)
+          .interleaveOrdered(mkStream(sortedR))
+          .assertEmits(
+            (sortedL ++ sortedR).toList.flatMap(_.toList).sorted // std .sorted is stable
+          )
+      }
+    }
   }
 
   property("intersperse") {
@@ -1433,6 +1462,49 @@ class StreamCombinatorsSuite extends Fs2Suite {
       (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](25.millis))
         .timeout(d2)
         .intercept[TimeoutException]
+    }
+  }
+
+  group("limit") {
+    test("limit a stream with > n elements, leaving chunks untouched") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](5)
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3, 4)))
+    }
+
+    test("allow a stream with exactly n elements, leaving chunks untouched") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](4)
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3, 4)))
+    }
+
+    test("emit exactly n elements in case of error") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](3)
+        .recoverWith { case _: IllegalStateException => Stream.empty }
+        .chunks
+        .map(_.toList)
+        .assertEmits(List(List(1, 2), List(3)))
+    }
+
+    test("raise IllegalStateException when stream exceeds n elements") {
+      val s = Stream(1, 2) ++ Stream(3, 4)
+      s.covary[IO]
+        .limit[IO](3)
+        .chunks
+        .map(_.toList)
+        .compile
+        .last
+        .intercept[IllegalStateException]
+        .void
+        .assert
     }
   }
 

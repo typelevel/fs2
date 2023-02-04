@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.1", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.2", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
@@ -213,13 +213,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "cats-core" % "2.9.0",
+      "org.typelevel" %%% "cats-effect" % "3.4.6",
+      "org.typelevel" %%% "cats-effect-laws" % "3.4.6" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.4.6" % Test,
       "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.4.5",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4.5" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4.5" % Test,
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
     ),
     tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")

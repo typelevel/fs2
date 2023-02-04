@@ -1543,11 +1543,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     map(Some(_): Option[O2]).hold(None)
 
   /** Like [[hold]] but does not require an initial value. The signal is not emitted until the initial value is emitted from this stream */
-  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] =
-    this.pull.uncons1.flatMap {
-      case Some((o, tail)) => tail.hold[F2, O2](o).underlying
-      case None            => Pull.done
+  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] = {
+    def go(signal: Deferred[F2, Signal[F2, O2]]) = this.pull.uncons1.flatMap {
+      case Some((o, tail)) =>
+        Pull.eval(SignallingRef.of[F2, O2](o).flatTap(signal.complete(_))).flatMap { ref =>
+          tail.foreach(ref.set(_)).underlying
+        }
+
+      case None => Pull.raiseError(new NoSuchElementException)
     }.streamNoScope
+
+    Stream.eval(Deferred[F2, Signal[F2, O2]]).flatMap { signal =>
+      Stream.eval(signal.get).concurrently(go(signal))
+    }
+  }
 
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
@@ -1754,6 +1763,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case Some(o) => Pull.output1(o)
       case None    => Pull.output1(fallback)
     }.stream
+
+  /** Emits the first `n` elements of this stream,
+    * raising an IllegalStateException if there are more elements.
+    */
+  def limit[F2[x] >: F[x]](n: Long)(implicit rt: RaiseThrowable[F2]): Stream[F2, O] =
+    this.pull
+      .take(n)
+      .flatMap {
+        case Some(s) =>
+          s.pull.uncons.flatMap {
+            case Some(_) =>
+              Pull.raiseError(new IllegalStateException(s"limit($n) emitted more than $n elements"))
+            case None => Pull.done
+          }
+        case _ => Pull.done
+      }
+      .stream
 
   /** Applies the specified pure function to each input and emits the result.
     *
@@ -1978,6 +2004,67 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       that: Stream[F2, O2]
   ): Stream[F2, O2] =
     that.mergeHaltL(this)
+
+  /** Given two sorted streams emits a single sorted stream, like in merge-sort.
+    * For entries that are considered equal by the Order, left stream element is emitted first.
+    * Note: both this and another streams MUST BE ORDERED already
+    * @example {{{
+    * scala> Stream(1, 2, 5, 6).interleaveOrdered(Stream(0, 2, 3, 4)).toList
+    * res0: List[Int] = List(0, 1, 2, 2, 3, 4, 5, 6)
+    * }}}
+    */
+  def interleaveOrdered[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
+    val order = Order[O2].toOrdering // collections API needs Ordering, not cats.Order
+
+    def go(
+        leftLeg: Stream.StepLeg[F2, O2],
+        rightLeg: Stream.StepLeg[F2, O2]
+    ): Pull[F2, O2, Unit] = {
+      val lChunk = leftLeg.head
+      val rChunk = rightLeg.head
+      if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
+        val lLast = lChunk(lChunk.size - 1)
+        val rLast = rChunk(rChunk.size - 1)
+        val wholeLeftSide = Order.lteqv(lLast, rLast) // otherwise we can emit whole right
+        val (emitLeft, keepLeft) =
+          if (wholeLeftSide) (lChunk, Chunk.empty)
+          else
+            lChunk.splitAt(
+              lChunk.indexWhere(order.gt(_, rLast)).getOrElse(lChunk.size)
+            )
+        val (emitRight, keepRight) =
+          if (!wholeLeftSide) (rChunk, Chunk.empty)
+          else
+            rChunk.splitAt( // not emitting equal from right side to keep stable sorting
+              rChunk.indexWhere(order.gteq(_, lLast)).getOrElse(rChunk.size)
+            )
+        Pull.output(
+          Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
+        ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
+      } else { // otherwise, we need to shift leg
+        if (lChunk.isEmpty) {
+          leftLeg.stepLeg.flatMap {
+            case Some(nextLl) => go(nextLl, rightLeg)
+            case None         => Pull.output(rChunk) >> rightLeg.next
+          }
+        } else {
+          rightLeg.stepLeg.flatMap {
+            case Some(nextRl) => go(leftLeg, nextRl)
+            case None         => Pull.output(lChunk) >> leftLeg.next
+          }
+        }
+      }
+    }
+
+    val thisPull = covaryAll[F2, O2].pull
+    val thatPull = that.pull
+
+    (thisPull.stepLeg, thatPull.stepLeg).tupled.flatMap {
+      case (Some(leg1), Some(leg2)) => go(leg1, leg2)
+      case (_, None)                => thisPull.echo
+      case (None, _)                => thatPull.echo
+    }.stream
+  }
 
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
     *
@@ -5020,7 +5107,7 @@ object Stream extends StreamLowPriority {
     def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
       new StepLeg[F, O2](nextHead, scopeId, next)
 
-    /** Provides an `uncons`-like operation on this leg of the stream. */
+    /** Provides an `uncons`-like operation on this leg of the stream, dropping current `head` */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull.stepLeg(self)
   }
