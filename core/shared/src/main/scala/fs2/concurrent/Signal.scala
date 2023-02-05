@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.data.OptionT
+import cats.kernel.Eq
 import cats.effect.kernel.{Concurrent, Deferred, Ref}
 import cats.effect.std.MapRef
 import cats.syntax.all._
@@ -31,7 +32,7 @@ import cats.{Applicative, Functor, Invariant, Monad}
 import scala.collection.immutable.LongMap
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
-trait Signal[F[_], A] {
+trait Signal[F[_], A] { outer =>
 
   /** Returns a stream of the updates to this signal.
     *
@@ -50,6 +51,15 @@ trait Signal[F[_], A] {
   /** Asynchronously gets the current value of this `Signal`.
     */
   def get: F[A]
+
+  /** Returns a signal derived from this one, that drops update events that did not change the value.
+    */
+  def changes(implicit eqA: Eq[A]): Signal[F, A] =
+    new Signal[F, A] {
+      def discrete = outer.discrete.changes
+      def continuous = outer.continuous
+      def get = outer.get
+    }
 
   /** Returns when the condition becomes true, semantically blocking
     * in the meantime.
