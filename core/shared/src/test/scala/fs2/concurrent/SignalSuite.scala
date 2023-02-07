@@ -150,6 +150,21 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("changes") {
+    TestControl.executeEmbed {
+      SignallingRef[IO, Long](0L).flatMap { s =>
+        val updates =
+          IO.sleep(1.second) *> s.set(1L) *>
+            IO.sleep(1.second) *> s.set(1L) *>
+            IO.sleep(1.second) *> s.set(2L)
+
+        updates.background.surround {
+          s.changes.discrete.takeWhile(_ != 2L, true).compile.toList.assertEquals(List(0L, 1L, 2L))
+        }
+      }
+    }
+  }
+
   test("access cannot be used twice") {
     for {
       s <- SignallingRef[IO, Long](0L)
