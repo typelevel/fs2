@@ -118,9 +118,11 @@ package fs {
 
     val O_EXCL: Double = js.native
 
-    val O_SYNC: Double = js.native
+    // UndefOr, because windows (:
 
-    val O_DSYNC: Double = js.native
+    val O_SYNC: js.UndefOr[Double] = js.native
+
+    val O_DSYNC: js.UndefOr[Double] = js.native
 
   }
 
