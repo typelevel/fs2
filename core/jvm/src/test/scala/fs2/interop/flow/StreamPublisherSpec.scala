@@ -20,33 +20,30 @@
  */
 
 package fs2
-package io
-package file
+package interop
+package flow
 
-import cats.kernel.Monoid
-import fs2.io.internal.facade
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import org.reactivestreams.tck.TestEnvironment
+import org.reactivestreams.tck.flow.FlowPublisherVerification
+import org.scalatestplus.testng._
 
-final class Flag private (private[file] val bits: Long) extends AnyVal
+final class StreamPublisherSpec
+    extends FlowPublisherVerification[Int](new TestEnvironment(1000L))
+    with TestNGSuiteLike {
 
-object Flag extends FlagCompanionApi {
-  private def apply(bits: Long): Flag = new Flag(bits)
-  private def apply(bits: Double): Flag = Flag(bits.toLong)
+  override def createFlowPublisher(n: Long): StreamPublisher[IO, Int] = {
+    val nums = Stream.constant(3)
 
-  val Read = Flag(facade.fs.constants.O_RDONLY)
-  val Write = Flag(facade.fs.constants.O_WRONLY)
-  val Append = Flag(facade.fs.constants.O_APPEND)
+    StreamPublisher[IO, Int](
+      stream = if (n == Long.MaxValue) nums else nums.take(n)
+    ).allocated.unsafeRunSync()._1
+  }
 
-  val Truncate = Flag(facade.fs.constants.O_TRUNC)
-  val Create = Flag(facade.fs.constants.O_CREAT)
-  val CreateNew = Flag(facade.fs.constants.O_CREAT.toLong | facade.fs.constants.O_EXCL.toLong)
-
-  val Sync = Flag(facade.fs.constants.O_SYNC.getOrElse(0.0))
-  val Dsync = Flag(facade.fs.constants.O_DSYNC.getOrElse(0.0))
-
-  private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
-    override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)
-    override def empty: Flag = Flag(0)
+  override def createFailedFlowPublisher(): StreamPublisher[IO, Int] = {
+    val publisher = // If the resource is closed then the publisher is failed.
+      StreamPublisher[IO, Int](Stream.empty).use(IO.pure).unsafeRunSync()
+    publisher
   }
 }
-
-private[file] trait FlagsCompanionPlatform {}
