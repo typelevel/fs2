@@ -211,17 +211,17 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
+      "org.scodec" %%% "scodec-bits" % "1.1.34",
       "org.typelevel" %%% "cats-core" % "2.9.0",
-      "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
       "org.typelevel" %%% "cats-effect" % "3.4.6",
       "org.typelevel" %%% "cats-effect-laws" % "3.4.6" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.4.6" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
     ),
-    tlJdkRelease := Some(8),
+    tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
@@ -229,6 +229,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val coreJVM = core.jvm
   .settings(
     Test / fork := true,
+    libraryDependencies ++= Seq(
+      "org.reactivestreams" % "reactive-streams-tck-flow" % "1.0.4" % Test,
+      "org.scalatestplus" %% "testng-7-5" % "3.2.14.0" % Test
+    ),
     doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
