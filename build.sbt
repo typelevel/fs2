@@ -333,7 +333,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
                                                                scalaVersion.value.startsWith("2.")
                                                              )
                                                                "1.11.10"
-                                                             else "2.2.0"),
+                                                             else "2.2.1"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )
