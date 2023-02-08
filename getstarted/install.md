@@ -1,13 +1,13 @@
 # Install
 
-The latest version for Cats Effect 3 is `3.6.0`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.0.
+The latest version for Cats Effect 3 is `3.6.0`, which supports Cats Effect 3 and is cross built for Scala 2.12, 2.13, and 3.2.
 
 The latest version for Cats Effect 2 is `2.5.10`, which supports Cats Effect 2 and is similarly cross built for various Scala versions.
 
 ### Dependencies <!-- {docsify-ignore} -->
 
 ```
-// available for 2.12, 2.13, 3.0
+// available for 2.12, 2.13, 3.2
 libraryDependencies += "co.fs2" %% "fs2-core" % "3.6.0"
 
 // optional I/O library
