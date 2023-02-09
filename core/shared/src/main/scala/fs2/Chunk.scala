@@ -889,8 +889,8 @@ object Chunk
 
     override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = {
       val bb = buf.asReadOnlyBuffer()
-      bb.position(offset)
-      bb.limit(offset + size)
+      (bb: JBuffer).position(offset)
+      (bb: JBuffer).limit(offset + size)
       ByteVector.view(bb)
     }
   }
