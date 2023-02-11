@@ -297,7 +297,7 @@ private[fs2] final class Scope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** @returns true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
+  /** @return true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
     */
   def descendsFrom(scopeId: Unique.Token): Boolean = findSelfOrAncestor(scopeId).isDefined
 
