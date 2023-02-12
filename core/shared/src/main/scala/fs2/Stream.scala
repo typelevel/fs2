@@ -3827,11 +3827,11 @@ object Stream extends StreamLowPriority {
       override def apply[A](fa: Resource[F, A]): Stream[F, A] = resourceWeak[F, A](fa)
     }
 
-  /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
+  /** Converts the supplied [[java.lang.AutoCloseable]] into a singleton stream. */
   def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
 
-  /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
+  /** Like [[fromAutoCloseable]] but does not introduce a scope, allowing finalization to occur after
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[Stream#scope]] if desired.
