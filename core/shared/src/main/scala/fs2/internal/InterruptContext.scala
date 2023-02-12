@@ -29,7 +29,7 @@ import InterruptContext.InterruptionOutcome
 
 /** A context of interruption status. This is shared from the parent that was created as interruptible to all
   * its children. It assures consistent view of the interruption through the stack
-  * @param concurrent   Concurrent, used to create interruption at Eval.
+  * @param deferred Deferred, used to create interruption at Eval.
   *                 If signalled with None, normal interruption is signalled. If signaled with Some(err) failure is signalled.
   * @param ref      When None, scope is not interrupted,
   *                 when Some(None) scope was interrupted, and shall continue with `whenInterrupted`

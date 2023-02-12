@@ -786,8 +786,8 @@ object Pull extends PullLowPriority {
   /** Steps through the stream, providing a `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
-    * @param stream             Stream to step
-    * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
+    * @param stream Stream to step
+    * @param scope  Scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
       extends Action[Nothing, Nothing, Option[Stream.StepLeg[F, O]]]
