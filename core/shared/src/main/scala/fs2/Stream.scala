@@ -4035,9 +4035,9 @@ object Stream extends StreamLowPriority {
       * or from the observer pipe (when applied to source chunks) will cause the
       * termination of the resulting stream, and will be raised from this.
       *
-      * @returns A stream that may emit the same outputs as this stream (source),
-      *          in the same order and chunks, and performs the same effects as
-      *          the source; but in which every chunk is processed by the pipe.
+      * @return A stream that may emit the same outputs as this stream (source),
+      *         in the same order and chunks, and performs the same effects as
+      *         the source; but in which every chunk is processed by the pipe.
       */
     def observeAsync(
         maxQueued: Int
