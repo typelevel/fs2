@@ -106,7 +106,7 @@ import Pull.StreamPullOps
   *   - `Stream.emit >=> f == f` (left identity)
   *   - `f >=> Stream.emit === f` (right identity - note weaker equality notion here)
   *   - `(f >=> g) >=> h == f >=> (g >=> h)` (associativity)
-  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a))` and
   *  `f >=> g` is defined as `a => a flatMap f flatMap g`
   *
   * The monad is the list-style sequencing monad:
@@ -377,7 +377,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
   /** Collects all output chunks in to a single chunk and emits it at the end of the
-    * source stream. Note: if more than 2^32-1 elements are collected, this operation
+    * source stream. Note: if more than 2^(32-1)^ elements are collected, this operation
     * will fail.
     *
     * @example {{{

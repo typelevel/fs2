@@ -54,7 +54,7 @@ import fs2.Compiler
   * scope is closed (or when the resource lease is no longer required) release the lease with `Lease#cancel`.
   *
   * Note that every method which may potentially call a resource finalizer returns `F[Either[Throwable, Unit]]`
-  * instead of `F[Unit]`` to make sure any errors that occur when releasing the resource are properly handled.
+  * instead of `F[Unit]` to make sure any errors that occur when releasing the resource are properly handled.
   */
 private[fs2] sealed abstract class ScopedResource[F[_]] {
 
