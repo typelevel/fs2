@@ -106,7 +106,7 @@ import Pull.StreamPullOps
   *   - `Stream.emit >=> f == f` (left identity)
   *   - `f >=> Stream.emit === f` (right identity - note weaker equality notion here)
   *   - `(f >=> g) >=> h == f >=> (g >=> h)` (associativity)
-  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a))` and
   *  `f >=> g` is defined as `a => a flatMap f flatMap g`
   *
   * The monad is the list-style sequencing monad:
@@ -377,7 +377,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
   /** Collects all output chunks in to a single chunk and emits it at the end of the
-    * source stream. Note: if more than 2^32-1 elements are collected, this operation
+    * source stream. Note: if more than 2^(32-1)^ elements are collected, this operation
     * will fail.
     *
     * @example {{{
@@ -3827,11 +3827,11 @@ object Stream extends StreamLowPriority {
       override def apply[A](fa: Resource[F, A]): Stream[F, A] = resourceWeak[F, A](fa)
     }
 
-  /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
+  /** Converts the supplied [[java.lang.AutoCloseable]] into a singleton stream. */
   def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
 
-  /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
+  /** Like [[fromAutoCloseable]] but does not introduce a scope, allowing finalization to occur after
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[Stream#scope]] if desired.
@@ -4035,9 +4035,9 @@ object Stream extends StreamLowPriority {
       * or from the observer pipe (when applied to source chunks) will cause the
       * termination of the resulting stream, and will be raised from this.
       *
-      * @returns A stream that may emit the same outputs as this stream (source),
-      *          in the same order and chunks, and performs the same effects as
-      *          the source; but in which every chunk is processed by the pipe.
+      * @return A stream that may emit the same outputs as this stream (source),
+      *         in the same order and chunks, and performs the same effects as
+      *         the source; but in which every chunk is processed by the pipe.
       */
     def observeAsync(
         maxQueued: Int
