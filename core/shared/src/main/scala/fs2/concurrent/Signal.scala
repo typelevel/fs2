@@ -271,14 +271,16 @@ object SignallingRef {
           private[this] def getAndDiscreteUpdatesImpl = {
             def go(id: Long, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                F.deferred[(A, Long)].flatMap { wait =>
-                  state.flatModify { case state @ State(value, lastUpdate, listeners) =>
-                    if (lastUpdate != lastSeen)
-                      state -> (value -> lastUpdate).pure[F]
-                    else
-                      state.copy(listeners = listeners + (id -> wait)) -> wait.get
+                F.deferred[(A, Long)]
+                  .flatMap { wait =>
+                    state.modify { case state @ State(value, lastUpdate, listeners) =>
+                      if (lastUpdate != lastSeen)
+                        state -> (value -> lastUpdate).pure[F]
+                      else
+                        state.copy(listeners = listeners + (id -> wait)) -> wait.get
+                    }
                   }
-                }
+                  .flatten // cancelable
 
               Stream.eval(getNext).flatMap { case (a, lastUpdate) =>
                 Stream.emit(a) ++ go(id, lastSeen = lastUpdate)
@@ -530,23 +532,25 @@ object SignallingMapRef {
             private[this] def getAndDiscreteUpdatesImpl = {
               def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
                 def getNext: F[(Option[V], Long)] =
-                  F.deferred[(Option[V], Long)].flatMap { wait =>
-                    state.flatModify { state =>
-                      val keyState = state.keys.get(k)
-                      val value = keyState.flatMap(_.value)
-                      val lastUpdate = keyState.fold(-1L)(_.lastUpdate)
-                      val listeners = keyState.fold(LongMap.empty[Listener])(_.listeners)
+                  F.deferred[(Option[V], Long)]
+                    .flatMap { wait =>
+                      state.modify { state =>
+                        val keyState = state.keys.get(k)
+                        val value = keyState.flatMap(_.value)
+                        val lastUpdate = keyState.fold(-1L)(_.lastUpdate)
+                        val listeners = keyState.fold(LongMap.empty[Listener])(_.listeners)
 
-                      if (lastUpdate != lastSeen)
-                        state -> (value -> lastUpdate).pure[F]
-                      else {
-                        val newKeys =
-                          state.keys
-                            .updated(k, KeyState(value, lastUpdate, listeners.updated(id, wait)))
-                        state.copy(keys = newKeys) -> wait.get
+                        if (lastUpdate != lastSeen)
+                          state -> (value -> lastUpdate).pure[F]
+                        else {
+                          val newKeys =
+                            state.keys
+                              .updated(k, KeyState(value, lastUpdate, listeners.updated(id, wait)))
+                          state.copy(keys = newKeys) -> wait.get
+                        }
                       }
                     }
-                  }
+                    .flatten // cancelable
 
                 Stream.eval(getNext).flatMap { case (v, lastUpdate) =>
                   Stream.emit(v) ++ go(id, lastSeen = lastUpdate)
