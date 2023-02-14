@@ -26,6 +26,7 @@ import cats.data.OptionT
 import cats.kernel.Eq
 import cats.effect.kernel.{Concurrent, Deferred, Ref, Resource}
 import cats.effect.std.MapRef
+import cats.effect.syntax.all._
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
 
@@ -271,12 +272,12 @@ object SignallingRef {
             def go(id: Long, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
                 F.deferred[(A, Long)].flatMap { wait =>
-                  state.modify { case state @ State(value, lastUpdate, listeners) =>
+                  state.flatModify { case state @ State(value, lastUpdate, listeners) =>
                     if (lastUpdate != lastSeen)
                       state -> (value -> lastUpdate).pure[F]
                     else
                       state.copy(listeners = listeners + (id -> wait)) -> wait.get
-                  }.flatten
+                  }
                 }
 
               Stream.eval(getNext).flatMap { case (a, lastUpdate) =>
@@ -297,10 +298,10 @@ object SignallingRef {
           def update(f: A => A): F[Unit] = modify(a => (f(a), ()))
 
           def modify[B](f: A => (A, B)): F[B] =
-            state.modify(updateAndNotify(_, f)).flatten
+            state.flatModify(updateAndNotify(_, f))
 
           def tryModify[B](f: A => (A, B)): F[Option[B]] =
-            state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
+            state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence).uncancelable
 
           def tryUpdate(f: A => A): F[Boolean] =
             tryModify(a => (f(a), ())).map(_.isDefined)
@@ -530,7 +531,7 @@ object SignallingMapRef {
               def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
                 def getNext: F[(Option[V], Long)] =
                   F.deferred[(Option[V], Long)].flatMap { wait =>
-                    state.modify { state =>
+                    state.flatModify { state =>
                       val keyState = state.keys.get(k)
                       val value = keyState.flatMap(_.value)
                       val lastUpdate = keyState.fold(-1L)(_.lastUpdate)
@@ -544,7 +545,7 @@ object SignallingMapRef {
                             .updated(k, KeyState(value, lastUpdate, listeners.updated(id, wait)))
                         state.copy(keys = newKeys) -> wait.get
                       }
-                    }.flatten
+                    }
                   }
 
                 Stream.eval(getNext).flatMap { case (v, lastUpdate) =>
@@ -580,10 +581,10 @@ object SignallingMapRef {
             def update(f: Option[V] => Option[V]): F[Unit] = modify(v => (f(v), ()))
 
             def modify[U](f: Option[V] => (Option[V], U)): F[U] =
-              state.modify(updateAndNotify(_, k, f)).flatten
+              state.flatModify(updateAndNotify(_, k, f))
 
             def tryModify[U](f: Option[V] => (Option[V], U)): F[Option[U]] =
-              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence)
+              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence).uncancelable
 
             def tryUpdate(f: Option[V] => Option[V]): F[Boolean] =
               tryModify(a => (f(a), ())).map(_.isDefined)
