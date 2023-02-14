@@ -178,7 +178,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.net.Socket.forAsync")
 )
 
 lazy val root = tlCrossRootProject
