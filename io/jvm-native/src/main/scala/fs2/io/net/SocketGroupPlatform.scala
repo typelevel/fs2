@@ -32,8 +32,10 @@ import java.nio.channels.{
 }
 import java.nio.channels.AsynchronousChannelGroup
 import cats.syntax.all._
+import cats.effect.syntax.all._
 import cats.effect.kernel.{Async, Resource}
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import fs2.concurrent.Channel
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
   private[fs2] def unsafe[F[_]: Async](channelGroup: AsynchronousChannelGroup): SocketGroup[F] =
@@ -57,17 +59,21 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
 
       def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
         to.resolve[F].flatMap { ip =>
-          Async[F].async_[AsynchronousSocketChannel] { cb =>
-            ch.connect(
-              ip.toInetSocketAddress,
-              null,
-              new CompletionHandler[Void, Void] {
-                def completed(result: Void, attachment: Void): Unit =
-                  cb(Right(ch))
-                def failed(rsn: Throwable, attachment: Void): Unit =
-                  cb(Left(rsn))
+          Async[F].async[AsynchronousSocketChannel] { cb =>
+            Async[F]
+              .delay {
+                ch.connect(
+                  ip.toInetSocketAddress,
+                  null,
+                  new CompletionHandler[Void, Void] {
+                    def completed(result: Void, attachment: Void): Unit =
+                      cb(Right(ch))
+                    def failed(rsn: Throwable, attachment: Void): Unit =
+                      cb(Left(rsn))
+                  }
+                )
               }
-            )
+              .as(Some(Async[F].delay(ch.close())))
           }
         }
 
@@ -80,7 +86,10 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = {
 
-      val setup: Resource[F, AsynchronousServerSocketChannel] =
+      val setup: Resource[
+        F,
+        (AsynchronousServerSocketChannel, Channel[F, Either[Throwable, AsynchronousSocketChannel]])
+      ] =
         Resource.eval(address.traverse(_.resolve[F])).flatMap { addr =>
           Resource
             .make(
@@ -88,61 +97,83 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
                 AsynchronousServerSocketChannel.open(channelGroup)
               )
             )(sch => Async[F].delay(if (sch.isOpen) sch.close()))
-            .evalTap(ch =>
+            .evalTap { sch =>
               Async[F].delay(
-                ch.bind(
+                sch.bind(
                   new InetSocketAddress(
                     addr.map(_.toInetAddress).orNull,
                     port.map(_.value).getOrElse(0)
                   )
                 )
               )
-            )
+            }
+            .mproduct { sch =>
+              def acceptChannel: F[AsynchronousSocketChannel] =
+                Async[F].async[AsynchronousSocketChannel] { cb =>
+                  Async[F]
+                    .delay {
+                      sch.accept(
+                        null,
+                        new CompletionHandler[AsynchronousSocketChannel, Void] {
+                          def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                            cb(Right(ch))
+                          def failed(rsn: Throwable, attachment: Void): Unit =
+                            cb(Left(rsn))
+                        }
+                      )
+                    }
+                    .as(Some(Async[F].delay(sch.close())))
+                }
+
+              Resource
+                .make(Channel.synchronous[F, Either[Throwable, AsynchronousSocketChannel]]) {
+                  accepted =>
+                    accepted.close *>
+                      accepted.stream
+                        .foreach(_.traverse_(ch => Async[F].delay(ch.close())))
+                        .compile
+                        .drain
+                }
+                .flatTap { accepted =>
+                  Stream
+                    .repeatEval(acceptChannel.attempt)
+                    .through(accepted.sendAll)
+                    .compile
+                    .drain
+                    .background
+                }
+            }
+
         }
 
-      def acceptIncoming(
-          sch: AsynchronousServerSocketChannel
+      def acceptIncoming(sch: AsynchronousServerSocketChannel)(
+          incoming: Stream[F, Either[Throwable, AsynchronousSocketChannel]]
       ): Stream[F, Socket[F]] = {
-        def go: Stream[F, Socket[F]] = {
-          def acceptChannel: F[AsynchronousSocketChannel] =
-            Async[F].async_[AsynchronousSocketChannel] { cb =>
-              sch.accept(
-                null,
-                new CompletionHandler[AsynchronousSocketChannel, Void] {
-                  def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                    cb(Right(ch))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    cb(Left(rsn))
-                }
-              )
-            }
+        def setOpts(ch: AsynchronousSocketChannel) =
+          Async[F].delay {
+            options.foreach(o => ch.setOption(o.key, o.value))
+          }
 
-          def setOpts(ch: AsynchronousSocketChannel) =
-            Async[F].delay {
-              options.foreach(o => ch.setOption(o.key, o.value))
-            }
-
-          Stream.eval(acceptChannel.attempt).flatMap {
+        incoming
+          .flatMap {
             case Left(_) => Stream.empty[F]
             case Right(accepted) =>
               Stream.resource(Socket.forAsync(accepted).evalTap(_ => setOpts(accepted)))
-          } ++ go
-        }
-
-        go.handleErrorWith {
-          case err: AsynchronousCloseException =>
-            Stream.eval(Async[F].delay(sch.isOpen)).flatMap { isOpen =>
-              if (isOpen) Stream.raiseError[F](err)
-              else Stream.empty
-            }
-          case err => Stream.raiseError[F](err)
-        }
+          }
+          .handleErrorWith {
+            case err: AsynchronousCloseException =>
+              Stream.eval(Async[F].delay(sch.isOpen)).flatMap { isOpen =>
+                if (isOpen) Stream.raiseError[F](err)
+                else Stream.empty
+              }
+            case err => Stream.raiseError[F](err)
+          }
       }
 
-      setup.map { sch =>
+      setup.map { case (sch, incoming) =>
         val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
         val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
-        (localAddress, acceptIncoming(sch))
+        (localAddress, incoming.stream.through(acceptIncoming(sch)(_)))
       }
     }
   }
