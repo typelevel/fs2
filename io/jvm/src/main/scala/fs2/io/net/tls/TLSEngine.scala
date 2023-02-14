@@ -28,7 +28,7 @@ import javax.net.ssl.{SSLEngine, SSLEngineResult}
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Sync}
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.syntax.all._
 
 /** Provides the ability to establish and communicate over a TLS session.
@@ -65,9 +65,9 @@ private[tls] object TLSEngine {
         engine.getSession.getPacketBufferSize,
         engine.getSession.getApplicationBufferSize
       )
-      readSemaphore <- Semaphore[F](1)
-      writeSemaphore <- Semaphore[F](1)
-      handshakeSemaphore <- Semaphore[F](1)
+      readMutex <- Mutex[F]
+      writeMutex <- Mutex[F]
+      handshakeMutex <- Mutex[F]
       sslEngineTaskRunner = SSLEngineTaskRunner[F](engine)
     } yield new TLSEngine[F] {
       private val doLog: (() => String) => F[Unit] =
@@ -85,7 +85,7 @@ private[tls] object TLSEngine {
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
       def write(data: Chunk[Byte]): F[Unit] =
-        writeSemaphore.permit.use(_ => write0(data))
+        writeMutex.lock.surround(write0(data))
 
       private def write0(data: Chunk[Byte]): F[Unit] =
         wrapBuffer.input(data) >> wrap
@@ -104,8 +104,8 @@ private[tls] object TLSEngine {
                       wrapBuffer.inputRemains
                         .flatMap(x => wrap.whenA(x > 0 && result.bytesConsumed > 0))
                     case _ =>
-                      handshakeSemaphore.permit
-                        .use(_ => stepHandshake(result, true)) >> wrap
+                      handshakeMutex.lock
+                        .surround(stepHandshake(result, true)) >> wrap
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
@@ -124,7 +124,7 @@ private[tls] object TLSEngine {
         }
 
       def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
-        readSemaphore.permit.use(_ => read0(maxBytes))
+        readMutex.lock.surround(read0(maxBytes))
 
       private def initialHandshakeDone: F[Boolean] =
         Sync[F].delay(engine.getSession.getCipherSuite != "SSL_NULL_WITH_NULL_NULL")
@@ -168,8 +168,8 @@ private[tls] object TLSEngine {
                   case SSLEngineResult.HandshakeStatus.FINISHED =>
                     unwrap(maxBytes)
                   case _ =>
-                    handshakeSemaphore.permit
-                      .use(_ => stepHandshake(result, false)) >> unwrap(
+                    handshakeMutex.lock
+                      .surround(stepHandshake(result, false)) >> unwrap(
                       maxBytes
                     )
                 }
