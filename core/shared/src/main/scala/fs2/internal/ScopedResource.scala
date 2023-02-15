@@ -108,7 +108,9 @@ private[internal] object ScopedResource {
     */
   private[this] final case class State[+F[_]](
       open: Boolean,
-      finalizer: Option[Resource.ExitCase => F[Either[Throwable, Unit]]],
+      finalizer: Resource.ExitCase => F[
+        Either[Throwable, Unit]
+      ], // or null which is used as an Optional type to avoid boxing
       leases: Int
   ) {
     /* The `isFinished` predicate indicates that the finalizer can be run at the present state:
@@ -116,7 +118,7 @@ private[internal] object ScopedResource {
     @inline def isFinished: Boolean = !open && leases == 0
   }
 
-  private[this] val initial = State(open = true, finalizer = None, leases = 0)
+  private[this] val initial = State(open = true, finalizer = null, leases = 0)
 
   def create[F[_]](implicit F: Compiler.Target[F]): F[ScopedResource[F]] =
     for {
@@ -129,17 +131,20 @@ private[internal] object ScopedResource {
       private[this] val pru: F[Either[Throwable, Unit]] =
         (Right(()): Either[Throwable, Unit]).pure[F]
 
+      private[this] val prtrue: F[Either[Throwable, Boolean]] =
+        F.pure(Right(true))
+
       def release(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
         state
           .modify { s =>
             if (s.leases != 0)
               // do not allow to run finalizer if there are leases open
-              (s.copy(open = false), None)
+              (s.copy(open = false), null)
             else
-              // reset finalizer to None, will be run, it available, otherwise the acquire will take care of it
-              (s.copy(open = false, finalizer = None), s.finalizer)
+              // reset finalizer to null, will be run, it available, otherwise the acquire will take care of it
+              (s.copy(open = false, finalizer = null), s.finalizer)
           }
-          .flatMap(finalizer => finalizer.map(_(ec)).getOrElse(pru))
+          .flatMap(finalizer => if (finalizer ne null) finalizer(ec) else pru)
 
       def acquired(finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]] =
         state.modify { s =>
@@ -149,10 +154,7 @@ private[internal] object ScopedResource {
           else {
             val attemptFinalizer = (ec: Resource.ExitCase) => finalizer(ec).attempt
             // either state is open, or leases are present, either release or `Lease#cancel` will run the finalizer
-            s.copy(finalizer = Some(attemptFinalizer)) -> (Right(true): Either[
-              Throwable,
-              Boolean
-            ]).pure[F]
+            s.copy(finalizer = attemptFinalizer) -> prtrue
           }
         }.flatten
 
@@ -171,17 +173,17 @@ private[internal] object ScopedResource {
               val now = s.copy(leases = s.leases - 1)
               now -> now
             }
-            .flatMap { now =>
-              if (now.isFinished)
+            .flatMap {
+              case now if now.isFinished =>
                 state.modify { s =>
                   // Scope is closed and this is last lease, assure finalizer is removed from the state and run
                   // previous finalizer shall be always present at this point, this shall invoke it
-                  s.copy(finalizer = None) -> (s.finalizer match {
-                    case Some(ff) => ff(Resource.ExitCase.Succeeded)
-                    case None     => pru
-                  })
+                  s.copy(finalizer = null) ->
+                    (if (s.finalizer ne null)
+                       s.finalizer(Resource.ExitCase.Succeeded)
+                     else pru)
                 }.flatten
-              else
+              case _ =>
                 pru
             }
       }
