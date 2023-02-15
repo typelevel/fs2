@@ -287,9 +287,9 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Resource.eval(state.get).map { s =>
+            Resource.eval(state.get.map { s =>
               (s.value, Stream.bracket(newId)(cleanup).flatMap(go(_, s.lastUpdate)))
-            }
+            })
           }
 
           def set(a: A): F[Unit] = update(_ => a)
@@ -565,14 +565,14 @@ object SignallingMapRef {
                   }
                 }
 
-              Resource.eval(state.get).map { state =>
+              Resource.eval(state.get.map { state =>
                 (
                   state.keys.get(k).flatMap(_.value),
                   Stream
                     .bracket(newId)(cleanup)
                     .flatMap(go(_, state.keys.get(k).fold(-1L)(_.lastUpdate)))
                 )
-              }
+              })
             }
 
             def set(v: Option[V]): F[Unit] = update(_ => v)
