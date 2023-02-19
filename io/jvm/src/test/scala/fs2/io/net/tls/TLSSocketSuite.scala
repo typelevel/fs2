@@ -172,7 +172,8 @@ class TLSSocketSuite extends TLSSuite {
             Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
 
-          client.concurrently(echoServer)
+          // client gets closed pipe error when server gets handshake ex
+          client.mask.concurrently(echoServer)
         }
         .compile
         .to(Chunk)
