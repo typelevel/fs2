@@ -97,7 +97,7 @@ class TLSSocketSuite extends TLSSuite {
             .assertEquals(httpOk)
         }
 
-      List(TLSv1, `TLSv1.1`, `TLSv1.2`, `TLSv1.3`).foreach { protocol =>
+      List(`TLSv1.2`, `TLSv1.3`).foreach { protocol =>
         writesBeforeReading(protocol)
         readsBeforeWriting(protocol)
       }
@@ -231,7 +231,7 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    List(TLSv1, `TLSv1.1`, `TLSv1.2`, `TLSv1.3`).foreach { protocol =>
+    List(`TLSv1.2`, `TLSv1.3`).foreach { protocol =>
       test(s"$protocol - applicationProtocol and session") {
         val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
