@@ -312,13 +312,15 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
         JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
       case c: Chunk.ByteBuffer =>
-        val b = c.buf.asReadOnlyBuffer
+        val b = c.buf.duplicate // share contents, independent position/limit
         if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
         else {
           (b: JBuffer).position(c.offset.toInt)
           (b: JBuffer).limit(c.offset.toInt + c.size)
           b
         }
+      case c: Chunk.ByteVectorChunk =>
+        c.bv.toByteBuffer
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
