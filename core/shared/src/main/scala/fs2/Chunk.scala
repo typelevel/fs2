@@ -306,7 +306,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       case _ => Chunk.ArraySlice(toArray, 0, size)
     }
 
-  /** Converts this chunk to a `java.nio.ByteBuffer`. */
+  /** Converts this chunk to a `java.nio.ByteBuffer`.
+    * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer =
     this match {
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
@@ -325,7 +328,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
 
-  /** Converts this chunk to a `java.nio.CharBuffer`. */
+  /** Converts this chunk to a `java.nio.CharBuffer`.
+    * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
   def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
     this match {
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
