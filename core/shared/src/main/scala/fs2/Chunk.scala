@@ -306,30 +306,38 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       case _ => Chunk.ArraySlice(toArray, 0, size)
     }
 
-  /** Converts this chunk to a `java.nio.ByteBuffer`. */
+  /** Converts this chunk to a `java.nio.ByteBuffer`.
+    * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer =
     this match {
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
         JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
       case c: Chunk.ByteBuffer =>
-        val b = c.buf.asReadOnlyBuffer
+        val b = c.buf.duplicate // share contents, independent position/limit
         if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
         else {
           (b: JBuffer).position(c.offset.toInt)
           (b: JBuffer).limit(c.offset.toInt + c.size)
           b
         }
+      case c: Chunk.ByteVectorChunk =>
+        c.bv.toByteBuffer
       case _ =>
         JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
     }
 
-  /** Converts this chunk to a `java.nio.CharBuffer`. */
+  /** Converts this chunk to a `java.nio.CharBuffer`.
+    * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
   def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
     this match {
       case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
         JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
       case c: Chunk.CharBuffer =>
-        val b = c.buf.asReadOnlyBuffer
+        val b = c.buf.duplicate // share contents, independent position/limit
         if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
         else {
           (b: JBuffer).position(c.offset.toInt)
