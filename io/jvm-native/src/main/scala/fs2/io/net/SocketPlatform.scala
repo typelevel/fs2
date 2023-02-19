@@ -141,7 +141,7 @@ private[net] trait SocketCompanionPlatform {
           else F.unit
         }
       writeMutex.lock.surround {
-        go(bytes.toByteBuffer)
+        F.delay(bytes.toByteBuffer).flatMap(go)
       }
     }
 

@@ -111,7 +111,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           else go(buff)
         }
       writeMutex.lock.surround {
-        go(bytes.toByteBuffer)
+        F.delay(bytes.toByteBuffer).flatMap(go)
       }
     }
 
