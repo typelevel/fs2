@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.6"
+ThisBuild / tlBaseVersion := "3.7"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -178,7 +178,14 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.net.Socket.forAsync"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.SocketCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform#AsyncSocket.this"
+  )
 )
 
 lazy val root = tlCrossRootProject
@@ -213,9 +220,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.35",
       "org.typelevel" %%% "cats-core" % "2.9.0",
-      "org.typelevel" %%% "cats-effect" % "3.4.7",
-      "org.typelevel" %%% "cats-effect-laws" % "3.4.7" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.4.7" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.5.0-RC2",
+      "org.typelevel" %%% "cats-effect-laws" % "3.5.0-RC2" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.5.0-RC2" % Test,
       "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,

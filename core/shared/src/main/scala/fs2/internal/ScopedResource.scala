@@ -142,7 +142,7 @@ private[internal] object ScopedResource {
           .flatMap(finalizer => finalizer.map(_(ec)).getOrElse(pru))
 
       def acquired(finalizer: Resource.ExitCase => F[Unit]): F[Either[Throwable, Boolean]] =
-        state.modify { s =>
+        state.flatModify { s =>
           if (s.isFinished)
             // state is closed and there are no leases, finalizer has to be invoked right away
             s -> finalizer(Resource.ExitCase.Succeeded).as(false).attempt
@@ -154,7 +154,7 @@ private[internal] object ScopedResource {
               Boolean
             ]).pure[F]
           }
-        }.flatten
+        }
 
       def lease: F[Option[Lease[F]]] =
         state.modify { s =>
@@ -173,14 +173,14 @@ private[internal] object ScopedResource {
             }
             .flatMap { now =>
               if (now.isFinished)
-                state.modify { s =>
+                state.flatModify { s =>
                   // Scope is closed and this is last lease, assure finalizer is removed from the state and run
                   // previous finalizer shall be always present at this point, this shall invoke it
                   s.copy(finalizer = None) -> (s.finalizer match {
                     case Some(ff) => ff(Resource.ExitCase.Succeeded)
                     case None     => pru
                   })
-                }.flatten
+                }
               else
                 pru
             }

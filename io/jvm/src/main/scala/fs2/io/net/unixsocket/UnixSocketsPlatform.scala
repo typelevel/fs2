@@ -22,7 +22,7 @@
 package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
@@ -89,17 +89,17 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       ch: SocketChannel
   ): Resource[F, Socket[F]] =
     Resource.make {
-      (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
-        new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
+      (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
+        new AsyncSocket[F](ch, readMutex, writeMutex)
       }
     }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
 
   private final class AsyncSocket[F[_]](
       ch: SocketChannel,
-      readSemaphore: Semaphore[F],
-      writeSemaphore: Semaphore[F]
+      readMutex: Mutex[F],
+      writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends Socket.BufferedReads[F](readSemaphore) {
+      extends Socket.BufferedReads[F](readMutex) {
 
     def readChunk(buff: ByteBuffer): F[Int] =
       F.blocking(ch.read(buff))
@@ -110,8 +110,8 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           if (buff.remaining <= 0) F.unit
           else go(buff)
         }
-      writeSemaphore.permit.use { _ =>
-        go(bytes.toByteBuffer)
+      writeMutex.lock.surround {
+        F.delay(bytes.toByteBuffer).flatMap(go)
       }
     }
 
