@@ -36,3 +36,5 @@ sealed trait Process[F[_]] {
   def stderr: Stream[F, Byte]
 
 }
+
+private trait UnsealedProcess[F[_]] extends Process[F]
