@@ -19,22 +19,48 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package process
+package fs2.io.internal.facade
 
-sealed trait Process[F[_]] {
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
 
-  def isAlive: F[Boolean]
+import events.EventEmitter
 
-  def exitValue: F[Int]
+package object child_process {
 
-  def stdin: Pipe[F, Byte, Nothing]
+  @js.native
+  @JSImport("child_process", "spawn")
+  private[io] def spawn(command: String, args: js.Array[String], options: SpawnOptions): ChildProcess =
+    js.native
 
-  def stdout: Stream[F, Byte]
-
-  def stderr: Stream[F, Byte]
 
 }
 
-private[io] trait UnsealedProcess[F[_]] extends Process[F]
+package child_process {
+
+  private[io] trait SpawnOptions extends js.Object {
+
+    var cwd: js.UndefOr[String] = js.undefined
+  
+    var env: js.UndefOr[js.Dictionary[String]] = js.undefined
+
+  }
+
+
+  @js.native
+  private[io] trait ChildProcess extends EventEmitter {
+
+    def stdin: fs2.io.Writable = js.native
+
+    def stdout: fs2.io.Readable = js.native
+
+    def stderr: fs2.io.Readable = js.native
+
+    // can also be `null`, so can't use `Int` ... 
+    def exitCode: js.Any = js.native
+
+    def kill(): Boolean
+
+  }
+
+}

@@ -23,18 +23,12 @@ package fs2
 package io
 package process
 
-sealed trait Process[F[_]] {
+import cats.effect.kernel.Resource
+import cats.effect.kernel.Async
+import cats.syntax.all._
 
-  def isAlive: F[Boolean]
-
-  def exitValue: F[Int]
-
-  def stdin: Pipe[F, Byte, Nothing]
-
-  def stdout: Stream[F, Byte]
-
-  def stderr: Stream[F, Byte]
-
+private[process] trait ProcessSpawnCompanionPlatform {
+  implicit def forAsync[F[_]](implicit F: Async[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
+    def spawn(process: ProcessBuilder): Resource[F, Process[F]] = ???
+  }
 }
-
-private[io] trait UnsealedProcess[F[_]] extends Process[F]
