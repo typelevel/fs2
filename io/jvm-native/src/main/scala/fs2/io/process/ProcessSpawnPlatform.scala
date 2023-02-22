@@ -23,15 +23,18 @@ package fs2
 package io
 package process
 
+import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.effect.kernel.Sync
+import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import java.lang
+import java.io.InputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 private[process] trait ProcessSpawnCompanionPlatform {
-  implicit def forSync[F[_]](implicit F: Sync[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
+  implicit def forAsync[F[_]](implicit F: Async[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
@@ -65,8 +68,26 @@ private[process] trait ProcessSpawnCompanionPlatform {
             def isAlive = F.delay(process.isAlive())
             def exitValue = F.interruptible(process.waitFor())
             def stdin = writeOutputStream(F.delay(process.getOutputStream()))
-            def stdout = readInputStream(F.delay(process.getInputStream()), 8192, false)
-            def stderr = readInputStream(F.delay(process.getErrorStream()), 8192, false)
+
+            def stdout = readInputStreamCancelably(F.delay(process.getInputStream()))
+
+            def stderr = readInputStreamCancelably(F.delay(process.getErrorStream()))
+
+            // this monstrosity ensures that we can cancel on-going reads from stdin/stdout without hanging
+            // to do so, it must kill the process
+            private[this] def readInputStreamCancelably(is: F[InputStream]) =
+              readInputStreamGeneric(is, F.delay(new Array[Byte](8192)), true) { (is, buf) =>
+                F.delay(new AtomicBoolean(false)).flatMap { succeeded =>
+                  val read = F.blocking(is.read(buf)) <* F.delay(succeeded.set(true)).uncancelable
+
+                  val cancel = F.never[Int].onCancel {
+                    F.delay(succeeded.get()).ifM(F.unit, F.blocking(process.destroyForcibly()).void)
+                  }
+
+                  read.race(cancel).map(_.merge)
+                }
+
+              }
           }
         }
   }
