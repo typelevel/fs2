@@ -111,4 +111,17 @@ class ProcessSuite extends Fs2IoSuite {
         .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
     }
 
+  if (!isNative)
+    test("flush") {
+      ProcessBuilder("cat").spawn[IO].use { p =>
+        val in = (Stream.emit("all drains lead to the ocean") ++ Stream.never[IO])
+          .through(fs2.text.utf8.encode)
+          .through(p.stdin)
+
+        val out = p.stdout.through(fs2.text.utf8.decode).exists(_.contains("ocean"))
+
+        out.concurrently(in).compile.drain // will hang if not flushed
+      }
+    }
+
 }

@@ -94,11 +94,9 @@ package object io extends ioplatform {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
+  /** Writes all bytes to the specified `OutputStream`. Each chunk is flushed
+    * immediately after writing. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
-    *
-    * Each write operation is performed on the supplied execution context. Writes are
-    * blocking so the execution context should be configured appropriately.
     */
   def writeOutputStream[F[_]](
       fos: F[OutputStream],
@@ -106,7 +104,13 @@ package object io extends ioplatform {
   )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
     s => {
       def useOs(os: OutputStream): Stream[F, Nothing] =
-        s.chunks.foreach(c => F.interruptible(os.write(c.toArray)))
+        s.chunks.foreach { c =>
+          val Chunk.ArraySlice(b, off, len) = c.toArraySlice[Byte]
+          F.interruptible {
+            os.write(b, off, len)
+            os.flush()
+          }
+        }
 
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))
