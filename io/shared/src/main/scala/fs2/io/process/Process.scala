@@ -37,4 +37,4 @@ sealed trait Process[F[_]] {
 
 }
 
-private[io] trait UnsealedProcess[F[_]] extends Process[F]
+private[fs2] trait UnsealedProcess[F[_]] extends Process[F]

@@ -29,7 +29,7 @@ sealed trait ProcessSpawn[F[_]] {
 
 }
 
-private[io] trait UnsealedProcessSpawn[F[_]] extends ProcessSpawn[F]
+private[fs2] trait UnsealedProcessSpawn[F[_]] extends ProcessSpawn[F]
 
 object ProcessSpawn extends ProcessSpawnCompanionPlatform {
   def apply[F[_]](implicit spawn: ProcessSpawn[F]): ProcessSpawn[F] = spawn
