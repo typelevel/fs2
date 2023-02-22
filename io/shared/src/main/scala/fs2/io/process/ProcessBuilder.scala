@@ -22,6 +22,7 @@
 package fs2.io
 package process
 
+import cats.effect.kernel.Resource
 import fs2.io.file.Path
 
 sealed abstract class ProcessBuilder private {
@@ -35,6 +36,9 @@ sealed abstract class ProcessBuilder private {
   def withEnv(env: Map[String, String]): ProcessBuilder
   def withWorkingDirectory(workingDirectory: Path): ProcessBuilder
   def withCurrentWorkingDirectory: ProcessBuilder
+
+  final def spawn[F[_]: ProcessSpawn]: Resource[F, Process[F]] =
+    ProcessSpawn[F].spawn(this)
 }
 
 object ProcessBuilder {
