@@ -68,19 +68,20 @@ class ProcessSuite extends Fs2IoSuite {
       }
   }
 
-  test("cat") {
-    ProcessSpawn[IO].spawn(ProcessBuilder("cat", Nil)).use { p =>
-      val verySpecialMsg = "FS2 rocks!"
-      val in = Stream.emit(verySpecialMsg).through(fs2.text.utf8.encode).through(p.stdin)
-      val out = p.stdout.through(fs2.text.utf8.decode)
+  if (!isNative)
+    test("cat") {
+      ProcessSpawn[IO].spawn(ProcessBuilder("cat", Nil)).use { p =>
+        val verySpecialMsg = "FS2 rocks!"
+        val in = Stream.emit(verySpecialMsg).through(fs2.text.utf8.encode).through(p.stdin)
+        val out = p.stdout.through(fs2.text.utf8.decode)
 
-      out
-        .concurrently(in)
-        .compile
-        .string
-        .assertEquals(verySpecialMsg)
+        out
+          .concurrently(in)
+          .compile
+          .string
+          .assertEquals(verySpecialMsg)
+      }
     }
-  }
 
   test("working directory") {
     Files[IO].tempDirectory.use { wd =>
@@ -102,13 +103,14 @@ class ProcessSuite extends Fs2IoSuite {
     }
   }
 
-  test("cancelation") {
-    ProcessSpawn[IO]
-      .spawn(ProcessBuilder("cat", Nil))
-      .use { p =>
-        p.stdout.compile.drain.both(p.stderr.compile.drain).both(p.exitValue).void
-      }
-      .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
-  }
+  if (!isNative)
+    test("cancelation") {
+      ProcessSpawn[IO]
+        .spawn(ProcessBuilder("cat", Nil))
+        .use { p =>
+          p.stdout.compile.drain.both(p.stderr.compile.drain).both(p.exitValue).void
+        }
+        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+    }
 
 }
