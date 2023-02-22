@@ -73,7 +73,7 @@ private[process] trait ProcessSpawnCompanionPlatform {
 
             def stderr = readInputStreamCancelably(F.delay(process.getErrorStream()))
 
-            // this monstrosity ensures that we can cancel on-going reads from stdin/stdout without hanging
+            // this monstrosity ensures that we can cancel on-going reads from stdout/stderr without hanging
             // to do so, it must kill the process
             private[this] def readInputStreamCancelably(is: F[InputStream]) =
               readInputStreamGeneric(is, F.delay(new Array[Byte](8192)), true) { (is, buf) =>
