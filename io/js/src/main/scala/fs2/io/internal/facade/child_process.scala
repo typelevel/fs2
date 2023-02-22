@@ -30,9 +30,12 @@ package object child_process {
 
   @js.native
   @JSImport("child_process", "spawn")
-  private[io] def spawn(command: String, args: js.Array[String], options: SpawnOptions): ChildProcess =
+  private[io] def spawn(
+      command: String,
+      args: js.Array[String],
+      options: SpawnOptions
+  ): ChildProcess =
     js.native
-
 
 }
 
@@ -41,11 +44,10 @@ package child_process {
   private[io] trait SpawnOptions extends js.Object {
 
     var cwd: js.UndefOr[String] = js.undefined
-  
+
     var env: js.UndefOr[js.Dictionary[String]] = js.undefined
 
   }
-
 
   @js.native
   private[io] trait ChildProcess extends EventEmitter {
@@ -56,7 +58,7 @@ package child_process {
 
     def stderr: fs2.io.Readable = js.native
 
-    // can also be `null`, so can't use `Int` ... 
+    // can also be `null`, so can't use `Int` ...
     def exitCode: js.Any = js.native
 
     def signalCode: String = js.native
