@@ -26,6 +26,8 @@ package process
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Async
 import cats.syntax.all._
+import fs2.io.internal.MicrotaskExecutor
+import fs2.io.internal.SuspendedStream
 import fs2.io.internal.facade
 
 import scala.scalajs.js
@@ -62,37 +64,47 @@ private[process] trait ProcessSpawnCompanionPlatform {
             }
           }
         }
-        .map { childProcess =>
-          new UnsealedProcess[F] {
+        .flatMap { childProcess =>
+          def suspend(readable: => fs2.io.Readable) =
+            SuspendedStream(
+              Stream.resource(fs2.io.suspendReadableAndRead()(readable)).flatMap(_._2)
+            )
 
-            def isAlive: F[Boolean] = F.delay {
-              (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
-            }
+          (suspend(childProcess.stdout), suspend(childProcess.stderr)).mapN {
+            (suspendedOut, suspendedErr) =>
+              new UnsealedProcess[F] {
 
-            def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
-              F.delay {
-                (childProcess.exitCode: Any) match {
-                  case i: Int => Right(i)
-                  case _ =>
-                    val f: js.Function1[Any, Unit] = {
-                      case i: Int => cb(Right(i))
-                      case _      => // do nothing
-                    }
-                    childProcess.once("exit", f)
-                    Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                def isAlive: F[Boolean] = F.delay {
+                  (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
                 }
+
+                def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
+                  F.delay {
+                    (childProcess.exitCode: Any) match {
+                      case i: Int => Right(i)
+                      case _ =>
+                        val f: js.Function1[Any, Unit] = {
+                          case i: Int => cb(Right(i))
+                          case _      => // do nothing
+                        }
+                        childProcess.once("exit", f)
+                        Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                    }
+                  }
+                }
+
+                def stdin: Pipe[F, Byte, Nothing] =
+                  fs2.io.writeWritable(F.delay(childProcess.stdin))
+
+                def stdout: Stream[F, Byte] = suspendedOut.stream
+
+                def stderr: Stream[F, Byte] = suspendedErr.stream
+
               }
-            }
-
-            def stdin: Pipe[F, Byte, Nothing] = fs2.io.writeWritable(F.delay(childProcess.stdin))
-
-            def stdout: Stream[F, Byte] =
-              Stream.resource(fs2.io.suspendReadableAndRead()(childProcess.stdout)).flatMap(_._2)
-
-            def stderr: Stream[F, Byte] =
-              Stream.resource(fs2.io.suspendReadableAndRead()(childProcess.stderr)).flatMap(_._2)
 
           }
         }
+        .evalOn(MicrotaskExecutor) // guarantee that callbacks are setup before yielding to I/O
+
   }
 }

@@ -33,7 +33,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("echo") {
     ProcessSpawn[IO].spawn(ProcessBuilder("echo", List("hello", "world"))).use { p =>
-      IO.cede *> // stress the JS implementation
+      IO.cede *> IO.cede *> // stress the JS implementation
         p.stdout
           .through(fs2.text.utf8.decode)
           .compile

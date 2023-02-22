@@ -26,7 +26,7 @@ package internal
 import cats.effect.kernel.Concurrent
 import cats.effect.kernel.Resource
 import cats.effect.std.Queue
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 
 private[io] trait SuspendedStream[F[_], O] {
@@ -45,15 +45,14 @@ private[io] object SuspendedStream {
       queue <- Queue.synchronous[F, Option[Either[Throwable, Chunk[O]]]].toResource
       _ <- stream.chunks.attempt.enqueueNoneTerminated(queue).compile.drain.background
       suspended <- F.ref(streamFromQueue(queue)).toResource
-      semaphore <- Semaphore[F](1).toResource
+      mutex <- Mutex[F].toResource
     } yield new SuspendedStream[F, O] {
 
-      override def stream: Stream[F, O] = Stream.resource(semaphore.permit).flatMap { _ =>
+      def stream: Stream[F, O] = Stream.resource(mutex.lock) >>
         Stream.eval(suspended.get).flatten.onFinalize(suspended.set(streamFromQueue(queue)))
-      }
 
-      override def getAndUpdate[O2](f: Stream[F, O] => Pull[F, O2, Stream[F, O]]): Stream[F, O2] =
-        Stream.resource(semaphore.permit).flatMap { _ =>
+      def getAndUpdate[O2](f: Stream[F, O] => Pull[F, O2, Stream[F, O]]): Stream[F, O2] =
+        Stream.resource(mutex.lock) >>
           Pull
             .eval(suspended.get)
             .flatMap(f)
@@ -61,7 +60,7 @@ private[io] object SuspendedStream {
               Pull.eval(suspended.set(tail)).void
             }
             .stream
-        }
+
     }
 
   private def streamFromQueue[F[_]: Concurrent, O](
