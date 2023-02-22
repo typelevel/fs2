@@ -37,6 +37,16 @@ private[process] trait ProcessSpawnCompanionPlatform {
         .make {
           F.blocking {
             val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
+
+            process.workingDirectory.foreach { path =>
+              builder.directory(path.toNioPath.toFile)
+            }
+
+            val env = builder.environment()
+            process.env.foreach { case (k, v) =>
+              env.put(k, v)
+            }
+
             builder.start()
           }
         } { process =>
