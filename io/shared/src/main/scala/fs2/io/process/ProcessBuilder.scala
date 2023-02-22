@@ -46,6 +46,9 @@ object ProcessBuilder {
   def apply(command: String, args: List[String]): ProcessBuilder =
     ProcessBuilderImpl(command, args, Map.empty, None)
 
+  def apply(command: String, args: String*): ProcessBuilder =
+    apply(command, args.toList)
+
   private final case class ProcessBuilderImpl(
       command: String,
       args: List[String],

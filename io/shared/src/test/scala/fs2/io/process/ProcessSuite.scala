@@ -31,7 +31,7 @@ import scala.concurrent.duration._
 class ProcessSuite extends Fs2IoSuite {
 
   test("echo") {
-    ProcessBuilder("echo", List("hello", "world")).spawn[IO].use { p =>
+    ProcessBuilder("echo", "hello", "world").spawn[IO].use { p =>
       IO.cede *> IO.cede *> // stress the JS implementation
         p.stdout
           .through(fs2.text.utf8.decode)
@@ -44,7 +44,8 @@ class ProcessSuite extends Fs2IoSuite {
   test("stdout and stderr") {
     ProcessBuilder(
       "node",
-      List("-e", "console.log('good day stdout'); console.error('how do you do stderr')")
+      "-e",
+      "console.log('good day stdout'); console.error('how do you do stderr')"
     ).spawn[IO]
       .use { p =>
         val testOut = p.stdout
@@ -67,7 +68,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   if (!isNative)
     test("cat") {
-      ProcessBuilder("cat", Nil).spawn[IO].use { p =>
+      ProcessBuilder("cat").spawn[IO].use { p =>
         val verySpecialMsg = "FS2 rocks!"
         val in = Stream.emit(verySpecialMsg).through(fs2.text.utf8.encode).through(p.stdin)
         val out = p.stdout.through(fs2.text.utf8.decode)
@@ -82,14 +83,14 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("working directory") {
     Files[IO].tempDirectory.use { wd =>
-      ProcessBuilder("pwd", Nil).withWorkingDirectory(wd).spawn[IO].use { p =>
+      ProcessBuilder("pwd").withWorkingDirectory(wd).spawn[IO].use { p =>
         p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals(wd.toString + "\n")
       }
     }
   }
 
   test("env") {
-    ProcessBuilder("env", Nil).withEnv(Map("FS2" -> "ROCKS")).spawn[IO].use { p =>
+    ProcessBuilder("env").withEnv(Map("FS2" -> "ROCKS")).spawn[IO].use { p =>
       p.stdout
         .through(fs2.text.utf8.decode)
         .through(fs2.text.lines)
@@ -102,7 +103,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   if (!isNative)
     test("cancelation") {
-      ProcessBuilder("cat", Nil)
+      ProcessBuilder("cat")
         .spawn[IO]
         .use { p =>
           p.stdout.compile.drain.both(p.stderr.compile.drain).both(p.exitValue).void
