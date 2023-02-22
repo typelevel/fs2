@@ -59,6 +59,8 @@ package child_process {
     // can also be `null`, so can't use `Int` ... 
     def exitCode: js.Any = js.native
 
+    def signalCode: String = js.native
+
     def kill(): Boolean
 
   }

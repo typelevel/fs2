@@ -26,9 +26,73 @@ package process
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Async
 import cats.syntax.all._
+import fs2.io.internal.facade
+
+import scala.scalajs.js
+import scala.scalajs.js.JSConverters._
 
 private[process] trait ProcessSpawnCompanionPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
-    def spawn(process: ProcessBuilder): Resource[F, Process[F]] = ???
+    def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
+      Resource
+        .make {
+          F.async_[facade.child_process.ChildProcess] { cb =>
+            val subprocess = facade.child_process.spawn(
+              process.command,
+              process.args.toJSArray,
+              new facade.child_process.SpawnOptions {
+                cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+                env = (facade.process.env ++ process.env).toJSDictionary
+              }
+            )
+
+            subprocess.once("spawn", () => cb(Right(subprocess)))
+            subprocess.once[js.Error]("error", e => cb(Left(js.JavaScriptException(e))))
+          }
+        } { childProcess =>
+          F.asyncCheckAttempt[Unit] { cb =>
+            F.delay {
+              if ((childProcess.exitCode ne null) || (childProcess.signalCode ne null)) {
+                Either.unit
+              } else {
+                childProcess.kill()
+                childProcess.once("exit", () => cb(Either.unit))
+                Left(None)
+              }
+            }
+          }
+        }
+        .map { childProcess =>
+          new UnsealedProcess[F] {
+
+            def isAlive: F[Boolean] = F.delay {
+              (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
+            }
+
+            def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
+              F.delay {
+                (childProcess.exitCode: Any) match {
+                  case i: Int => Right(i)
+                  case _ =>
+                    val f: js.Function1[Any, Unit] = {
+                      case i: Int => cb(Right(i))
+                      case _      => // do nothing
+                    }
+                    childProcess.once("exit", f)
+                    Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                }
+              }
+            }
+
+            def stdin: Pipe[F, Byte, Nothing] = fs2.io.writeWritable(F.delay(childProcess.stdin))
+
+            def stdout: Stream[F, Byte] =
+              Stream.resource(fs2.io.suspendReadableAndRead()(childProcess.stdout)).flatMap(_._2)
+
+            def stderr: Stream[F, Byte] =
+              Stream.resource(fs2.io.suspendReadableAndRead()(childProcess.stderr)).flatMap(_._2)
+
+          }
+        }
   }
 }
