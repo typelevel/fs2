@@ -56,7 +56,7 @@ private[process] trait ProcessSpawnCompanionPlatform {
           F.delay(process.isAlive())
             .ifM(
               F.blocking {
-                process.destroyForcibly()
+                process.destroy()
                 process.waitFor()
                 ()
               },
@@ -81,7 +81,7 @@ private[process] trait ProcessSpawnCompanionPlatform {
                   val read = F.blocking(is.read(buf)) <* F.delay(succeeded.set(true)).uncancelable
 
                   val cancel = F.never[Int].onCancel {
-                    F.delay(succeeded.get()).ifM(F.unit, F.blocking(process.destroyForcibly()).void)
+                    F.delay(succeeded.get()).ifM(F.unit, F.blocking(process.destroy()).void)
                   }
 
                   read.race(cancel).map(_.merge)
