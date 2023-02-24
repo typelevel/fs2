@@ -102,12 +102,26 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   if (!isNative)
-    test("cancelation") {
+    test("stdout cancelation") {
       ProcessBuilder("cat")
         .spawn[IO]
-        .use { p =>
-          p.stdout.compile.drain.both(p.stderr.compile.drain).both(p.exitValue).void
-        }
+        .use(_.stdout.compile.drain)
+        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+    }
+
+  if (!isNative)
+    test("stderr cancelation") {
+      ProcessBuilder("cat")
+        .spawn[IO]
+        .use(_.stderr.compile.drain)
+        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+    }
+
+  if (!isNative)
+    test("exit value cancelation") {
+      ProcessBuilder("cat")
+        .spawn[IO]
+        .use(_.exitValue)
         .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
     }
 

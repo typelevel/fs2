@@ -27,6 +27,9 @@ sealed trait Process[F[_]] {
 
   def isAlive: F[Boolean]
 
+  /** Fiber blocks until the process exits, then returns the exit value.
+    * If the process has already exited then the exit value is available immediately.
+    */
   def exitValue: F[Int]
 
   def stdin: Pipe[F, Byte, Nothing]

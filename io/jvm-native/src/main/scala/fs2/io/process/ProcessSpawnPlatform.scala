@@ -66,7 +66,12 @@ private[process] trait ProcessSpawnCompanionPlatform {
         .map { process =>
           new UnsealedProcess[F] {
             def isAlive = F.delay(process.isAlive())
-            def exitValue = F.interruptible(process.waitFor())
+
+            def exitValue = isAlive.ifM(
+              F.interruptible(process.waitFor()),
+              F.delay(process.exitValue())
+            )
+
             def stdin = writeOutputStream(F.delay(process.getOutputStream()))
 
             def stdout = readInputStreamCancelably(F.delay(process.getInputStream()))
