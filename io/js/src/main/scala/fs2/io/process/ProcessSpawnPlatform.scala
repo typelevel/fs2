@@ -44,7 +44,11 @@ private[process] trait ProcessSpawnCompanionPlatform {
               process.args.toJSArray,
               new facade.child_process.SpawnOptions {
                 cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-                env = (facade.process.env ++ process.env).toJSDictionary
+                env =
+                  if (process.inheritEnv)
+                    (facade.process.env ++ process.extraEnv).toJSDictionary
+                  else
+                    process.extraEnv.toJSDictionary
               }
             )
 

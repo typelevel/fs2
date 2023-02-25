@@ -28,12 +28,14 @@ import fs2.io.file.Path
 sealed abstract class ProcessBuilder private {
   def command: String
   def args: List[String]
-  def env: Map[String, String]
+  def inheritEnv: Boolean
+  def extraEnv: Map[String, String]
   def workingDirectory: Option[Path]
 
   def withCommand(command: String): ProcessBuilder
   def withArgs(args: List[String]): ProcessBuilder
-  def withEnv(env: Map[String, String]): ProcessBuilder
+  def withInheritEnv(inherit: Boolean): ProcessBuilder
+  def withExtraEnv(env: Map[String, String]): ProcessBuilder
   def withWorkingDirectory(workingDirectory: Path): ProcessBuilder
   def withCurrentWorkingDirectory: ProcessBuilder
 
@@ -44,7 +46,7 @@ sealed abstract class ProcessBuilder private {
 object ProcessBuilder {
 
   def apply(command: String, args: List[String]): ProcessBuilder =
-    ProcessBuilderImpl(command, args, Map.empty, None)
+    ProcessBuilderImpl(command, args, true, Map.empty, None)
 
   def apply(command: String, args: String*): ProcessBuilder =
     apply(command, args.toList)
@@ -52,7 +54,8 @@ object ProcessBuilder {
   private final case class ProcessBuilderImpl(
       command: String,
       args: List[String],
-      env: Map[String, String],
+      inheritEnv: Boolean,
+      extraEnv: Map[String, String],
       workingDirectory: Option[Path]
   ) extends ProcessBuilder {
 
@@ -60,7 +63,9 @@ object ProcessBuilder {
 
     def withArgs(args: List[String]): ProcessBuilder = copy(args = args)
 
-    def withEnv(env: Map[String, String]): ProcessBuilder = copy(env = env)
+    def withInheritEnv(inherit: Boolean): ProcessBuilder = copy(inheritEnv = inherit)
+
+    def withExtraEnv(env: Map[String, String]): ProcessBuilder = copy(extraEnv = env)
 
     def withWorkingDirectory(workingDirectory: Path): ProcessBuilder =
       copy(workingDirectory = Some(workingDirectory))

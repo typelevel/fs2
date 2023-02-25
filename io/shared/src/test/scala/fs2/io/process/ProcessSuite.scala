@@ -25,6 +25,7 @@ package process
 
 import cats.effect.IO
 import fs2.io.file.Files
+import cats.syntax.all._
 
 import scala.concurrent.duration._
 
@@ -90,7 +91,7 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   test("env") {
-    ProcessBuilder("env").withEnv(Map("FS2" -> "ROCKS")).spawn[IO].use { p =>
+    ProcessBuilder("env").withExtraEnv(Map("FS2" -> "ROCKS")).spawn[IO].use { p =>
       p.stdout
         .through(fs2.text.utf8.decode)
         .through(fs2.text.lines)
@@ -98,6 +99,21 @@ class ProcessSuite extends Fs2IoSuite {
         .compile
         .onlyOrError
         .assert
+    }
+  }
+
+  test("env inheritance") {
+    def countEnv(inherit: Boolean) =
+      ProcessBuilder("env").withInheritEnv(inherit).spawn[IO].use { p =>
+        p.stdout
+          .through(fs2.text.utf8.decode)
+          .through(fs2.text.lines)
+          .compile
+          .count
+      }
+
+    (countEnv(true), countEnv(false)).flatMapN { (inherited, tabulaRasa) =>
+      IO(assert(clue(inherited) > clue(tabulaRasa)))
     }
   }
 

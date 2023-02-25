@@ -43,7 +43,8 @@ private[process] trait ProcessSpawnCompanionPlatform {
             }
 
             val env = builder.environment()
-            process.env.foreach { case (k, v) =>
+            if (!process.inheritEnv) env.clear()
+            process.extraEnv.foreach { case (k, v) =>
               env.put(k, v)
             }
 
