@@ -175,7 +175,8 @@ class ProcessSuite extends Fs2IoSuite {
   test("close stdin") {
     ProcessBuilder("dd", "count=1").spawn[IO].use { p =>
       // write nothing to close stdin
-      Stream.empty.through(p.stdin).compile.drain *> p.exitValue.void
+      Stream.empty.through(p.stdin).compile.drain *>
+        p.exitValue.void // will hang if not closed
     }
   }
 
