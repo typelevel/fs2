@@ -25,13 +25,11 @@ package process
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import java.lang
 import java.io.InputStream
-import java.util.concurrent.atomic.AtomicBoolean
 
 private[process] trait ProcessSpawnCompanionPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
@@ -82,16 +80,7 @@ private[process] trait ProcessSpawnCompanionPlatform {
             // to do so, it must kill the process
             private[this] def readInputStreamCancelably(is: F[InputStream]) =
               readInputStreamGeneric(is, F.delay(new Array[Byte](8192)), true) { (is, buf) =>
-                F.delay(new AtomicBoolean(false)).flatMap { succeeded =>
-                  val read = F.blocking(is.read(buf)) <* F.delay(succeeded.set(true)).uncancelable
-
-                  val cancel = F.never[Int].onCancel {
-                    F.delay(succeeded.get()).ifM(F.unit, F.blocking(process.destroy()))
-                  }
-
-                  read.race(cancel).map(_.merge)
-                }
-
+                blockingCancelable(F.blocking(process.destroy()))(is.read(buf))
               }
           }
         }

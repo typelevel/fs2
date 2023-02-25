@@ -21,10 +21,13 @@
 
 package fs2
 
+import cats.effect.kernel.Async
 import cats.effect.kernel.Sync
+import cats.effect.syntax.all._
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream}
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Provides various ways to work with streams that perform IO.
   */
@@ -116,6 +119,20 @@ package object io extends ioplatform {
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))
         else Stream.eval(fos)
       os.flatMap(os => useOs(os) ++ Stream.exec(F.blocking(os.flush())))
+    }
+
+  private[io] def blockingCancelable[F[_], A](
+      cancel: F[Unit]
+  )(thunk: => A)(implicit F: Async[F]): F[A] =
+    (F.deferred[Unit], F.delay(new AtomicBoolean(false))).flatMapN { (gate, inProgress) =>
+      F.race(
+        gate.get *> F.blocking {
+          inProgress.set(true)
+          try thunk
+          finally inProgress.set(false)
+        },
+        (gate.complete(()) *> F.never[A]).onCancel(F.delay(inProgress.get()).ifM(cancel, F.unit))
+      ).map(_.merge)
     }
 
 }
