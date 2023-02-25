@@ -102,7 +102,7 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   if (!isNative)
-    test("stdout cancelation".only) {
+    test("stdout cancelation") {
       ProcessBuilder("cat")
         .spawn[IO]
         .use { p =>
