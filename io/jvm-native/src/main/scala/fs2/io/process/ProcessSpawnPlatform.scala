@@ -70,7 +70,10 @@ private[process] trait ProcessSpawnCompanionPlatform {
               F.delay(process.exitValue())
             )
 
-            def stdin = writeOutputStream(F.delay(process.getOutputStream()))
+            def stdin = writeOutputStreamCancelable(
+              F.delay(process.getOutputStream()),
+              F.blocking(process.destroy())
+            )
 
             def stdout = readInputStreamCancelably(F.delay(process.getInputStream()))
 

@@ -32,10 +32,19 @@ sealed trait Process[F[_]] {
     */
   def exitValue: F[Int]
 
+  /** A `Pipe` that writes to `stdin` of the process. The resulting stream should be compiled
+    * at most once, and interrupting or otherwise canceling a write-in-progress may kill the process.
+    */
   def stdin: Pipe[F, Byte, Nothing]
 
+  /** A `Stream` that reads from `stdout` of the process. This stream should be compiled at most once,
+    * and interrupting or otherwise canceling a read-in-progress may kill the process.
+    */
   def stdout: Stream[F, Byte]
 
+  /** A `Stream` that reads from `stderr` of the process. This stream should be compiled at most once,
+    * and interrupting or otherwise canceling a read-in-progress may kill the process.
+    */
   def stderr: Stream[F, Byte]
 
 }

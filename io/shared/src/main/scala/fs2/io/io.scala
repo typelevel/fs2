@@ -105,14 +105,36 @@ package object io extends ioplatform {
       fos: F[OutputStream],
       closeAfterUse: Boolean = true
   )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
+    writeOutputStreamGeneric(fos, closeAfterUse) { (os, b, off, len) =>
+      F.interruptible {
+        os.write(b, off, len)
+        os.flush()
+      }
+    }
+
+  private[io] def writeOutputStreamCancelable[F[_]](
+      fos: F[OutputStream],
+      cancel: F[Unit],
+      closeAfterUse: Boolean = true
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
+    writeOutputStreamGeneric(fos, closeAfterUse) { (os, b, off, len) =>
+      blockingCancelable(cancel) {
+        os.write(b, off, len)
+        os.flush()
+      }
+    }
+
+  private def writeOutputStreamGeneric[F[_]](
+      fos: F[OutputStream],
+      closeAfterUse: Boolean
+  )(
+      write: (OutputStream, Array[Byte], Int, Int) => F[Unit]
+  )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
     s => {
       def useOs(os: OutputStream): Stream[F, Nothing] =
         s.chunks.foreach { c =>
           val Chunk.ArraySlice(b, off, len) = c.toArraySlice[Byte]
-          F.interruptible {
-            os.write(b, off, len)
-            os.flush()
-          }
+          write(os, b, off, len)
         }
 
       val os =

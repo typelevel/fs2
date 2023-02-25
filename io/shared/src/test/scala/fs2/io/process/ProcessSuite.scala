@@ -102,6 +102,24 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   if (!isNative)
+    test("stdout cancelation".only) {
+      ProcessBuilder("cat")
+        .spawn[IO]
+        .use { p =>
+          Stream
+            // apparently big enough to force `cat` to backpressure
+            .emit(Chunk.array(new Array[Byte](1024 * 1024)))
+            .unchunks
+            .repeat
+            .covary[IO]
+            .through(p.stdin)
+            .compile
+            .drain
+        }
+        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+    }
+
+  if (!isNative)
     test("stdout cancelation") {
       ProcessBuilder("cat")
         .spawn[IO]
