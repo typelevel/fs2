@@ -26,19 +26,50 @@ import cats.effect.kernel.Resource
 import fs2.io.file.Path
 
 sealed abstract class ProcessBuilder private {
+
+  /** Command to run. */
   def command: String
+
+  /** Arguments passed to command. */
   def args: List[String]
+
+  /** Whether to inherit environment variables of the current process.
+    * Defaults to `true`.
+    */
   def inheritEnv: Boolean
+
+  /** Additional environment variables for this process.
+    * These may override inherited environment variables.
+    */
   def extraEnv: Map[String, String]
+
+  /** Working directory for this process.
+    * If `None` then it will use the working directory of the current process.
+    * Defaults to `None`
+    */
   def workingDirectory: Option[Path]
 
+  /** @see [[command]] */
   def withCommand(command: String): ProcessBuilder
+
+  /** @see [[args]] */
   def withArgs(args: List[String]): ProcessBuilder
+
+  /** @see [[inheritEnv]] */
   def withInheritEnv(inherit: Boolean): ProcessBuilder
+
+  /** @see [[extraEnv]] */
   def withExtraEnv(env: Map[String, String]): ProcessBuilder
+
+  /** @see [[workingDirectory]] */
   def withWorkingDirectory(workingDirectory: Path): ProcessBuilder
+
+  /** @see [[workingDirectory]] */
   def withCurrentWorkingDirectory: ProcessBuilder
 
+  /** Starts the process and returns a handle for interacting with it.
+    * Closing the resource will kill the process if it has not already terminated.
+    */
   final def spawn[F[_]: ProcessSpawn]: Resource[F, Process[F]] =
     ProcessSpawn[F].spawn(this)
 }
