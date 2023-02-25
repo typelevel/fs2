@@ -48,6 +48,18 @@ package object io extends ioplatform {
       closeAfterUse
     )((is, buf) => F.blocking(is.read(buf)))
 
+  private[io] def readInputStreamCancelable[F[_]](
+      fis: F[InputStream],
+      cancel: F[Unit],
+      chunkSize: Int,
+      closeAfterUse: Boolean = true
+  )(implicit F: Async[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.delay(new Array[Byte](chunkSize)),
+      closeAfterUse
+    )((is, buf) => blockingCancelable(cancel)(is.read(buf)))
+
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
     *

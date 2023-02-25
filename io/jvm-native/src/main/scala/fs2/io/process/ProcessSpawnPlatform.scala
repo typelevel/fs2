@@ -29,7 +29,6 @@ import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import java.lang
-import java.io.InputStream
 
 private[process] trait ProcessSpawnCompanionPlatform {
   implicit def forAsync[F[_]](implicit F: Async[F]): ProcessSpawn[F] = new UnsealedProcessSpawn[F] {
@@ -75,16 +74,18 @@ private[process] trait ProcessSpawnCompanionPlatform {
               F.blocking(process.destroy())
             )
 
-            def stdout = readInputStreamCancelably(F.delay(process.getInputStream()))
+            def stdout = readInputStreamCancelable(
+              F.delay(process.getInputStream()),
+              F.blocking(process.destroy()),
+              8192
+            )
 
-            def stderr = readInputStreamCancelably(F.delay(process.getErrorStream()))
+            def stderr = readInputStreamCancelable(
+              F.delay(process.getErrorStream()),
+              F.blocking(process.destroy()),
+              8192
+            )
 
-            // this monstrosity ensures that we can cancel on-going reads from stdout/stderr without hanging
-            // to do so, it must kill the process
-            private[this] def readInputStreamCancelably(is: F[InputStream]) =
-              readInputStreamGeneric(is, F.delay(new Array[Byte](8192)), true) { (is, buf) =>
-                blockingCancelable(F.blocking(process.destroy()))(is.read(buf))
-              }
           }
         }
   }
