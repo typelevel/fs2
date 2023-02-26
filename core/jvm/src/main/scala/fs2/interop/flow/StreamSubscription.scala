@@ -41,8 +41,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
     sub: Subscriber[A],
     requests: AtomicLong,
     resume: AtomicReference[() => Unit],
-    cancelToken: AtomicReference[() => Unit],
-    canceled: F[Unit]
+    canceled: AtomicReference[() => Unit]
 )(implicit F: Async[F])
     extends Subscription {
   // Ensure we are on a terminal state; i.e. call `cancel`, before signaling the subscriber.
@@ -63,7 +62,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
           if (n == Long.MaxValue)
             s.pull.echo
           else if (n == 0)
-            Pull.eval(F.async[Unit] { cb =>
+            Pull.eval(F.asyncCheckAttempt[Unit] { cb =>
               F.delay {
                 // If there aren't more pending request,
                 // we will wait until the next one.
@@ -72,9 +71,9 @@ private[flow] final class StreamSubscription[F[_], A] private (
                 // we must check if it has been a concurrent request.
                 // In case it was, we abort the wait.
                 if (requests.get() > 0)
-                  cb.apply(Either.unit)
-
-                Some(F.unit)
+                  Either.unit
+                else
+                  Either.left(Some(F.unit))
               }
             }) >> go(s)
           else
@@ -95,8 +94,19 @@ private[flow] final class StreamSubscription[F[_], A] private (
         .compile
         .drain
 
+    val cancellation = F.asyncCheckAttempt[Unit] { cb =>
+      F.delay {
+        // Check if we were already cancelled before calling run.
+        if (!canceled.compareAndSet(StreamSubscription.Sentinel, () => cb.apply(Either.unit))) {
+          Either.unit
+        } else {
+          Either.left(Some(F.unit))
+        }
+      }
+    }
+
     events
-      .race(canceled)
+      .race(cancellation)
       .guaranteeCase {
         case Outcome.Succeeded(result) =>
           result.flatMap {
@@ -116,20 +126,14 @@ private[flow] final class StreamSubscription[F[_], A] private (
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
   override def cancel(): Unit = {
-    var cancelMe = cancelToken.get()
-
-    if (cancelMe ne null) {
-      // Loop until we get the actual cancel callback.
-      while (cancelMe eq StreamSubscription.Sentinel)
-        cancelMe = cancelToken.get()
-
-      cancelToken.set(null)
-      cancelMe.apply()
+    val cancelCB = canceled.getAndSet(null)
+    if (cancelCB ne null) {
+      cancelCB.apply()
     }
   }
 
   override def request(n: Long): Unit =
-    if (cancelToken.get() ne null) {
+    if (canceled.get() ne null) {
       if (n <= 0)
         onError(
           ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
@@ -160,23 +164,13 @@ private[flow] object StreamSubscription {
     F.delay {
       val requests = new AtomicLong(0L)
       val resume = new AtomicReference(Sentinel)
-      val cancelToken = new AtomicReference(Sentinel)
-      val canceled = F.async[Unit] { cb =>
-        F.delay {
-          if (!cancelToken.compareAndSet(Sentinel, () => cb.apply(Either.unit))) {
-            cb.apply(Either.left(new Exception("StreamSubscription.cancelToken was unexpectedly modified")))
-          }
-
-          Some(F.unit)
-        }
-      }
+      val canceled = new AtomicReference(Sentinel)
 
       new StreamSubscription(
         stream,
         subscriber,
         requests,
         resume,
-        cancelToken,
         canceled
       )
     }
