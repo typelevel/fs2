@@ -185,6 +185,16 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[IncompatibleMethTypeProblem](
     "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform#AsyncSocket.this"
+  ),
+  // Private stuff (#3130).
+  ProblemFilters.exclude[MissingClassProblem]("fs2.interop.flow.StreamSubscription$Request"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.interop.flow.StreamSubscription$Request$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.interop.flow.StreamSubscription$Request$Finite"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscription$Request$Finite$"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscription$Request$Infinite$"
   )
 )
 
