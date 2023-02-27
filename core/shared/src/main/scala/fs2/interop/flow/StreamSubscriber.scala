@@ -41,8 +41,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
     chunkSize: Int,
     currentState: AtomicReference[(StreamSubscriber.State[A], () => Unit)]
 )(implicit
-    F: Async[F],
-    ct: ClassTag[A]
+    F: Async[F]
 ) extends Subscriber[A] {
   import StreamSubscriber.noop
   import StreamSubscriber.StreamSubscriberException._
@@ -120,7 +119,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           Idle(s) -> noop
 
         case Uninitialized(Some(cb)) =>
-          WaitingOnUpstream(idx = 0, buffer = ct.newArray(chunkSize), cb, s) -> run {
+          WaitingOnUpstream(idx = 0, buffer = null, cb, s) -> run {
             s.request(chunkSize.toLong)
           }
 
@@ -132,8 +131,19 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
       case Next(a) => {
         case WaitingOnUpstream(idx, buffer, cb, s) =>
+          implicit val ct = ClassTag[A](a.getClass)
           val newIdx = idx + 1
-          if (newIdx == chunkSize) {
+
+          if (chunkSize == 1) {
+            Idle(s) -> run {
+              cb.apply(Right(Some(Chunk.singleton(a))))
+            }
+          } else if (idx == 0) {
+            val newBuffer = new Array[A](chunkSize)
+            WaitingOnUpstream(newIdx, newBuffer, cb, s) -> run {
+              newBuffer.update(idx, a)
+            }
+          } else if (newIdx == chunkSize) {
             Idle(s) -> run {
               buffer.update(idx, a)
               cb.apply(Right(Some(Chunk.array(buffer))))
@@ -186,7 +196,12 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
         case WaitingOnUpstream(idx, buffer, cb, s) =>
           Terminal() -> run {
-            cb.apply(Right(Some(Chunk.array(buffer, offset = 0, length = idx))))
+            if (idx == 0) {
+              cb.apply(Right(None))
+            } else {
+              implicit val ct = ClassTag[A](buffer.head.getClass)
+              cb.apply(Right(Some(Chunk.array(buffer, offset = 0, length = idx))))
+            }
 
             if (canceled) {
               s.cancel()
@@ -205,7 +220,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           Uninitialized(Some(cb)) -> noop
 
         case Idle(s) =>
-          WaitingOnUpstream(idx = 0, buffer = ct.newArray(chunkSize), cb, s) -> run {
+          WaitingOnUpstream(idx = 0, buffer = null, cb, s) -> run {
             s.request(chunkSize.toLong)
           }
 
@@ -252,7 +267,7 @@ private[flow] object StreamSubscriber {
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */
   def apply[F[_], A](
       chunkSize: Int
-  )(implicit F: Async[F], ct: ClassTag[A]): F[StreamSubscriber[F, A]] = {
+  )(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
     require(chunkSize > 0, "The buffer size MUST be positive")
 
     F.delay {

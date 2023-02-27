@@ -26,7 +26,6 @@ package flow
 import cats.effect.kernel.{Async, Resource}
 
 import java.util.concurrent.Flow.{Publisher, Subscriber}
-import scala.reflect.ClassTag
 
 object syntax {
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
@@ -55,7 +54,7 @@ object syntax {
       *                  The stream will not emit new element until,
       *                  either the `Chunk` is filled or the publisher finishes.
       */
-    def toStream[F[_]](chunkSize: Int)(implicit F: Async[F], ct: ClassTag[A]): Stream[F, A] =
+    def toStream[F[_]](chunkSize: Int)(implicit F: Async[F]): Stream[F, A] =
       flow.fromPublisher(publisher, chunkSize)
   }
 
@@ -92,8 +91,7 @@ object syntax {
         publisher: Publisher[A],
         chunkSize: Int
     )(implicit
-        F: Async[F],
-        ct: ClassTag[A]
+        F: Async[F]
     ): Stream[F, A] =
       fromPublisher[F, A](chunkSize) { subscriber =>
         F.delay(publisher.subscribe(subscriber))
