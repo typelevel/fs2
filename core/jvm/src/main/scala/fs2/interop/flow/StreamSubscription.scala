@@ -73,7 +73,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
                 if (requests.get() > 0)
                   Either.unit
                 else
-                  Either.left(Some(F.unit))
+                  Left(Some(F.unit))
               }
             }) >> go(s)
           else
@@ -100,7 +100,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
         if (!canceled.compareAndSet(StreamSubscription.Sentinel, () => cb.apply(Either.unit))) {
           Either.unit
         } else {
-          Either.left(Some(F.unit))
+          Left(Some(F.unit))
         }
       }
     }

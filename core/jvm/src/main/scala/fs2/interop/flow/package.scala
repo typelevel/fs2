@@ -25,6 +25,7 @@ package interop
 import cats.effect.kernel.{Async, Resource}
 
 import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
+import scala.reflect.ClassTag
 
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
   *
@@ -92,7 +93,8 @@ package object flow {
   )(
       subscribe: Subscriber[A] => F[Unit]
   )(implicit
-      F: Async[F]
+      F: Async[F],
+      ct: ClassTag[A]
   ): Stream[F, A] =
     Stream
       .eval(StreamSubscriber[F, A](chunkSize))
