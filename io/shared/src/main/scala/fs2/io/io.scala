@@ -58,7 +58,7 @@ package object io extends ioplatform {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       closeAfterUse
-    )((is, buf) => blockingCancelable(cancel)(is.read(buf)))
+    )((is, buf) => F.blocking(is.read(buf)).cancelable(cancel))
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -153,20 +153,6 @@ package object io extends ioplatform {
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))
         else Stream.eval(fos)
       os.flatMap(os => useOs(os) ++ Stream.exec(F.blocking(os.flush())))
-    }
-
-  private[io] def blockingCancelable[F[_], A](
-      cancel: F[Unit]
-  )(thunk: => A)(implicit F: Async[F]): F[A] =
-    (F.deferred[Unit], F.delay(new AtomicBoolean(false))).flatMapN { (gate, inProgress) =>
-      F.race(
-        gate.get *> F.blocking {
-          inProgress.set(true)
-          try thunk
-          finally inProgress.set(false)
-        },
-        (gate.complete(()) *> F.never[A]).onCancel(F.delay(inProgress.get()).ifM(cancel, F.unit))
-      ).map(_.merge)
     }
 
 }
