@@ -27,7 +27,6 @@ import cats.effect.syntax.all._
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream}
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Provides various ways to work with streams that perform IO.
   */
@@ -130,10 +129,10 @@ package object io extends ioplatform {
       closeAfterUse: Boolean = true
   )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
     writeOutputStreamGeneric(fos, closeAfterUse) { (os, b, off, len) =>
-      blockingCancelable(cancel) {
+      F.blocking {
         os.write(b, off, len)
         os.flush()
-      }
+      }.cancelable(cancel)
     }
 
   private def writeOutputStreamGeneric[F[_]](
