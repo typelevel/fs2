@@ -29,7 +29,7 @@ import org.reactivestreams.tck.TestEnvironment
 import org.reactivestreams.tck.flow.FlowPublisherVerification
 import org.scalatestplus.testng._
 
-final class StreamPublisherSpec
+final class PublisherSpec
     extends FlowPublisherVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 
