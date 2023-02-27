@@ -3966,23 +3966,23 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] =
-    Pull
-      .loop[F, O, S] { s =>
-        val (o, sOpt) = f(s)
-        Pull.output1(o) >> Pull.pure(sOpt)
-      }(s)
-      .stream
+  def unfoldLoop[F[x] <: Pure[x], S, O](start: S)(f: S => (O, Option[S])): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] = f(s) match {
+      case (o, None)    => Pull.output1(o)
+      case (o, Some(t)) => Pull.output1(o) >> go(t)
+    }
+    go(start).stream
+  }
 
   /** Like [[unfoldLoop]], but takes an effectful function. */
-  def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
-    Pull
-      .loop[F, O, S](s =>
-        Pull.eval(f(s)).flatMap { case (o, sOpt) =>
-          Pull.output1(o) >> Pull.pure(sOpt)
-        }
-      )(s)
-      .stream
+  def unfoldLoopEval[F[_], S, O](start: S)(f: S => F[(O, Option[S])]): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] =
+      Pull.eval(f(s)).flatMap {
+        case (o, None)    => Pull.output1(o)
+        case (o, Some(t)) => Pull.output1(o) >> go(t)
+      }
+    go(start).stream
+  }
 
   /** A view of `Stream` that removes the variance from the type parameters. This allows
     * defining syntax in which the type parameters appear in contravariant (i.e. input)
@@ -4106,8 +4106,15 @@ object Stream extends StreamLowPriority {
       */
     def repeatPull[O2](
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
-    ): Stream[F, O2] =
-      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
+    ): Stream[F, O2] = {
+      def go(tp: ToPull[F, O]): Pull[F, O2, Unit] =
+        f(tp).flatMap {
+          case None       => Pull.done
+          case Some(tail) => go(tail.pull)
+        }
+      go(pull).stream
+    }
+
   }
 
   implicit final class NothingStreamOps[F[_]](private val self: Stream[F, Nothing]) extends AnyVal {
@@ -5096,12 +5103,14 @@ object Stream extends StreamLowPriority {
       *
       * Note that resulting stream won't contain the `head` of this leg.
       */
-    def stream: Stream[F, O] =
-      Pull
-        .loop[F, O, StepLeg[F, O]](leg => Pull.output(leg.head).flatMap(_ => leg.stepLeg))(
-          self.setHead(Chunk.empty)
-        )
-        .stream
+    def stream: Stream[F, O] = {
+      def go(leg: StepLeg[F, O]): Pull[F, O, Unit] =
+        Pull.output(leg.head) >> Pull.stepLeg(leg).flatMap {
+          case None       => Pull.done
+          case Some(nleg) => go(nleg)
+        }
+      go(self.setHead(Chunk.empty)).stream
+    }
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
