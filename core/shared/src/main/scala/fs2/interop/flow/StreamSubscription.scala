@@ -27,6 +27,7 @@ import cats.effect.kernel.{Async, Outcome}
 import cats.effect.syntax.all._
 import cats.syntax.all._
 
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Flow.{Subscription, Subscriber}
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 
@@ -114,7 +115,8 @@ private[flow] final class StreamSubscription[F[_], A] private (
             case Right(()) => F.unit // Events was canceled.
           }
         case Outcome.Errored(ex) => F.delay(onError(ex))
-        case Outcome.Canceled()  => F.delay(onComplete())
+        case Outcome.Canceled() =>
+          F.delay(onError(new CancellationException("StreamSubscription.run was canceled")))
       }
       .void
   }
