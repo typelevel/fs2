@@ -23,14 +23,14 @@ package fs2.io.process
 
 import cats.effect.kernel.Resource
 
-sealed trait ProcessSpawn[F[_]] {
+sealed trait Processes[F[_]] {
 
   def spawn(process: ProcessBuilder): Resource[F, Process[F]]
 
 }
 
-private[fs2] trait UnsealedProcessSpawn[F[_]] extends ProcessSpawn[F]
+private[fs2] trait UnsealedProcesses[F[_]] extends Processes[F]
 
-object ProcessSpawn extends ProcessSpawnCompanionPlatform {
-  def apply[F[_]](implicit spawn: ProcessSpawn[F]): ProcessSpawn[F] = spawn
+object Processes extends ProcessesCompanionPlatform {
+  def apply[F[_]: Processes]: Processes[F] = implicitly
 }

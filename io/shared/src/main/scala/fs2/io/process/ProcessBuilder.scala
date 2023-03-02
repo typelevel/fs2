@@ -70,8 +70,8 @@ sealed abstract class ProcessBuilder private {
   /** Starts the process and returns a handle for interacting with it.
     * Closing the resource will kill the process if it has not already terminated.
     */
-  final def spawn[F[_]: ProcessSpawn]: Resource[F, Process[F]] =
-    ProcessSpawn[F].spawn(this)
+  final def spawn[F[_]: Processes]: Resource[F, Process[F]] =
+    Processes[F].spawn(this)
 }
 
 object ProcessBuilder {
