@@ -42,6 +42,11 @@ class ProcessSuite extends Fs2IoSuite {
     }
   }
 
+  test("exitValue") {
+    ProcessBuilder("true").spawn[IO].use(_.exitValue).assertEquals(0) *>
+      ProcessBuilder("false").spawn[IO].use(_.exitValue).assertEquals(1)
+  }
+
   test("stdout and stderr") {
     ProcessBuilder(
       "node",
