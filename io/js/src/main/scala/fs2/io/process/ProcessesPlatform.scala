@@ -34,7 +34,7 @@ import scala.scalajs.js
 import scala.scalajs.js.JSConverters._
 
 private[process] trait ProcessesCompanionPlatform {
-  implicit def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+  def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {

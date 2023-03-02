@@ -31,7 +31,7 @@ import fs2.io.CollectionCompat._
 import java.lang
 
 private[process] trait ProcessesCompanionPlatform {
-  implicit def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+  def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
