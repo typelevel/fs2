@@ -199,7 +199,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
             if (idx == 0) {
               cb.apply(Right(None))
             } else {
-              implicit val ct = ClassTag[A](buffer.head.getClass)
+              implicit val ct: ClassTag[A] = ClassTag[A](buffer.head.getClass)
               cb.apply(Right(Some(Chunk.array(buffer, offset = 0, length = idx))))
             }
 
