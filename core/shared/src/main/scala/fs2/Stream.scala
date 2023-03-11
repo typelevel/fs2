@@ -2059,10 +2059,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     val thisPull = covaryAll[F2, O2].pull
     val thatPull = that.pull
 
-    (thisPull.stepLeg, thatPull.stepLeg).tupled.flatMap {
-      case (Some(leg1), Some(leg2)) => go(leg1, leg2)
-      case (_, None)                => thisPull.echo
-      case (None, _)                => thatPull.echo
+    thisPull.stepLeg.flatMap {
+      case None => thatPull.echo
+      case Some(leg1) =>
+        thatPull.stepLeg.flatMap {
+          case Some(leg2) => go(leg1, leg2)
+          case None       => Pull.output(leg1.head) >> leg1.next
+        }
     }.stream
   }
 

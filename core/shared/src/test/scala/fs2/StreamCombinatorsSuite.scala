@@ -23,7 +23,7 @@ package fs2
 
 import cats.effect.kernel.Deferred
 import cats.effect.kernel.Ref
-import cats.effect.std.Semaphore
+import cats.effect.std.{Semaphore, Queue}
 import cats.effect.testkit.TestControl
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
@@ -918,6 +918,24 @@ class StreamCombinatorsSuite extends Fs2Suite {
             (sortedL ++ sortedR).toList.flatMap(_.toList).sorted // std .sorted is stable
           )
       }
+    }
+
+    test("interleaveOrdered - fromQueueNoneTerminated") {
+      for {
+        q1 <- Queue.unbounded[IO, Option[Int]]
+        q2 <- Queue.unbounded[IO, Option[Int]]
+        s1 = Stream.fromQueueNoneTerminated(q1)
+        s2 = Stream.fromQueueNoneTerminated(q2)
+        _ <- Vector(Chunk(1, 2), Chunk(3, 5, 7)).traverse(chunk =>
+          q1.tryOfferN(chunk.toList.map(_.some))
+        )
+        _ <- Vector(Chunk(2), Chunk.empty, Chunk(4, 6)).traverse(chunk =>
+          q2.tryOfferN(chunk.toList.map(_.some))
+        )
+        _ <- q1.offer(None)
+        _ <- q2.offer(None)
+        results <- s1.interleaveOrdered(s2).compile.toList
+      } yield assertEquals(results, List(1, 2, 2, 3, 4, 5, 6, 7))
     }
   }
 
