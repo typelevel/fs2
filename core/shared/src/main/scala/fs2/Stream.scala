@@ -1401,7 +1401,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @param timeout maximum time that input elements are held in the buffer
     *                 before being emitted by the resulting stream.
     */
-  def groupWithin[F2[x] >: F[x]](
+  def groupWithin1[F2[x] >: F[x]](
       chunkSize: Int,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
@@ -1503,6 +1503,89 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           } >> outputStream
       }
     }
+  }
+
+  def groupWithin[F2[x] >: F[x]](
+      chunkSize: Int,
+      timeout: FiniteDuration
+  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
+
+    case class State(os: Chunk[O], supplyEnded: Boolean) {
+
+      val size: Long = os.size.toLong
+
+      // checking if it's empty to avoid early termination of the stream if the producer is faster than consumers
+      val streamExhausted: Boolean = supplyEnded && os.isEmpty
+
+      def endSupply: State = copy(supplyEnded = true)
+
+      def add(o: O): State = copy(os = os ++ Chunk.singleton(o))
+
+      def splitAt(idx: Long): (State, Chunk[O]) = {
+        val (flushed, kept) = os.splitAt(idx.toInt)
+        (copy(os = kept), flushed)
+      }
+
+      override def toString =
+        s"State(os = $size, os = $os supplyEnded = $supplyEnded, streamExhausted = $streamExhausted)"
+    }
+
+    if (timeout.toNanos == 0) chunkN(chunkSize)
+    else
+      Stream.force {
+        for {
+          state <- Ref.of(State(os = Chunk.empty, supplyEnded = false))
+          supply <- Semaphore[F2](0)
+        } yield {
+
+          val groupSize = chunkSize.toLong
+
+          val enqueue: F2[Unit] =
+            evalTap(o => state.update(_.add(o)) *> supply.release)
+              .covary[F2]
+              .compile
+              .drain
+
+          // run at the end when there's no need to wait
+          val maxOutSupply = supply.releaseN(Int.MaxValue)
+
+          val markSupplyEnd = state.update(_.endSupply)
+
+          val enqueueAsync = F.start(enqueue.guarantee(markSupplyEnd *> maxOutSupply))
+
+          val waitNext =
+            supply.tryAcquireN(groupSize).flatMap(acquired => supply.acquire.whenA(!acquired))
+
+          // emit any residual element from the buffer (there shouldn't be any)
+          val emitLast = state.get.map(Chunk.empty[O] ++ _.os)
+
+          val byTime = F.sleep(timeout) *> state.get.map(_.size)
+
+          val bySize = supply.acquireN(groupSize).as(groupSize)
+
+          def emitChunk(n: Long): F2[Chunk[O]] = state.modify(_.splitAt(n))
+
+          val dequeue: F2[Chunk[O]] =
+            F.race(bySize, byTime).flatMap {
+
+              case Left(_) => emitChunk(groupSize)
+
+              case Right(bufferSize) if bufferSize != 0 =>
+                val n = bufferSize.min(groupSize)
+
+                // lower supply by n since n elements are being flushed
+                emitChunk(n) <* supply.tryAcquireN(n)
+
+              case Right(_) =>
+                F.ifM(state.get.map(_.streamExhausted))(emitLast, waitNext *> emitChunk(groupSize))
+            }
+
+          Stream.bracket(enqueueAsync)(fib => markSupplyEnd *> fib.cancel) >>
+            Stream
+              .repeatEval(dequeue)
+              .collectWhile { case os if os.nonEmpty => os }
+        }
+      }
   }
 
   /** If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
