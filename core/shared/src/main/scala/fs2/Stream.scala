@@ -37,6 +37,8 @@ import fs2.concurrent._
 import fs2.internal._
 import Pull.StreamPullOps
 
+import scala.annotation.unchecked.uncheckedVariance
+
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
   * - '''Purely functional''' a value of type `Stream[F, O]` _describes_ an effectful computation.
@@ -1510,7 +1512,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
 
-    case class State(os: Chunk[O], supplyEnded: Boolean) {
+    case class State(@uncheckedVariance os: Chunk[O], supplyEnded: Boolean) {
 
       val size: Long = os.size.toLong
 
