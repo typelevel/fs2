@@ -1528,6 +1528,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         s"State(os = $size, os = $os supplyEnded = $supplyEnded, streamExhausted = $streamExhausted)"
     }
 
+    object State {
+      def add[A](a: A)(s: State[A]): State[A] = s.copy(os = s.os ++ Chunk.singleton(a))
+    }
+
     if (timeout.toNanos == 0) chunkN(chunkSize)
     else
       Stream.force {
@@ -1539,7 +1543,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           val groupSize = chunkSize.toLong
 
           val enqueue: F2[Unit] =
-            evalTap(o => state.update(s => s.copy(os = s.os ++ Chunk.singleton(o))) *> supply.release)
+            evalTap(o => state.update(State.add[O](o)) *> supply.release)
               .covary[F2]
               .compile
               .drain
