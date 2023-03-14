@@ -37,8 +37,6 @@ import fs2.concurrent._
 import fs2.internal._
 import Pull.StreamPullOps
 
-import scala.annotation.unchecked.uncheckedVariance
-
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
   * - '''Purely functional''' a value of type `Stream[F, O]` _describes_ an effectful computation.
@@ -1512,18 +1510,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
 
-    case class State(os: Chunk[O @uncheckedVariance], supplyEnded: Boolean) {
+    case class State[+A](os: Chunk[A], supplyEnded: Boolean) {
 
       val size: Long = os.size.toLong
 
       // checking if it's empty to avoid early termination of the stream if the producer is faster than consumers
       val streamExhausted: Boolean = supplyEnded && os.isEmpty
 
-      def endSupply: State = copy(supplyEnded = true)
+      def endSupply: State[A] = copy(supplyEnded = true)
 
-      def add(o: O): State = copy(os = os ++ Chunk.singleton(o))
-
-      def splitAt(idx: Long): (State, Chunk[O]) = {
+      def splitAt(idx: Long): (State[A], Chunk[A]) = {
         val (flushed, kept) = os.splitAt(idx.toInt)
         (copy(os = kept), flushed)
       }
@@ -1536,14 +1532,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     else
       Stream.force {
         for {
-          state <- Ref.of(State(os = Chunk.empty, supplyEnded = false))
+          state <- Ref.of(State[O](os = Chunk.empty, supplyEnded = false))
           supply <- Semaphore[F2](0)
         } yield {
 
           val groupSize = chunkSize.toLong
 
           val enqueue: F2[Unit] =
-            evalTap(o => state.update(_.add(o)) *> supply.release)
+            evalTap(o => state.update(s => s.copy(os = s.os ++ Chunk.singleton(o))) *> supply.release)
               .covary[F2]
               .compile
               .drain
