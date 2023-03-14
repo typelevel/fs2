@@ -1512,7 +1512,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] = {
 
-    case class State(@uncheckedVariance os: Chunk[O], supplyEnded: Boolean) {
+    case class State(os: Chunk[O @uncheckedVariance], supplyEnded: Boolean) {
 
       val size: Long = os.size.toLong
 
