@@ -1543,7 +1543,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           val groupSize = chunkSize.toLong
 
           val enqueue: F2[Unit] =
-            evalTap(o => state.update(State.add[O](o)) *> supply.release)
+            foreach(o => state.update(State.add[O](o)) *> supply.release)
               .covary[F2]
               .compile
               .drain
