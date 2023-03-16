@@ -1563,7 +1563,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               flushSize = a.min(groupSize) // apply cap (producer is still running)
             } yield (flushSize, flushSize - 1) // decrement permits (one already acquired)
 
-            F.ifM(supply.tryAcquireN(groupSize))(F.pure(groupSize, groupSize), nextChunk)
+            F.ifM(supply.tryAcquireN(groupSize))(F.pure((groupSize, groupSize)), nextChunk)
           }
 
           def emitChunk(n: Long): F2[Chunk[O]] = state.modify(_.splitAt(n))
