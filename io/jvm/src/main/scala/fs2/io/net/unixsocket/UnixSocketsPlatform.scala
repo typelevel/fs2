@@ -23,6 +23,7 @@ package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Mutex
+import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
@@ -42,57 +43,43 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
 
   private[unixsocket] abstract class AsyncUnixSockets[F[_]](implicit F: Async[F])
       extends UnixSockets[F] {
-    protected def openChannel(address: UnixSocketAddress): F[SocketChannel]
-    protected def openServerChannel(address: UnixSocketAddress): F[(F[SocketChannel], F[Unit])]
+    protected def openChannel(address: UnixSocketAddress): Resource[F, SocketChannel]
+    protected def openServerChannel(
+        address: UnixSocketAddress
+    ): Resource[F, Resource[F, SocketChannel]]
 
     def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
-      Resource
-        .eval(openChannel(address))
-        .flatMap(makeSocket[F](_))
+      openChannel(address).evalMap(makeSocket[F](_))
 
     def server(
         address: UnixSocketAddress,
         deleteIfExists: Boolean,
         deleteOnClose: Boolean
     ): Stream[F, Socket[F]] = {
-      def setup =
-        Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists) *>
-          openServerChannel(address)
-
-      def cleanup(closeChannel: F[Unit]): F[Unit] =
-        closeChannel *>
-          Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
-
-      def acceptIncoming(accept: F[SocketChannel]): Stream[F, Socket[F]] = {
-        def go: Stream[F, Socket[F]] = {
-          def acceptChannel: F[SocketChannel] =
-            accept.map { ch =>
-              ch.configureBlocking(false)
-              ch
-            }
-
-          Stream.eval(acceptChannel.attempt).flatMap {
-            case Left(_)         => Stream.empty[F]
-            case Right(accepted) => Stream.resource(makeSocket(accepted))
-          } ++ go
-        }
-        go
+      val delete = Resource.make {
+        Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists)
+      } { _ =>
+        Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
       }
 
-      Stream
-        .resource(Resource.make(setup) { case (_, closeChannel) => cleanup(closeChannel) })
-        .flatMap { case (accept, _) => acceptIncoming(accept) }
+      Stream.resource(delete *> openServerChannel(address)).flatMap { accept =>
+        Stream
+          .resource(accept.attempt)
+          .flatMap {
+            case Left(_)         => Stream.empty[F]
+            case Right(accepted) => Stream.eval(makeSocket(accepted))
+          }
+          .repeat
+      }
     }
   }
 
   private def makeSocket[F[_]: Async](
       ch: SocketChannel
-  ): Resource[F, Socket[F]] =
-    Resource.make {
-      (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
-        new AsyncSocket[F](ch, readMutex, writeMutex)
-      }
-    }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
+  ): F[Socket[F]] =
+    (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
+      new AsyncSocket[F](ch, readMutex, writeMutex)
+    }
 
   private final class AsyncSocket[F[_]](
       ch: SocketChannel,
@@ -102,14 +89,13 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       extends Socket.BufferedReads[F](readMutex) {
 
     def readChunk(buff: ByteBuffer): F[Int] =
-      F.blocking(ch.read(buff))
+      F.blocking(ch.read(buff)).cancelable(close)
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        F.blocking(ch.write(buff)) >> {
-          if (buff.remaining <= 0) F.unit
-          else go(buff)
-        }
+        F.blocking(ch.write(buff)).cancelable(close) *>
+          F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
+
       writeMutex.lock.surround {
         F.delay(bytes.toByteBuffer).flatMap(go)
       }
@@ -120,7 +106,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
     private def raiseIpAddressError[A]: F[A] =
       F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
 
-    def isOpen: F[Boolean] = F.blocking(ch.isOpen)
+    def isOpen: F[Boolean] = F.blocking(ch.isOpen())
     def close: F[Unit] = F.blocking(ch.close())
     def endOfOutput: F[Unit] =
       F.blocking {
