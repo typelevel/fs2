@@ -409,6 +409,32 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       limit: Long,
       flags: Flags
   ): Pipe[F, Byte, Nothing]
+
+  /** Writes to the specified file as an utf8 string.
+    *
+    * The file is created if it does not exist and is truncated.
+    * Use `writeUtf8(path, Flags.Append)` to append to the end of
+    * the file, or pass other flags to further customize behavior.
+    */
+  def writeUtf8(path: Path): Pipe[F, String, Nothing] = writeUtf8(path, Flags.Write)
+
+  /** Writes to the specified file as an utf8 string using
+    * the specified flags to open the file.
+    */
+  def writeUtf8(path: Path, flags: Flags): Pipe[F, String, Nothing]
+
+  /** Writes each string to the specified file as utf8 lines.
+    *
+    * The file is created if it does not exist and is truncated.
+    * Use `writeUtf8Lines(path, Flags.Append)` to append to the end
+    * of the file, or pass other flags to further customize behavior.
+    */
+  def writeUtf8Lines(path: Path): Pipe[F, String, Nothing] = writeUtf8(path, Flags.Write)
+
+  /** Writes each string to the specified file as utf8 lines
+    * using the specified flags to open the file.
+    */
+  def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing]
 }
 
 object Files extends FilesCompanionPlatform {
@@ -573,6 +599,12 @@ object Files extends FilesCompanionPlatform {
             }
           }
     }
+
+    def writeUtf8(path: Path, flags: Flags): Pipe[F, String, Nothing] =
+      _.through(text.utf8.encode).through(writeAll(path, flags))
+
+    def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] =
+      _.through(text.lines).through(writeUtf8(path, flags))
   }
 
   def apply[F[_]](implicit F: Files[F]): Files[F] = F
