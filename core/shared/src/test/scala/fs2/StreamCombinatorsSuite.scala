@@ -34,6 +34,7 @@ import org.scalacheck.Prop.forAll
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
+import scala.util.control.NoStackTrace
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
@@ -830,6 +831,41 @@ class StreamCombinatorsSuite extends Fs2Suite {
             }
         )
         .assertEquals(0.millis)
+    }
+
+    test("Propagation: upstream failures are propagated downstream") {
+
+      case object SevenNotAllowed extends NoStackTrace
+
+      val source = Stream
+        .unfold(0)(s => Some(s, s + 1))
+        .covary[IO]
+        .evalMap(n => if (n == 7) IO.raiseError(SevenNotAllowed) else IO.pure(n))
+
+      val downstream = source.groupWithin(100, 2.seconds)
+
+      downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
+    }
+
+    test("Propagation: upstream cancellation is propagated downstream") {
+
+      def source(counter: Ref[IO, Int]): Stream[IO, Int] = {
+        Stream
+          .unfold(0)(s => Some(s, s + 1))
+          .covary[IO]
+          .meteredStartImmediately(1.second)
+          .evalTap(counter.set)
+          .interruptAfter(5.5.seconds)
+      }
+
+      def downstream(counter: Ref[IO, Int]): Stream[IO, Chunk[Int]] =
+        source(counter).groupWithin(Int.MaxValue, 1.day)
+
+      (for {
+        counter <- Ref.of[IO, Int](0)
+        _ <- downstream(counter).compile.drain
+        c <- counter.get
+      } yield c).assertEquals(5)
     }
   }
 
