@@ -138,6 +138,36 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .compile
         .drain
     }
+
+    test("writeUtf8") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream("Hello", " world!")
+            .covary[IO]
+            .through(Files[IO].writeUtf8(path)) ++ Files[IO]
+            .readAll(path)
+            .through(text.utf8.decode)
+        }
+        .compile
+        .foldMonoid
+        .assertEquals("Hello world!")
+    }
+
+    test("writeUtf8Lines") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream("foo", "bar")
+            .covary[IO]
+            .through(Files[IO].writeUtf8Lines(path)) ++ Files[IO]
+            .readUtf8(path)
+        }
+        .compile
+        .foldMonoid
+        .assertEquals("""|foo
+                         |bar""".stripMargin)
+    }
   }
 
   group("tail") {

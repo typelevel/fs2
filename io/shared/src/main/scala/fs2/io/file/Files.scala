@@ -433,13 +433,13 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * Use `writeUtf8Lines(path, Flags.Append)` to append to the end
     * of the file, or pass other flags to further customize behavior.
     */
-  def writeUtf8Lines(path: Path): Pipe[F, String, Nothing] = writeUtf8(path, Flags.Write)
+  def writeUtf8Lines(path: Path): Pipe[F, String, Nothing] = writeUtf8Lines(path, Flags.Write)
 
   /** Writes each string to the specified file as utf8 lines
     * using the specified flags to open the file.
     */
   def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
-    in.through(text.lines).through(writeUtf8(path, flags))
+    in.intersperse("\n").through(writeUtf8(path, flags))
 }
 
 object Files extends FilesCompanionPlatform {
