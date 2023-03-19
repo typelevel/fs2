@@ -44,7 +44,7 @@ package object os {
 
   @js.native
   @JSImport("os", "EOL")
-  private[io] def EOL(): String = js.native
+  private[io] def EOL: String = js.native
 
 }
 
