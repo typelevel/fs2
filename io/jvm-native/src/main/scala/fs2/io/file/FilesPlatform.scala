@@ -291,7 +291,7 @@ private[file] trait FilesCompanionPlatform {
     def isSameFile(path1: Path, path2: Path): F[Boolean] =
       Sync[F].blocking(JFiles.isSameFile(path1.toNioPath, path2.toNioPath))
 
-    val lineSeparator: String = System.lineSeparator()
+    def lineSeparator: String = System.lineSeparator()
 
     def list(path: Path): Stream[F, Path] =
       _runJavaCollectionResource[JStream[JPath]](

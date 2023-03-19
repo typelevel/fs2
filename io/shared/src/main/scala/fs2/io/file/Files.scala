@@ -241,7 +241,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def isSameFile(path1: Path, path2: Path): F[Boolean]
 
   /** Returns the line separator for the specific OS */
-  val lineSeparator: String
+  def lineSeparator: String
 
   /** Gets the contents of the specified directory. */
   def list(path: Path): Stream[F, Path]
