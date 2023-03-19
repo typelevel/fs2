@@ -166,7 +166,8 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals("""|foo
-                         |bar""".stripMargin)
+                         |bar
+                         |""".stripMargin)
     }
   }
 

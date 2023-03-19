@@ -442,7 +442,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * using the specified flags to open the file.
     */
   def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
-    in.intersperse(lineSeparator).through(writeUtf8(path, flags))
+    in.flatMap(s => Stream[F, String](s, lineSeparator)).through(writeUtf8(path, flags))
 }
 
 object Files extends FilesCompanionPlatform {
