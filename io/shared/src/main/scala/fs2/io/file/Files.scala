@@ -240,6 +240,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Returns true if the supplied paths reference the same file. */
   def isSameFile(path1: Path, path2: Path): F[Boolean]
 
+  /** Returns the line separator for the specific OS */
+  val lineSeparator: String
+
   /** Gets the contents of the specified directory. */
   def list(path: Path): Stream[F, Path]
 
@@ -439,7 +442,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * using the specified flags to open the file.
     */
   def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
-    in.intersperse("\n").through(writeUtf8(path, flags))
+    in.intersperse(lineSeparator).through(writeUtf8(path, flags))
 }
 
 object Files extends FilesCompanionPlatform {
