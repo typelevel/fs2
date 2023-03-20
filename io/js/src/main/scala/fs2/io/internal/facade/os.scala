@@ -42,6 +42,10 @@ package object os {
   @JSImport("os", "networkInterfaces")
   private[io] def networkInterfaces(): js.Dictionary[js.Array[NetworkInterfaceInfo]] = js.native
 
+  @js.native
+  @JSImport("os", "EOL")
+  private[io] def EOL: String = js.native
+
 }
 
 package os {

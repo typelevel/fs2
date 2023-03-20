@@ -264,6 +264,8 @@ private[fs2] trait FilesCompanionPlatform {
     override def isSameFile(path1: Path, path2: Path): F[Boolean] =
       F.pure(path1.absolute == path2.absolute)
 
+    override def lineSeparator: String = facade.os.EOL
+
     override def list(path: Path): Stream[F, Path] =
       Stream
         .bracket(F.fromPromise(F.delay(facade.fs.promises.opendir(path.toString))))(dir =>
