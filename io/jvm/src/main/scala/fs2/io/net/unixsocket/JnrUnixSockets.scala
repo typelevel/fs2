@@ -21,7 +21,9 @@
 
 package fs2.io.net.unixsocket
 
-import cats.effect.kernel.Async
+import cats.effect.kernel.{Async, Resource}
+import cats.effect.syntax.all._
+import java.nio.channels.SocketChannel
 import jnr.unixsocket.{
   UnixServerSocketChannel,
   UnixSocketAddress => JnrUnixSocketAddress,
@@ -45,13 +47,21 @@ object JnrUnixSockets {
 private[unixsocket] class JnrUnixSocketsImpl[F[_]](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
   protected def openChannel(address: UnixSocketAddress) =
-    F.delay(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path)))
+    Resource.make(F.blocking(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path))))(ch =>
+      F.blocking(ch.close())
+    )
 
-  protected def openServerChannel(address: UnixSocketAddress) = F.blocking {
-    val serverChannel = UnixServerSocketChannel.open()
-    serverChannel.configureBlocking(false)
-    val sock = serverChannel.socket()
-    sock.bind(new JnrUnixSocketAddress(address.path))
-    (F.blocking(serverChannel.accept()), F.blocking(serverChannel.close()))
-  }
+  protected def openServerChannel(address: UnixSocketAddress) =
+    Resource
+      .make(F.blocking(UnixServerSocketChannel.open()))(ch => F.blocking(ch.close()))
+      .evalTap { sch =>
+        F.blocking(sch.socket().bind(new JnrUnixSocketAddress(address.path)))
+          .cancelable(F.blocking(sch.close()))
+      }
+      .map { sch =>
+        Resource.makeFull[F, SocketChannel] { poll =>
+          F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
+        }(ch => F.blocking(ch.close()))
+      }
+
 }
