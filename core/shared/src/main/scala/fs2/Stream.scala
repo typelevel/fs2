@@ -1525,26 +1525,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             buffer.tryTakeN(Some(groupSize.toInt)).map(Chunk.seq)
 
           // we need to check the buffer size, rather than the available supply since
-          // the supply is maxed out at the end so won't always indicate accurately the buffer size
+          // the supply is increased at the end so it won't always report the buffer size accurately
           val isBufferEmpty: F2[Boolean] =
             buffer.size.map(_ == 0)
 
           val streamExhausted: F2[Boolean] =
             (isBufferEmpty, supplyEnded.get).mapN(_ && _)
 
-          //  releasing a number of permits equal to {groupSize} should be enough,
-          //  but in order to ensure termination of the consumer when the producer
-          //  stream is cancelled we need to max out the supply
-          val maxOutSupply: F2[Unit] =
-            supply.available.flatMap(a => supply.releaseN(Long.MaxValue - a))
+          //  releasing a number of permits equal to {groupSize} is enough in most cases, but in
+          //  order to ensure prompt termination of the consumer on interruption when the timeout
+          //  has not kicked in yet nor we've seen enough elements we need to max out the supply
+          val maxOutSupply =
+            supply.available.flatMap(av => supply.releaseN(Long.MaxValue - av))
 
           // enabling termination of the consumer stream when the producer completes
           // naturally (i.e runs out of elements)
-          val markSupplyEnd: F2[Unit] = supplyEnded.set(true)
+          val endSupply: F2[Unit] = supplyEnded.set(true) *> maxOutSupply
 
           val enqueue: F2[Unit] =
-            foreach(buffer.offer(_) <* supply.release).compile.drain
-              .guarantee(markSupplyEnd *> maxOutSupply)
+            foreach(buffer.offer(_) <* supply.release).compile.drain.guarantee(endSupply)
 
           val awaitAndEmitNext: F2[Chunk[O]] = for {
             isEmpty <- isBufferEmpty

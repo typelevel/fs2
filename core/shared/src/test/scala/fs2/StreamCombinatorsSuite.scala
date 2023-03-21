@@ -833,7 +833,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(0.millis)
     }
 
-    test("Propagation: upstream failures are propagated downstream") {
+    test("Upstream failures are propagated downstream") {
 
       case object SevenNotAllowed extends NoStackTrace
 
@@ -847,25 +847,41 @@ class StreamCombinatorsSuite extends Fs2Suite {
       downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
     }
 
-    test("Propagation: upstream cancellation is propagated downstream") {
+    test("Upstream interruption causes immediate downstream termination with all elements being released") {
 
-      def source(counter: Ref[IO, Int]): Stream[IO, Int] = {
-        Stream
-          .unfold(0)(s => Some(s, s + 1))
-          .covary[IO]
-          .meteredStartImmediately(1.second)
-          .evalTap(counter.set)
-          .interruptAfter(5.5.seconds)
-      }
+      val sourceTimeout = 5.5.seconds
+      val downstreamTimeout = sourceTimeout + 2.seconds
 
-      def downstream(counter: Ref[IO, Int]): Stream[IO, Chunk[Int]] =
-        source(counter).groupWithin(Int.MaxValue, 1.day)
+      TestControl
+        .executeEmbed(
+          Ref[IO]
+            .of(0.millis)
+            .flatMap { ref =>
+              val source: Stream[IO, Int] =
+                Stream
+                  .unfold(0)(s => Some(s, s + 1))
+                  .covary[IO]
+                  .meteredStartImmediately(1.second)
+                  .interruptAfter(sourceTimeout)
 
-      (for {
-        counter <- Ref.of[IO, Int](0)
-        _ <- downstream(counter).compile.drain
-        c <- counter.get
-      } yield c).assertEquals(5)
+              // large chunkSize and timeout (no emissions expected in the window
+              // specified, unless source ends, due to interruption or
+              // natural termination (i.e runs out of elements)
+              val downstream: Stream[IO, Chunk[Int]] =
+                source.groupWithin(Int.MaxValue / 2 + 4, 1.day)
+
+              downstream.compile.lastOrError
+                .map(_.toList)
+                .timeout(downstreamTimeout)
+                .flatTap(_ => IO.monotonic.flatMap(ref.set))
+                .flatMap(emit => ref.get.map(timeLapsed => (timeLapsed, emit)))
+            }
+        )
+        .assertEquals(
+          // downstream ended immediately (i.e timeLapsed = sourceTimeout)
+          // emitting whatever was accumulated at the time of interruption
+          (sourceTimeout, List(0, 1, 2, 3, 4, 5))
+        )
     }
   }
 
