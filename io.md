@@ -6,6 +6,7 @@ The `fs2-io` library provides support for performing input and output on the JVM
   - [UDP](#udp)
   - [TLS](#tls)
 - [Files](#files)
+- [Processes](#processes)
 - [Console operations](#console-operations)
 - [Interop with `java.io.{InputStream, OutputStream}`](#java-stream-interop)
 
@@ -354,6 +355,51 @@ def scalaLineCount[F[_]: Files: Concurrent](path: Path): F[Long] =
 ```
 
 Note that the `Files` object is file system agnostic. It is possible to use a custom one, i.e. mounted inside JAR file, to get access to the resources. Given there's already a `java.nio.file.FileSystem` created, interacting with the files can be made possible by calling `Path.fromFsPath` to get the `Path` object.
+
+# Processes
+
+The `fs2.io.process` package provides APIs for starting and interacting with native processes. Often you are interested in the output of a process.
+
+```scala
+import cats.effect.{Concurrent, MonadCancelThrow}
+import fs2.io.process.{Processes, ProcessBuilder}
+import fs2.text
+
+def helloProcess[F[_]: Concurrent: Processes]: F[String] =
+  ProcessBuilder("echo", "Hello, process!").spawn.use { process =>
+    process.stdout.through(text.utf8.decode).compile.string
+  }
+```
+
+You can also provide input.
+
+```scala
+def wordCountProcess[F[_]: Concurrent: Processes](words: String): F[Option[Int]] =
+  ProcessBuilder("wc", "--words").spawn.use { process =>
+    val in = Stream.emit(words).through(text.utf8.encode).through(process.stdin)
+    val out = process.stdout.through(text.utf8.decode)
+    out.concurrently(in).compile.string.map(_.strip.toIntOption)
+  }
+```
+
+Or just wait for a process to complete and get the exit code.
+
+```scala
+def sleepProcess[F[_]: MonadCancelThrow: Processes]: F[Int] =
+  ProcessBuilder("sleep", "1s").spawn.use(_.exitValue)
+```
+
+To terminate a running process, simply exit the `use` block.
+
+```scala
+import cats.effect.Temporal
+import scala.concurrent.duration._
+
+def oneSecondServer[F[_]: Temporal: Processes]: F[Unit] =
+  ProcessBuilder("python", "-m", "http.server").spawn.surround {
+    Temporal[F].sleep(1.second)
+  }
+```
 
 # Console Operations
 
