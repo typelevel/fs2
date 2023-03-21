@@ -19,31 +19,34 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2
+package io
+package process
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
+sealed trait Process[F[_]] {
 
-private[io] object process {
+  def isAlive: F[Boolean]
 
-  @js.native
-  @JSImport("process", "stdout")
-  def stdout: fs2.io.Writable = js.native
+  /** Fiber blocks until the process exits, then returns the exit value.
+    * If the process has already exited then the exit value is available immediately.
+    */
+  def exitValue: F[Int]
 
-  @js.native
-  @JSImport("process", "stdout")
-  def stderr: fs2.io.Writable = js.native
+  /** A `Pipe` that writes to `stdin` of the process. The resulting stream should be compiled
+    * at most once, and interrupting or otherwise canceling a write-in-progress may kill the process.
+    */
+  def stdin: Pipe[F, Byte, Nothing]
 
-  @js.native
-  @JSImport("process", "stdin")
-  def stdin: fs2.io.Readable = js.native
+  /** A `Stream` that reads from `stdout` of the process. This stream should be compiled at most once,
+    * and interrupting or otherwise canceling a read-in-progress may kill the process.
+    */
+  def stdout: Stream[F, Byte]
 
-  @js.native
-  @JSImport("process", "cwd")
-  def cwd(): String = js.native
-
-  @js.native
-  @JSImport("process", "env")
-  def env: js.Dictionary[String] = js.native
+  /** A `Stream` that reads from `stderr` of the process. This stream should be compiled at most once,
+    * and interrupting or otherwise canceling a read-in-progress may kill the process.
+    */
+  def stderr: Stream[F, Byte]
 
 }
+
+private[fs2] trait UnsealedProcess[F[_]] extends Process[F]

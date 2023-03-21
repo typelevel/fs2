@@ -24,26 +24,47 @@ package fs2.io.internal.facade
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-private[io] object process {
+import events.EventEmitter
+
+package object child_process {
 
   @js.native
-  @JSImport("process", "stdout")
-  def stdout: fs2.io.Writable = js.native
+  @JSImport("child_process", "spawn")
+  private[io] def spawn(
+      command: String,
+      args: js.Array[String],
+      options: SpawnOptions
+  ): ChildProcess =
+    js.native
+
+}
+
+package child_process {
+
+  private[io] trait SpawnOptions extends js.Object {
+
+    var cwd: js.UndefOr[String] = js.undefined
+
+    var env: js.UndefOr[js.Dictionary[String]] = js.undefined
+
+  }
 
   @js.native
-  @JSImport("process", "stdout")
-  def stderr: fs2.io.Writable = js.native
+  private[io] trait ChildProcess extends EventEmitter {
 
-  @js.native
-  @JSImport("process", "stdin")
-  def stdin: fs2.io.Readable = js.native
+    def stdin: fs2.io.Writable = js.native
 
-  @js.native
-  @JSImport("process", "cwd")
-  def cwd(): String = js.native
+    def stdout: fs2.io.Readable = js.native
 
-  @js.native
-  @JSImport("process", "env")
-  def env: js.Dictionary[String] = js.native
+    def stderr: fs2.io.Readable = js.native
+
+    // can also be `null`, so can't use `Int` ...
+    def exitCode: js.Any = js.native
+
+    def signalCode: String = js.native
+
+    def kill(): Boolean
+
+  }
 
 }

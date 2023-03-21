@@ -19,31 +19,21 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2.io.process
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
+import cats.effect.IO
+import cats.effect.kernel.Resource
 
-private[io] object process {
+sealed trait Processes[F[_]] {
 
-  @js.native
-  @JSImport("process", "stdout")
-  def stdout: fs2.io.Writable = js.native
+  def spawn(process: ProcessBuilder): Resource[F, Process[F]]
 
-  @js.native
-  @JSImport("process", "stdout")
-  def stderr: fs2.io.Writable = js.native
+}
 
-  @js.native
-  @JSImport("process", "stdin")
-  def stdin: fs2.io.Readable = js.native
+private[fs2] trait UnsealedProcesses[F[_]] extends Processes[F]
 
-  @js.native
-  @JSImport("process", "cwd")
-  def cwd(): String = js.native
+object Processes extends ProcessesCompanionPlatform {
+  def apply[F[_]: Processes]: Processes[F] = implicitly
 
-  @js.native
-  @JSImport("process", "env")
-  def env: js.Dictionary[String] = js.native
-
+  implicit val forIO: Processes[IO] = forAsync
 }
