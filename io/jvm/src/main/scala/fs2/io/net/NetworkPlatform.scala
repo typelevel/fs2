@@ -74,10 +74,11 @@ private[net] trait NetworkCompanionPlatform { self: Network.type =>
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    forAsyncAndDns(F, Dns.forAsync(F))
+
+  implicit def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new UnsealedNetwork[F] {
-      private implicit val dnsInstance: Dns[F] =
-        Dns.forAsync(F) // Temporary until forAsync is made non-implicit
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](globalAcg)
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 

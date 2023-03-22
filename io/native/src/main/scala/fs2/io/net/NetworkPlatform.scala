@@ -33,11 +33,12 @@ private[net] trait NetworkPlatform[F[_]]
 
 private[net] trait NetworkCompanionPlatform { self: Network.type =>
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    forAsyncAndDns(F, Dns.forAsync(F))
+
+  implicit def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new UnsealedNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](null)
-      private implicit val dnsInstance: Dns[F] =
-        Dns.forAsync(F) // Temporary until forAsync is made non-implicit
 
       def client(
           to: SocketAddress[Host],
