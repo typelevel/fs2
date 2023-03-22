@@ -25,7 +25,7 @@ package net
 
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
 
 import fs2.io.net.tls.TLSContext
 
@@ -36,6 +36,8 @@ private[net] trait NetworkCompanionPlatform { self: Network.type =>
   implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new UnsealedNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](null)
+      private implicit val dnsInstance: Dns[F] =
+        Dns.forAsync(F) // Temporary until forAsync is made non-implicit
 
       def client(
           to: SocketAddress[Host],
