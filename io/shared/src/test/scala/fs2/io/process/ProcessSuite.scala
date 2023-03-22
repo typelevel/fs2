@@ -88,9 +88,12 @@ class ProcessSuite extends Fs2IoSuite {
     }
 
   test("working directory") {
-    Files[IO].tempDirectory.use { wd =>
-      ProcessBuilder("pwd").withWorkingDirectory(wd).spawn[IO].use { p =>
-        p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals(wd.toString + "\n")
+    Files[IO].tempDirectory.use { wd0 =>
+      // OS X sometimes returns a link so to compare it later, we have to get the real path
+      Files[IO].realPath(wd0).flatMap { wd =>
+        ProcessBuilder("pwd").withWorkingDirectory(wd).spawn[IO].use { p =>
+          p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals(wd.toString + "\n")
+        }
       }
     }
   }

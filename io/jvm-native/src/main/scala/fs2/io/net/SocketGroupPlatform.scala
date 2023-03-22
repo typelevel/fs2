@@ -33,13 +33,15 @@ import java.nio.channels.{
 import java.nio.channels.AsynchronousChannelGroup
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
-  private[fs2] def unsafe[F[_]: Async](channelGroup: AsynchronousChannelGroup): SocketGroup[F] =
+  private[fs2] def unsafe[F[_]: Async: Dns](
+      channelGroup: AsynchronousChannelGroup
+  ): SocketGroup[F] =
     new AsyncSocketGroup[F](channelGroup)
 
-  private final class AsyncSocketGroup[F[_]: Async](channelGroup: AsynchronousChannelGroup)
+  private final class AsyncSocketGroup[F[_]: Async: Dns](channelGroup: AsynchronousChannelGroup)
       extends AbstractAsyncSocketGroup[F] {
 
     def client(
