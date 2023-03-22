@@ -833,7 +833,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(0.millis)
     }
 
-    test("Upstream failures are propagated downstream") {
+    test("upstream failures are propagated downstream") {
 
       case object SevenNotAllowed extends NoStackTrace
 
@@ -847,7 +847,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
     }
 
-    test("Upstream interruption causes immediate downstream termination with all elements being released") {
+    test("upstream interruption causes immediate downstream termination with all elements being emitted") {
 
       val sourceTimeout = 5.5.seconds
       val downstreamTimeout = sourceTimeout + 2.seconds
@@ -868,7 +868,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
               // specified, unless source ends, due to interruption or
               // natural termination (i.e runs out of elements)
               val downstream: Stream[IO, Chunk[Int]] =
-                source.groupWithin(Int.MaxValue / 2 + 4, 1.day)
+                source.groupWithin(Int.MaxValue, 1.day)
 
               downstream.compile.lastOrError
                 .map(_.toList)

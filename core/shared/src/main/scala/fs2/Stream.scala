@@ -1429,13 +1429,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             (isBufferEmpty, supplyEnded.get).mapN(_ && _)
 
           //  releasing a number of permits equal to {groupSize} is enough in most cases, but in
-          //  order to ensure prompt termination of the consumer on interruption when the timeout
+          //  order to ensure prompt termination of the consumer on interruption even when the timeout
           //  has not kicked in yet nor we've seen enough elements we need to max out the supply
           val maxOutSupply =
             supply.available.flatMap(av => supply.releaseN(Long.MaxValue - av))
 
-          // enabling termination of the consumer stream when the producer completes
-          // naturally (i.e runs out of elements)
+          // enabling termination of the consumer stream when the producer completes naturally
+          // (i.e runs out of elements) or when the combined stream (consumer + producer) is interrupted
           val endSupply: F2[Unit] = supplyEnded.set(true) *> maxOutSupply
 
           val enqueue: F2[Unit] =
