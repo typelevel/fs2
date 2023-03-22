@@ -185,6 +185,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[IncompatibleMethTypeProblem](
     "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.DatagramSocketGroupCompanionPlatform#AsyncDatagramSocketGroup.this"
   )
 )
 
