@@ -29,8 +29,6 @@ import cats.effect.kernel.Ref
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
-import scala.concurrent.duration._
-
 class BracketSuite extends Fs2Suite {
 
   override def munitIOTimeout = 1.minute
