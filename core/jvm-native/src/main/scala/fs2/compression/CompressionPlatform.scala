@@ -118,7 +118,13 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
 }
 
-private[compression] trait CompressionCompanionPlatform {
+private trait CompressionCompanionPlatformLowPriority { this: CompressionCompanionPlatform =>
+  @deprecated("Add Compression constraint or use forSync", "3.7.0")
+  implicit def implicitForSync[F[_]: Sync]: Compression[F] = forSync
+}
+
+private[compression] trait CompressionCompanionPlatform
+    extends CompressionCompanionPlatformLowPriority {
 
   implicit def forIO: Compression[IO] = forSync
 

@@ -446,7 +446,12 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     in.flatMap(s => Stream[F, String](s, lineSeparator)).through(writeUtf8(path, flags))
 }
 
-object Files extends FilesCompanionPlatform {
+private[fs2] trait FilesLowPriority { this: Files.type =>
+  @deprecated("Add Files constraint or use forAsync", "3.7.0")
+  implicit def implicitForAsync[F[_]: Async]: Files[F] = forAsync
+}
+
+object Files extends FilesCompanionPlatform with FilesLowPriority {
   implicit def forIO: Files[IO] = forAsync
 
   private[fs2] abstract class UnsealedFiles[F[_]](implicit F: Async[F]) extends Files[F] {
