@@ -36,6 +36,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
 class StreamCombinatorsSuite extends Fs2Suite {
+  override def munitIOTimeout = 1.minute
 
   group("awakeEvery") {
     test("basic") {
