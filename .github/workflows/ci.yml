@@ -31,6 +31,11 @@ jobs:
         scala: [3.2.2, 2.12.17, 2.13.10]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
+        exclude:
+          - scala: 3.2.2
+            os: macos-latest
+          - scala: 2.12.17
+            os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)

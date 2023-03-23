@@ -28,6 +28,11 @@ ThisBuild / githubWorkflowBuild ++= Seq(
   )
 )
 
+ThisBuild / githubWorkflowBuildMatrixExclusions ++=
+  crossScalaVersions.value.filterNot(Set(scalaVersion.value)).map { scala =>
+    MatrixExclude(Map("scala" -> scala, "os" -> "macos-latest"))
+  }
+
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
