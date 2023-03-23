@@ -847,7 +847,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
       downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
     }
 
-    test("upstream interruption causes immediate downstream termination with all elements being emitted") {
+    test(
+      "upstream interruption causes immediate downstream termination with all elements being emitted"
+    ) {
 
       val sourceTimeout = 5.5.seconds
       val downstreamTimeout = sourceTimeout + 2.seconds
