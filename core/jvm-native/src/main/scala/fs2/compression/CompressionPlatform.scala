@@ -22,6 +22,7 @@
 package fs2
 package compression
 
+import cats.effect.IO
 import cats.effect.kernel.Sync
 
 import java.io.EOFException
@@ -119,7 +120,9 @@ private[compression] trait CompressionPlatform[F[_]] { self: Compression[F] =>
 
 private[compression] trait CompressionCompanionPlatform {
 
-  implicit def forSync[F[_]](implicit F: Sync[F]): Compression[F] =
+  implicit def forIO: Compression[IO] = forSync
+
+  def forSync[F[_]](implicit F: Sync[F]): Compression[F] =
     new Compression.UnsealedCompression[F] {
 
       def deflate(deflateParams: DeflateParams): Pipe[F, Byte, Byte] =
