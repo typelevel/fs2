@@ -40,7 +40,7 @@ object JnrUnixSockets {
       case _: ClassNotFoundException => false
     }
 
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
+  def forAsync[F[_]: Async]: UnixSockets[F] =
     new JnrUnixSocketsImpl[F]
 }
 

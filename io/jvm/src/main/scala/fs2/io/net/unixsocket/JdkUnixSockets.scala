@@ -30,7 +30,7 @@ object JdkUnixSockets {
 
   def supported: Boolean = StandardProtocolFamily.values.size > 2
 
-  implicit def forAsync[F[_]: Async]: UnixSockets[F] =
+  def forAsync[F[_]: Async]: UnixSockets[F] =
     new JdkUnixSocketsImpl[F]
 }
 

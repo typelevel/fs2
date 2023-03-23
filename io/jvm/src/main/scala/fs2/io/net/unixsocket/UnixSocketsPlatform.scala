@@ -21,6 +21,7 @@
 
 package fs2.io.net.unixsocket
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all._
@@ -33,7 +34,9 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+  implicit def forIO: UnixSockets[IO] = forAsync
+
+  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
     if (JdkUnixSockets.supported) JdkUnixSockets.forAsync
     else if (JnrUnixSockets.supported) JnrUnixSockets.forAsync
     else
