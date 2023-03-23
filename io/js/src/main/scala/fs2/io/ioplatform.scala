@@ -151,7 +151,7 @@ private[fs2] trait ioplatform {
                   F.delay {
                     writable.write(
                       head.toUint8Array,
-                      e => cb(e.toLeft(()).leftMap(js.JavaScriptException))
+                      e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
                     )
                     Some(F.delay(writable.destroy()))
                   }
