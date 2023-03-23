@@ -34,7 +34,7 @@ import fs2.io.net.tls.TLSContext
 
 private[net] trait NetworkPlatform[F[_]]
 
-private[net] trait NetworkCompanionPlatform { self: Network.type =>
+private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
   implicit def forIO: Network[IO] = forAsync
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =

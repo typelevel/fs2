@@ -23,7 +23,6 @@ package fs2
 package io
 package net
 
-import cats.effect.kernel.Async
 import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
@@ -59,13 +58,8 @@ sealed trait Network[F[_]]
   def tlsContext: TLSContext.Builder[F]
 }
 
-object Network extends NetworkCompanionPlatform with NetworkLowPriority {
+object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
-}
-
-private[fs2] trait NetworkLowPriority { this: Network.type =>
-  @deprecated("Add Network constraint or use forAsync", "3.7.0")
-  implicit def implicitForAsync[F[_]: Async]: Network[F] = forAsync
 }
