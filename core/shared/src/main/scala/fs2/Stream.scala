@@ -1413,7 +1413,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Stream.force {
         for {
           supply <- Semaphore[F2](0)
-          supplyEnded <- Ref.of(false)
+          supplyEnded <- Ref.of[F2, Boolean](false)
           buffer <- Queue.bounded[F2, O](chunkSize) // buffering and backpressure
         } yield {
 
@@ -1431,7 +1431,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           //  releasing a number of permits equal to {groupSize} is enough in most cases, but in
           //  order to ensure prompt termination of the consumer on interruption even when the timeout
           //  has not kicked in yet nor we've seen enough elements we need to max out the supply
-          val maxOutSupply =
+          val maxOutSupply: F2[Unit] =
             supply.available.flatMap(av => supply.releaseN(Long.MaxValue - av))
 
           // enabling termination of the consumer stream when the producer completes naturally
@@ -1449,7 +1449,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             _ <- supply.tryAcquireN((flushed.size.toLong - awaited).max(0))
           } yield flushed
 
-          val onTimeout =
+          val onTimeout: F2[Chunk[O]] =
             F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), awaitAndEmitNext)
 
           val dequeue: F2[Chunk[O]] =
