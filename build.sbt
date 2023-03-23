@@ -13,7 +13,7 @@ val NewScala = "2.13.10"
 ThisBuild / crossScalaVersions := Seq("3.2.2", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
 ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
@@ -27,6 +27,11 @@ ThisBuild / githubWorkflowBuild ++= Seq(
     cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
   )
 )
+
+ThisBuild / githubWorkflowBuildMatrixExclusions ++=
+  crossScalaVersions.value.filterNot(Set(scalaVersion.value)).map { scala =>
+    MatrixExclude(Map("scala" -> scala, "os" -> "macos-latest"))
+  }
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 

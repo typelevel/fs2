@@ -36,7 +36,7 @@ import scodec.bits.ByteVector
 
 class JvmNativeCompressionSuite extends CompressionSuite {
 
-  override def munitIOTimeout = 1.minute
+  override def munitIOTimeout = 2.minutes
 
   def deflateStream(b: Array[Byte], level: Int, strategy: Int, nowrap: Boolean): Array[Byte] = {
     val byteArrayStream = new ByteArrayOutputStream()

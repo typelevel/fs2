@@ -31,6 +31,8 @@ import cats.syntax.all._
 import java.nio.file.WatchEvent
 
 class WatcherSuite extends Fs2Suite with BaseFileSuite {
+  override def munitIOTimeout = 1.minute
+
   group("supports watching a file") {
     test("for modifications") {
       Stream
