@@ -30,7 +30,7 @@ Remember to follow the [code of conduct][coc] in online and offline discourse.
 
 ### Prerequisites
 
-You'll need JDK 17+, [sbt][sbt], [Node.js][node] (for running Scala.js tests), various native libraries (for running Scala Native tests) and [Jekyll][jekyll] (for building the microsite).
+You'll need JDK 17+, [sbt][sbt], [Node.js][node] (for running Scala.js tests), various native libraries (for running Scala Native tests).
 
 The native libraries required are `s2n` and `openssl`. To install them on a machine with [Homebrew](https://brew.sh), run the following:
 
