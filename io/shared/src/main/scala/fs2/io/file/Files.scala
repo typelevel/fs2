@@ -23,6 +23,7 @@ package fs2
 package io
 package file
 
+import cats.effect.IO
 import cats.effect.Resource
 import cats.effect.kernel.Async
 import cats.effect.std.Hotswap
@@ -446,6 +447,8 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 }
 
 object Files extends FilesCompanionPlatform {
+  implicit def forIO: Files[IO] = forAsync
+
   private[fs2] abstract class UnsealedFiles[F[_]](implicit F: Async[F]) extends Files[F] {
 
     def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =

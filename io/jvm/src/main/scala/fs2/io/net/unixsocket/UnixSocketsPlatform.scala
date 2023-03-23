@@ -34,17 +34,20 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forIO: UnixSockets[IO] = forAsync
+  implicit def forIO: UnixSockets[IO] = forAsyncAndFiles
 
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    if (JdkUnixSockets.supported) JdkUnixSockets.forAsync
-    else if (JnrUnixSockets.supported) JnrUnixSockets.forAsync
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
+    if (JdkUnixSockets.supported) JdkUnixSockets.forAsyncAndFiles
+    else if (JnrUnixSockets.supported) JnrUnixSockets.forAsyncAndFiles
     else
       throw new UnsupportedOperationException(
         """Must either run on JDK 16+ or have "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
       )
 
-  private[unixsocket] abstract class AsyncUnixSockets[F[_]](implicit F: Async[F])
+  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    forAsyncAndFiles(F, Files.forAsync(F))
+
+  private[unixsocket] abstract class AsyncUnixSockets[F[_]: Files](implicit F: Async[F])
       extends UnixSockets[F] {
     protected def openChannel(address: UnixSocketAddress): Resource[F, SocketChannel]
     protected def openServerChannel(

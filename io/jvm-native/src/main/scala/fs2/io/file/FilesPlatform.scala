@@ -80,7 +80,7 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
 
 private[file] trait FilesCompanionPlatform {
 
-  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
+  def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
   private case class NioFileKey(value: AnyRef) extends FileKey
 
@@ -369,7 +369,7 @@ private[file] trait FilesCompanionPlatform {
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    def createWatcher: Resource[F, Watcher[F]] = Watcher.default
+    def createWatcher: Resource[F, Watcher[F]] = Watcher.default(this, F)
 
     def watch(
         path: Path,
@@ -378,7 +378,7 @@ private[file] trait FilesCompanionPlatform {
         pollTimeout: FiniteDuration
     ): Stream[F, Watcher.Event] =
       Stream
-        .resource(Watcher.default)
+        .resource(createWatcher)
         .evalTap(_.watch(path, types, modifiers))
         .flatMap(_.events(pollTimeout))
   }

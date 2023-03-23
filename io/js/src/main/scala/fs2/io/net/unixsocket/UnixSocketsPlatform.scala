@@ -36,9 +36,12 @@ import fs2.io.internal.facade
 import scala.scalajs.js
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forIO: UnixSockets[IO] = forAsync
+  implicit def forIO: UnixSockets[IO] = forAsyncAndFiles
 
   def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    forAsyncAndFiles(Files.forAsync(F), F)
+
+  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] =
     new UnixSockets[F] {
 
       override def client(address: UnixSocketAddress): Resource[F, Socket[F]] =

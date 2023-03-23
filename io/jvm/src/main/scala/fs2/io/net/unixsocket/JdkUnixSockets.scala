@@ -23,6 +23,7 @@ package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.syntax.all._
+import fs2.io.file.Files
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
 
@@ -30,11 +31,14 @@ object JdkUnixSockets {
 
   def supported: Boolean = StandardProtocolFamily.values.size > 2
 
-  def forAsync[F[_]: Async]: UnixSockets[F] =
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
     new JdkUnixSocketsImpl[F]
+
+  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    forAsyncAndFiles(F, Files.forAsync[F])
 }
 
-private[unixsocket] class JdkUnixSocketsImpl[F[_]](implicit F: Async[F])
+private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
   protected def openChannel(address: UnixSocketAddress) =
     Resource
