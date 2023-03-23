@@ -23,6 +23,7 @@ package fs2
 package io
 package net
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
@@ -33,10 +34,12 @@ private[net] trait NetworkPlatform[F[_]]
 
 private[net] trait NetworkCompanionPlatform { self: Network.type =>
 
+  implicit def forIO: Network[IO] = forAsyncAndDns
+
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))
 
-  implicit def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
+  def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new UnsealedNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](null)
 
