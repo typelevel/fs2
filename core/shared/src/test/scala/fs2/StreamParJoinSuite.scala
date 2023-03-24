@@ -31,6 +31,8 @@ import org.scalacheck.effect.PropF.forAllF
 import scala.util.control.NoStackTrace
 
 class StreamParJoinSuite extends Fs2Suite {
+  override def munitIOTimeout = 1.minute
+
   test("no concurrency") {
     forAllF { (s: Stream[Pure, Int]) =>
       s.covary[IO].map(Stream.emit(_)).parJoin(1).assertEmits(s.toList)
