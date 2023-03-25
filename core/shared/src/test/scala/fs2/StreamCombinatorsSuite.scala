@@ -1476,27 +1476,35 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("withTimeout") {
     test("timeout never-ending stream") {
-      Stream.never[IO].timeout(100.millis).intercept[TimeoutException]
+      TestControl.executeEmbed {
+        Stream.never[IO].timeout(100.millis).intercept[TimeoutException]
+      }
     }
 
     test("not trigger timeout on successfully completed stream") {
-      Stream.sleep[IO](10.millis).timeout(1.second).compile.drain
+      TestControl.executeEmbed {
+        Stream.sleep[IO](10.millis).timeout(1.second).compile.drain
+      }
     }
 
     test("compose timeouts d1 and d2 when d1 < d2") {
-      val d1 = 20.millis
-      val d2 = 30.millis
-      (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](30.millis))
-        .timeout(d2)
-        .intercept[TimeoutException]
+      TestControl.executeEmbed {
+        val d1 = 20.millis
+        val d2 = 30.millis
+        (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](30.millis))
+          .timeout(d2)
+          .intercept[TimeoutException]
+      }
     }
 
     test("compose timeouts d1 and d2 when d1 > d2") {
-      val d1 = 40.millis
-      val d2 = 30.millis
-      (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](25.millis))
-        .timeout(d2)
-        .intercept[TimeoutException]
+      TestControl.executeEmbed {
+        val d1 = 40.millis
+        val d2 = 30.millis
+        (Stream.sleep[IO](10.millis).timeout(d1) ++ Stream.sleep[IO](25.millis))
+          .timeout(d2)
+          .intercept[TimeoutException]
+      }
     }
   }
 
