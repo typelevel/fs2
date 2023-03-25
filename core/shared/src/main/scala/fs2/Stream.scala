@@ -1410,7 +1410,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       Stream.force {
         for {
           supply <- Semaphore[F2](0)
-          supplyEnded <- SignallingRef.of[F2, Boolean](false)
+          supplyEnded <- SignallingRef[F2].of(false)
           buffer <- Queue.bounded[F2, O](chunkSize) // buffering and backpressure
           awaitFirstChunk = Stream.fromQueueUnterminated(buffer, chunkSize).chunkMin(1).head
         } yield {
@@ -1446,19 +1446,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           val enqueue: F2[Unit] =
             foreach(buffer.offer(_) <* supply.release).compile.drain.guarantee(endSupply)
 
-          def lowerSupply(flushed: Chunk[O], awaited: Int): F2[Chunk[O]] =
-            supply.acquireN((flushed.size.toLong - awaited).max(0)).as(flushed)
-
           // emit immediately or wait before doing so, subsequently lowering the supply by however
           // many elements have been flushed (excluding the element already awaited, if needed)
-          val emitNextOnTimeout: F2[Chunk[O]] = {
-            val waitAndEmit = awaitChunk.map((_, 1))
-            val emitImmediately = emitChunk.map((_, 0))
-            F.ifM(isBufferEmpty)(waitAndEmit, emitImmediately).flatMap((lowerSupply _).tupled)
-          }
+          val emitNextChunk: F2[Chunk[O]] = for {
+            isEmpty <- isBufferEmpty
+            (flushed, awaited) <- if (isEmpty) awaitChunk.map((_, 1)) else emitChunk.map((_, 0))
+            _ <- supply.acquireN((flushed.size.toLong - awaited).max(0))
+          } yield flushed
 
           val onTimeout: F2[Chunk[O]] =
-            F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), emitNextOnTimeout)
+            F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), emitNextChunk)
 
           val dequeue: F2[Chunk[O]] =
             F.race(supply.acquireN(chunkSize.toLong), F.sleep(timeout)).flatMap {
