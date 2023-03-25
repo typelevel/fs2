@@ -67,7 +67,9 @@ class ParEvalMapSuite extends Fs2Suite {
     }
 
     test("may not be preserved in parEvalMapUnordered") {
-      TestControl.executeEmbed(run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3)))
+      TestControl.executeEmbed(
+        run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3))
+      )
     }
 
     def run(pipe: Pipe[IO, IO[Int], Int]) =
