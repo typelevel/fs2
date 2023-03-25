@@ -66,13 +66,17 @@ class ParEvalMapSuite extends Fs2Suite {
     }
 
     test("may not be preserved in parEvalMapUnordered") {
+      run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3))
+    }
+
+    def run(pipe: Pipe[IO, IO[Int], Int]) =
       Stream
         .emits(List(3, 2, 1))
         .map(i => IO.sleep(50.millis * i.toLong).as(i))
         .covary[IO]
-        .through(_.parEvalMapUnorderedUnbounded(identity))
-        .assertEmitsUnordered(List(1, 2, 3))
-    }
+        .through(pipe)
+        .compile
+        .toList
   }
 
   group("should limit concurrency in") {
