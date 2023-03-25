@@ -1446,7 +1446,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             awaited <- supply.acquire.whenA(isEmpty).as(if (isEmpty) 1 else 0)
             flushed <- emitChunk
             // lower supply by {flushed.size} (excluding element already awaited)
-            _ <- supply.tryAcquireN((flushed.size.toLong - awaited).max(0))
+            _ <- supply.acquireN((flushed.size.toLong - awaited).max(0))
           } yield flushed
 
           val onTimeout: F2[Chunk[O]] =
