@@ -36,6 +36,7 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
 class StreamCombinatorsSuite extends Fs2Suite {
+  override def munitIOTimeout = 1.minute
 
   group("awakeEvery") {
     test("basic") {
@@ -1006,72 +1007,86 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("metered should not start immediately") {
-    Stream
-      .emit[IO, Int](1)
-      .repeatN(10)
-      .metered(1.second)
-      .interruptAfter(500.milliseconds)
-      .assertEmpty()
+    TestControl.executeEmbed {
+      Stream
+        .emit[IO, Int](1)
+        .repeatN(10)
+        .metered(1.second)
+        .interruptAfter(500.milliseconds)
+        .assertEmpty()
+    }
   }
 
   test("meteredStartImmediately should start immediately") {
-    Stream
-      .emit[IO, Int](1)
-      .repeatN(10)
-      .meteredStartImmediately(1.second)
-      .interruptAfter(500.milliseconds)
-      .assertEmits(List(1))
+    TestControl.executeEmbed {
+      Stream
+        .emit[IO, Int](1)
+        .repeatN(10)
+        .meteredStartImmediately(1.second)
+        .interruptAfter(500.milliseconds)
+        .assertEmits(List(1))
+    }
   }
 
   test("spaced should start immediately if startImmediately is not set") {
-    Stream
-      .emit[IO, Int](1)
-      .repeatN(10)
-      .spaced(1.second)
-      .interruptAfter(500.milliseconds)
-      .assertEmits(List(1))
+    TestControl.executeEmbed {
+      Stream
+        .emit[IO, Int](1)
+        .repeatN(10)
+        .spaced(1.second)
+        .interruptAfter(500.milliseconds)
+        .assertEmits(List(1))
+    }
   }
 
   test("spaced should not start immediately if startImmediately is set to false") {
-    Stream
-      .emit[IO, Int](1)
-      .repeatN(10)
-      .spaced(1.second, startImmediately = false)
-      .interruptAfter(500.milliseconds)
-      .assertEmpty()
+    TestControl.executeEmbed {
+      Stream
+        .emit[IO, Int](1)
+        .repeatN(10)
+        .spaced(1.second, startImmediately = false)
+        .interruptAfter(500.milliseconds)
+        .assertEmpty()
+    }
   }
 
   test("metered should not wait between events that last longer than the rate") {
-    Stream
-      .eval[IO, Int](IO.sleep(1.second).as(1))
-      .repeatN(10)
-      .metered(1.second)
-      .interruptAfter(4500.milliseconds)
-      .compile
-      .toList
-      .map(results => assert(results.size == 3))
+    TestControl.executeEmbed {
+      Stream
+        .eval[IO, Int](IO.sleep(1.second).as(1))
+        .repeatN(10)
+        .metered(1.second)
+        .interruptAfter(4500.milliseconds)
+        .compile
+        .toList
+        .map(results => assert(results.size == 3))
+    }
   }
 
   test("meteredStartImmediately should not wait between events that last longer than the rate") {
-    Stream
-      .eval[IO, Int](IO.sleep(1.second).as(1))
-      .repeatN(10)
-      .meteredStartImmediately(1.second)
-      .interruptAfter(4500.milliseconds)
-      .compile
-      .toList
-      .map(results => assert(results.size == 4))
+    TestControl.executeEmbed {
+      Stream
+        .eval[IO, Int](IO.sleep(1.second).as(1))
+        .repeatN(10)
+        .meteredStartImmediately(1.second)
+        .interruptAfter(4500.milliseconds)
+        .compile
+        .toList
+        .map(results => assert(results.size == 4))
+    }
   }
 
   test("spaced should wait between events") {
-    Stream
-      .eval[IO, Int](IO.sleep(1.second).as(1))
-      .repeatN(10)
-      .spaced(1.second)
-      .interruptAfter(4500.milliseconds)
-      .compile
-      .toList
-      .map(results => assert(results.size == 2))
+    TestControl.executeEmbed {
+      Stream
+        .eval[IO, Int](IO.sleep(1.second).as(1))
+        .repeatN(10)
+        .spaced(1.second)
+        .interruptAfter(4500.milliseconds)
+        .compile
+        .toList
+        .map(results => assert(results.size == 2))
+    }
   }
 
   test("mapAsyncUnordered") {
