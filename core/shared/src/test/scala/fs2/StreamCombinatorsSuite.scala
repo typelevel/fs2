@@ -787,11 +787,11 @@ class StreamCombinatorsSuite extends Fs2Suite {
       // this test example is designed to have good coverage of
       // the chunk manipulation logic in groupWithin
       val source =
-      chunk(from = 1, size = 3) ++
-        sleep ++
-        chunk(from = 4, size = 1) ++ longSleep ++
-        chunk(from = 5, size = 11) ++
-        chunk(from = 16, size = 7)
+        chunk(from = 1, size = 3) ++
+          sleep ++
+          chunk(from = 4, size = 1) ++ longSleep ++
+          chunk(from = 5, size = 11) ++
+          chunk(from = 16, size = 7)
 
       val expected = List(
         List(1, 2, 3),
