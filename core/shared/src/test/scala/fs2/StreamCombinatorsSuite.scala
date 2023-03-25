@@ -838,7 +838,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       case object SevenNotAllowed extends NoStackTrace
 
       val source = Stream
-        .unfold(0)(s => Some(s, s + 1))
+        .unfold(0)(s => Some((s, s + 1)))
         .covary[IO]
         .evalMap(n => if (n == 7) IO.raiseError(SevenNotAllowed) else IO.pure(n))
 
