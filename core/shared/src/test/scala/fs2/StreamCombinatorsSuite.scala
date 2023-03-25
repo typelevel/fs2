@@ -861,7 +861,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .flatMap { ref =>
               val source: Stream[IO, Int] =
                 Stream
-                  .unfold(0)(s => Some(s, s + 1))
+                  .unfold(0)(s => Some((s, s + 1)))
                   .covary[IO]
                   .meteredStartImmediately(1.second)
                   .interruptAfter(sourceTimeout)
