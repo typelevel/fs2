@@ -1471,7 +1471,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
         def endSupply(result: Either[Throwable, Unit]): F2[Unit] =
-          buffer.update(_.copy(endOfSupply = Some(result))) *> supply.releaseN(Int.MaxValue)
+          buffer.update(_.copy(endOfSupply = Some(result))) *> supply.releaseN(Int.MaxValue + outputLong)
 
         def endDemand(result: Either[Throwable, Unit]): F2[Unit] =
           buffer.update(_.copy(endOfDemand = Some(result))) *> demand.releaseN(Int.MaxValue)
