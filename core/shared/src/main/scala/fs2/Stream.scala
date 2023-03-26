@@ -4723,7 +4723,7 @@ object Stream extends StreamLowPriority {
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
-      * within 450 milliseconds:
+      * within 1 second:
       *
       * @example {{{
       * scala> import cats.effect.IO
