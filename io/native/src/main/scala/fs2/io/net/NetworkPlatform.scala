@@ -39,8 +39,8 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
   implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
     val _ = LiftIO[F]
-    val dns = Dns.forAsync[F]
-    forAsync
+    implicit val dns = Dns.forAsync[F]
+    forAsyncAndDns
   }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
