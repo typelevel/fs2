@@ -5222,6 +5222,7 @@ object Stream extends StreamLowPriority {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
+      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
       def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
       def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
         f(a).flatMap {
@@ -5366,6 +5367,8 @@ private[fs2] trait StreamLowPriority {
       override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
 
       override def unit: Stream[F, Unit] = Stream.unit
+
+      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
 
       override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
         fa.flatMap(f)
