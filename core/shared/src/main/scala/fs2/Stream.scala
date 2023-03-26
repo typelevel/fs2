@@ -4729,7 +4729,7 @@ object Stream extends StreamLowPriority {
       * scala> import cats.effect.IO
       * scala> import cats.effect.unsafe.implicits.global
       * scala> import scala.concurrent.duration._
-      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](2.seconds)).repeat.take(3)
+      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](1500.millis)).repeat.take(3)
       * scala> s.pull
       *      |  .timed { timedPull =>
       *      |     def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
