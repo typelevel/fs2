@@ -1449,9 +1449,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           // emit immediately or wait before doing so, subsequently lowering the supply by however
           // many elements have been flushed (excluding the element already awaited, if needed)
           val emitNextChunk: F2[Chunk[O]] = for {
-            isEmpty <- isBufferEmpty
-            (flushed, awaited) <- if (isEmpty) awaitChunk.map((_, 1)) else emitChunk.map((_, 0))
-            _ <- supply.acquireN((flushed.size.toLong - awaited).max(0))
+            mustWait <- isBufferEmpty
+            flushed <- if (mustWait) awaitChunk else emitChunk
+            awaitedCount = if (mustWait) 1 else 0
+            _ <- supply.acquireN((flushed.size.toLong - awaitedCount).max(0))
           } yield flushed
 
           val onTimeout: F2[Chunk[O]] =

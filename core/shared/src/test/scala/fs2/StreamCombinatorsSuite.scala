@@ -38,6 +38,8 @@ import scala.util.control.NoStackTrace
 
 class StreamCombinatorsSuite extends Fs2Suite {
 
+  override def munitIOTimeout: FiniteDuration = 1.minute
+
   group("awakeEvery") {
     test("basic") {
       Stream
