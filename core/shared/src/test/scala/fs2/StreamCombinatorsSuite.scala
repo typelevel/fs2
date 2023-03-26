@@ -39,6 +39,8 @@ import scala.util.control.NoStackTrace
 class StreamCombinatorsSuite extends Fs2Suite {
   override def munitIOTimeout = 1.minute
 
+  // override def scalaCheckInitialSeed = "4_9X5VOJxLTr_rDxGix4ltoYWqEHXslYbXxF8wkta_O="
+
   group("awakeEvery") {
     test("basic") {
       Stream
@@ -780,7 +782,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val t = 200.millis
       val size = 5
       val sleep = Stream.sleep_[IO](2 * t)
-      val longSleep = Stream.sleep_[IO](10 * t)
+      val longSleep = sleep.repeatN(5)
 
       def chunk(from: Int, size: Int) =
         Stream.range(from, from + size).chunkAll.unchunks
@@ -866,17 +868,43 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .assertEquals(0.millis)
     }
 
-    test("stress test: all elements are processed") {
+    test("stress test (short execution): all elements are processed") {
 
       val rangeLength = 100000
 
       Stream
-        .eval(Ref.of[IO, Int](0))
+        .eval(Ref[IO].of(0))
         .flatMap { counter =>
           Stream
             .range(0, rangeLength)
             .covary[IO]
+            .groupWithin(256, 100.micros)
+            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+        }
+        .compile
+        .lastOrError
+        .assertEquals(rangeLength)
+
+    }
+
+    // ignoring because it's a long running test (around 30 minutes), but it's a useful test to have
+    // to asses the validity of permits management and timeout logic over an extended period of time
+    test("stress test (long execution): all elements are processed".ignore) {
+
+      val rangeLength = 5000000
+
+      Stream
+        .eval(Ref[IO].of(0))
+        .flatMap { counter =>
+          Stream
+            .range(0, rangeLength)
+            .covary[IO]
+            .evalTap(d => IO.sleep((d % 500 + 2).micros))
             .groupWithin(4096, 100.micros)
+            .zipWithIndex
+            .evalMap { case (ch, idx) =>
+              IO.println(s"chunk # $idx, size is: ${ch.size}").whenA(idx % 1000 == 0).as(ch)
+            }
             .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
         }
         .compile
@@ -936,6 +964,29 @@ class StreamCombinatorsSuite extends Fs2Suite {
           // emitting whatever was accumulated at the time of interruption
           (sourceTimeout, List(0, 1, 2, 3, 4, 5))
         )
+    }
+
+    test(
+      "if the buffer fills up at the same time when the timeout expires there won't be a deadlock"
+    ) {
+
+      forAllF { (s0: Stream[Pure, Int], b: Byte) =>
+        TestControl
+          .executeEmbed {
+
+            // preventing empty or singleton streams that would bypass the logic being tested
+            val n = b.max(2)
+            val s = s0 ++ Stream.range(0, n)
+
+            // every n seconds there will be n elements in the buffer at same time when the timeout expires
+            s
+              .covary[IO]
+              .metered(1.second)
+              .groupWithin(n, n.seconds)
+              .map(_.toList)
+              .assertCompletes
+          }
+      }
     }
   }
 

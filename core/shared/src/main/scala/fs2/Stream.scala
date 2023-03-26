@@ -1372,12 +1372,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   }
 
   /** Splits this stream into a stream of chunks of elements, such that
-    * 1. each chunk in the output has at most `outputSize` elements, and
+    * 1. each chunk in the output has at most `chunkSize` elements, and
     * 2. the concatenation of those chunks, which is obtained by calling
     *    `unchunks`, yields the same element sequence as this stream.
     *
-    * As `this` stream emits input elements, the result stream them in a
-    * waiting buffer, until it has enough elements to emit next chunk.
+    * As `this` stream ingests input elements, they will be collected in a
+    * waiting buffer, until it has enough elements to emit the next chunk.
     *
     * To avoid holding input elements for too long, this method takes a
     * `timeout`. This timeout is reset after each output chunk is emitted.
@@ -1397,6 +1397,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * When the input stream terminates, any accumulated elements are emitted
     * immediately in a chunk, even if `timeout` has not expired.
     *
+    * If the chunkSize is equal to zero the stream will block until the
+    * timeout expires at which point it will terminate.
+    *
     * @param chunkSize the maximum size of chunks emitted by resulting stream.
     * @param timeout maximum time that input elements are held in the buffer
     *                 before being emitted by the resulting stream.
@@ -1405,58 +1408,63 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       chunkSize: Int,
       timeout: FiniteDuration
   )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
-    if (timeout.toNanos == 0 || chunkSize == 1) chunkN(chunkSize)
+    if (chunkSize == 0) Stream.sleep_[F2](timeout)
+    else if (timeout.toNanos == 0 || chunkSize == 1) chunkN(chunkSize)
     else
       Stream.force {
         for {
           supply <- Semaphore[F2](0)
           supplyEnded <- SignallingRef[F2].of(false)
           buffer <- Queue.bounded[F2, O](chunkSize) // buffering and backpressure
-          awaitFirstChunk = Stream.fromQueueUnterminated(buffer, chunkSize).chunkMin(1).head
         } yield {
-          // note: it can produce an empty chunk
-          val emitChunk: F2[Chunk[O]] = buffer.tryTakeN(Some(chunkSize)).map(Chunk.seq)
 
-          // we need to check the buffer size, rather than the available supply since
-          // the supply is increased at the end so it won't always report the buffer size accurately
-          val isBufferEmpty: F2[Boolean] = buffer.size.map(_ == 0)
+          def bufferSizeIs(n: Int): F2[Boolean] =
+            buffer.size.map(_ == n)
 
-          val streamExhausted: F2[Boolean] = (isBufferEmpty, supplyEnded.get).mapN(_ && _)
+          val supplyUnavailable: F2[Boolean] = supply.available.map(_ == 0)
 
-          // "subscribing" to the buffer waiting for the first chunk. Note: we
-          // can't wait forever: at most we can wait until the supply has ended
-          val awaitChunk: F2[Chunk[O]] = {
+          val emitChunk: F2[Chunk[O]] =
+            buffer.tryTakeN(Some(chunkSize)).map(Chunk.seq)
 
-            val waitForOne = Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
+          val streamExhausted: F2[Boolean] =
+            (bufferSizeIs(0), supplyEnded.get).mapN(_ && _)
 
-            // we need to check again after waiting: (we might have just received the final chunk,
-            // in that case we need to flush any residual elements in the buffer without blocking
-            waitForOne *> F.ifM(supplyEnded.get)(emitChunk, awaitFirstChunk.compile.lastOrError)
-          }
-
-          //  releasing a number of permits equal to {chunkSize} is enough in most cases, but in
-          //  order to ensure prompt termination of the consumer on interruption even when the timeout
-          //  has not kicked in yet nor we've seen enough elements we need to max out the supply
-          val maxOutSupply: F2[Unit] = supply.releaseN(Int.MaxValue.toLong + chunkSize)
-
-          // enabling termination of the consumer stream when the producer completes naturally
-          // (i.e runs out of elements) or when the combined stream (consumer + producer) is interrupted
-          val endSupply: F2[Unit] = supplyEnded.set(true) *> maxOutSupply
+          //  in order to ensure prompt termination on interruption even when the timeout has not
+          //  kicked in yet or we haven't seen enough elements we need to max out the supply
+          val endSupply: F2[Unit] =
+            supplyEnded.set(true) *> supply.releaseN(Int.MaxValue.toLong + chunkSize)
 
           val enqueue: F2[Unit] =
-            foreach(buffer.offer(_) <* supply.release).compile.drain.guarantee(endSupply)
+            foreach(buffer.offer(_) *> supply.release).compile.drain.guarantee(endSupply)
+
+          val awaitChunk: F2[Chunk[O]] = {
+            // we can't wait forever: at most we can wait until the supply has ended
+            val waitForOne = Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
+
+            // "subscribing" to the buffer pulling the first chunk when it becomes available
+            val pullChunk = Stream.fromQueueUnterminated(buffer, chunkSize).chunks.head.compile.lastOrError
+
+            // we need to check the supply after waiting: (we might have just received the final chunk,
+            // in that case we need to flush any residual elements in the buffer without blocking)
+            waitForOne *> F.ifM(supplyEnded.get)(emitChunk, pullChunk)
+          }
 
           // emit immediately or wait before doing so, subsequently lowering the supply by however
           // many elements have been flushed (excluding the element already awaited, if needed)
-          val emitNextChunk: F2[Chunk[O]] = for {
-            mustWait <- isBufferEmpty
-            flushed <- if (mustWait) awaitChunk else emitChunk
-            awaitedCount = if (mustWait) 1 else 0
+          val emitWhenAvailableAndLowerSupply: F2[Chunk[O]] = for {
+            noSupply <- supplyUnavailable
+            flushed <- if (noSupply) awaitChunk else emitChunk
+            awaitedCount = if (noSupply) 1 else 0
             _ <- supply.acquireN((flushed.size.toLong - awaitedCount).max(0))
           } yield flushed
 
-          val onTimeout: F2[Chunk[O]] =
+          // edge case: supply semaphore loses the race, but acquires the permits. In such scenario
+          // we emit the chunk without lowering the supply, since it has already been lowered
+          val onTimeout: F2[Chunk[O]] = {
+            val edgeCase = (supplyUnavailable, bufferSizeIs(chunkSize)).mapN(_ && _)
+            val emitNextChunk = F.ifM(edgeCase)(emitChunk, emitWhenAvailableAndLowerSupply)
             F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), emitNextChunk)
+          }
 
           val dequeue: F2[Chunk[O]] =
             F.race(supply.acquireN(chunkSize.toLong), F.sleep(timeout)).flatMap {
