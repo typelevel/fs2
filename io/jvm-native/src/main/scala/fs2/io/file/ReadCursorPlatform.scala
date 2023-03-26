@@ -32,5 +32,5 @@ private[file] trait ReadCursorCompanionPlatform {
       path: JPath,
       flags: Seq[OpenOption] = Nil
   ): Resource[F, ReadCursor[F]] =
-    Files[F].readCursor(path, flags)
+    Files.forAsync[F].readCursor(path, flags)
 }

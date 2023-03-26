@@ -47,7 +47,7 @@ package object file {
   def readAll[F[_]: Async](
       path: JPath,
       chunkSize: Int
-  ): Stream[F, Byte] = Files[F].readAll(path, chunkSize)
+  ): Stream[F, Byte] = Files.forAsync[F].readAll(path, chunkSize)
 
   /** Reads a range of data synchronously from the file at the specified `java.nio.file.Path`.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
@@ -59,7 +59,7 @@ package object file {
       chunkSize: Int,
       start: Long,
       end: Long
-  ): Stream[F, Byte] = Files[F].readRange(path, chunkSize, start, end)
+  ): Stream[F, Byte] = Files.forAsync[F].readRange(path, chunkSize, start, end)
 
   /** Returns an infinite stream of data from the file at the specified path.
     * Starts reading from the specified offset and upon reaching the end of the file,
@@ -76,7 +76,7 @@ package object file {
       chunkSize: Int,
       offset: Long = 0L,
       pollDelay: FiniteDuration = 1.second
-  ): Stream[F, Byte] = Files[F].tail(path, chunkSize, offset, pollDelay)
+  ): Stream[F, Byte] = Files.forAsync[F].tail(path, chunkSize, offset, pollDelay)
 
   /** Writes all data to the file at the specified `java.nio.file.Path`.
     *
@@ -86,7 +86,7 @@ package object file {
   def writeAll[F[_]: Async](
       path: JPath,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
-  ): Pipe[F, Byte, Nothing] = Files[F].writeAll(path, flags)
+  ): Pipe[F, Byte, Nothing] = Files.forAsync[F].writeAll(path, flags)
 
   /** Writes all data to a sequence of files, each limited in size to `limit`.
     *
@@ -101,7 +101,7 @@ package object file {
       limit: Long,
       flags: Seq[StandardOpenOption] = List(StandardOpenOption.CREATE)
   )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
-    Files[F].writeRotate(computePath, limit, flags)
+    Files.forAsync[F].writeRotate(computePath, limit, flags)
 
   /** Creates a [[Watcher]] for the default file system.
     *
@@ -110,7 +110,7 @@ package object file {
     */
   @deprecated("Use Files[F].watcher", "3.0.0")
   def watcher[F[_]](implicit F: Async[F]): Resource[F, DeprecatedWatcher[F]] =
-    Files[F].watcher
+    Files.forAsync[F].watcher
 
   /** Watches a single path.
     *
@@ -123,7 +123,7 @@ package object file {
       modifiers: Seq[WatchEvent.Modifier] = Nil,
       pollTimeout: FiniteDuration = 1.second
   )(implicit F: Async[F]): Stream[F, DeprecatedWatcher.Event] =
-    Files[F].watch(path, types, modifiers, pollTimeout)
+    Files.forAsync[F].watch(path, types, modifiers, pollTimeout)
 
   /** Checks if a file exists
     *
@@ -137,7 +137,7 @@ package object file {
       path: JPath,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Boolean] =
-    Files[F].exists(path, flags)
+    Files.forAsync[F].exists(path, flags)
 
   /** Get file permissions as set of `PosixFilePermission`.
     *
@@ -148,7 +148,7 @@ package object file {
       path: JPath,
       flags: Seq[LinkOption] = Seq.empty
   ): F[Set[PosixFilePermission]] =
-    Files[F].permissions(path, flags)
+    Files.forAsync[F].permissions(path, flags)
 
   /** Set file permissions from set of `PosixFilePermission`.
     *
@@ -159,7 +159,7 @@ package object file {
       path: JPath,
       permissions: Set[PosixFilePermission]
   ): F[JPath] =
-    Files[F].setPermissions(path, permissions)
+    Files.forAsync[F].setPermissions(path, permissions)
 
   /** Copies a file from the source to the target path,
     *
@@ -171,7 +171,7 @@ package object file {
       target: JPath,
       flags: Seq[CopyOption] = Seq.empty
   ): F[JPath] =
-    Files[F].copy(source, target, flags)
+    Files.forAsync[F].copy(source, target, flags)
 
   /** Deletes a file.
     *
@@ -180,13 +180,13 @@ package object file {
     */
   @deprecated("Use Files[F].delete", "3.0.0")
   def delete[F[_]: Async](path: JPath): F[Unit] =
-    Files[F].delete(path)
+    Files.forAsync[F].delete(path)
 
   /** Like `delete`, but will not fail when the path doesn't exist.
     */
   @deprecated("Use Files[F].deleteIfExists", "3.0.0")
   def deleteIfExists[F[_]: Async](path: JPath): F[Boolean] =
-    Files[F].deleteIfExists(path)
+    Files.forAsync[F].deleteIfExists(path)
 
   /** Recursively delete a directory
     */
@@ -195,13 +195,13 @@ package object file {
       path: JPath,
       options: Set[FileVisitOption] = Set.empty
   ): F[Unit] =
-    Files[F].deleteDirectoryRecursively(path, options)
+    Files.forAsync[F].deleteDirectoryRecursively(path, options)
 
   /** Returns the size of a file (in bytes).
     */
   @deprecated("Use Files[F].size", "3.0.0")
   def size[F[_]: Async](path: JPath): F[Long] =
-    Files[F].size(path)
+    Files.forAsync[F].size(path)
 
   /** Moves (or renames) a file from the source to the target path.
     *
@@ -213,7 +213,7 @@ package object file {
       target: JPath,
       flags: Seq[CopyOption] = Seq.empty
   ): F[JPath] =
-    Files[F].move(source, target, flags)
+    Files.forAsync[F].move(source, target, flags)
 
   /** Creates a stream containing the path of a temporary file.
     *
@@ -226,7 +226,7 @@ package object file {
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, JPath] =
-    Stream.resource(Files[F].tempFile(Some(dir), prefix, suffix, attributes))
+    Stream.resource(Files.forAsync[F].tempFile(Some(dir), prefix, suffix, attributes))
 
   /** Creates a resource containing the path of a temporary file.
     *
@@ -239,7 +239,7 @@ package object file {
       suffix: String = ".tmp",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, JPath] =
-    Files[F].tempFile(Some(dir), prefix, suffix, attributes)
+    Files.forAsync[F].tempFile(Some(dir), prefix, suffix, attributes)
 
   /** Creates a stream containing the path of a temporary directory.
     *
@@ -251,7 +251,7 @@ package object file {
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Stream[F, JPath] =
-    Stream.resource(Files[F].tempDirectory(Some(dir), prefix, attributes))
+    Stream.resource(Files.forAsync[F].tempDirectory(Some(dir), prefix, attributes))
 
   /** Creates a resource containing the path of a temporary directory.
     *
@@ -263,7 +263,7 @@ package object file {
       prefix: String = "",
       attributes: Seq[FileAttribute[_]] = Seq.empty
   ): Resource[F, JPath] =
-    Files[F].tempDirectory(Some(dir), prefix, attributes)
+    Files.forAsync[F].tempDirectory(Some(dir), prefix, attributes)
 
   /** Creates a new directory at the given path
     */
@@ -272,7 +272,7 @@ package object file {
       path: JPath,
       flags: Seq[FileAttribute[_]] = Seq.empty
   ): F[JPath] =
-    Files[F].createDirectory(path, flags)
+    Files.forAsync[F].createDirectory(path, flags)
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
@@ -281,13 +281,13 @@ package object file {
       path: JPath,
       flags: Seq[FileAttribute[_]] = Seq.empty
   ): F[JPath] =
-    Files[F].createDirectories(path, flags)
+    Files.forAsync[F].createDirectories(path, flags)
 
   /** Creates a stream of `Path`s inside a directory.
     */
   @deprecated("Use Files[F].directoryStream", "3.0.0")
   def directoryStream[F[_]: Async](path: JPath): Stream[F, JPath] =
-    Files[F].directoryStream(path)
+    Files.forAsync[F].directoryStream(path)
 
   /** Creates a stream of `Path`s inside a directory, filtering the results by the given predicate.
     */
@@ -296,7 +296,7 @@ package object file {
       path: JPath,
       filter: JPath => Boolean
   ): Stream[F, JPath] =
-    Files[F].directoryStream(path, filter)
+    Files.forAsync[F].directoryStream(path, filter)
 
   /** Creates a stream of `Path`s inside a directory which match the given glob.
     */
@@ -305,13 +305,13 @@ package object file {
       path: JPath,
       glob: String
   ): Stream[F, JPath] =
-    Files[F].directoryStream(path, glob)
+    Files.forAsync[F].directoryStream(path, glob)
 
   /** Creates a stream of `Path`s contained in a given file tree. Depth is unlimited.
     */
   @deprecated("Use Files[F].walk", "3.0.0")
   def walk[F[_]: Async](start: JPath): Stream[F, JPath] =
-    Files[F].walk(start)
+    Files.forAsync[F].walk(start)
 
   /** Creates a stream of `Path`s contained in a given file tree, respecting the supplied options. Depth is unlimited.
     */
@@ -320,7 +320,7 @@ package object file {
       start: JPath,
       options: Seq[FileVisitOption]
   ): Stream[F, JPath] =
-    Files[F].walk(start, options)
+    Files.forAsync[F].walk(start, options)
 
   /** Creates a stream of `Path`s contained in a given file tree down to a given depth.
     */
@@ -330,5 +330,5 @@ package object file {
       maxDepth: Int,
       options: Seq[FileVisitOption] = Seq.empty
   ): Stream[F, JPath] =
-    Files[F].walk(start, maxDepth, options)
+    Files.forAsync[F].walk(start, maxDepth, options)
 }

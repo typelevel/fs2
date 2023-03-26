@@ -120,7 +120,9 @@ private[fs2] trait ioplatform {
             .concurrently(
               Stream.eval(
                 F.async_[Unit](cb =>
-                  duplex.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                  duplex.end { e =>
+                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  }
                 )
               )
             )
@@ -164,8 +166,11 @@ private[fs2] trait ioplatform {
             if (endAfterUse)
               Stream.exec {
                 F.async[Unit] { cb =>
-                  F.delay(writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException))))
-                    .as(Some(F.unit))
+                  F.delay(
+                    writable.end(e =>
+                      cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                    )
+                  ).as(Some(F.unit))
                 }
               }
             else Stream.empty

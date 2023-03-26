@@ -23,6 +23,7 @@ package fs2
 package io
 package net
 
+import cats.effect.IO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import com.comcast.ip4s.Host
@@ -33,8 +34,10 @@ import fs2.io.net.tls.TLSContext
 
 private[net] trait NetworkPlatform[F[_]]
 
-private[net] trait NetworkCompanionPlatform { self: Network.type =>
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
+  implicit def forIO: Network[IO] = forAsync
+
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     new UnsealedNetwork[F] {
 
       private lazy val socketGroup = SocketGroup.forAsync[F]

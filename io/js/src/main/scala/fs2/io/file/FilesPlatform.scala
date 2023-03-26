@@ -36,7 +36,7 @@ private[file] trait FilesPlatform[F[_]]
 
 private[fs2] trait FilesCompanionPlatform {
 
-  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
+  def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
   private final class AsyncFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
     private def combineFlags(flags: Flags): Double =
