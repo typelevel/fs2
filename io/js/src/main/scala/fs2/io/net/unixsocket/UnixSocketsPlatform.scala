@@ -39,7 +39,7 @@ import scala.scalajs.js
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forIO: UnixSockets[IO] = forLiftIO
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[IO] = {
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
     val _ = LiftIO[F]
     forAsyncAndFiles
   }
