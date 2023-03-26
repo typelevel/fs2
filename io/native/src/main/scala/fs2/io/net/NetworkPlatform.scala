@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
@@ -34,7 +35,13 @@ private[net] trait NetworkPlatform[F[_]]
 
 private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
 
-  implicit def forIO: Network[IO] = forAsyncAndDns
+  def forIO: Network[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
+    val _ = LiftIO[F]
+    val dns = Dns.forAsync[F]
+    forAsync
+  }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))

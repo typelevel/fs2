@@ -23,6 +23,7 @@ package fs2
 package io
 
 import cats.effect.IO
+import cats.effect.kernel.Async
 import cats.effect.kernel.Sync
 import fs2.compression.Compression
 
@@ -33,4 +34,6 @@ private[io] trait compressionplatform {
   implicit def fs2ioCompressionForIO: Compression[IO] = Compression.forSync
 
   def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
+
+  def fs2ioCompressionForAsync[F[_]: Async]: Compression[F] = Compression.forSync
 }

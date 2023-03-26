@@ -24,6 +24,7 @@ package io
 package file
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.Resource
 import cats.effect.kernel.Async
 import cats.effect.std.Hotswap
@@ -452,7 +453,12 @@ private[fs2] trait FilesLowPriority { this: Files.type =>
 }
 
 object Files extends FilesCompanionPlatform with FilesLowPriority {
-  implicit def forIO: Files[IO] = forAsync
+  def forIO: Files[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Files[F] = {
+    val _ = LiftIO[F]
+    forAsync
+  }
 
   private[fs2] abstract class UnsealedFiles[F[_]](implicit F: Async[F]) extends Files[F] {
 

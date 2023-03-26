@@ -22,6 +22,8 @@
 package fs2.io.process
 
 import cats.effect.IO
+import cats.effect.LiftIO
+import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 
 sealed trait Processes[F[_]] {
@@ -35,5 +37,10 @@ private[fs2] trait UnsealedProcesses[F[_]] extends Processes[F]
 object Processes extends ProcessesCompanionPlatform {
   def apply[F[_]: Processes]: Processes[F] = implicitly
 
-  implicit val forIO: Processes[IO] = forAsync
+  def forIO: Processes[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Processes[F] = {
+    val _ = LiftIO[F]
+    forAsync
+  }
 }
