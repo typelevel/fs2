@@ -1442,7 +1442,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             val waitForOne = Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
 
             // "subscribing" to the buffer pulling the first chunk when it becomes available
-            val pullChunk = Stream.fromQueueUnterminated(buffer, chunkSize).chunks.head.compile.lastOrError
+            val pullChunk =
+              Stream.fromQueueUnterminated(buffer, chunkSize).chunks.head.compile.lastOrError
 
             // we need to check the supply after waiting: (we might have just received the final chunk,
             // in that case we need to flush any residual elements in the buffer without blocking)
