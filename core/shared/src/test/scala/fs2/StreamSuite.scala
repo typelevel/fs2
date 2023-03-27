@@ -1033,7 +1033,9 @@ class StreamSuite extends Fs2Suite {
   test("Unintended unchunking when using Stream#monadErrorInstance") {
     def generateTuple(pipe: Pipe[IO, Int, (Int, Int)]) =
       (Stream(1, 2, 3) ++ Stream(4, 5, 6)).covary[IO].through(pipe).chunks.compile.toList
-    assertEquals(generateTuple(_.map(e => e -> (e + 1))).unsafeRunSync(), generateTuple(_.fproduct(_ + 1)).unsafeRunSync())
+    val lhs = generateTuple(_.map(e => e -> (e + 1)))
+    val rhs = generateTuple(_.fproduct(_ + 1))
+    (lhs, rhs).mapN(assertEquals(_, _))
   }
 
   group("Stream[F, Either[Throwable, O]]") {
