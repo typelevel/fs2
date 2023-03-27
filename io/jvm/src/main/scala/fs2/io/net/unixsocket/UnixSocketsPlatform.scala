@@ -22,6 +22,7 @@
 package fs2.io.net.unixsocket
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all._
@@ -34,7 +35,12 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forIO: UnixSockets[IO] = forAsyncAndFiles
+  def forIO: UnixSockets[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
 
   def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
     if (JdkUnixSockets.supported) JdkUnixSockets.forAsyncAndFiles
