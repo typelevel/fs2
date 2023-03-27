@@ -1024,8 +1024,15 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
-  test("Unintended unchunking when using Monad instance of Stream") {
-    def generateTuple(pipe: Pipe[fs2.Pure, Int, (Int, Int)]) = (Stream(1, 2, 3) ++ Stream(4, 5, 6)).through(pipe).chunks.toList
+  test("Unintended unchunking when using StreamLowPriority#monadInstance") {
+    def generateTuple(pipe: Pipe[fs2.Pure, Int, (Int, Int)]) =
+      (Stream(1, 2, 3) ++ Stream(4, 5, 6)).through(pipe).chunks.toList
+    assertEquals(generateTuple(_.map(e => e -> (e + 1))), generateTuple(_.fproduct(_ + 1)))
+  }
+
+  test("Unintended unchunking when using Stream#monadErrorInstance") {
+    def generateTuple(pipe: Pipe[fs2.Pure, Int, (Int, Int)]) =
+      (Stream(1, 2, 3) ++ Stream(4, 5, 6)).covary[Pure].through(pipe).chunks.compile.toList
     assertEquals(generateTuple(_.map(e => e -> (e + 1))), generateTuple(_.fproduct(_ + 1)))
   }
 
