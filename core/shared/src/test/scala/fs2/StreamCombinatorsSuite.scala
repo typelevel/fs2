@@ -975,7 +975,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .executeEmbed {
 
             // preventing empty or singleton streams that would bypass the logic being tested
-            val n = b.max(2)
+            val n = b.max(2).toInt
             val s = s0 ++ Stream.range(0, n)
 
             // every n seconds there will be n elements in the buffer at same time when the timeout expires
