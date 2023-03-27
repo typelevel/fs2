@@ -39,8 +39,6 @@ import scala.util.control.NoStackTrace
 class StreamCombinatorsSuite extends Fs2Suite {
   override def munitIOTimeout = 1.minute
 
-  // override def scalaCheckInitialSeed = "4_9X5VOJxLTr_rDxGix4ltoYWqEHXslYbXxF8wkta_O="
-
   group("awakeEvery") {
     test("basic") {
       Stream
