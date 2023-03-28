@@ -885,30 +885,27 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     }
 
-    // ignoring because it's a long running test (around 30 minutes), but it's a useful test to have
+    // ignoring because it's a long running test (around 15 minutes), but it's a useful test to have
     // to asses the validity of permits management and timeout logic over an extended period of time
     test("stress test (long execution): all elements are processed".ignore) {
 
-      val rangeLength = 5000000
+      TestControl.executeEmbed {
+        val rangeLength = 5000000
 
-      Stream
-        .eval(Ref[IO].of(0))
-        .flatMap { counter =>
-          Stream
-            .range(0, rangeLength)
-            .covary[IO]
-            .evalTap(d => IO.sleep((d % 500 + 2).micros))
-            .groupWithin(4096, 100.micros)
-            .zipWithIndex
-            .evalMap { case (ch, idx) =>
-              IO.println(s"chunk # $idx, size is: ${ch.size}").whenA(idx % 1000 == 0).as(ch)
-            }
-            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
-        }
-        .compile
-        .lastOrError
-        .assertEquals(rangeLength)
-
+        Stream
+          .eval(Ref[IO].of(0))
+          .flatMap { counter =>
+            Stream
+              .range(0, rangeLength)
+              .covary[IO]
+              .evalTap(d => IO.sleep((d % 500 + 2).micros))
+              .groupWithin(4096, 100.micros)
+              .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+          }
+          .compile
+          .lastOrError
+          .assertEquals(rangeLength)
+      }
     }
 
     test("upstream failures are propagated downstream") {
@@ -965,7 +962,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test(
-      "if the buffer fills up at the same time when the timeout expires there won't be a deadlock"
+      "Edge case: if the buffer fills up and timeout expires at the same time there won't be a deadlock"
     ) {
 
       forAllF { (s0: Stream[Pure, Int], b: Byte) =>
@@ -976,7 +973,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
             val n = b.max(2).toInt
             val s = s0 ++ Stream.range(0, n)
 
-            // every n seconds there will be n elements in the buffer at same time when the timeout expires
+            // the buffer will reach its full capacity every
+            // n seconds exactly when the timeout expires
             s
               .covary[IO]
               .metered(1.second)

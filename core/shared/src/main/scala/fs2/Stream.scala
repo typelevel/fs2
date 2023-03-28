@@ -1421,32 +1421,32 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           def bufferSizeIs(n: Int): F2[Boolean] =
             buffer.size.map(_ == n)
 
-          val supplyUnavailable: F2[Boolean] = supply.available.map(_ == 0)
-
-          val emitChunk: F2[Chunk[O]] =
-            buffer.tryTakeN(Some(chunkSize)).map(Chunk.seq)
+          val supplyUnavailable: F2[Boolean] =
+            supply.available.map(_ == 0)
 
           val streamExhausted: F2[Boolean] =
             (bufferSizeIs(0), supplyEnded.get).mapN(_ && _)
 
-          //  in order to ensure prompt termination on interruption even when the timeout has not
-          //  kicked in yet or we haven't seen enough elements we need to max out the supply
+          // emitting a chunk without blocking (might produce an empty chunk)
+          val emitChunk: F2[Chunk[O]] =
+            buffer.tryTakeN(Some(chunkSize)).map(Chunk.seq)
+
+          // in order to ensure prompt termination on interruption even when the timeout has not
+          // kicked in yet or we haven't seen enough elements we need to max out the supply
           val endSupply: F2[Unit] =
             supplyEnded.set(true) *> supply.releaseN(Int.MaxValue.toLong + chunkSize)
-
-          val enqueue: F2[Unit] =
-            foreach(buffer.offer(_) *> supply.release).compile.drain.guarantee(endSupply)
 
           val awaitChunk: F2[Chunk[O]] = {
             // we can't wait forever: at most we can wait until the supply has ended
             val waitForOne = Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
 
-            // "subscribing" to the buffer pulling the first chunk when it becomes available
+            // "subscribing" to the buffer blocking until the first chunk becomes available
             val pullChunk =
               Stream.fromQueueUnterminated(buffer, chunkSize).chunks.head.compile.lastOrError
 
-            // we need to check the supply after waiting: (we might have just received the final chunk,
-            // in that case we need to flush any residual elements in the buffer without blocking)
+            // we need to check if the supply has ended after waiting: (we might have just reached
+            // the end of the stream, with or without receiving any element: since we don't know
+            // whether or not we have elements to flush, we must emit a chunk without blocking)
             waitForOne *> F.ifM(supplyEnded.get)(emitChunk, pullChunk)
           }
 
@@ -1466,6 +1466,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             val emitNextChunk = F.ifM(edgeCase)(emitChunk, emitWhenAvailableAndLowerSupply)
             F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), emitNextChunk)
           }
+
+          val enqueue: F2[Unit] =
+            foreach(buffer.offer(_) *> supply.release).compile.drain.guarantee(endSupply)
 
           val dequeue: F2[Chunk[O]] =
             F.race(supply.acquireN(chunkSize.toLong), F.sleep(timeout)).flatMap {
