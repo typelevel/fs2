@@ -23,6 +23,7 @@ package fs2
 package io.net.unixsocket
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
@@ -36,7 +37,12 @@ import fs2.io.internal.facade
 import scala.scalajs.js
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forIO: UnixSockets[IO] = forAsyncAndFiles
+  def forIO: UnixSockets[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
 
   def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
     forAsyncAndFiles(Files.forAsync(F), F)
