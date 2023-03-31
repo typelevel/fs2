@@ -160,18 +160,28 @@ object Watcher {
   }
 
   /** Creates a watcher for the default file system. */
-  def default[F[_]](implicit F: Async[F]): Resource[F, Watcher[F]] =
+  def default[F[_]: Files](implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource
       .eval(F.blocking(FileSystems.getDefault))
       .flatMap(fromFileSystem(_))
 
+  @deprecated("Use overload with implicit Async and Files", "3.7.0")
+  def default[F[_]](F: Async[F]): Resource[F, Watcher[F]] =
+    default(Files.forAsync(F), F)
+
   /** Creates a watcher for the supplied file system. */
-  def fromFileSystem[F[_]](
+  def fromFileSystem[F[_]: Files](
       fs: FileSystem
   )(implicit F: Async[F]): Resource[F, Watcher[F]] =
     Resource(F.blocking(fs.newWatchService).flatMap { ws =>
       fromWatchService(ws).map(w => w -> F.blocking(ws.close))
     })
+
+  @deprecated("Use overload with implicit Async and Files", "3.7.0")
+  def fromFileSystem[F[_]](
+      fs: FileSystem,
+      F: Async[F]
+  ): Resource[F, Watcher[F]] = fromFileSystem(fs)(Files.forAsync(F), F)
 
   private case class Registration[F[_]](
       path: JPath,
@@ -185,14 +195,20 @@ object Watcher {
   )
 
   /** Creates a watcher for the supplied NIO `WatchService`. */
-  def fromWatchService[F[_]](
+  def fromWatchService[F[_]: Files](
       ws: WatchService
   )(implicit F: Async[F]): F[Watcher[F]] =
     Ref
       .of[F, List[Registration[F]]](Nil)
       .map(new DefaultWatcher(ws, _))
 
-  private class DefaultWatcher[F[_]](
+  @deprecated("Use overload with implicit Async and Files", "3.7.0")
+  def fromWatchService[F[_]](
+      ws: WatchService,
+      F: Async[F]
+  ): F[Watcher[F]] = fromWatchService(ws)(Files.forAsync(F), F)
+
+  private class DefaultWatcher[F[_]: Files](
       ws: WatchService,
       registrations: Ref[F, List[Registration[F]]]
   )(implicit

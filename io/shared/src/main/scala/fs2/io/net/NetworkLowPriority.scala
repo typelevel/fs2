@@ -19,21 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
+package fs2.io.net
 
-import cats.effect.IO
-import cats.effect.kernel.Async
-import cats.effect.kernel.Sync
-import fs2.compression.Compression
+import cats.effect.Async
 
-private[io] trait compressionplatform {
-
-  type ZipException = java.util.zip.ZipException
-
-  implicit def fs2ioCompressionForIO: Compression[IO] = Compression.forSync
-
-  def fs2ioCompressionForSync[F[_]: Sync]: Compression[F] = Compression.forSync
-
-  def fs2ioCompressionForAsync[F[_]: Async]: Compression[F] = Compression.forSync
+private[fs2] trait NetworkLowPriority { this: Network.type =>
+  @deprecated("Add Network constraint or use forAsync", "3.7.0")
+  implicit def implicitForAsync[F[_]: Async]: Network[F] = forAsync
 }

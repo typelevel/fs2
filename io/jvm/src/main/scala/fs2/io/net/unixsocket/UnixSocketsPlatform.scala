@@ -21,6 +21,8 @@
 
 package fs2.io.net.unixsocket
 
+import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all._
@@ -33,15 +35,25 @@ import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    if (JdkUnixSockets.supported) JdkUnixSockets.forAsync
-    else if (JnrUnixSockets.supported) JnrUnixSockets.forAsync
+  def forIO: UnixSockets[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
+
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
+    if (JdkUnixSockets.supported) JdkUnixSockets.forAsyncAndFiles
+    else if (JnrUnixSockets.supported) JnrUnixSockets.forAsyncAndFiles
     else
       throw new UnsupportedOperationException(
         """Must either run on JDK 16+ or have "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
       )
 
-  private[unixsocket] abstract class AsyncUnixSockets[F[_]](implicit F: Async[F])
+  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    forAsyncAndFiles(F, Files.forAsync(F))
+
+  private[unixsocket] abstract class AsyncUnixSockets[F[_]: Files](implicit F: Async[F])
       extends UnixSockets[F] {
     protected def openChannel(address: UnixSocketAddress): Resource[F, SocketChannel]
     protected def openServerChannel(
