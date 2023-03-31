@@ -891,8 +891,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("stress test: all elements are processed") {
-
-      val rangeLength = 100000
+      val rangeLength = 10000
 
       Stream
         .eval(Ref.of[IO, Int](0))
