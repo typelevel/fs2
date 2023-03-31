@@ -837,17 +837,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("upstream failures are propagated downstream") {
+      TestControl.executeEmbed {
+        case object SevenNotAllowed extends NoStackTrace
 
-      case object SevenNotAllowed extends NoStackTrace
+        val source = Stream
+          .iterate(0)(_ + 1)
+          .covary[IO]
+          .evalMap(n => if (n == 7) IO.raiseError(SevenNotAllowed) else IO.pure(n))
 
-      val source = Stream
-        .unfold(0)(s => Some((s, s + 1)))
-        .covary[IO]
-        .evalMap(n => if (n == 7) IO.raiseError(SevenNotAllowed) else IO.pure(n))
+        val downstream = source.groupWithin(100, 2.seconds)
 
-      val downstream = source.groupWithin(100, 2.seconds)
-
-      downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
+        downstream.intercept[SevenNotAllowed.type]
+      }
     }
 
     test(
@@ -864,7 +865,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             .flatMap { ref =>
               val source: Stream[IO, Int] =
                 Stream
-                  .unfold(0)(s => Some((s, s + 1)))
+                  .iterate(0)(_ + 1)
                   .covary[IO]
                   .meteredStartImmediately(1.second)
                   .interruptAfter(sourceTimeout)
