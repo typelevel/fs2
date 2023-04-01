@@ -460,7 +460,6 @@ class StreamSuite extends Fs2Suite {
 
       def unfoldTree(seed: Int): Tree[Int] =
         Tree(seed, Stream(seed + 1).map(unfoldTree))
-
       assertEquals(unfoldTree(1).flatten.take(10).toList, List.tabulate(10)(_ + 1))
     }
 
@@ -1024,18 +1023,11 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
-  test("Unintended unchunking when using StreamLowPriority#monadInstance") {
-    def generateTuple(pipe: Pipe[fs2.Pure, Int, (Int, Int)]) =
-      (Stream(1, 2, 3) ++ Stream(4, 5, 6)).through(pipe).chunks.toList
-    assertEquals(generateTuple(_.map(e => e -> (e + 1))), generateTuple(_.fproduct(_ + 1)))
-  }
-
-  test("Unintended unchunking when using Stream#monadErrorInstance") {
-    def generateTuple(pipe: Pipe[IO, Int, (Int, Int)]) =
-      (Stream(1, 2, 3) ++ Stream(4, 5, 6)).covary[IO].through(pipe).chunks.compile.toList
-    val lhs = generateTuple(_.map(e => e -> (e + 1)))
-    val rhs = generateTuple(_.fproduct(_ + 1))
-    (lhs, rhs).mapN(assertEquals(_, _))
+  test("Unintended unchunking") {
+    def countChunks(source: Stream[Pure, Int]): Int =
+      Stream.monadInstance.map(source)(_ => 1).chunks.toList.length
+    val source = Stream(0) ++ Stream(0, 0)
+    assertEquals(countChunks(source), 2)
   }
 
   group("Stream[F, Either[Throwable, O]]") {

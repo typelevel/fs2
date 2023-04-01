@@ -3089,6 +3089,21 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   override def toString: String = "Stream(..)"
 }
 
+class StreamMonad[F[_]] extends Monad[Stream[F, *]] {
+  override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+  override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
+
+  override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
+    fa.flatMap(f)
+
+  override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
+    f(a).flatMap {
+      case Left(a)  => tailRecM(a)(f)
+      case Right(b) => Stream(b)
+    }
+}
+
 object Stream extends StreamLowPriority {
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
@@ -3446,7 +3461,6 @@ object Stream extends StreamLowPriority {
     */
   def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
     new PartiallyAppliedFromOption(dummy = true)
-
   private[fs2] final class PartiallyAppliedFromEither[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
@@ -5217,18 +5231,15 @@ object Stream extends StreamLowPriority {
   implicit def monadErrorInstance[F[_]](implicit
       ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
-    new MonadError[Stream[F, *], Throwable] {
-      def pure[A](a: A) = Stream(a)
+    new StreamMonad[F] with MonadError[Stream[F, *], Throwable] {
+      override def pure[A](a: A) = Stream(a)
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
-      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
+      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = {
+        println("error map")
+        fa.map(f)
+      }
     }
 
   /** `Monoid` instance for `Stream`. */
@@ -5362,21 +5373,8 @@ object Stream extends StreamLowPriority {
 }
 
 private[fs2] trait StreamLowPriority {
-  implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
-    new Monad[Stream[F, *]] {
-      override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
-
+  implicit def monadInstance[F[_]]: StreamMonad[F] =
+    new StreamMonad[F] {
       override def unit: Stream[F, Unit] = Stream.unit
-
-      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
-
-      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
-        fa.flatMap(f)
-
-      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
     }
 }
