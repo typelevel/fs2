@@ -23,6 +23,7 @@ package fs2
 package compression
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.Sync
 
 import java.io.EOFException
@@ -126,7 +127,12 @@ private trait CompressionCompanionPlatformLowPriority { this: CompressionCompani
 private[compression] trait CompressionCompanionPlatform
     extends CompressionCompanionPlatformLowPriority {
 
-  implicit def forIO: Compression[IO] = forSync
+  def forIO: Compression[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Sync: LiftIO]: Compression[F] = {
+    val _ = LiftIO[F]
+    forSync
+  }
 
   def forSync[F[_]](implicit F: Sync[F]): Compression[F] =
     new Compression.UnsealedCompression[F] {

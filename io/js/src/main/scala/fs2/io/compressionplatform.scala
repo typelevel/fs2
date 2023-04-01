@@ -23,6 +23,7 @@ package fs2
 package io
 
 import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.Async
 import cats.syntax.all._
 import fs2.compression.Compression
@@ -36,8 +37,13 @@ private[io] trait compressionplatform {
 
   class ZipException(msg: String) extends IOException(msg)
 
-  implicit def fs2ioCompressionForIO: Compression[IO] =
+  def fs2ioCompressionForIO: Compression[IO] =
+    fs2ioCompressionForLiftIO
+
+  implicit def fs2ioCompressionForLiftIO[F[_]: Async: LiftIO]: Compression[F] = {
+    val _ = LiftIO[F]
     fs2ioCompressionForAsync
+  }
 
   def fs2ioCompressionForAsync[F[_]](implicit F: Async[F]): Compression[F] =
     new Compression.UnsealedCompression[F] {

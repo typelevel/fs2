@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
 
-import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, TraverseFilter}
+import cats._
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
@@ -1232,7 +1232,17 @@ object Chunk
         fa.size match {
           case 0 => F.unit
           case 1 => f(fa(0)).void
-          case _ => super.traverse_(fa)(f)
+          case _ =>
+            F match {
+              case sF: StackSafeMonad[F] =>
+                def go(ix: Int): F[Unit] =
+                  if (ix < fa.size)
+                    sF.flatMap(f(fa(ix)))(_ => go(ix + 1))
+                  else sF.unit
+                go(0)
+              case _ =>
+                super.traverse_(fa)(f)
+            }
         }
 
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {
