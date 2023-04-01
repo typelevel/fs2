@@ -1418,16 +1418,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           buffer <- Queue.bounded[F2, O](chunkSize) // buffering and backpressure
         } yield {
 
-          def bufferSizeIs(n: Int): F2[Boolean] =
-            buffer.size.map(_ == n)
+          val bufferFull: F2[Boolean] =
+            buffer.size.map(_ == chunkSize)
 
           val supplyUnavailable: F2[Boolean] =
             supply.available.map(_ == 0)
 
-          val streamExhausted: F2[Boolean] =
-            (bufferSizeIs(0), supplyEnded.get).mapN(_ && _)
-
-          // emitting a chunk without blocking (might produce an empty chunk)
           val emitChunk: F2[Chunk[O]] =
             buffer.tryTakeN(Some(chunkSize)).map(Chunk.seq)
 
@@ -1452,9 +1448,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           // edge case: supply semaphore loses the race, but acquires the permits. In such scenario
           // we emit the chunk without lowering the supply, since it has already been lowered
           val onTimeout: F2[Chunk[O]] = {
-            val edgeCase = (supplyUnavailable, bufferSizeIs(chunkSize)).mapN(_ && _)
-            val emitNextChunk = F.ifM(edgeCase)(emitChunk, emitWhenAvailableAndLowerSupply)
-            F.ifM(streamExhausted)(F.pure(Chunk.empty[O]), emitNextChunk)
+            val edgeCase = (supplyUnavailable, bufferFull).mapN(_ && _)
+            F.ifM(edgeCase)(emitChunk, emitWhenAvailableAndLowerSupply)
           }
 
           val enqueue: F2[Unit] =
