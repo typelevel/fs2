@@ -460,6 +460,7 @@ class StreamSuite extends Fs2Suite {
 
       def unfoldTree(seed: Int): Tree[Int] =
         Tree(seed, Stream(seed + 1).map(unfoldTree))
+
       assertEquals(unfoldTree(1).flatten.take(10).toList, List.tabulate(10)(_ + 1))
     }
 

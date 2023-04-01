@@ -3461,6 +3461,7 @@ object Stream extends StreamLowPriority {
     */
   def fromOption[F[_]]: PartiallyAppliedFromOption[F] =
     new PartiallyAppliedFromOption(dummy = true)
+
   private[fs2] final class PartiallyAppliedFromEither[F[_]](
       private val dummy: Boolean
   ) extends AnyVal {
@@ -5236,10 +5237,7 @@ object Stream extends StreamLowPriority {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = {
-        println("error map")
-        fa.map(f)
-      }
+      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
     }
 
   /** `Monoid` instance for `Stream`. */
