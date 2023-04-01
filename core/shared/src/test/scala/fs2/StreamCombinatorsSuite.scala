@@ -885,27 +885,24 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     }
 
-    // ignoring because it's a long running test (around 8-12 minutes), but it's a useful test to have
+    // ignoring because it's a (relatively) long running test (around 3/4 minutes), but it's useful
     // to asses the validity of permits management and timeout logic over an extended period of time
     test("stress test (long execution): all elements are processed".ignore) {
+      val rangeLength = 10000000
 
-      TestControl.executeEmbed {
-        val rangeLength = 5000000
-
-        Stream
-          .eval(Ref[IO].of(0))
-          .flatMap { counter =>
-            Stream
-              .range(0, rangeLength)
-              .covary[IO]
-              .evalTap(d => IO.sleep((d % 500 + 2).micros))
-              .groupWithin(4096, 100.micros)
-              .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
-          }
-          .compile
-          .lastOrError
-          .assertEquals(rangeLength)
-      }
+      Stream
+        .eval(Ref[IO].of(0))
+        .flatMap { counter =>
+          Stream
+            .range(0, rangeLength)
+            .covary[IO]
+            .evalTap(d => IO.sleep((d % 10 + 2).micros))
+            .groupWithin(275, 5.millis)
+            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+        }
+        .compile
+        .lastOrError
+        .assertEquals(rangeLength)
     }
 
     test("upstream failures are propagated downstream") {
