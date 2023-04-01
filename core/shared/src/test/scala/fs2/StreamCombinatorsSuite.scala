@@ -885,7 +885,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     }
 
-    // ignoring because it's a long running test (around 15 minutes), but it's a useful test to have
+    // ignoring because it's a long running test (around 8-12 minutes), but it's a useful test to have
     // to asses the validity of permits management and timeout logic over an extended period of time
     test("stress test (long execution): all elements are processed".ignore) {
 
