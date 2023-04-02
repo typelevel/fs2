@@ -5212,6 +5212,17 @@ object Stream extends StreamLowPriority {
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
+  private[fs2] class StreamMonad[F[_]] extends StackSafeMonad[Stream[F, *]] {
+    override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+    override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
+
+    override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
+      fa.flatMap(f)
+
+    override def unit: Stream[F, Unit] = Stream.unit
+  }
+
   /** `MonadError` instance for `Stream`.
     *
     * @example {{{
@@ -5223,17 +5234,10 @@ object Stream extends StreamLowPriority {
   implicit def monadErrorInstance[F[_]](implicit
       ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
-    new MonadError[Stream[F, *], Throwable] {
-      def pure[A](a: A) = Stream(a)
+    new StreamMonad[F] with MonadError[Stream[F, *], Throwable] {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
     }
 
   /** `Monoid` instance for `Stream`. */
@@ -5368,18 +5372,5 @@ object Stream extends StreamLowPriority {
 
 private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
-    new Monad[Stream[F, *]] {
-      override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
-
-      override def unit: Stream[F, Unit] = Stream.unit
-
-      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
-        fa.flatMap(f)
-
-      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
-    }
+    new Stream.StreamMonad[F]
 }
