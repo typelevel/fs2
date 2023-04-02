@@ -5229,7 +5229,6 @@ object Stream extends StreamLowPriority {
       ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
     new StreamMonad[F] with MonadError[Stream[F, *], Throwable] {
-      override def pure[A](a: A) = Stream(a)
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
