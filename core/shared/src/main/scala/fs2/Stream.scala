@@ -1041,8 +1041,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
-    evalMap(o => f(o).as(o))
+  def evalTap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O] = {
+    def tapOut(o: O) = Pull.eval(f(o)) >> Pull.output1(o)
+    underlying.flatMapOutput(tapOut).streamNoScope
+  }
+
+  @deprecated("Use overload without functor", "3.7.0")
+  private[fs2] def evalTap[F2[x] >: F[x], O2](f: O => F2[O2], F: Functor[F2]): Stream[F2, O] =
+    evalTap(f)
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
