@@ -5206,7 +5206,6 @@ object Stream extends StreamLowPriority {
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
-
   private[fs2] class StreamMonad[F[_]] extends StackSafeMonad[Stream[F, *]] {
     override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
 
@@ -5217,6 +5216,7 @@ object Stream extends StreamLowPriority {
 
     override def unit: Stream[F, Unit] = Stream.unit
   }
+
   /** `MonadError` instance for `Stream`.
     *
     * @example {{{
