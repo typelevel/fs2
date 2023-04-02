@@ -878,9 +878,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
               downstream.compile.lastOrError
                 .map(_.toList)
-                .timeout(downstreamTimeout)
-                .flatTap(_ => IO.monotonic.flatMap(ref.set))
-                .flatMap(emit => ref.get.map(timeLapsed => (timeLapsed, emit)))
+                .timed
             }
         )
         .assertEquals(
