@@ -3089,21 +3089,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   override def toString: String = "Stream(..)"
 }
 
-class StreamMonad[F[_]] extends Monad[Stream[F, *]] {
-  override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
-
-  override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
-
-  override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
-    fa.flatMap(f)
-
-  override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
-    f(a).flatMap {
-      case Left(a)  => tailRecM(a)(f)
-      case Right(b) => Stream(b)
-    }
-}
-
 object Stream extends StreamLowPriority {
 
   /** Creates a pure stream that emits the supplied values. To convert to an effectful stream, use `covary`. */
@@ -5221,6 +5206,17 @@ object Stream extends StreamLowPriority {
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
+
+  private[fs2] class StreamMonad[F[_]] extends StackSafeMonad[Stream[F, *]] {
+    override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+    override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
+
+    override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
+      fa.flatMap(f)
+
+    override def unit: Stream[F, Unit] = Stream.unit
+  }
   /** `MonadError` instance for `Stream`.
     *
     * @example {{{
@@ -5237,7 +5233,6 @@ object Stream extends StreamLowPriority {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
     }
 
   /** `Monoid` instance for `Stream`. */
@@ -5371,8 +5366,6 @@ object Stream extends StreamLowPriority {
 }
 
 private[fs2] trait StreamLowPriority {
-  implicit def monadInstance[F[_]]: StreamMonad[F] =
-    new StreamMonad[F] {
-      override def unit: Stream[F, Unit] = Stream.unit
-    }
+  implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
+    new Stream.StreamMonad[F]
 }
