@@ -1024,7 +1024,7 @@ class StreamSuite extends Fs2Suite {
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
   }
 
-  test("Unintended unchunking") {
+  test("monad instance overrides map and preserves chunks") {
     def countChunks(source: Stream[Pure, Int]): Int =
       Stream.monadInstance.map(source)(_ => 1).chunks.toList.length
     val source = Stream(0) ++ Stream(0, 0)
