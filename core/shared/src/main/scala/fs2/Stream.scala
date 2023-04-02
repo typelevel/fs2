@@ -1472,7 +1472,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
         def endSupply(result: Either[Throwable, Unit]): F2[Unit] =
           buffer.update(_.copy(endOfSupply = Some(result))) *> supply.releaseN(
-            Int.MaxValue + outputLong
+            // enough supply for 2 iterations of the race loop in case of upstream
+            // interruption: so that downstream can terminate immediately
+            outputLong * 2
           )
 
         def endDemand(result: Either[Throwable, Unit]): F2[Unit] =
