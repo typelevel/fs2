@@ -859,28 +859,24 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val downstreamTimeout = sourceTimeout + 2.seconds
 
       TestControl
-        .executeEmbed(
-          Ref[IO]
-            .of(0.millis)
-            .flatMap { ref =>
-              val source: Stream[IO, Int] =
-                Stream
-                  .iterate(0)(_ + 1)
-                  .covary[IO]
-                  .meteredStartImmediately(1.second)
-                  .interruptAfter(sourceTimeout)
+        .executeEmbed {
+          val source: Stream[IO, Int] =
+            Stream
+              .iterate(0)(_ + 1)
+              .covary[IO]
+              .meteredStartImmediately(1.second)
+              .interruptAfter(sourceTimeout)
 
-              // large chunkSize and timeout (no emissions expected in the window
-              // specified, unless source ends, due to interruption or
-              // natural termination (i.e runs out of elements)
-              val downstream: Stream[IO, Chunk[Int]] =
-                source.groupWithin(Int.MaxValue, 1.day)
+          // large chunkSize and timeout (no emissions expected in the window
+          // specified, unless source ends, due to interruption or
+          // natural termination (i.e runs out of elements)
+          val downstream: Stream[IO, Chunk[Int]] =
+            source.groupWithin(Int.MaxValue, 1.day)
 
-              downstream.compile.lastOrError
-                .map(_.toList)
-                .timed
-            }
-        )
+          downstream.compile.lastOrError
+            .map(_.toList)
+            .timed
+        }
         .assertEquals(
           // downstream ended immediately (i.e timeLapsed = sourceTimeout)
           // emitting whatever was accumulated at the time of interruption
