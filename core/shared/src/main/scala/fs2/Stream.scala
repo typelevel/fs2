@@ -1432,15 +1432,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           val endSupply: F2[Unit] =
             supplyEnded.set(true) *> supply.releaseN(Int.MaxValue.toLong + chunkSize)
 
-          // we can't wait forever: at most we can wait until the supply has ended
-          val waitForOne: F2[Unit] =
-            Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
+          val awaitChunk: F2[Chunk[O]] = {
+            // we can't wait forever: at most we can wait until the supply has ended
+            val waitForOne = Stream.eval(supply.acquire).interruptWhen(supplyEnded).compile.drain
+
+            // "subscribing" to the buffer blocking until the first chunk becomes available
+            val pullChunk =
+              Stream.fromQueueUnterminated(buffer, chunkSize).chunks.head.compile.lastOrError
+
+            // we need to check if the supply has ended after waiting: (we might have just reached
+            // the end of the stream, with or without receiving any element: since we don't know
+            // whether or not we have elements to flush, we must emit a chunk without blocking)
+            waitForOne *> F.ifM(supplyEnded.get)(emitChunk, pullChunk)
+          }
 
           // emit immediately or wait before doing so, subsequently lowering the supply by however
           // many elements have been flushed (excluding the element already awaited, if needed)
           val emitWhenAvailableAndLowerSupply: F2[Chunk[O]] = for {
             noSupply <- supplyUnavailable
-            flushed <- if (noSupply) waitForOne *> emitChunk else emitChunk
+            flushed <- if (noSupply) awaitChunk else emitChunk
             awaitedCount = if (noSupply) 1L else 0L
             _ <- supply.acquireN((flushed.size - awaitedCount).max(0))
           } yield flushed
