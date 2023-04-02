@@ -845,9 +845,11 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .covary[IO]
           .evalTap(n => IO.raiseError(SevenNotAllowed).whenA(n == 7))
 
-        val downstream = source.groupWithin(100, 2.seconds)
+        val downstream = source.groupWithin(100, 2.seconds).map(_.toList)
 
-        downstream.intercept[SevenNotAllowed.type]
+        val expected = List(List(1, 2, 3, 4, 5, 6))
+
+        downstream.assertEmits(expected).intercept[SevenNotAllowed.type]
       }
     }
 
