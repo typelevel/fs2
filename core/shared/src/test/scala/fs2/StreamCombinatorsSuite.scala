@@ -874,6 +874,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
             source.groupWithin(Int.MaxValue, 1.day)
 
           downstream.compile.lastOrError
+            .timeout(downstreamTimeout)
             .map(_.toList)
             .timed
         }
