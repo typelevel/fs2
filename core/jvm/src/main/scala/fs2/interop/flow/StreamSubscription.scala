@@ -45,6 +45,8 @@ private[flow] final class StreamSubscription[F[_], A] private (
     canceled: AtomicReference[() => Unit]
 )(implicit F: Async[F])
     extends Subscription {
+  import StreamSubscription.Sentinel
+
   // Ensure we are on a terminal state; i.e. call `cancel`, before signaling the subscriber.
   private def onError(ex: Throwable): Unit = {
     cancel()
@@ -71,14 +73,17 @@ private[flow] final class StreamSubscription[F[_], A] private (
                 // However, before blocking,
                 // we must check if it has been a concurrent request.
                 // In case it was, we abort the wait.
-                if (requests.get() > 0)
+                if (requests.get() > 0) {
+                  // And we remove the callback from resume, to avoid a memory leak.
+                  resume.set(Sentinel)
                   Either.unit
-                else
+                } else {
                   Left(Some(F.unit))
+                }
               }
             }) >> go(s)
           else
-            Pull.eval(F.delay(requests.updateAndGet(r => r - n))) >>
+            Pull.eval(F.delay(requests.getAndAdd(-n))) >>
               s.pull.take(n).flatMap {
                 case None      => Pull.done
                 case Some(rem) => go(rem)
@@ -91,14 +96,15 @@ private[flow] final class StreamSubscription[F[_], A] private (
     val events =
       stream
         .through(subscriptionPipe)
-        .foreach(x => F.delay(sub.onNext(x)))
+        .chunks
+        .foreach(chunk => F.delay(chunk.foreach(sub.onNext)))
         .compile
         .drain
 
     val cancellation = F.asyncCheckAttempt[Unit] { cb =>
       F.delay {
         // Check if we were already cancelled before calling run.
-        if (!canceled.compareAndSet(StreamSubscription.Sentinel, () => cb.apply(Either.unit))) {
+        if (!canceled.compareAndSet(Sentinel, () => cb.apply(Either.unit))) {
           Either.unit
         } else {
           Left(Some(F.unit))
@@ -135,12 +141,16 @@ private[flow] final class StreamSubscription[F[_], A] private (
   }
 
   override def request(n: Long): Unit =
+    // First, confirm we are not yet cancelled.
     if (canceled.get() ne null) {
-      if (n <= 0)
+      // Second, ensure we were requested a positive number of elements.
+      if (n <= 0) {
+        // Otherwise, we raise an error according to the spec.
         onError(
           ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
         )
-      else {
+      } else {
+        // Then, we increment the pending number of requests, capping at `Long.MaxValue`.
         requests.updateAndGet { r =>
           val result = r + n
           if (result < 0) {
@@ -151,7 +161,8 @@ private[flow] final class StreamSubscription[F[_], A] private (
           }
         }
 
-        resume.get().apply()
+        // Finally, we get and remove the current resume callback, and call it.
+        resume.getAndSet(Sentinel).apply()
       }
     }
 }
