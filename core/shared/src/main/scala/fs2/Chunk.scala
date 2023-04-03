@@ -801,7 +801,7 @@ object Chunk
       if (n <= 0) this
       else if (n >= size) Chunk.empty
       else {
-        val second = readOnly(buf)
+        val second = duplicate(buf)
         (second: JBuffer).position(n + offset)
         buffer(second)
       }
@@ -810,13 +810,13 @@ object Chunk
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else {
-        val first = readOnly(buf)
+        val first = duplicate(buf)
         (first: JBuffer).limit(n + offset)
         buffer(first)
       }
 
     def copyToArray[O2 >: C](xs: Array[O2], start: Int): Unit = {
-      val b = readOnly(buf)
+      val b = duplicate(buf)
       (b: JBuffer).position(offset)
       (b: JBuffer).limit(offset + size)
       val arr = new Array[C](size)
@@ -826,9 +826,9 @@ object Chunk
     }
 
     protected def splitAtChunk_(n: Int): (A, A) = {
-      val first = readOnly(buf)
+      val first = duplicate(buf)
       (first: JBuffer).limit(n + offset)
-      val second = readOnly(buf)
+      val second = duplicate(buf)
       (second: JBuffer).position(n + offset)
       (buffer(first), buffer(second))
     }
@@ -907,7 +907,7 @@ object Chunk
     def duplicate(b: JByteBuffer): JByteBuffer = b.duplicate()
 
     override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = {
-      val bb = buf.asReadOnlyBuffer()
+      val bb = buf.duplicate()
       (bb: JBuffer).position(offset)
       (bb: JBuffer).limit(offset + size)
       ByteVector.view(bb)
