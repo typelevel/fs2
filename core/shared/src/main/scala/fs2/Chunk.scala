@@ -306,43 +306,19 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
     * so this method should be considered as unsafely allocating mutable state.
     */
-  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer =
-    this match {
-      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
-        JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
-      case c: Chunk.ByteBuffer =>
-        val b = c.buf.duplicate // share contents, independent position/limit
-        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
-        else {
-          (b: JBuffer).position(c.offset.toInt)
-          (b: JBuffer).limit(c.offset.toInt + c.size)
-          b
-        }
-      case c: Chunk.ByteVectorChunk =>
-        c.bv.toByteBuffer
-      case _ =>
-        JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
-    }
+  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
+    val slice = this.asInstanceOf[Chunk[Byte]].toArraySlice
+    JByteBuffer.wrap(slice.values, slice.offset, slice.length)
+  }
 
   /** Converts this chunk to a `java.nio.CharBuffer`.
     * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
     * so this method should be considered as unsafely allocating mutable state.
     */
-  def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
-    this match {
-      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
-        JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
-      case c: Chunk.CharBuffer =>
-        val b = c.buf.duplicate // share contents, independent position/limit
-        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
-        else {
-          (b: JBuffer).position(c.offset.toInt)
-          (b: JBuffer).limit(c.offset.toInt + c.size)
-          b
-        }
-      case _ =>
-        JCharBuffer.wrap(this.asInstanceOf[Chunk[Char]].toArray, 0, size)
-    }
+  def toCharBuffer[C >: O](implicit ev: C =:= Char): JCharBuffer = {
+    val slice = this.asInstanceOf[Chunk[Char]].toArraySlice
+    JCharBuffer.wrap(slice.values, slice.offset, slice.length)
+  }
 
   /** Converts this chunk to a NonEmptyList */
   def toNel: Option[NonEmptyList[O]] =
@@ -875,6 +851,13 @@ object Chunk
           .ArraySlice(buf.array, buf.arrayOffset + offset, size)
           .asInstanceOf[Chunk.ArraySlice[O2]]
       else super.toArraySlice
+
+    override def toCharBuffer[C >: Char](implicit ev: C =:= Char): JCharBuffer = {
+      val b = buf.duplicate // share contents, independent position/limit
+      (b: JBuffer).position(offset.toInt)
+      (b: JBuffer).limit(offset.toInt + size)
+      b
+    }
   }
 
   /** Creates a chunk backed by an char buffer, bounded by the current position and limit */
@@ -919,6 +902,13 @@ object Chunk
           .ArraySlice(buf.array, buf.arrayOffset + offset, size)
           .asInstanceOf[Chunk.ArraySlice[O2]]
       else super.toArraySlice
+
+    override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer = {
+      val b = buf.duplicate // share contents, independent position/limit
+      (b: JBuffer).position(offset.toInt)
+      (b: JBuffer).limit(offset.toInt + size)
+      b
+    }
   }
 
   /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
@@ -971,6 +961,9 @@ object Chunk
       if (ct == ClassTag.Byte)
         Chunk.ArraySlice[Byte](bv.toArrayUnsafe, 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
       else super.toArraySlice
+
+    override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer =
+      bv.toByteBuffer
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
