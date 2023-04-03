@@ -810,7 +810,7 @@ object Chunk
     }
 
     override def toArray[O2 >: C](implicit o2ct: ClassTag[O2]): Array[O2] =
-      if (o2ct == ct) {
+      if (o2ct.runtimeClass == ct.runtimeClass) {
         val bs = new Array[O2](size)
         val b = duplicate(buf)
         (b: JBuffer).position(offset)
@@ -846,7 +846,7 @@ object Chunk
       throw new UnsupportedOperationException
 
     override def toArraySlice[O2 >: Char](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-      if (ct == ClassTag.Char && buf.hasArray)
+      if (ct.runtimeClass == classOf[Char] && buf.hasArray)
         Chunk
           .ArraySlice(buf.array, buf.arrayOffset + offset, size)
           .asInstanceOf[Chunk.ArraySlice[O2]]
@@ -897,7 +897,7 @@ object Chunk
     }
 
     override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-      if (ct == ClassTag.Byte && buf.hasArray)
+      if (ct.runtimeClass == classOf[Byte] && buf.hasArray)
         Chunk
           .ArraySlice(buf.array, buf.arrayOffset + offset, size)
           .asInstanceOf[Chunk.ArraySlice[O2]]
@@ -958,7 +958,7 @@ object Chunk
     def toByteVector() = bv
 
     override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-      if (ct == ClassTag.Byte)
+      if (ct.runtimeClass == classOf[Byte])
         Chunk.ArraySlice[Byte](bv.toArrayUnsafe, 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
       else super.toArraySlice
 
