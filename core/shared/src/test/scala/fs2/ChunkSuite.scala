@@ -236,35 +236,35 @@ class ChunkSuite extends Fs2Suite {
   }
 
   test("toArraySlice does not copy when chunk is an array-backed bytevector") {
-    val arr = Array[Byte](0)
+    val arr = Array[Byte](0, 1, 2, 3)
     val chunk: Chunk[Byte] = Chunk.byteVector(ByteVector.view(arr))
     assert(chunk.toArraySlice.values eq arr)
   }
 
   test("ByteVectorChunk#toArraySlice does not throw class cast exception") {
-    val chunk: Chunk[Byte] = Chunk.byteVector(ByteVector.view(Array[Byte](0)))
+    val chunk: Chunk[Byte] = Chunk.byteVector(ByteVector.view(Array[Byte](0, 1, 2, 3)))
     assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
   }
 
   test("toArraySlice does not copy when chunk is an array-backed bytebuffer") {
-    val bb = ByteBuffer.allocate(1)
+    val bb = ByteBuffer.allocate(4)
     val chunk: Chunk[Byte] = Chunk.byteBuffer(bb)
     assert(chunk.toArraySlice.values eq bb.array)
   }
 
   test("ByteBuffer#toArraySlice does not throw class cast exception") {
-    val chunk: Chunk[Byte] = Chunk.byteBuffer(ByteBuffer.allocate(1))
+    val chunk: Chunk[Byte] = Chunk.byteBuffer(ByteBuffer.allocate(4))
     assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
   }
 
   test("toArraySlice does not copy when chunk is an array-backed charbuffer") {
-    val cb = CharBuffer.allocate(1)
+    val cb = CharBuffer.allocate(4)
     val chunk: Chunk[Char] = Chunk.charBuffer(cb)
     assert(chunk.toArraySlice.values eq cb.array)
   }
 
   test("CharBuffer#toArraySlice does not throw class cast exception") {
-    val chunk: Chunk[Char] = Chunk.charBuffer(CharBuffer.allocate(1))
+    val chunk: Chunk[Char] = Chunk.charBuffer(CharBuffer.allocate(4))
     assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
   }
 
