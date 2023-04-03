@@ -36,7 +36,7 @@ private[file] trait FilesPlatform[F[_]]
 
 private[fs2] trait FilesCompanionPlatform {
 
-  implicit def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
+  def forAsync[F[_]: Async]: Files[F] = new AsyncFiles[F]
 
   private final class AsyncFiles[F[_]](implicit F: Async[F]) extends UnsealedFiles[F] {
     private def combineFlags(flags: Flags): Double =
@@ -263,6 +263,8 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def isSameFile(path1: Path, path2: Path): F[Boolean] =
       F.pure(path1.absolute == path2.absolute)
+
+    override def lineSeparator: String = facade.os.EOL
 
     override def list(path: Path): Stream[F, Path] =
       Stream

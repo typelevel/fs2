@@ -27,6 +27,7 @@ package timeseries
 import scala.concurrent.duration._
 
 import cats.effect._
+import cats.effect.testkit.TestControl
 import cats.syntax.all._
 import scodec.bits._
 
@@ -183,21 +184,20 @@ class TimeStampedSuite extends Fs2Suite {
   test("support throttling a time stamped source") {
     def ts(value: Int) = TimeStamped(value.seconds, value.toLong)
     val source = Stream(ts(0), ts(1), ts(2), ts(3), ts(4)).covary[IO]
-    def time[A](f: IO[A]): IO[Long] =
-      IO.delay(System.nanoTime()).flatMap { started =>
-        f >> IO.delay(System.nanoTime() - started)
-      }
+    def time[A](f: IO[A]): IO[FiniteDuration] = f.timed.map(_._1)
     val realtime =
       source.through(TimeStamped.throttle[IO, Long](1.0, 100.milliseconds)).compile.drain
     val doubletime =
       source.through(TimeStamped.throttle[IO, Long](2.0, 100.milliseconds)).compile.drain
 
-    time(realtime).map { elapsed =>
-      assertEqualsEpsilon(elapsed, 4.seconds.toNanos, 250.millis.toNanos)
-    } >>
-      time(doubletime).map { elapsed =>
-        assertEqualsEpsilon(elapsed, 2.seconds.toNanos, 250.millis.toNanos)
-      }
+    TestControl.executeEmbed {
+      time(realtime).map { elapsed =>
+        assertEquals(elapsed, 4.seconds)
+      } >>
+        time(doubletime).map { elapsed =>
+          assertEquals(elapsed, 2.seconds)
+        }
+    }
   }
 
   test(

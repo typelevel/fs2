@@ -31,6 +31,8 @@ import cats.syntax.all._
 import java.nio.file.WatchEvent
 
 class WatcherSuite extends Fs2Suite with BaseFileSuite {
+  override def munitIOTimeout = 1.minute
+
   group("supports watching a file") {
     test("for modifications") {
       Stream
@@ -166,7 +168,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
   }
 
   private def smallDelay: Stream[IO, Nothing] =
-    Stream.sleep_[IO](100.millis)
+    Stream.sleep_[IO](1.second)
 
   // Tries to load the Oracle specific SensitivityWatchEventModifier to increase sensitivity of polling
   private val modifiers: Seq[WatchEvent.Modifier] =

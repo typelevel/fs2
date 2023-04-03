@@ -30,9 +30,21 @@ Remember to follow the [code of conduct][coc] in online and offline discourse.
 
 ### Prerequisites
 
-You'll need JDK 16, [sbt][sbt], [Node.js][node] (for running Scala.js tests) and [Jekyll][jekyll] (for building the microsite).
+You'll need JDK 17+, [sbt][sbt], [Node.js][node] (for running Scala.js tests), various native libraries (for running Scala Native tests).
 
-We use several sbt plugins to build and check the project, including [MiMa (Migration Manager)][mima], [scalafmt][scalafmt] and [sbt-microsites][sbt-microsites].
+The native libraries required are `s2n` and `openssl`. To install them on a machine with [Homebrew](https://brew.sh), run the following:
+
+```bash
+$ brew install s2n openssl
+```
+
+Similarly, Node.js can be installed via:
+
+```bash
+$ brew install node
+```
+
+We use several sbt plugins to build and check the project, including [MiMa (Migration Manager)][mima] and [scalafmt][scalafmt]. The [sbt-typelevel](https://typelevel.org/sbt-typelevel/) project does the bulk of the SBT configuration.
 
 ### Build process
 
@@ -40,22 +52,34 @@ To compile the code for the whole repository, you can start an interactive sbt s
 
 ```bash
 $ sbt
-[info] Loading global plugins from /Users/contributor/.sbt/1.0/plugins
-[info] Loading settings for project fs2-build from plugins.sbt,metals.sbt ...
-[info] Loading project definition from /Users/contributor/dev/fs2/project
-[info] Loading settings for project root from version.sbt,build.sbt ...
-[info] Set current project to root (in build file:/Users/contributor/dev/fs2/)
+[info] welcome to sbt 1.8.2 (Eclipse Adoptium Java 17.0.1)
+[info] loading settings for project fs2-build-build-build from metals.sbt ...
+[info] loading project definition from /Users/contributor/Development/oss/fs2/project/project/project
+[info] loading settings for project fs2-build-build from metals.sbt ...
+[info] loading project definition from /Users/contributor/Development/oss/fs2/project/project
+[success] Generated .bloop/fs2-build-build.json
+[success] Total time: 1 s, completed Mar 22, 2023, 8:11:35 PM
+[info] loading settings for project fs2-build from metals.sbt,plugins.sbt ...
+[info] loading project definition from /Users/contributor/Development/oss/fs2/project
+[success] Generated .bloop/fs2-build.json
+[success] Total time: 1 s, completed Mar 22, 2023, 8:11:37 PM
+[info] loading settings for project root from build.sbt ...
+[info] resolving key references (22126 settings) ...
+[info] set scmInfo to https://github.com/typelevel/fs2
+[info] set current project to root (in build file:/Users/contributor/Development/oss/fs2/)
+[info] sbt server started at local:///Users/contributor/.sbt/1.0/server/6f1f885b851d15ea85bf/sock
+[info] started sbt server
 sbt:root>
 ```
 
 Inside the shell, you can compile the sources for the currently selected Scala version using the `compile` command.
-To compile the code for all Scala versions enabled in the build, use `+compile`. To include tests, `test:compile` or `+test:compile`, accordingly.
+To compile the code for all Scala versions enabled in the build, use `+compile`. To include tests, `Test/compile` or `+Test/compile`, accordingly.
 
 
 ### Testing
 
 To test the code, you can run the `test` command in sbt.
-If you want the tests on a single plaform, you can use `testJVM` or `testJS` instead (these are defined as aliases in the `build.sbt` file).
+If you want the tests on a single platform, you can use `rootJVM/test`, `rootJS/test`, or `rootNative/test` instead.
 
 It is possible to run a single test suite from a project on a single platform by [executing a more specific task](https://www.scala-sbt.org/1.x/docs/Testing.html#testOnly), like `coreJVM/testOnly fs2.PullSpec`.
 
@@ -63,22 +87,33 @@ You can list all available projects by executing the `projects` task:
 
 ```sbt
 sbt:root> projects
-[info] In file:/Users/kubukoz/IdeaProjects/fs2/
+[info] In file:/Users/contributor/Development/oss/fs2/
 [info] 	   benchmark
 [info] 	   coreJS
 [info] 	   coreJVM
-[info] 	   docs
-[info] 	   experimental
-[info] 	   io
+[info] 	   coreNative
+[info] 	   ioJS
+[info] 	   ioJVM
+[info] 	   ioNative
 [info] 	   microsite
+[info] 	   protocolsJS
+[info] 	   protocolsJVM
+[info] 	   protocolsNative
 [info] 	   reactiveStreams
 [info] 	 * root
+[info] 	   rootJS
+[info] 	   rootJVM
+[info] 	   rootNative
+[info] 	   scodecJS
+[info] 	   scodecJVM
+[info] 	   scodecNative
+[info] 	   unidocs
 ```
 
 Before submitting a change for review, it's worth running some extra checks that will be triggered in Continuous Integration:
 
 ```sbt
-sbt:root> fmtCheck; test; doc; mimaReportBinaryIssues; docs/mdoc; microsite/makeMicrosite
+sbt:root> prePR
 ```
 
 That will check the formatting, run all tests on the supported platforms, report any binary compatibility issues (as detected by [MiMa][mima]) and build the site.

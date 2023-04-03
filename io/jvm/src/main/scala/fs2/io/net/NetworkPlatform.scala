@@ -23,9 +23,11 @@ package fs2
 package io
 package net
 
+import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
 
 import fs2.internal.ThreadFactories
 import fs2.io.net.tls.TLSContext
@@ -66,7 +68,7 @@ private[net] trait NetworkPlatform[F[_]] {
 
 }
 
-private[net] trait NetworkCompanionPlatform { self: Network.type =>
+private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
   private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
     1,
     ThreadFactories.named("fs2-global-tcp", true)
@@ -74,7 +76,17 @@ private[net] trait NetworkCompanionPlatform { self: Network.type =>
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
 
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def forIO: Network[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
+    val _ = LiftIO[F]
+    forAsync
+  }
+
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    forAsyncAndDns(F, Dns.forAsync(F))
+
+  def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new UnsealedNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](globalAcg)
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)

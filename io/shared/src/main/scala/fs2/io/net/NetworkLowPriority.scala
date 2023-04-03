@@ -19,31 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2.io.net
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
+import cats.effect.Async
 
-private[io] object process {
-
-  @js.native
-  @JSImport("process", "stdout")
-  def stdout: fs2.io.Writable = js.native
-
-  @js.native
-  @JSImport("process", "stdout")
-  def stderr: fs2.io.Writable = js.native
-
-  @js.native
-  @JSImport("process", "stdin")
-  def stdin: fs2.io.Readable = js.native
-
-  @js.native
-  @JSImport("process", "cwd")
-  def cwd(): String = js.native
-
-  @js.native
-  @JSImport("process", "env")
-  def env: js.Dictionary[String] = js.native
-
+private[fs2] trait NetworkLowPriority { this: Network.type =>
+  @deprecated("Add Network constraint or use forAsync", "3.7.0")
+  implicit def implicitForAsync[F[_]: Async]: Network[F] = forAsync
 }

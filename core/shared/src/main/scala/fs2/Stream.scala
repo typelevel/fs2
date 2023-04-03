@@ -1041,8 +1041,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
-    evalMap(o => f(o).as(o))
+  def evalTap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O] = {
+    def tapOut(o: O) = Pull.eval(f(o)) >> Pull.output1(o)
+    underlying.flatMapOutput(tapOut).streamNoScope
+  }
+
+  @deprecated("Use overload without functor", "3.7.0")
+  private[fs2] def evalTap[F2[x] >: F[x], O2](f: O => F2[O2], F: Functor[F2]): Stream[F2, O] =
+    evalTap(f)
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
@@ -2059,10 +2065,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     val thisPull = covaryAll[F2, O2].pull
     val thatPull = that.pull
 
-    (thisPull.stepLeg, thatPull.stepLeg).tupled.flatMap {
-      case (Some(leg1), Some(leg2)) => go(leg1, leg2)
-      case (_, None)                => thisPull.echo
-      case (None, _)                => thatPull.echo
+    thisPull.stepLeg.flatMap {
+      case None => thatPull.echo
+      case Some(leg1) =>
+        thatPull.stepLeg.flatMap {
+          case Some(leg2) => go(leg1, leg2)
+          case None       => Pull.output(leg1.head) >> leg1.next
+        }
     }.stream
   }
 
@@ -3966,23 +3975,23 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] =
-    Pull
-      .loop[F, O, S] { s =>
-        val (o, sOpt) = f(s)
-        Pull.output1(o) >> Pull.pure(sOpt)
-      }(s)
-      .stream
+  def unfoldLoop[F[x] <: Pure[x], S, O](start: S)(f: S => (O, Option[S])): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] = f(s) match {
+      case (o, None)    => Pull.output1(o)
+      case (o, Some(t)) => Pull.output1(o) >> go(t)
+    }
+    go(start).stream
+  }
 
   /** Like [[unfoldLoop]], but takes an effectful function. */
-  def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
-    Pull
-      .loop[F, O, S](s =>
-        Pull.eval(f(s)).flatMap { case (o, sOpt) =>
-          Pull.output1(o) >> Pull.pure(sOpt)
-        }
-      )(s)
-      .stream
+  def unfoldLoopEval[F[_], S, O](start: S)(f: S => F[(O, Option[S])]): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] =
+      Pull.eval(f(s)).flatMap {
+        case (o, None)    => Pull.output1(o)
+        case (o, Some(t)) => Pull.output1(o) >> go(t)
+      }
+    go(start).stream
+  }
 
   /** A view of `Stream` that removes the variance from the type parameters. This allows
     * defining syntax in which the type parameters appear in contravariant (i.e. input)
@@ -4106,8 +4115,15 @@ object Stream extends StreamLowPriority {
       */
     def repeatPull[O2](
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
-    ): Stream[F, O2] =
-      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
+    ): Stream[F, O2] = {
+      def go(tp: ToPull[F, O]): Pull[F, O2, Unit] =
+        f(tp).flatMap {
+          case None       => Pull.done
+          case Some(tail) => go(tail.pull)
+        }
+      go(pull).stream
+    }
+
   }
 
   implicit final class NothingStreamOps[F[_]](private val self: Stream[F, Nothing]) extends AnyVal {
@@ -4713,17 +4729,17 @@ object Stream extends StreamLowPriority {
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
-      * within 450 milliseconds:
+      * within 1 second:
       *
       * @example {{{
       * scala> import cats.effect.IO
       * scala> import cats.effect.unsafe.implicits.global
       * scala> import scala.concurrent.duration._
-      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](600.millis)).repeat.take(3)
+      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](1500.millis)).repeat.take(3)
       * scala> s.pull
       *      |  .timed { timedPull =>
       *      |     def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
-      *      |       timedPull.timeout(450.millis) >> // starts new timeout and stops the previous one
+      *      |       timedPull.timeout(1.second) >> // starts new timeout and stops the previous one
       *      |       timedPull.uncons.flatMap {
       *      |         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
       *      |         case Some((Left(_), next)) => Pull.output1("late!") >> go(next)
@@ -5096,12 +5112,14 @@ object Stream extends StreamLowPriority {
       *
       * Note that resulting stream won't contain the `head` of this leg.
       */
-    def stream: Stream[F, O] =
-      Pull
-        .loop[F, O, StepLeg[F, O]](leg => Pull.output(leg.head).flatMap(_ => leg.stepLeg))(
-          self.setHead(Chunk.empty)
-        )
-        .stream
+    def stream: Stream[F, O] = {
+      def go(leg: StepLeg[F, O]): Pull[F, O, Unit] =
+        Pull.output(leg.head) >> Pull.stepLeg(leg).flatMap {
+          case None       => Pull.done
+          case Some(nleg) => go(nleg)
+        }
+      go(self.setHead(Chunk.empty)).stream
+    }
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
@@ -5194,6 +5212,17 @@ object Stream extends StreamLowPriority {
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
+  private[fs2] class StreamMonad[F[_]] extends StackSafeMonad[Stream[F, *]] {
+    override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+    override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
+
+    override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
+      fa.flatMap(f)
+
+    override def unit: Stream[F, Unit] = Stream.unit
+  }
+
   /** `MonadError` instance for `Stream`.
     *
     * @example {{{
@@ -5205,17 +5234,10 @@ object Stream extends StreamLowPriority {
   implicit def monadErrorInstance[F[_]](implicit
       ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
-    new MonadError[Stream[F, *], Throwable] {
-      def pure[A](a: A) = Stream(a)
+    new StreamMonad[F] with MonadError[Stream[F, *], Throwable] {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
     }
 
   /** `Monoid` instance for `Stream`. */
@@ -5350,18 +5372,5 @@ object Stream extends StreamLowPriority {
 
 private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
-    new Monad[Stream[F, *]] {
-      override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
-
-      override def unit: Stream[F, Unit] = Stream.unit
-
-      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
-        fa.flatMap(f)
-
-      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
-    }
+    new Stream.StreamMonad[F]
 }

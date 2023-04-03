@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect.std.CountDownLatch
+import cats.effect.testkit.TestControl
 import cats.effect.{Deferred, IO}
 import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
@@ -66,7 +67,9 @@ class ParEvalMapSuite extends Fs2Suite {
     }
 
     test("may not be preserved in parEvalMapUnordered") {
-      run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3))
+      TestControl.executeEmbed(
+        run(_.parEvalMapUnorderedUnbounded(identity)).assertEquals(List(1, 2, 3))
+      )
     }
 
     def run(pipe: Pipe[IO, IO[Int], Int]) =

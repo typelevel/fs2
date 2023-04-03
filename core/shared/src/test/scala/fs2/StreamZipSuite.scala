@@ -32,6 +32,8 @@ import org.scalacheck.effect.PropF.forAllF
 
 class StreamZipSuite extends Fs2Suite {
 
+  override def munitIOTimeout = 1.minute
+
   group("zip") {
     test("propagate error from closing the root scope") {
       val s1 = Stream.bracket(SyncIO(1))(_ => SyncIO.unit)

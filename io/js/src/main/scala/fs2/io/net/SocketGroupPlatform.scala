@@ -28,10 +28,7 @@ import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.Host
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 import fs2.concurrent.Channel
 import fs2.io.internal.facade
 

@@ -120,7 +120,9 @@ private[fs2] trait ioplatform {
             .concurrently(
               Stream.eval(
                 F.async_[Unit](cb =>
-                  duplex.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                  duplex.end { e =>
+                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  }
                 )
               )
             )
@@ -147,12 +149,14 @@ private[fs2] trait ioplatform {
           ): Pull[F, Nothing, Unit] = s.pull.uncons.flatMap {
             case Some((head, tail)) =>
               Pull.eval {
-                F.async_[Unit] { cb =>
-                  writable.write(
-                    head.toUint8Array,
-                    e => cb(e.toLeft(()).leftMap(js.JavaScriptException))
-                  )
-                  ()
+                F.async[Unit] { cb =>
+                  F.delay {
+                    writable.write(
+                      head.toUint8Array,
+                      e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                    )
+                    Some(F.delay(writable.destroy()))
+                  }
                 }
               } >> go(tail)
             case None => Pull.done
@@ -162,8 +166,11 @@ private[fs2] trait ioplatform {
             if (endAfterUse)
               Stream.exec {
                 F.async[Unit] { cb =>
-                  F.delay(writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException))))
-                    .as(Some(F.unit))
+                  F.delay(
+                    writable.end(e =>
+                      cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                    )
+                  ).as(Some(F.unit))
                 }
               }
             else Stream.empty
