@@ -300,11 +300,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Converts this chunk to a `Chunk.ArraySlice`. */
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-    this match {
-      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.values.getClass =>
-        as.asInstanceOf[Chunk.ArraySlice[O2]]
-      case _ => Chunk.ArraySlice(toArray, 0, size)
-    }
+    Chunk.ArraySlice(toArray, 0, size)
 
   /** Converts this chunk to a `java.nio.ByteBuffer`.
     * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
@@ -775,16 +771,23 @@ object Chunk
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else ArraySlice(values, offset, n)
+
+    override def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct.wrap.runtimeClass eq values.getClass)
+        asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
+
   }
   object ArraySlice {
     def apply[O: ClassTag](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
   }
 
-  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
+  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C](
       buf: B,
       val offset: Int,
       val size: Int
-  ) extends Chunk[C] {
+  )(implicit ct: ClassTag[C])
+      extends Chunk[C] {
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
@@ -830,18 +833,19 @@ object Chunk
       (buffer(first), buffer(second))
     }
 
-    override def toArray[O2 >: C: ClassTag]: Array[O2] = {
-      val bs = new Array[C](size)
-      val b = duplicate(buf)
-      (b: JBuffer).position(offset)
-      get(b, bs, 0, size)
-      bs.asInstanceOf[Array[O2]]
-    }
+    override def toArray[O2 >: C](implicit o2ct: ClassTag[O2]): Array[O2] =
+      if (o2ct == ct) {
+        val bs = new Array[O2](size)
+        val b = duplicate(buf)
+        (b: JBuffer).position(offset)
+        get(b, bs.asInstanceOf[Array[C]], 0, size)
+        bs
+      } else super.toArray
   }
 
   object CharBuffer {
     def apply(buf: JCharBuffer): CharBuffer =
-      view(buf.duplicate().asReadOnlyBuffer)
+      view(buf.duplicate())
 
     def view(buf: JCharBuffer): CharBuffer =
       new CharBuffer(buf, buf.position, buf.remaining)
@@ -864,6 +868,13 @@ object Chunk
 
     override def toByteVector[B >: Char](implicit ev: B =:= Byte): ByteVector =
       throw new UnsupportedOperationException
+
+    override def toArraySlice[O2 >: Char](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct == ClassTag.Char && buf.hasArray)
+        Chunk
+          .ArraySlice(buf.array, buf.arrayOffset + offset, size)
+          .asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
   }
 
   /** Creates a chunk backed by an char buffer, bounded by the current position and limit */
@@ -871,7 +882,7 @@ object Chunk
 
   object ByteBuffer {
     def apply(buf: JByteBuffer): ByteBuffer =
-      view(buf.duplicate().asReadOnlyBuffer)
+      view(buf.duplicate())
 
     def view(buf: JByteBuffer): ByteBuffer =
       new ByteBuffer(buf, buf.position, buf.remaining)
@@ -901,6 +912,13 @@ object Chunk
       (bb: JBuffer).limit(offset + size)
       ByteVector.view(bb)
     }
+
+    override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct == ClassTag.Byte && buf.hasArray)
+        Chunk
+          .ArraySlice(buf.array, buf.arrayOffset + offset, size)
+          .asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
   }
 
   /** Creates a chunk backed by an byte buffer, bounded by the current position and limit */
@@ -948,6 +966,11 @@ object Chunk
 
     @deprecated("Retained for bincompat", "3.2.12")
     def toByteVector() = bv
+
+    override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct == ClassTag.Byte)
+        Chunk.ArraySlice[Byte](bv.toArrayUnsafe, 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
