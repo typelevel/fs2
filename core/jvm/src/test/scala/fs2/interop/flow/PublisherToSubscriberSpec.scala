@@ -36,6 +36,7 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
         Stream
           .resource(toPublisher(Stream.emits(ints).covary[IO]))
           .flatMap(p => fromPublisher[IO](p, bufferSize))
+          .map(_ * 1) // Just to ensure the cast is safe.
 
       subscriberStream.compile.toVector.assertEquals(ints.toVector)
     }

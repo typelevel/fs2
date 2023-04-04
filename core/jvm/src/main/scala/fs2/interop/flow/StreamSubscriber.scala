@@ -28,7 +28,6 @@ import cats.effect.kernel.Async
 import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Subscriber, Subscription}
 import java.util.concurrent.atomic.AtomicReference
-import scala.reflect.ClassTag
 import scala.util.control.NoStackTrace
 
 /** Implementation of a [[Subscriber]].
@@ -39,7 +38,7 @@ import scala.util.control.NoStackTrace
   */
 private[flow] final class StreamSubscriber[F[_], A] private (
     chunkSize: Int,
-    currentState: AtomicReference[(StreamSubscriber.State[A], () => Unit)]
+    currentState: AtomicReference[(StreamSubscriber.State, () => Unit)]
 )(implicit
     F: Async[F]
 ) extends Subscriber[A] {
@@ -91,7 +90,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
     // Producer for downstream.
     val dequeue1 =
-      F.async[Option[Chunk[A]]] { cb =>
+      F.async[Option[Chunk[Any]]] { cb =>
         F.delay {
           nextState(Dequeue(cb))
 
@@ -104,6 +103,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
         .repeatEval(dequeue1)
         .unNoneTerminate
         .unchunks
+        .asInstanceOf[Stream[F, A]] // This cast is safe, since all elements come from onNext(a: A).
   }
 
   // Finite state machine.
@@ -112,7 +112,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   private def run(block: => Unit): () => Unit = () => block
 
   /** Runs a single step of the state machine. */
-  private def step(in: Input[A]): State[A] => (State[A], () => Unit) =
+  private def step(in: Input): State => (State, () => Unit) =
     in match {
       case Subscribe(s) => {
         case Uninitialized(None) =>
@@ -131,7 +131,6 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
       case Next(a) => {
         case WaitingOnUpstream(idx, buffer, cb, s) =>
-          implicit val ct = ClassTag[A](a.getClass)
           val newIdx = idx + 1
 
           if (chunkSize == 1) {
@@ -139,7 +138,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
               cb.apply(Right(Some(Chunk.singleton(a))))
             }
           } else if (idx == 0) {
-            val newBuffer = new Array[A](chunkSize)
+            val newBuffer = new Array[Any](chunkSize)
             WaitingOnUpstream(newIdx, newBuffer, cb, s) -> run {
               newBuffer.update(idx, a)
             }
@@ -154,8 +153,8 @@ private[flow] final class StreamSubscriber[F[_], A] private (
             }
           }
 
-        case Terminal() =>
-          Terminal() -> noop
+        case Terminal =>
+          Terminal -> noop
 
         case state @ Idle(s) =>
           Failed(new InvalidStateException(operation = s"Received record [${a}]", state)) -> run {
@@ -168,12 +167,12 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
       case Error(ex) => {
         case Uninitialized(Some(cb)) =>
-          Terminal() -> run {
+          Terminal -> run {
             cb.apply(Left(ex))
           }
 
         case WaitingOnUpstream(_, _, cb, _) =>
-          Terminal() -> run {
+          Terminal -> run {
             cb.apply(Left(ex))
           }
 
@@ -183,23 +182,22 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
       case Complete(canceled) => {
         case Uninitialized(Some(cb)) =>
-          Terminal() -> run {
+          Terminal -> run {
             cb.apply(Right(None))
           }
 
         case Idle(s) =>
-          Terminal() -> run {
+          Terminal -> run {
             if (canceled) {
               s.cancel()
             }
           }
 
         case WaitingOnUpstream(idx, buffer, cb, s) =>
-          Terminal() -> run {
+          Terminal -> run {
             if (idx == 0) {
               cb.apply(Right(None))
             } else {
-              implicit val ct: ClassTag[A] = ClassTag[A](buffer.head.getClass)
               cb.apply(Right(Some(Chunk.array(buffer, offset = 0, length = idx))))
             }
 
@@ -212,7 +210,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           Failed(ex) -> noop
 
         case _ =>
-          Terminal() -> noop
+          Terminal -> noop
       }
 
       case Dequeue(cb) => {
@@ -225,14 +223,14 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           }
 
         case state @ Uninitialized(Some(otherCB)) =>
-          Terminal() -> run {
+          Terminal -> run {
             val ex = Left(new InvalidStateException(operation = "Received request", state))
             otherCB.apply(ex)
             cb.apply(ex)
           }
 
         case state @ WaitingOnUpstream(_, _, otherCB, s) =>
-          Terminal() -> run {
+          Terminal -> run {
             s.cancel()
 
             val ex = Left(new InvalidStateException(operation = "Received request", state))
@@ -241,19 +239,19 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           }
 
         case Failed(ex) =>
-          Terminal() -> run {
+          Terminal -> run {
             cb.apply(Left(ex))
           }
 
-        case Terminal() =>
-          Terminal() -> run {
+        case Terminal =>
+          Terminal -> run {
             cb.apply(Right(None))
           }
       }
     }
 
   /** Runs the next step of the state machine. */
-  private def nextState(in: Input[A]): Unit = {
+  private def nextState(in: Input): Unit = {
     val (_, effect) = currentState.updateAndGet { case (state, _) =>
       step(in)(state)
     }
@@ -272,7 +270,7 @@ private[flow] object StreamSubscriber {
 
     F.delay {
       val currentState =
-        new AtomicReference[(State[A], () => Unit)]((State.Uninitialized(cb = None), noop))
+        new AtomicReference[(State, () => Unit)]((State.Uninitialized(cb = None), noop))
 
       new StreamSubscriber[F, A](
         chunkSize,
@@ -287,7 +285,7 @@ private[flow] object StreamSubscriber {
   private object StreamSubscriberException {
     type StreamSubscriberException = StreamSubscriber.StreamSubscriberException
 
-    final class InvalidStateException[A](operation: String, state: State[A])
+    final class InvalidStateException(operation: String, state: State)
         extends StreamSubscriberException(
           msg = s"${operation} in invalid state [${state}]"
         )
@@ -298,29 +296,29 @@ private[flow] object StreamSubscriber {
         )
   }
 
-  private type CB[A] = Either[Throwable, Option[Chunk[A]]] => Unit
+  private type CB = Either[Throwable, Option[Chunk[Any]]] => Unit
 
   /** A finite state machine describing the Subscriber. */
-  private sealed trait State[A]
+  private sealed trait State
   private object State {
-    type State[A] = StreamSubscriber.State[A]
+    type State = StreamSubscriber.State
 
-    final case class Uninitialized[A](cb: Option[CB[A]]) extends State[A]
-    final case class Idle[A](s: Subscription) extends State[A]
-    final case class WaitingOnUpstream[A](idx: Int, buffer: Array[A], cb: CB[A], s: Subscription)
-        extends State[A]
-    final case class Failed[A](ex: StreamSubscriberException) extends State[A]
-    final case class Terminal[A]() extends State[A]
+    final case class Uninitialized(cb: Option[CB]) extends State
+    final case class Idle(s: Subscription) extends State
+    final case class WaitingOnUpstream(idx: Int, buffer: Array[Any], cb: CB, s: Subscription)
+        extends State
+    final case class Failed(ex: StreamSubscriberException) extends State
+    case object Terminal extends State
   }
 
-  private sealed trait Input[A]
+  private sealed trait Input
   private object Input {
-    type Input[A] = StreamSubscriber.Input[A]
+    type Input = StreamSubscriber.Input
 
-    final case class Subscribe[A](s: Subscription) extends Input[A]
-    final case class Next[A](a: A) extends Input[A]
-    final case class Error[A](ex: Throwable) extends Input[A]
-    final case class Complete[A](canceled: Boolean) extends Input[A]
-    final case class Dequeue[A](cb: CB[A]) extends Input[A]
+    final case class Subscribe(s: Subscription) extends Input
+    final case class Next(a: Any) extends Input
+    final case class Error(ex: Throwable) extends Input
+    final case class Complete(canceled: Boolean) extends Input
+    final case class Dequeue(cb: CB) extends Input
   }
 }
