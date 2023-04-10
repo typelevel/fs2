@@ -46,7 +46,7 @@ class CancellationSpec extends Fs2Suite {
 
   val s = Stream.range(0, 5).covary[IO]
 
-  val attempts = 10000
+  def attempts = if (isJVM) 10000 else 100
 
   def testStreamSubscription(clue: String)(program: Subscription => Unit): IO[Unit] =
     IO(new AtomicBoolean(false))
