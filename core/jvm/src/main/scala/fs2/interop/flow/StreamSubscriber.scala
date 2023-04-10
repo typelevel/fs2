@@ -140,15 +140,18 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           } else if (idx == 0) {
             val newBuffer = new Array[Any](chunkSize)
             WaitingOnUpstream(newIdx, newBuffer, cb, s) -> run {
+              // We do the update here, to ensure it happens after we have secured access to the index.
               newBuffer.update(idx, a)
             }
           } else if (newIdx == chunkSize) {
             Idle(s) -> run {
+              // We do the update here, to ensure it happens after we have secured access to the index.
               buffer.update(idx, a)
               cb.apply(Right(Some(Chunk.array(buffer))))
             }
           } else {
             WaitingOnUpstream(newIdx, buffer, cb, s) -> run {
+              // We do the update here, to ensure it happens after we have secured access to the index.
               buffer.update(idx, a)
             }
           }
@@ -250,11 +253,21 @@ private[flow] final class StreamSubscriber[F[_], A] private (
       }
     }
 
-  /** Runs the next step of the state machine. */
+  /** Runs the next step of fsm.
+    *
+    * This function is concurrent safe,
+    * because the reactive-streams specs mention that all the on methods are to be called sequentially.
+    * Additionally, `Dequeue` and `Next` can't never happen concurrently, since they are tied together.
+    * Thus, these are the only concurrent options and all are covered:
+    * + `Subscribe` & `Dequeue`: No matter the order in which they are processed, we will end with a request call and a null buffer.
+    * + `Error` & `Dequeue`: No matter the order in which they are processed, we will complete the callback with the error.
+    * + cancellation & any other thing: Worst case, we will lose some data that we not longer care about; and eventually reach `Terminal`.
+    */
   private def nextState(in: Input): Unit = {
     val (_, effect) = currentState.updateAndGet { case (state, _) =>
       step(in)(state)
     }
+    // Only run the effect after the state update took place.
     effect()
   }
 }
@@ -305,6 +318,10 @@ private[flow] object StreamSubscriber {
 
     final case class Uninitialized(cb: Option[CB]) extends State
     final case class Idle(s: Subscription) extends State
+    // Having an Array inside the state is fine,
+    // because the reactive streams spec ensures that all signals must be sent and processed sequentially.
+    // Additionally, we ensure that the modifications happens only after we ensure they are safe;
+    // since they are always done on the effect run after the state update took place.
     final case class WaitingOnUpstream(idx: Int, buffer: Array[Any], cb: CB, s: Subscription)
         extends State
     final case class Failed(ex: StreamSubscriberException) extends State
