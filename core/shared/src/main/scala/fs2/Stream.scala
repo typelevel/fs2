@@ -2413,7 +2413,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               Pull.output(acc) >> go(hd, size, tl)
             else {
               val (out, rem) = acc.splitAt(size - 1)
-              Pull.output(out) >> go(rem ++ hd, -1, tl)
+              Pull.output(out) >> go(rem, -1, Pull.output(hd) >> tl)
             }
           case None =>
             Pull.output(acc)
