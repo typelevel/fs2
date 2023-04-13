@@ -283,6 +283,17 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("ap getAndDiscreteUpdates propagates changes from either signal".only) {
+    TestControl.executeEmbed {
+      (SignallingRef[IO].of((i: Int) => i + 1), SignallingRef[IO].of(0)).flatMapN {
+        case (ffs, fus) =>
+          (ffs: Signal[IO, Int => Int]).ap(fus).getAndDiscreteUpdates.use { case (_, updates) =>
+            fus.set(1) *> updates.head.compile.lastOrError.assertEquals(2) // should not hang
+          }
+      }
+    }
+  }
+
   test("waitUntil") {
     val target = 5
     val expected = 1
