@@ -22,7 +22,6 @@
 package fs2
 package concurrent
 
-import cats.data.OptionT
 import cats.kernel.Eq
 import cats.effect.kernel.{Concurrent, Deferred, Ref, Resource}
 import cats.effect.std.MapRef
@@ -624,27 +623,18 @@ object SignallingMapRef {
 
 private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
   implicit def applicativeInstance[F[_]: Concurrent]: Applicative[Signal[F, *]] = {
-    def nondeterministicZip[A0, A1](xs: Stream[F, A0], ys: Stream[F, A1]): Stream[F, (A0, A1)] = {
-      type PullOutput = (A0, A1, Stream[F, A0], Stream[F, A1])
-
-      val firstPull: OptionT[Pull[F, PullOutput, *], Unit] = for {
-        firstXAndRestOfXs <- OptionT(xs.pull.uncons1.covaryOutput[PullOutput])
-        (x, restOfXs) = firstXAndRestOfXs
-        firstYAndRestOfYs <- OptionT(ys.pull.uncons1.covaryOutput[PullOutput])
-        (y, restOfYs) = firstYAndRestOfYs
-        _ <- OptionT.liftF {
-          Pull.output1[F, PullOutput]((x, y, restOfXs, restOfYs)): Pull[F, PullOutput, Unit]
+    def nondeterministicZip[A0, A1](
+        x0: A0,
+        xs: Stream[F, A0],
+        y0: A1,
+        ys: Stream[F, A1]
+    ): Stream[F, (A0, A1)] =
+      xs.either(ys)
+        .scan((x0, y0)) {
+          case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
+          case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
         }
-      } yield ()
-
-      firstPull.value.void.stream
-        .flatMap { case (x, y, restOfXs, restOfYs) =>
-          restOfXs.either(restOfYs).scan((x, y)) {
-            case ((_, rightElem), Left(newElem)) => (newElem, rightElem)
-            case ((leftElem, _), Right(newElem)) => (leftElem, newElem)
-          }
-        }
-    }
+        .drop(1)
 
     new Applicative[Signal[F, *]] {
       override def map[A, B](fa: Signal[F, A])(f: A => B): Signal[F, B] = Signal.mapped(fa)(f)
@@ -654,7 +644,9 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
       def ap[A, B](ff: Signal[F, A => B])(fa: Signal[F, A]): Signal[F, B] =
         new Signal[F, B] {
           def discrete: Stream[F, B] =
-            nondeterministicZip(ff.discrete, fa.discrete).map { case (f, a) => f(a) }
+            Stream.resource(getAndDiscreteUpdates).flatMap { case (a, updates) =>
+              Stream.emit(a) ++ updates
+            }
 
           def continuous: Stream[F, B] = Stream.repeatEval(get)
 
@@ -666,7 +658,7 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
 
           private[this] def getAndDiscreteUpdatesImpl =
             (ff.getAndDiscreteUpdates, fa.getAndDiscreteUpdates).mapN { case ((f, fs), (a, as)) =>
-              (f(a), nondeterministicZip(fs, as).map { case (f, a) => f(a) })
+              (f(a), nondeterministicZip(f, fs, a, as).map { case (f, a) => f(a) })
             }
         }
     }

@@ -283,7 +283,7 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
-  test("ap getAndDiscreteUpdates propagates changes from either signal".only) {
+  test("ap getAndDiscreteUpdates propagates changes from either signal") {
     TestControl.executeEmbed {
       (SignallingRef[IO].of((i: Int) => i + 1), SignallingRef[IO].of(0)).flatMapN {
         case (ffs, fus) =>
