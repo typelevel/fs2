@@ -590,10 +590,10 @@ val program =
 // program: Stream[[x]IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 17:38:12.819562486
-// 17:38:13.818405908
-// 17:38:14.817966215
-// 17:38:15.817959777
+// 14:51:12.139186814
+// 14:51:13.138182213
+// 14:51:14.137625753
+// 14:51:15.137678849
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -635,10 +635,10 @@ val program1 =
 // program1: Stream[[x]IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 17:38:17.820395335
-// 17:38:18.819909263
-// 17:38:19.819904891
-// 17:38:20.819911419
+// 14:51:17.139126637
+// 14:51:18.139189218
+// 14:51:19.139186494
+// 14:51:20.139136424
 ```
 
 ### Talking to the external world
@@ -671,7 +671,7 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$5@e4e50d6
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$5@427ea194
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[[x]IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
@@ -806,17 +806,17 @@ stream.toUnicastPublisher
 //       source = Bind(
 //         source = Eval(
 //           fa = Delay(
-//             thunk = cats.effect.IO$$$Lambda$12021/0x0000000802bc18c0@597982b3,
+//             thunk = cats.effect.IO$$$Lambda$11161/0x0000000802a2b738@53b97144,
 //             event = cats.effect.tracing.TracingEvent$StackTrace
 //           )
 //         ),
-//         fs = cats.effect.std.Supervisor$$$Lambda$12674/0x0000000802d69b90@3131cb0d
+//         fs = cats.effect.std.Supervisor$$$Lambda$11806/0x0000000802bcb870@22ad981
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$12676/0x0000000802d6a330@4c804d6f
+//       fs = cats.effect.kernel.Resource$$Lambda$11808/0x0000000802bd03d0@6d3cf876
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$12677/0x0000000802d6a700@30346cc9
+//     fs = cats.effect.std.Dispatcher$$$Lambda$11809/0x0000000802bd07a0@5af98644
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$12676/0x0000000802d6a330@254d1c66
+//   fs = cats.effect.kernel.Resource$$Lambda$11808/0x0000000802bd03d0@42d2ff0e
 // )
 ```
 
@@ -830,27 +830,27 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //       source = Bind(
 //         source = Eval(
 //           fa = Delay(
-//             thunk = cats.effect.IO$$$Lambda$12021/0x0000000802bc18c0@1a9bd261,
+//             thunk = cats.effect.IO$$$Lambda$11161/0x0000000802a2b738@1660d004,
 //             event = cats.effect.tracing.TracingEvent$StackTrace
 //           )
 //         ),
-//         fs = cats.effect.std.Supervisor$$$Lambda$12674/0x0000000802d69b90@543e1f68
+//         fs = cats.effect.std.Supervisor$$$Lambda$11806/0x0000000802bcb870@1c1575f6
 //       ),
-//       fs = cats.effect.kernel.Resource$$Lambda$12676/0x0000000802d6a330@47ff7302
+//       fs = cats.effect.kernel.Resource$$Lambda$11808/0x0000000802bd03d0@ac81b96
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$12677/0x0000000802d6a700@a1cf9b7
+//     fs = cats.effect.std.Dispatcher$$$Lambda$11809/0x0000000802bd07a0@5fb7bf4e
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$12676/0x0000000802d6a330@4e502a4f
+//   fs = cats.effect.kernel.Resource$$Lambda$11808/0x0000000802bd03d0@4fc7a44c
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
 // res56: IO[List[Int]] = FlatMap(
 //   ioe = Delay(
-//     thunk = cats.effect.IO$$$Lambda$12021/0x0000000802bc18c0@1a9bd261,
+//     thunk = cats.effect.IO$$$Lambda$11161/0x0000000802a2b738@1660d004,
 //     event = cats.effect.tracing.TracingEvent$StackTrace
 //   ),
-//   f = cats.effect.kernel.Resource$$Lambda$12679/0x0000000802d6b760@6ab1b9b2,
+//   f = cats.effect.kernel.Resource$$Lambda$11811/0x0000000802bd1600@78cac287,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
@@ -870,7 +870,7 @@ Want to learn more?
   * UDP networking
   * Contributions welcome! If you are familiar with one of the modules of the library and would like to contribute a more detailed guide for it, submit a PR.
 
-Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
+Also feel free to come discuss and ask/answer questions in [the Typelevel Discord channel](https://discord.gg/9V8FZTVZ9R) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
 ### Appendixes
 
