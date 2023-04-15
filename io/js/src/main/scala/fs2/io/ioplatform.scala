@@ -140,36 +140,31 @@ private[fs2] trait ioplatform {
       writable: F[Writable],
       endAfterUse: Boolean = true
   )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
-    in =>
+    (in: Stream[F, Byte]) =>
       Stream
         .eval(writable)
         .flatMap { writable =>
-          val writes = in.chunks.foreach { chunk =>
+          def toEither(e: js.UndefOr[js.Error]): Either[Throwable, Unit] =
+            e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException)
+
+          def writeChunk(chunk: Chunk[Byte]): F[Unit] =
             F.async[Unit] { cb =>
               F.delay {
-                writable.write(
-                  chunk.toUint8Array,
-                  e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                )
+                writable.write(chunk.toUint8Array, e => cb(toEither(e)))
                 Some(F.delay(writable.destroy()))
+              }
+            }
+
+          val writeEnd: F[Unit] = F.whenA(endAfterUse) {
+            F.async[Unit] { cb =>
+              F.delay {
+                writable.end(e => cb(toEither(e)))
+                Some(F.unit)
               }
             }
           }
 
-          val end =
-            if (endAfterUse)
-              Stream.exec {
-                F.async[Unit] { cb =>
-                  F.delay(
-                    writable.end(e =>
-                      cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                    )
-                  ).as(Some(F.unit))
-                }
-              }
-            else Stream.empty
-
-          (writes ++ end).onFinalizeCase[F] {
+          (in.chunks.foreach(writeChunk) ++ Stream.exec(writeEnd)).onFinalizeCase[F] {
             case Resource.ExitCase.Succeeded =>
               F.unit
             case Resource.ExitCase.Errored(_) | Resource.ExitCase.Canceled =>
