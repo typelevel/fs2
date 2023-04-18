@@ -2399,7 +2399,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.suspend {
       assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
       val random = new scala.util.Random(seed)
-      def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
+      def factor: Double = random.between(minFactor, maxFactor+ (1e-4))
 
       def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
