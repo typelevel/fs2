@@ -27,7 +27,10 @@ import cats.kernel.laws.discipline.EqTests
 import cats.laws.discipline.{AlternativeTests, MonadTests, TraverseFilterTests, TraverseTests}
 import org.scalacheck.{Arbitrary, Cogen, Gen, Test}
 import org.scalacheck.Prop.forAll
+import scodec.bits.ByteVector
 
+import java.nio.ByteBuffer
+import java.nio.CharBuffer
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
@@ -225,11 +228,44 @@ class ChunkSuite extends Fs2Suite {
     Chunk.ArraySlice(Array[Any](0.toByte)).asInstanceOf[Chunk[Byte]].toByteVector
   }
 
-  test("ArraySlice does not copy when chunk is already an ArraySlice instance") {
+  test("toArraySlice does not copy when chunk is already an ArraySlice instance") {
     val chunk: Chunk[Int] = Chunk.ArraySlice(Array(0))
     assert(chunk eq chunk.toArraySlice)
     val chunk2: Chunk[Any] = Chunk.ArraySlice(Array(new Object))
     assert(chunk2 eq chunk2.toArraySlice)
+  }
+
+  test("toArraySlice does not copy when chunk is an array-backed bytevector") {
+    val arr = Array[Byte](0, 1, 2, 3)
+    val chunk: Chunk[Byte] = Chunk.byteVector(ByteVector.view(arr))
+    assert(chunk.toArraySlice.values eq arr)
+  }
+
+  test("ByteVectorChunk#toArraySlice does not throw class cast exception") {
+    val chunk: Chunk[Byte] = Chunk.byteVector(ByteVector.view(Array[Byte](0, 1, 2, 3)))
+    assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
+  }
+
+  test("toArraySlice does not copy when chunk is an array-backed bytebuffer") {
+    val bb = ByteBuffer.allocate(4)
+    val chunk: Chunk[Byte] = Chunk.byteBuffer(bb)
+    assert(chunk.toArraySlice.values eq bb.array)
+  }
+
+  test("ByteBuffer#toArraySlice does not throw class cast exception") {
+    val chunk: Chunk[Byte] = Chunk.byteBuffer(ByteBuffer.allocate(4))
+    assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
+  }
+
+  test("toArraySlice does not copy when chunk is an array-backed charbuffer") {
+    val cb = CharBuffer.allocate(4)
+    val chunk: Chunk[Char] = Chunk.charBuffer(cb)
+    assert(chunk.toArraySlice.values eq cb.array)
+  }
+
+  test("CharBuffer#toArraySlice does not throw class cast exception") {
+    val chunk: Chunk[Char] = Chunk.charBuffer(CharBuffer.allocate(4))
+    assertEquals(chunk.toArraySlice[Any].values.apply(0), 0)
   }
 
   test("compactUntagged - regression #2679") {

@@ -144,22 +144,16 @@ private[fs2] trait ioplatform {
       Stream
         .eval(writable)
         .flatMap { writable =>
-          def go(
-              s: Stream[F, Byte]
-          ): Pull[F, Nothing, Unit] = s.pull.uncons.flatMap {
-            case Some((head, tail)) =>
-              Pull.eval {
-                F.async[Unit] { cb =>
-                  F.delay {
-                    writable.write(
-                      head.toUint8Array,
-                      e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                    )
-                    Some(F.delay(writable.destroy()))
-                  }
-                }
-              } >> go(tail)
-            case None => Pull.done
+          val writes = in.chunks.foreach { chunk =>
+            F.async[Unit] { cb =>
+              F.delay {
+                writable.write(
+                  chunk.toUint8Array,
+                  e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                )
+                Some(F.delay(writable.destroy()))
+              }
+            }
           }
 
           val end =
@@ -175,7 +169,7 @@ private[fs2] trait ioplatform {
               }
             else Stream.empty
 
-          (go(in).stream ++ end).onFinalizeCase[F] {
+          (writes ++ end).onFinalizeCase[F] {
             case Resource.ExitCase.Succeeded =>
               F.unit
             case Resource.ExitCase.Errored(_) | Resource.ExitCase.Canceled =>
