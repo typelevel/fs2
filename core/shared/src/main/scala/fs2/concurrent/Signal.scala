@@ -23,17 +23,19 @@ package fs2
 package concurrent
 
 import cats.data.OptionT
-import cats.effect.kernel.{Concurrent, Deferred, Ref}
+import cats.kernel.Eq
+import cats.effect.kernel.{Concurrent, Deferred, Ref, Resource}
 import cats.effect.std.MapRef
+import cats.effect.syntax.all._
 import cats.syntax.all._
 import cats.{Applicative, Functor, Invariant, Monad}
 
 import scala.collection.immutable.LongMap
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
-trait Signal[F[_], A] {
+trait Signal[F[_], A] { outer =>
 
-  /** Returns a stream of the updates to this signal.
+  /** Returns a stream of the current value and subsequent updates to this signal.
     *
     * Even if you are pulling as fast as possible, updates that are very close together may
     * result in only the last update appearing in the stream. In general, when you pull
@@ -47,9 +49,34 @@ trait Signal[F[_], A] {
     */
   def continuous: Stream[F, A]
 
-  /** Asynchronously gets the current value of this `Signal`.
+  /** Gets the current value of this `Signal`.
     */
   def get: F[A]
+
+  /** Returns the current value of this `Signal` and a `Stream` to subscribe to
+    * subsequent updates, with the same semantics as [[discrete]]. The updates
+    * stream should be compiled at most once.
+    */
+  def getAndDiscreteUpdates(implicit F: Concurrent[F]): Resource[F, (A, Stream[F, A])] =
+    discrete.pull.uncons1
+      .flatMap(Pull.outputOption1(_))
+      .streamNoScope
+      .compile
+      .resource
+      .onlyOrError
+
+  /** Returns a signal derived from this one, that drops update events that did not change the value.
+    */
+  def changes(implicit eqA: Eq[A]): Signal[F, A] =
+    new Signal[F, A] {
+      def discrete = outer.discrete.changes
+      def continuous = outer.continuous
+      def get = outer.get
+      override def getAndDiscreteUpdates(implicit F: Concurrent[F]) =
+        outer.getAndDiscreteUpdates.map { case (got, updates) =>
+          (got, updates.dropWhile(_ === got).changes)
+        }
+    }
 
   /** Returns when the condition becomes true, semantically blocking
     * in the meantime.
@@ -116,6 +143,10 @@ object Signal extends SignalInstances {
     new Signal[F, A] {
       def get: F[A] = F.pure(a)
       def continuous: Stream[Pure, A] = Stream.constant(a)
+      override def getAndDiscreteUpdates(implicit
+          ev: Concurrent[F]
+      ): Resource[F, (A, Stream[F, A])] =
+        Resource.pure((a, Stream.never(F)))
       def discrete: Stream[F, A] = Stream(a) ++ Stream.never
     }
 
@@ -123,6 +154,12 @@ object Signal extends SignalInstances {
     new Signal[F, B] {
       def continuous: Stream[F, B] = fa.continuous.map(f)
       def discrete: Stream[F, B] = fa.discrete.map(f)
+      override def getAndDiscreteUpdates(implicit
+          ev: Concurrent[F]
+      ): Resource[F, (B, Stream[F, B])] =
+        fa.getAndDiscreteUpdates(ev).map { case (a, updates) =>
+          (f(a), updates.map(f))
+        }
       def get: F[B] = Functor[F].map(fa.get)(f)
     }
 
@@ -222,17 +259,28 @@ object SignallingRef {
 
           def continuous: Stream[F, A] = Stream.repeatEval(get)
 
-          def discrete: Stream[F, A] = {
+          def discrete: Stream[F, A] =
+            Stream.resource(getAndDiscreteUpdates).flatMap { case (a, updates) =>
+              Stream.emit(a) ++ updates
+            }
+
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (A, Stream[F, A])] =
+            getAndDiscreteUpdatesImpl
+          private[this] def getAndDiscreteUpdatesImpl = {
             def go(id: Long, lastSeen: Long): Stream[F, A] = {
               def getNext: F[(A, Long)] =
-                F.deferred[(A, Long)].flatMap { wait =>
-                  state.modify { case state @ State(value, lastUpdate, listeners) =>
-                    if (lastUpdate != lastSeen)
-                      state -> (value -> lastUpdate).pure[F]
-                    else
-                      state.copy(listeners = listeners + (id -> wait)) -> wait.get
-                  }.flatten
-                }
+                F.deferred[(A, Long)]
+                  .flatMap { wait =>
+                    state.modify { case state @ State(value, lastUpdate, listeners) =>
+                      if (lastUpdate != lastSeen)
+                        state -> (value -> lastUpdate).pure[F]
+                      else
+                        state.copy(listeners = listeners + (id -> wait)) -> wait.get
+                    }
+                  }
+                  .flatten // cancelable
 
               Stream.eval(getNext).flatMap { case (a, lastUpdate) =>
                 Stream.emit(a) ++ go(id, lastSeen = lastUpdate)
@@ -242,10 +290,9 @@ object SignallingRef {
             def cleanup(id: Long): F[Unit] =
               state.update(s => s.copy(listeners = s.listeners - id))
 
-            Stream.eval(state.get).flatMap { state =>
-              Stream.emit(state.value) ++
-                Stream.bracket(newId)(cleanup).flatMap(go(_, state.lastUpdate))
-            }
+            Resource.eval(state.get.map { s =>
+              (s.value, Stream.bracket(newId)(cleanup).flatMap(go(_, s.lastUpdate)))
+            })
           }
 
           def set(a: A): F[Unit] = update(_ => a)
@@ -253,10 +300,10 @@ object SignallingRef {
           def update(f: A => A): F[Unit] = modify(a => (f(a), ()))
 
           def modify[B](f: A => (A, B)): F[B] =
-            state.modify(updateAndNotify(_, f)).flatten
+            state.flatModify(updateAndNotify(_, f))
 
           def tryModify[B](f: A => (A, B)): F[Option[B]] =
-            state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence)
+            state.tryModify(updateAndNotify(_, f)).flatMap(_.sequence).uncancelable
 
           def tryUpdate(f: A => A): F[Boolean] =
             tryModify(a => (f(a), ())).map(_.isDefined)
@@ -307,6 +354,11 @@ object SignallingRef {
     def continuous: Stream[F, B] = underlying.continuous.map(lensGet)
 
     def get: F[B] = F.map(underlying.get)(a => lensGet(a))
+
+    override def getAndDiscreteUpdates(implicit ev: Concurrent[F]): Resource[F, (B, Stream[F, B])] =
+      underlying.getAndDiscreteUpdates.map { case (a, updates) =>
+        (lensGet(a), updates.map(lensGet))
+      }
 
     def set(b: B): F[Unit] = underlying.update(a => lensModify(a)(_ => b))
 
@@ -359,6 +411,12 @@ object SignallingRef {
           def get: F[B] = fa.get.map(f)
           def discrete: Stream[F, B] = fa.discrete.map(f)
           def continuous: Stream[F, B] = fa.continuous.map(f)
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (B, Stream[F, B])] =
+            fa.getAndDiscreteUpdates(ev).map { case (a, updates) =>
+              (f(a), updates.map(f))
+            }
           def set(b: B): F[Unit] = fa.set(g(b))
           def access: F[(B, B => F[Boolean])] =
             fa.access.map { case (getter, setter) =>
@@ -390,31 +448,65 @@ trait SignallingMapRef[F[_], K, V] extends MapRef[F, K, V] {
 object SignallingMapRef {
 
   /** Builds a `SignallingMapRef` for effect `F`, initialized to the supplied value.
+    *
+    * Update semantics for `discrete` are the same as `SignallingRef`, with one exception:
+    * it cannot distinguish updates that remove a key (by setting its value to `None`).
+    *
+    * More specifically: if you remove a key, this will only notify once per listener
+    * i.e. setting it to `None` again will not trigger another update.
+    * Furthermore, if a listener's last pull returned `None`, and by the time it pulls again the
+    * current value is `None`, then it will not be notified regardless of any non-`None` updates
+    * that may have happened between the pulls. This special semantic for `None` is necessary to
+    * prevent memory leaks at keys with no values and no listeners.
     */
   def ofSingleImmutableMap[F[_], K, V](
       initial: Map[K, V] = Map.empty[K, V]
   )(implicit F: Concurrent[F]): F[SignallingMapRef[F, K, Option[V]]] = {
     case class State(
-        value: Map[K, V],
         lastUpdate: Long,
-        listeners: Map[K, LongMap[Deferred[F, (Option[V], Long)]]]
+        keys: Map[K, KeyState]
     )
 
-    F.ref(State(initial, 0L, initial.flatMap(_ => Nil)))
+    type Listener = Deferred[F, (Option[V], Long)]
+
+    // fix lastUpdate at -1 when the value is not present
+    // so we don't have to keep an update counter when the key has neither a value nor any listeners
+    case class KeyState(
+        value: Option[V],
+        lastUpdate: Long,
+        listeners: LongMap[Listener]
+    )
+
+    F.ref(State(0L, initial.map { case (k, v) => k -> KeyState(Some(v), 0L, LongMap.empty) }))
       .product(F.ref(1L))
       .map { case (state, ids) =>
         def newId = ids.getAndUpdate(_ + 1)
 
         def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
             : (State, F[U]) = {
-          val (newValue, result) = f(state.value.get(k))
-          val newMap = newValue.fold(state.value - k)(v => state.value + (k -> v))
-          val lastUpdate = state.lastUpdate + 1
-          val newListeners = state.listeners - k
-          val newState = State(newMap, lastUpdate, newListeners)
-          val notifyListeners = state.listeners.get(k).fold(F.unit) { listeners =>
-            listeners.values.toVector.traverse_ { listener =>
-              listener.complete(newValue -> lastUpdate)
+
+          val keyState = state.keys.get(k)
+
+          val (newValue, result) = f(keyState.flatMap(_.value))
+
+          val lastUpdate = {
+            val lu = state.lastUpdate + 1
+            // skip -1 b/c of its special semantic
+            if (lu == -1L) 0L else lu
+          }
+
+          val lastKeyUpdate = if (newValue.isDefined) lastUpdate else -1L
+
+          val newKeys =
+            if (newValue.isDefined)
+              state.keys.updated(k, KeyState(newValue, lastKeyUpdate, LongMap.empty))
+            else
+              state.keys - k // prevent memory leak
+
+          val newState = State(lastUpdate, newKeys)
+          val notifyListeners = keyState.fold(F.unit) { keyState =>
+            keyState.listeners.values.toVector.traverse_ { listener =>
+              listener.complete(newValue -> lastKeyUpdate)
             }
           }
 
@@ -423,25 +515,42 @@ object SignallingMapRef {
 
         k =>
           new SignallingRef[F, Option[V]] {
-            def get: F[Option[V]] = state.get.map(_.value.get(k))
+            def get: F[Option[V]] = state.get.map(_.keys.get(k).flatMap(_.value))
 
             def continuous: Stream[F, Option[V]] = Stream.repeatEval(get)
 
-            def discrete: Stream[F, Option[V]] = {
+            def discrete: Stream[F, Option[V]] =
+              Stream.resource(getAndDiscreteUpdates).flatMap { case (a, updates) =>
+                Stream.emit(a) ++ updates
+              }
+
+            override def getAndDiscreteUpdates(implicit
+                ev: Concurrent[F]
+            ): Resource[F, (Option[V], Stream[F, Option[V]])] =
+              getAndDiscreteUpdatesImpl
+
+            private[this] def getAndDiscreteUpdatesImpl = {
               def go(id: Long, lastSeen: Long): Stream[F, Option[V]] = {
                 def getNext: F[(Option[V], Long)] =
-                  F.deferred[(Option[V], Long)].flatMap { wait =>
-                    state.modify { case state @ State(value, lastUpdate, listeners) =>
-                      if (lastUpdate != lastSeen)
-                        state -> (value.get(k) -> lastUpdate).pure[F]
-                      else {
-                        val newListeners =
-                          listeners
-                            .updated(k, listeners.getOrElse(k, LongMap.empty) + (id -> wait))
-                        state.copy(listeners = newListeners) -> wait.get
+                  F.deferred[(Option[V], Long)]
+                    .flatMap { wait =>
+                      state.modify { state =>
+                        val keyState = state.keys.get(k)
+                        val value = keyState.flatMap(_.value)
+                        val lastUpdate = keyState.fold(-1L)(_.lastUpdate)
+                        val listeners = keyState.fold(LongMap.empty[Listener])(_.listeners)
+
+                        if (lastUpdate != lastSeen)
+                          state -> (value -> lastUpdate).pure[F]
+                        else {
+                          val newKeys =
+                            state.keys
+                              .updated(k, KeyState(value, lastUpdate, listeners.updated(id, wait)))
+                          state.copy(keys = newKeys) -> wait.get
+                        }
                       }
-                    }.flatten
-                  }
+                    }
+                    .flatten // cancelable
 
                 Stream.eval(getNext).flatMap { case (v, lastUpdate) =>
                   Stream.emit(v) ++ go(id, lastSeen = lastUpdate)
@@ -449,20 +558,26 @@ object SignallingMapRef {
               }
 
               def cleanup(id: Long): F[Unit] =
-                state.update { s =>
-                  val newListeners = s.listeners
-                    .get(k)
-                    .map(_ - id)
-                    .filterNot(_.isEmpty)
-                    .fold(s.listeners - k)(s.listeners.updated(k, _))
-                  s.copy(listeners = newListeners)
+                state.update { state =>
+                  state.keys.get(k).fold(state) { case KeyState(value, lastUpdate, listeners) =>
+                    val newListeners = listeners - id
+                    val newKeys =
+                      if (value.isEmpty && newListeners.isEmpty)
+                        state.keys - k // prevent memory leak
+                      else
+                        state.keys.updated(k, KeyState(value, lastUpdate, newListeners))
+                    state.copy(keys = newKeys)
+                  }
                 }
 
-              Stream.bracket(newId)(cleanup).flatMap { id =>
-                Stream.eval(state.get).flatMap { state =>
-                  Stream.emit(state.value.get(k)) ++ go(id, state.lastUpdate)
-                }
-              }
+              Resource.eval(state.get.map { state =>
+                (
+                  state.keys.get(k).flatMap(_.value),
+                  Stream
+                    .bracket(newId)(cleanup)
+                    .flatMap(go(_, state.keys.get(k).fold(-1L)(_.lastUpdate)))
+                )
+              })
             }
 
             def set(v: Option[V]): F[Unit] = update(_ => v)
@@ -470,10 +585,10 @@ object SignallingMapRef {
             def update(f: Option[V] => Option[V]): F[Unit] = modify(v => (f(v), ()))
 
             def modify[U](f: Option[V] => (Option[V], U)): F[U] =
-              state.modify(updateAndNotify(_, k, f)).flatten
+              state.flatModify(updateAndNotify(_, k, f))
 
             def tryModify[U](f: Option[V] => (Option[V], U)): F[Option[U]] =
-              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence)
+              state.tryModify(updateAndNotify(_, k, f)).flatMap(_.sequence).uncancelable
 
             def tryUpdate(f: Option[V] => Option[V]): F[Boolean] =
               tryModify(a => (f(a), ())).map(_.isDefined)
@@ -489,7 +604,7 @@ object SignallingMapRef {
                   }
                 }
 
-                (state.value.get(k), setter)
+                (state.keys.get(k).flatMap(_.value), setter)
               }
 
             def tryModifyState[U](state: cats.data.State[Option[V], U]): F[Option[U]] = {
@@ -544,6 +659,15 @@ private[concurrent] trait SignalInstances extends SignalLowPriorityInstances {
           def continuous: Stream[F, B] = Stream.repeatEval(get)
 
           def get: F[B] = ff.get.ap(fa.get)
+
+          override def getAndDiscreteUpdates(implicit
+              ev: Concurrent[F]
+          ): Resource[F, (B, Stream[F, B])] = getAndDiscreteUpdatesImpl
+
+          private[this] def getAndDiscreteUpdatesImpl =
+            (ff.getAndDiscreteUpdates, fa.getAndDiscreteUpdates).mapN { case ((f, fs), (a, as)) =>
+              (f(a), nondeterministicZip(fs, as).map { case (f, a) => f(a) })
+            }
         }
     }
   }

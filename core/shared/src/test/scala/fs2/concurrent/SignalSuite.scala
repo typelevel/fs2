@@ -30,6 +30,8 @@ import cats.effect.testkit.TestControl
 import scala.concurrent.duration._
 import org.scalacheck.effect.PropF.forAllF
 
+import java.util.NoSuchElementException
+
 class SignalSuite extends Fs2Suite {
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
@@ -148,6 +150,21 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("changes") {
+    TestControl.executeEmbed {
+      SignallingRef[IO, Long](0L).flatMap { s =>
+        val updates =
+          IO.sleep(1.second) *> s.set(1L) *>
+            IO.sleep(1.second) *> s.set(1L) *>
+            IO.sleep(1.second) *> s.set(2L)
+
+        updates.background.surround {
+          s.changes.discrete.takeWhile(_ != 2L, true).compile.toList.assertEquals(List(0L, 1L, 2L))
+        }
+      }
+    }
+  }
+
   test("access cannot be used twice") {
     for {
       s <- SignallingRef[IO, Long](0L)
@@ -214,9 +231,56 @@ class SignalSuite extends Fs2Suite {
     }
   }
 
+  test("mapref - does not emit spurious events") {
+    SignallingMapRef.ofSingleImmutableMap[IO, Boolean, Int](Map(false -> 0, true -> 0)).flatMap {
+      s =>
+        val events =
+          s(false).discrete.evalTap(_ => IO.sleep(1.seconds)).unNoneTerminate.compile.toList
+
+        val updates =
+          IO.sleep(1100.millis) *>
+            s(false).update(_.map(_ + 1)) *>
+            IO.sleep(1.second) *>
+            s(true).update(_.map(_ + 1)) *>
+            IO.sleep(1.seconds) *>
+            s(false).update(_.map(_ + 1)) *>
+            IO.sleep(1.seconds) *>
+            s(false).set(None)
+
+        TestControl.executeEmbed(updates.background.surround(events)).assertEquals(List(0, 1, 2))
+    }
+  }
+
   test("holdOption") {
     val s = Stream.range(1, 10).covary[IO].holdOption
     s.compile.drain
+  }
+
+  test("hold1 zip") {
+    Stream.range(1, 10).zip(Stream.range(1, 10)).covary[IO].hold1.compile.drain
+  }
+
+  test("hold1 empty") {
+    TestControl
+      .executeEmbed(Stream.empty.covary[IO].hold1.compile.drain)
+      .intercept[NoSuchElementException]
+  }
+
+  test("hold consistent with getAndDiscreteUpdates") {
+    forAllF { (init: Int, stream: Stream[Pure, Int]) =>
+      TestControl.executeEmbed {
+        stream.evalMap(IO.sleep(1.second).as(_)).holdResource(init).use { sig =>
+          sig.getAndDiscreteUpdates.use { case (got, updates) =>
+            IO(assertEquals(got, init)) *>
+              updates
+                .interruptAfter(Long.MaxValue.nanos)
+                .compile
+                .toVector
+                .assertEquals(stream.compile.toVector)
+          }
+        }
+      }
+    }
   }
 
   test("waitUntil") {

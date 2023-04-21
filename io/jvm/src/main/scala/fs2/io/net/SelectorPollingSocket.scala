@@ -25,7 +25,7 @@ package io.net
 import cats.effect.LiftIO
 import cats.effect.SelectorPoller
 import cats.effect.kernel.Async
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
@@ -38,12 +38,12 @@ import java.nio.channels.SocketChannel
 private final class SelectorPollingSocket[F[_]: LiftIO] private (
     poller: SelectorPoller,
     ch: SocketChannel,
-    readSemaphore: Semaphore[F],
-    writeSemaphore: Semaphore[F],
+    readMutex: Mutex[F],
+    writeMutex: Mutex[F],
     val localAddress: F[SocketAddress[IpAddress]],
     val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
-    extends Socket.BufferedReads(readSemaphore) {
+    extends Socket.BufferedReads(readMutex) {
 
   protected def readChunk(buf: ByteBuffer): F[Int] =
     F.delay(ch.read(buf)).flatMap { readed =>
@@ -61,8 +61,8 @@ private final class SelectorPollingSocket[F[_]: LiftIO] private (
           poller.select(ch, OP_WRITE).to *> go(buf)
         } else F.unit
       }
-    writeSemaphore.permit.use { _ =>
-      go(bytes.toByteBuffer)
+    writeMutex.lock.surround {
+      F.delay(bytes.toByteBuffer).flatMap(go)
     }
   }
 
@@ -87,13 +87,13 @@ private object SelectorPollingSocket {
       localAddress: F[SocketAddress[IpAddress]],
       remoteAddress: F[SocketAddress[IpAddress]]
   )(implicit F: Async[F]): F[Socket[F]] =
-    (Semaphore[F](1), Semaphore[F](1)).flatMapN { (readSemaphore, writeSemaphore) =>
+    (Mutex[F], Mutex[F]).flatMapN { (readMutex, writeMutex) =>
       F.delay {
         new SelectorPollingSocket[F](
           poller,
           ch,
-          readSemaphore,
-          writeSemaphore,
+          readMutex,
+          writeMutex,
           localAddress,
           remoteAddress
         )

@@ -26,7 +26,7 @@ package tls
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
@@ -49,17 +49,17 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       connection: S2nConnection[F]
   )(implicit F: Async[F]): F[TLSSocket[F]] =
     for {
-      readSem <- Semaphore(1)
-      writeSem <- Semaphore(1)
+      readMutex <- Mutex[F]
+      writeMutex <- Mutex[F]
     } yield new UnsealedTLSSocket[F] {
       def write(bytes: Chunk[Byte]): F[Unit] =
-        writeSem.permit.surround(connection.write(bytes))
+        writeMutex.lock.surround(connection.write(bytes))
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         connection.read(maxBytes)
 
       def readN(numBytes: Int): F[Chunk[Byte]] =
-        readSem.permit.use { _ =>
+        readMutex.lock.surround {
           def go(acc: Chunk[Byte]): F[Chunk[Byte]] = {
             val toRead = numBytes - acc.size
             if (toRead <= 0) F.pure(acc)
@@ -73,7 +73,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         }
 
       def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
-        readSem.permit.surround(read0(maxBytes))
+        readMutex.lock.surround(read0(maxBytes))
 
       def reads: Stream[F, Byte] =
         Stream.repeatEval(read(8192)).unNoneTerminate.unchunks

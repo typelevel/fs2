@@ -70,11 +70,11 @@ private[file] trait FileHandlePlatform[F[_]] {
 private[file] trait FileHandleCompanionPlatform {
   @deprecated("Use Files[F].open", "3.0.0")
   def fromPath[F[_]: Async](path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
-    Files[F].open(path, flags)
+    Files.forAsync[F].open(path, flags)
 
   @deprecated("Use Files[F].openFileChannel", "3.0.0")
   def fromFileChannel[F[_]: Async](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
-    Files[F].openFileChannel(channel)
+    Files.forAsync[F].openFileChannel(channel)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
   private[file] def make[F[_]](

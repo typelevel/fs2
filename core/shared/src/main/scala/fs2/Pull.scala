@@ -334,9 +334,23 @@ object Pull extends PullLowPriority {
     private[fs2] def unconsFlatMap[F2[x] >: F[x], O2](
         f: Chunk[O] => Pull[F2, O2, Unit]
     ): Pull[F2, O2, Unit] =
-      uncons(self).flatMap {
+      uncons.flatMap {
         case None           => Pull.done
         case Some((hd, tl)) => f(hd) >> tl.unconsFlatMap(f)
+      }
+
+    /* Pull transformation that takes the given stream (pull), unrolls it until it either:
+     * - Reaches the end of the stream, and returns None; or
+     * - Reaches an Output action, and emits Some pair with
+     *   the non-empty chunk of values and the rest of the stream.
+     */
+    private[fs2] def uncons: Pull[F, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
+      self match {
+        case Succeeded(_)    => Succeeded(None)
+        case Output(vals)    => Succeeded(Some(vals -> unit))
+        case ff: Fail        => ff
+        case it: Interrupted => it
+        case _               => Uncons(self)
       }
 
   }
@@ -772,8 +786,8 @@ object Pull extends PullLowPriority {
   /** Steps through the stream, providing a `stepLeg`.
     * Yields to head in form of chunk, then id of the scope that was active after step evaluated and tail of the `stream`.
     *
-    * @param stream             Stream to step
-    * @param scopeId            scope has to be changed before this step is evaluated, id of the scope must be supplied
+    * @param stream Stream to step
+    * @param scope  Scope has to be changed before this step is evaluated, id of the scope must be supplied
     */
   private final case class StepLeg[+F[_], +O](stream: Pull[F, O, Unit], scope: Unique.Token)
       extends Action[Nothing, Nothing, Option[Stream.StepLeg[F, O]]]
@@ -823,6 +837,7 @@ object Pull extends PullLowPriority {
 
   private final case class GetScope[F[_]]() extends AlgEffect[Nothing, Scope[F]]
 
+  /** Ignores current stepLeg head, goes on with remaining data */
   private[fs2] def stepLeg[F[_], O](
       leg: Stream.StepLeg[F, O]
   ): Pull[F, Nothing, Option[Stream.StepLeg[F, O]]] =
@@ -841,16 +856,6 @@ object Pull extends PullLowPriority {
   private[fs2] def interruptWhen[F[_], O](
       haltOnSignal: F[Either[Throwable, Unit]]
   ): Pull[F, O, Unit] = InterruptWhen(haltOnSignal)
-
-  /* Pull transformation that takes the given stream (pull), unrolls it until it either:
-   * - Reaches the end of the stream, and returns None; or
-   * - Reaches an Output action, and emits Some pair with
-   *   the non-empty chunk of values and the rest of the stream.
-   */
-  private[fs2] def uncons[F[_], O](
-      s: Pull[F, O, Unit]
-  ): Pull[F, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
-    Uncons(s)
 
   private type Cont[-Y, +G[_], +O] = Terminal[Y] => Pull[G, O, Unit]
 

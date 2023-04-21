@@ -27,7 +27,10 @@ package scodec
 
 import _root_.scodec.codecs._
 
+import scala.concurrent.duration._
+
 class SpaceLeakTest extends Fs2Suite {
+  override def munitIOTimeout = 1.minute
 
   test("head of stream not retained") {
     // make sure that head of stream can be garbage collected

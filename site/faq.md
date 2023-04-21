@@ -41,3 +41,19 @@ Note that this pattern is also used for `Stream.pull`
 ### What is the difference between Stream and Pull?
 
 ![Stream and Pull](_media/stream-and-pull.png)
+
+### Why are implicit instances of `Network`, `Files`, etc. only available for `IO`?
+
+When you are writing tagless final code in a generic effect `F[_]`, it is good practice to explicitly declare the granular constraints that you actually need.
+
+For example instead of:
+
+```scala
+def impl[F[_]: Async]: FooService[F] = ???
+```
+
+you should prefer:
+
+```scala
+def impl[F[_]: Concurrent: Network: Files]: FooService[F] = ???
+```

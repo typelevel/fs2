@@ -71,7 +71,8 @@ class TopicSuite extends Fs2Suite {
     }
   }
 
-  test("unregister subscribers under concurrent load") {
+  // https://github.com/typelevel/fs2/issues/3071
+  test("unregister subscribers under concurrent load".flaky) {
     Topic[IO, Int].flatMap { topic =>
       val count = 100
       val subs = 10

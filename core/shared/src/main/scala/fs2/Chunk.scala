@@ -28,7 +28,7 @@ import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
 
-import cats.{Alternative, Applicative, Eq, Eval, Monad, Monoid, Traverse, TraverseFilter}
+import cats._
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
 
@@ -300,45 +300,25 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Converts this chunk to a `Chunk.ArraySlice`. */
   def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-    this match {
-      case as: Chunk.ArraySlice[_] if ct.wrap.runtimeClass eq as.values.getClass =>
-        as.asInstanceOf[Chunk.ArraySlice[O2]]
-      case _ => Chunk.ArraySlice(toArray, 0, size)
-    }
+    Chunk.ArraySlice(toArray, 0, size)
 
-  /** Converts this chunk to a `java.nio.ByteBuffer`. */
-  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer =
-    this match {
-      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Byte]] =>
-        JByteBuffer.wrap(c.values.asInstanceOf[Array[Byte]], c.offset, c.length)
-      case c: Chunk.ByteBuffer =>
-        val b = c.buf.asReadOnlyBuffer
-        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
-        else {
-          (b: JBuffer).position(c.offset.toInt)
-          (b: JBuffer).limit(c.offset.toInt + c.size)
-          b
-        }
-      case _ =>
-        JByteBuffer.wrap(this.asInstanceOf[Chunk[Byte]].toArray, 0, size)
-    }
+  /** Converts this chunk to a `java.nio.ByteBuffer`.
+    * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
+  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
+    val slice = this.asInstanceOf[Chunk[Byte]].toArraySlice
+    JByteBuffer.wrap(slice.values, slice.offset, slice.length)
+  }
 
-  /** Converts this chunk to a `java.nio.CharBuffer`. */
-  def toCharBuffer[B >: O](implicit ev: B =:= Char): JCharBuffer =
-    this match {
-      case c: Chunk.ArraySlice[_] if c.values.isInstanceOf[Array[Char]] =>
-        JCharBuffer.wrap(c.values.asInstanceOf[Array[Char]], c.offset, c.length)
-      case c: Chunk.CharBuffer =>
-        val b = c.buf.asReadOnlyBuffer
-        if (c.offset == 0 && b.position() == 0 && c.size == b.limit()) b
-        else {
-          (b: JBuffer).position(c.offset.toInt)
-          (b: JBuffer).limit(c.offset.toInt + c.size)
-          b
-        }
-      case _ =>
-        JCharBuffer.wrap(this.asInstanceOf[Chunk[Char]].toArray, 0, size)
-    }
+  /** Converts this chunk to a `java.nio.CharBuffer`.
+    * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
+    * so this method should be considered as unsafely allocating mutable state.
+    */
+  def toCharBuffer[C >: O](implicit ev: C =:= Char): JCharBuffer = {
+    val slice = this.asInstanceOf[Chunk[Char]].toArraySlice
+    JCharBuffer.wrap(slice.values, slice.offset, slice.length)
+  }
 
   /** Converts this chunk to a NonEmptyList */
   def toNel: Option[NonEmptyList[O]] =
@@ -767,16 +747,23 @@ object Chunk
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else ArraySlice(values, offset, n)
+
+    override def toArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct.wrap.runtimeClass eq values.getClass)
+        asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
+
   }
   object ArraySlice {
     def apply[O: ClassTag](values: Array[O]): ArraySlice[O] = ArraySlice(values, 0, values.length)
   }
 
-  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C: ClassTag](
+  sealed abstract class Buffer[A <: Buffer[A, B, C], B <: JBuffer, C](
       buf: B,
       val offset: Int,
       val size: Int
-  ) extends Chunk[C] {
+  )(implicit ct: ClassTag[C])
+      extends Chunk[C] {
     def readOnly(b: B): B
     def buffer(b: B): A
     def get(b: B, n: Int): C
@@ -790,7 +777,7 @@ object Chunk
       if (n <= 0) this
       else if (n >= size) Chunk.empty
       else {
-        val second = readOnly(buf)
+        val second = duplicate(buf)
         (second: JBuffer).position(n + offset)
         buffer(second)
       }
@@ -799,13 +786,13 @@ object Chunk
       if (n <= 0) Chunk.empty
       else if (n >= size) this
       else {
-        val first = readOnly(buf)
+        val first = duplicate(buf)
         (first: JBuffer).limit(n + offset)
         buffer(first)
       }
 
     def copyToArray[O2 >: C](xs: Array[O2], start: Int): Unit = {
-      val b = readOnly(buf)
+      val b = duplicate(buf)
       (b: JBuffer).position(offset)
       (b: JBuffer).limit(offset + size)
       val arr = new Array[C](size)
@@ -815,25 +802,26 @@ object Chunk
     }
 
     protected def splitAtChunk_(n: Int): (A, A) = {
-      val first = readOnly(buf)
+      val first = duplicate(buf)
       (first: JBuffer).limit(n + offset)
-      val second = readOnly(buf)
+      val second = duplicate(buf)
       (second: JBuffer).position(n + offset)
       (buffer(first), buffer(second))
     }
 
-    override def toArray[O2 >: C: ClassTag]: Array[O2] = {
-      val bs = new Array[C](size)
-      val b = duplicate(buf)
-      (b: JBuffer).position(offset)
-      get(b, bs, 0, size)
-      bs.asInstanceOf[Array[O2]]
-    }
+    override def toArray[O2 >: C](implicit o2ct: ClassTag[O2]): Array[O2] =
+      if (o2ct.runtimeClass == ct.runtimeClass) {
+        val bs = new Array[O2](size)
+        val b = duplicate(buf)
+        (b: JBuffer).position(offset)
+        get(b, bs.asInstanceOf[Array[C]], 0, size)
+        bs
+      } else super.toArray
   }
 
   object CharBuffer {
     def apply(buf: JCharBuffer): CharBuffer =
-      view(buf.duplicate().asReadOnlyBuffer)
+      view(buf.duplicate())
 
     def view(buf: JCharBuffer): CharBuffer =
       new CharBuffer(buf, buf.position, buf.remaining)
@@ -856,6 +844,20 @@ object Chunk
 
     override def toByteVector[B >: Char](implicit ev: B =:= Byte): ByteVector =
       throw new UnsupportedOperationException
+
+    override def toArraySlice[O2 >: Char](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct.runtimeClass == classOf[Char] && buf.hasArray)
+        Chunk
+          .ArraySlice(buf.array, buf.arrayOffset + offset, size)
+          .asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
+
+    override def toCharBuffer[C >: Char](implicit ev: C =:= Char): JCharBuffer = {
+      val b = buf.duplicate // share contents, independent position/limit
+      (b: JBuffer).position(offset.toInt)
+      (b: JBuffer).limit(offset.toInt + size)
+      b
+    }
   }
 
   /** Creates a chunk backed by an char buffer, bounded by the current position and limit */
@@ -863,7 +865,7 @@ object Chunk
 
   object ByteBuffer {
     def apply(buf: JByteBuffer): ByteBuffer =
-      view(buf.duplicate().asReadOnlyBuffer)
+      view(buf.duplicate())
 
     def view(buf: JByteBuffer): ByteBuffer =
       new ByteBuffer(buf, buf.position, buf.remaining)
@@ -888,10 +890,24 @@ object Chunk
     def duplicate(b: JByteBuffer): JByteBuffer = b.duplicate()
 
     override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = {
-      val bb = buf.asReadOnlyBuffer()
-      bb.position(offset)
-      bb.limit(offset + size)
+      val bb = buf.duplicate()
+      (bb: JBuffer).position(offset)
+      (bb: JBuffer).limit(offset + size)
       ByteVector.view(bb)
+    }
+
+    override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct.runtimeClass == classOf[Byte] && buf.hasArray)
+        Chunk
+          .ArraySlice(buf.array, buf.arrayOffset + offset, size)
+          .asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
+
+    override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer = {
+      val b = buf.duplicate // share contents, independent position/limit
+      (b: JBuffer).position(offset.toInt)
+      (b: JBuffer).limit(offset.toInt + size)
+      b
     }
   }
 
@@ -940,6 +956,14 @@ object Chunk
 
     @deprecated("Retained for bincompat", "3.2.12")
     def toByteVector() = bv
+
+    override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
+      if (ct.runtimeClass == classOf[Byte])
+        Chunk.ArraySlice[Byte](bv.toArrayUnsafe, 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
+      else super.toArraySlice
+
+    override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer =
+      bv.toByteBuffer
   }
 
   /** Concatenates the specified sequence of chunks in to a single chunk, avoiding boxing. */
@@ -1224,7 +1248,17 @@ object Chunk
         fa.size match {
           case 0 => F.unit
           case 1 => f(fa(0)).void
-          case _ => super.traverse_(fa)(f)
+          case _ =>
+            F match {
+              case sF: StackSafeMonad[F] =>
+                def go(ix: Int): F[Unit] =
+                  if (ix < fa.size)
+                    sF.flatMap(f(fa(ix)))(_ => go(ix + 1))
+                  else sF.unit
+                go(0)
+              case _ =>
+                super.traverse_(fa)(f)
+            }
         }
 
       override def tailRecM[A, B](a: A)(f: A => Chunk[Either[A, B]]): Chunk[B] = {

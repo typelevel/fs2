@@ -106,7 +106,7 @@ import Pull.StreamPullOps
   *   - `Stream.emit >=> f == f` (left identity)
   *   - `f >=> Stream.emit === f` (right identity - note weaker equality notion here)
   *   - `(f >=> g) >=> h == f >=> (g >=> h)` (associativity)
-  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a)) and
+  *  where `Stream.emit(a)` is defined as `chunk(Chunk.singleton(a))` and
   *  `f >=> g` is defined as `a => a flatMap f flatMap g`
   *
   * The monad is the list-style sequencing monad:
@@ -160,7 +160,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * If `this` stream is infinite, then the result is equivalent to `this`.
     */
   def ++[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(underlying >> s2.underlying)
+    (underlying >> s2.underlying).streamNoScope
 
   /** Appends `s2` to the end of this stream. Alias for `s1 ++ s2`. */
   def append[F2[x] >: F[x], O2 >: O](s2: => Stream[F2, O2]): Stream[F2, O2] =
@@ -377,7 +377,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     filterWithPrevious((o1, o2) => eq.neqv(f(o1), f(o2)))
 
   /** Collects all output chunks in to a single chunk and emits it at the end of the
-    * source stream. Note: if more than 2^32-1 elements are collected, this operation
+    * source stream. Note: if more than 2^(32-1)^ elements are collected, this operation
     * will fail.
     *
     * @example {{{
@@ -652,13 +652,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
       def go(tl: Pull[F2, O, Unit]): Pull[F2, Nothing, Unit] =
-        Pull.uncons(tl).flatMap {
+        tl.uncons.flatMap {
           // Note: hd is non-empty, so hd.last.get is safe
           case Some((hd, tl)) => Pull.eval(sendItem(hd.last.get)) >> go(tl)
           case None           => Pull.eval(sendLatest >> chan.close.void)
         }
 
-      val debouncedSend: Stream[F2, Nothing] = new Stream(go(this.underlying))
+      val debouncedSend: Stream[F2, Nothing] = go(this.underlying).streamNoScope
 
       chan.stream.concurrently(debouncedSend)
     }
@@ -1041,8 +1041,14 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
     */
-  def evalTap[F2[x] >: F[x]: Functor, O2](f: O => F2[O2]): Stream[F2, O] =
-    evalMap(o => f(o).as(o))
+  def evalTap[F2[x] >: F[x], O2](f: O => F2[O2]): Stream[F2, O] = {
+    def tapOut(o: O) = Pull.eval(f(o)) >> Pull.output1(o)
+    underlying.flatMapOutput(tapOut).streamNoScope
+  }
+
+  @deprecated("Use overload without functor", "3.7.0")
+  private[fs2] def evalTap[F2[x] >: F[x], O2](f: O => F2[O2], F: Functor[F2]): Stream[F2, O] =
+    evalTap(f)
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
@@ -1059,10 +1065,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res1: List[Boolean] = List(false)
     * }}}
     * @return Either a singleton stream, or a `never` stream.
-    *  - If `this` is a finite stream, the result is a singleton stream, with after yielding one single value.
-    *    If `this` is empty, that value is the `mempty` of the instance of `Monoid`.
-    *  - If `this` is a non-terminating stream, and no matter if it yields any value, then the result is
-    *    equivalent to the `Stream.never`: it never terminates nor yields any value.
+    *  - If `this` is a finite stream, the result is a singleton stream, yielding a single boolean value.
+    *  - If `this` is empty, the result is a singleton stream, yielding a `true` value.
+    *  - If `this` is a non-terminating stream which contains a value matching the predicate, the result is a singleton
+    *    stream containing `true`.
+    *  - If `this` is a non-terminating stream which never contains a value matching the predicate, the result is a
+    *    `never` stream.
     */
   def exists(p: O => Boolean): Stream[F, Boolean] =
     this.pull.forall(!p(_)).flatMap(r => Pull.output1(!r)).stream
@@ -1512,7 +1520,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def handleErrorWith[F2[x] >: F[x], O2 >: O](h: Throwable => Stream[F2, O2]): Stream[F2, O2] =
-    new Stream(Pull.scope(underlying).handleErrorWith(e => h(e).underlying))
+    Pull.scope(underlying).handleErrorWith(e => h(e).underlying).streamNoScope
 
   /** Emits the first element of this stream (if non-empty) and then halts.
     *
@@ -1541,11 +1549,20 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     map(Some(_): Option[O2]).hold(None)
 
   /** Like [[hold]] but does not require an initial value. The signal is not emitted until the initial value is emitted from this stream */
-  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] =
-    this.pull.uncons1.flatMap {
-      case Some((o, tail)) => tail.hold[F2, O2](o).underlying
-      case None            => Pull.done
+  def hold1[F2[x] >: F[x]: Concurrent, O2 >: O]: Stream[F2, Signal[F2, O2]] = {
+    def go(signal: Deferred[F2, Signal[F2, O2]]) = this.pull.uncons1.flatMap {
+      case Some((o, tail)) =>
+        Pull.eval(SignallingRef.of[F2, O2](o).flatTap(signal.complete(_))).flatMap { ref =>
+          tail.foreach(ref.set(_)).underlying
+        }
+
+      case None => Pull.raiseError(new NoSuchElementException)
     }.streamNoScope
+
+    Stream.eval(Deferred[F2, Signal[F2, O2]]).flatMap { signal =>
+      Stream.eval(signal.get).concurrently(go(signal))
+    }
+  }
 
   /** Like [[hold]] but returns a `Resource` rather than a single element stream.
     */
@@ -1693,7 +1710,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Creates a scope that may be interrupted by calling scope#interrupt.
     */
   def interruptScope: Stream[F, O] =
-    new Stream(Pull.interruptScope(underlying))
+    Pull.interruptScope(underlying).streamNoScope
 
   /** Emits the specified separator between every pair of elements in the source stream.
     *
@@ -1752,6 +1769,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       case Some(o) => Pull.output1(o)
       case None    => Pull.output1(fallback)
     }.stream
+
+  /** Emits the first `n` elements of this stream,
+    * raising an IllegalStateException if there are more elements.
+    */
+  def limit[F2[x] >: F[x]](n: Long)(implicit rt: RaiseThrowable[F2]): Stream[F2, O] =
+    this.pull
+      .take(n)
+      .flatMap {
+        case Some(s) =>
+          s.pull.uncons.flatMap {
+            case Some(_) =>
+              Pull.raiseError(new IllegalStateException(s"limit($n) emitted more than $n elements"))
+            case None => Pull.done
+          }
+        case _ => Pull.done
+      }
+      .stream
 
   /** Applies the specified pure function to each input and emits the result.
     *
@@ -1977,6 +2011,70 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O2] =
     that.mergeHaltL(this)
 
+  /** Given two sorted streams emits a single sorted stream, like in merge-sort.
+    * For entries that are considered equal by the Order, left stream element is emitted first.
+    * Note: both this and another streams MUST BE ORDERED already
+    * @example {{{
+    * scala> Stream(1, 2, 5, 6).interleaveOrdered(Stream(0, 2, 3, 4)).toList
+    * res0: List[Int] = List(0, 1, 2, 2, 3, 4, 5, 6)
+    * }}}
+    */
+  def interleaveOrdered[F2[x] >: F[x], O2 >: O: Order](that: Stream[F2, O2]): Stream[F2, O2] = {
+    val order = Order[O2].toOrdering // collections API needs Ordering, not cats.Order
+
+    def go(
+        leftLeg: Stream.StepLeg[F2, O2],
+        rightLeg: Stream.StepLeg[F2, O2]
+    ): Pull[F2, O2, Unit] = {
+      val lChunk = leftLeg.head
+      val rChunk = rightLeg.head
+      if (lChunk.nonEmpty && rChunk.nonEmpty) { // the only case we need chunk merging and sorting
+        val lLast = lChunk(lChunk.size - 1)
+        val rLast = rChunk(rChunk.size - 1)
+        val wholeLeftSide = Order.lteqv(lLast, rLast) // otherwise we can emit whole right
+        val (emitLeft, keepLeft) =
+          if (wholeLeftSide) (lChunk, Chunk.empty)
+          else
+            lChunk.splitAt(
+              lChunk.indexWhere(order.gt(_, rLast)).getOrElse(lChunk.size)
+            )
+        val (emitRight, keepRight) =
+          if (!wholeLeftSide) (rChunk, Chunk.empty)
+          else
+            rChunk.splitAt( // not emitting equal from right side to keep stable sorting
+              rChunk.indexWhere(order.gteq(_, lLast)).getOrElse(rChunk.size)
+            )
+        Pull.output(
+          Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
+        ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
+      } else { // otherwise, we need to shift leg
+        if (lChunk.isEmpty) {
+          leftLeg.stepLeg.flatMap {
+            case Some(nextLl) => go(nextLl, rightLeg)
+            case None         => Pull.output(rChunk) >> rightLeg.next
+          }
+        } else {
+          rightLeg.stepLeg.flatMap {
+            case Some(nextRl) => go(leftLeg, nextRl)
+            case None         => Pull.output(lChunk) >> leftLeg.next
+          }
+        }
+      }
+    }
+
+    val thisPull = covaryAll[F2, O2].pull
+    val thatPull = that.pull
+
+    thisPull.stepLeg.flatMap {
+      case None => thatPull.echo
+      case Some(leg1) =>
+        thatPull.stepLeg.flatMap {
+          case Some(leg2) => go(leg1, leg2)
+          case None       => Pull.output(leg1.head) >> leg1.next
+        }
+    }.stream
+  }
+
   /** Emits each output wrapped in a `Some` and emits a `None` at the end of the stream.
     *
     * `s.noneTerminate.unNoneTerminate == s`
@@ -2036,7 +2134,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def onFinalizeCaseWeak[F2[x] >: F[x]](
       f: Resource.ExitCase => F2[Unit]
   )(implicit F2: Applicative[F2]): Stream[F2, O] =
-    new Stream(Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying))
+    Pull.acquire[F2, Unit](F2.unit, (_, ec) => f(ec)).flatMap(_ => underlying).streamNoScope
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
     * downstream in the same order as the input stream. The number of concurrent effects
@@ -2303,30 +2401,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       val random = new scala.util.Random(seed)
       def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
 
-      def go(acc: Chunk[O], size: Option[Int], s: Stream[F2, Chunk[O]]): Pull[F2, O, Unit] = {
-        def nextSize(chunk: Chunk[O]): Pull[F2, Nothing, Int] =
-          size match {
-            case Some(size) => Pull.pure(size)
-            case None       => Pull.pure((factor * chunk.size).toInt)
-          }
+      def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
-        s.pull.uncons1.flatMap {
+      def go(acc: Chunk[O], sizeOpt: Int, s: Pull[F2, O, Unit]): Pull[F2, O, Unit] =
+        s.uncons.flatMap {
           case Some((hd, tl)) =>
-            nextSize(hd).flatMap { size =>
-              if (acc.size < size) go(acc ++ hd, size.some, tl)
-              else if (acc.size == size)
-                Pull.output(acc) >> go(hd, size.some, tl)
-              else {
-                val (out, rem) = acc.splitAt(size - 1)
-                Pull.output(out) >> go(rem ++ hd, None, tl)
-              }
+            val size = if (sizeOpt > 0) sizeOpt else nextSize(hd.size)
+            if (acc.size < size)
+              go(acc ++ hd, size, tl)
+            else if (acc.size == size)
+              Pull.output(acc) >> go(hd, size, tl)
+            else {
+              val (out, rem) = acc.splitAt(size - 1)
+              Pull.output(out) >> go(rem ++ hd, -1, tl)
             }
           case None =>
             Pull.output(acc)
         }
-      }
 
-      go(Chunk.empty, None, chunks).stream
+      go(Chunk.empty, -1, underlying).stream
     }
 
   /** Rechunks the stream such that output chunks are within [inputChunk.size * minFactor, inputChunk.size * maxFactor].
@@ -2531,7 +2624,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * is introduced.
     */
   def scope: Stream[F, O] =
-    new Stream(Pull.scope(underlying))
+    Pull.scope(underlying).streamNoScope
 
   /** Groups inputs in fixed size chunks by passing a "sliding window"
     * of size `n` over them. If the input contains less than or equal to
@@ -2734,13 +2827,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   def translate[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(Pull.translate[F2, G, O](underlying, u))
+    Pull.translate[F2, G, O](underlying, u).streamNoScope
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
   @deprecated("Use translate instead", "3.0")
   def translateInterruptible[F2[x] >: F[x], G[_]](u: F2 ~> G): Stream[G, O] =
-    new Stream(Pull.translate[F2, G, O](underlying, u))
+    Pull.translate[F2, G, O](underlying, u).streamNoScope
 
   /** Converts the input to a stream of 1-element chunks.
     */
@@ -3009,7 +3102,7 @@ object Stream extends StreamLowPriority {
 
   /** A pure stream that just emits the unit value once and ends.
     */
-  val unit: Stream[Pure, Unit] = new Stream(Pull.outUnit)
+  val unit: Stream[Pure, Unit] = Pull.outUnit.streamNoScope
 
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
     * is emitted. Otherwise, a `Right` is emitted.
@@ -3025,7 +3118,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def attemptEval[F[_], O](fo: F[O]): Stream[F, Either[Throwable, O]] =
-    new Stream(Pull.attemptEval(fo).flatMap(Pull.output1))
+    Pull.attemptEval(fo).flatMap(Pull.output1).streamNoScope
 
   /** Light weight alternative to `awakeEvery` that sleeps for duration `d` before each pulled element.
     */
@@ -3108,7 +3201,7 @@ object Stream extends StreamLowPriority {
   def bracketCaseWeak[F[_], R](
       acquire: F[R]
   )(release: (R, Resource.ExitCase) => F[Unit]): Stream[F, R] =
-    new Stream(Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)))
+    Pull.acquire[F, R](acquire, release).flatMap(Pull.output1(_)).streamNoScope
 
   /** Like [[bracketCase]] but the acquire action may be canceled.
     */
@@ -3127,7 +3220,7 @@ object Stream extends StreamLowPriority {
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
       F: MonadCancel[F, _]
   ): Stream[F, R] =
-    new Stream(Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1))
+    Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1).streamNoScope
 
   /** Creates a pure stream that emits the elements of the supplied chunk.
     *
@@ -3137,7 +3230,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def chunk[F[x] >: Pure[x], O](os: Chunk[O]): Stream[F, O] =
-    new Stream(Pull.output(os))
+    Pull.output(os).streamNoScope
 
   /** Creates an infinite pure stream that always returns the supplied value.
     *
@@ -3169,7 +3262,7 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0)
     * }}}
     */
-  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = new Stream(Pull.output1(o))
+  def emit[F[x] >: Pure[x], O](o: O): Stream[F, O] = Pull.output1(o).streamNoScope
 
   /** Creates a pure stream that emits the supplied values.
     *
@@ -3182,12 +3275,12 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil               => empty
       case collection.Seq(x) => emit(x)
-      case _                 => new Stream(Pull.output(Chunk.seq(os)))
+      case _                 => Pull.output(Chunk.seq(os)).streamNoScope
     }
 
   /** Empty pure stream. */
   val empty: Stream[Pure, Nothing] =
-    new Stream(Pull.done)
+    Pull.done.streamNoScope
 
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails,
     * the returned stream fails.
@@ -3203,7 +3296,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def eval[F[_], O](fo: F[O]): Stream[F, O] =
-    new Stream(Pull.eval(fo).flatMap(Pull.output1))
+    Pull.eval(fo).flatMap(Pull.output1).streamNoScope
 
   /** Creates a stream that evaluates the supplied `fa` for its effect, discarding the output value.
     * As a result, the returned stream emits no elements and hence has output type `Nothing`.
@@ -3212,11 +3305,11 @@ object Stream extends StreamLowPriority {
     */
   @deprecated("Use exec if passing an F[Unit] or eval(fa).drain if passing an F[A]", "2.5.0")
   def eval_[F[_], A](fa: F[A]): Stream[F, Nothing] =
-    new Stream(Pull.eval(fa).map(_ => ()))
+    Pull.eval(fa).map(_ => ()).streamNoScope
 
   /** Like `eval` but resulting chunk is flatten efficiently. */
   def evalUnChunk[F[_], O](fo: F[Chunk[O]]): Stream[F, O] =
-    new Stream(Pull.eval(fo).flatMap(Pull.output(_)))
+    Pull.eval(fo).flatMap(Pull.output(_)).streamNoScope
 
   /** Like `eval`, but lifts a foldable structure. */
   def evals[F[_], S[_]: Foldable, O](fo: F[S[O]]): Stream[F, O] =
@@ -3251,7 +3344,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def exec[F[_]](action: F[Unit]): Stream[F, Nothing] =
-    new Stream(Pull.eval(action))
+    Pull.eval(action).streamNoScope
 
   /** Light weight alternative to [[fixedRate]] that sleeps for duration `d` before each pulled element.
     *
@@ -3644,7 +3737,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def raiseError[F[_]: RaiseThrowable](e: Throwable): Stream[F, Nothing] =
-    new Stream(Pull.raiseError(e))
+    Pull.raiseError(e).streamNoScope
 
   /** Lazily produces the sequence `[start, start + 1, start + 2, ..., stopExclusive)`.
     * If you want to produce the sequence in one chunk, instead of lazily, use
@@ -3743,11 +3836,11 @@ object Stream extends StreamLowPriority {
       override def apply[A](fa: Resource[F, A]): Stream[F, A] = resourceWeak[F, A](fa)
     }
 
-  /** Converts the supplied [[java.lang.Autoclosable]] into a singleton stream. */
+  /** Converts the supplied [[java.lang.AutoCloseable]] into a singleton stream. */
   def fromAutoCloseable[F[_]: Sync, O <: AutoCloseable](fo: F[O]): Stream[F, O] =
     Stream.resource(Resource.fromAutoCloseable(fo))
 
-  /** Like [[fromAutoClosable]] but does not introduce a scope, allowing finalization to occur after
+  /** Like [[fromAutoCloseable]] but does not introduce a scope, allowing finalization to occur after
     * subsequent appends or other scope-preserving transformations.
     *
     * Scopes can be manually introduced via [[Stream#scope]] if desired.
@@ -3824,7 +3917,7 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def suspend[F[_], O](s: => Stream[F, O]): Stream[F, O] =
-    new Stream(Pull.suspend(s.underlying))
+    Pull.suspend(s.underlying).streamNoScope
 
   /** Creates a stream by successively applying `f` until a `None` is returned, emitting
     * each output `O` and using each output `S` as input to the next invocation of `f`.
@@ -3882,23 +3975,23 @@ object Stream extends StreamLowPriority {
     * res0: List[Int] = List(0, 1, 2, 3, 4, 5)
     * }}}
     */
-  def unfoldLoop[F[x] <: Pure[x], S, O](s: S)(f: S => (O, Option[S])): Stream[F, O] =
-    Pull
-      .loop[F, O, S] { s =>
-        val (o, sOpt) = f(s)
-        Pull.output1(o) >> Pull.pure(sOpt)
-      }(s)
-      .stream
+  def unfoldLoop[F[x] <: Pure[x], S, O](start: S)(f: S => (O, Option[S])): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] = f(s) match {
+      case (o, None)    => Pull.output1(o)
+      case (o, Some(t)) => Pull.output1(o) >> go(t)
+    }
+    go(start).stream
+  }
 
   /** Like [[unfoldLoop]], but takes an effectful function. */
-  def unfoldLoopEval[F[_], S, O](s: S)(f: S => F[(O, Option[S])]): Stream[F, O] =
-    Pull
-      .loop[F, O, S](s =>
-        Pull.eval(f(s)).flatMap { case (o, sOpt) =>
-          Pull.output1(o) >> Pull.pure(sOpt)
-        }
-      )(s)
-      .stream
+  def unfoldLoopEval[F[_], S, O](start: S)(f: S => F[(O, Option[S])]): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] =
+      Pull.eval(f(s)).flatMap {
+        case (o, None)    => Pull.output1(o)
+        case (o, Some(t)) => Pull.output1(o) >> go(t)
+      }
+    go(start).stream
+  }
 
   /** A view of `Stream` that removes the variance from the type parameters. This allows
     * defining syntax in which the type parameters appear in contravariant (i.e. input)
@@ -3951,9 +4044,9 @@ object Stream extends StreamLowPriority {
       * or from the observer pipe (when applied to source chunks) will cause the
       * termination of the resulting stream, and will be raised from this.
       *
-      * @returns A stream that may emit the same outputs as this stream (source),
-      *          in the same order and chunks, and performs the same effects as
-      *          the source; but in which every chunk is processed by the pipe.
+      * @return A stream that may emit the same outputs as this stream (source),
+      *         in the same order and chunks, and performs the same effects as
+      *         the source; but in which every chunk is processed by the pipe.
       */
     def observeAsync(
         maxQueued: Int
@@ -4022,8 +4115,15 @@ object Stream extends StreamLowPriority {
       */
     def repeatPull[O2](
         f: Stream.ToPull[F, O] => Pull[F, O2, Option[Stream[F, O]]]
-    ): Stream[F, O2] =
-      Pull.loop(f.andThen(_.map(_.map(_.pull))))(pull).stream
+    ): Stream[F, O2] = {
+      def go(tp: ToPull[F, O]): Pull[F, O2, Unit] =
+        f(tp).flatMap {
+          case None       => Pull.done
+          case Some(tail) => go(tail.pull)
+        }
+      go(pull).stream
+    }
+
   }
 
   implicit final class NothingStreamOps[F[_]](private val self: Stream[F, Nothing]) extends AnyVal {
@@ -4056,7 +4156,7 @@ object Stream extends StreamLowPriority {
       */
     def unNoneTerminate: Stream[F, O] = {
       def loop(p: Pull[F, Option[O], Unit]): Pull[F, O, Unit] =
-        Pull.uncons(p).flatMap {
+        p.uncons.flatMap {
           case None => Pull.done
           case Some((hd, tl)) =>
             hd.indexWhere(_.isEmpty) match {
@@ -4182,9 +4282,10 @@ object Stream extends StreamLowPriority {
             F.uncancelable { _ =>
               outer
                 .flatMap(inner =>
-                  new Stream(
-                    Pull.getScope[F].flatMap(outerScope => Pull.eval(runInner(inner, outerScope)))
-                  )
+                  Pull
+                    .getScope[F]
+                    .flatMap(outerScope => Pull.eval(runInner(inner, outerScope)))
+                    .streamNoScope
                 )
                 .drain
                 .interruptWhen(done.map(_.nonEmpty))
@@ -4298,9 +4399,7 @@ object Stream extends StreamLowPriority {
       * A `None` is returned as the resource of the pull upon reaching the end of the stream.
       */
     def uncons: Pull[F, Nothing, Option[(Chunk[O], Stream[F, O])]] =
-      Pull.uncons(self.underlying).map {
-        _.map { case (hd, tl) => (hd, new Stream(tl)) }
-      }
+      self.underlying.uncons.map(_.map { case (hd, tl) => (hd, tl.streamNoScope) })
 
     /** Like [[uncons]] but waits for a single element instead of an entire chunk. */
     def uncons1: Pull[F, Nothing, Option[(O, Stream[F, O])]] =
@@ -4630,17 +4729,17 @@ object Stream extends StreamLowPriority {
       *
       * As a quick example, let's write a timed pull which emits the
       * string "late!" whenever a chunk of the stream is not emitted
-      * within 450 milliseconds:
+      * within 1 second:
       *
       * @example {{{
       * scala> import cats.effect.IO
       * scala> import cats.effect.unsafe.implicits.global
       * scala> import scala.concurrent.duration._
-      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](600.millis)).repeat.take(3)
+      * scala> val s = (Stream("elem") ++ Stream.sleep_[IO](1500.millis)).repeat.take(3)
       * scala> s.pull
       *      |  .timed { timedPull =>
       *      |     def go(timedPull: Pull.Timed[IO, String]): Pull[IO, String, Unit] =
-      *      |       timedPull.timeout(450.millis) >> // starts new timeout and stops the previous one
+      *      |       timedPull.timeout(1.second) >> // starts new timeout and stops the previous one
       *      |       timedPull.uncons.flatMap {
       *      |         case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
       *      |         case Some((Left(_), next)) => Pull.output1("late!") >> go(next)
@@ -4790,6 +4889,36 @@ object Stream extends StreamLowPriority {
       */
     def lastOrError(implicit G: MonadError[G, Throwable]): G[O] =
       last.flatMap(_.fold(G.raiseError(new NoSuchElementException): G[O])(G.pure))
+
+    /** Compiles this stream in to a value of the target effect type `G`,
+      * raising a `NoSuchElementException` if the stream emitted no values, `IllegalStateException`
+      * if the stream emits more than one value and returning the only value emitted otherwise.
+      * Note that the stream execution will not short-circuit once it emits more than one element, it will still
+      * be evaluated to its end before raising the exception.
+      *
+      * When this method has returned, the stream has not begun execution -- this method simply
+      * compiles the stream down to the target effect type.
+      *
+      * @example {{{
+      * scala> import cats.effect.SyncIO
+      * scala> Stream(1).covary[SyncIO].compile.onlyOrError.unsafeRunSync()
+      * res0: Int = 1
+      * scala> Stream.empty.covaryAll[SyncIO, Int].compile.onlyOrError.attempt.unsafeRunSync()
+      * res1: Either[Throwable, Int] = Left(java.util.NoSuchElementException)
+      * scala> Stream.range(0,10).covary[SyncIO].compile.onlyOrError.attempt.unsafeRunSync()
+      * res2: Either[Throwable, Int] = Left(java.lang.IllegalStateException: Expected singleton stream)
+      * }}}
+      */
+    def onlyOrError(implicit G: MonadError[G, Throwable]): G[O] =
+      foldChunks(Either.right[Throwable, Option[O]](None)) {
+        case (Right(None), chunk) if chunk.size == 1 => Right(chunk.head)
+        case (a, chunk) if chunk.isEmpty             => a
+        case (l @ Left(_), _)                        => l
+        case (Right(Some(_)), chunk) if chunk.nonEmpty =>
+          Left(new IllegalStateException("Expected singleton stream"))
+        case (Right(_), _) /* previous guards imply chunk.size > 1 */ =>
+          Left(new IllegalStateException("Expected singleton stream"))
+      }.rethrow.flatMap(_.fold(G.raiseError[O](new NoSuchElementException))(G.pure))
 
     /** Gives access to the whole compilation api, where the result is
       * expressed as a `cats.effect.Resource`, instead of bare `G`.
@@ -4983,18 +5112,20 @@ object Stream extends StreamLowPriority {
       *
       * Note that resulting stream won't contain the `head` of this leg.
       */
-    def stream: Stream[F, O] =
-      Pull
-        .loop[F, O, StepLeg[F, O]](leg => Pull.output(leg.head).flatMap(_ => leg.stepLeg))(
-          self.setHead(Chunk.empty)
-        )
-        .stream
+    def stream: Stream[F, O] = {
+      def go(leg: StepLeg[F, O]): Pull[F, O, Unit] =
+        Pull.output(leg.head) >> Pull.stepLeg(leg).flatMap {
+          case None       => Pull.done
+          case Some(nleg) => go(nleg)
+        }
+      go(self.setHead(Chunk.empty)).stream
+    }
 
     /** Replaces head of this leg. Useful when the head was not fully consumed. */
     def setHead[O2 >: O](nextHead: Chunk[O2]): StepLeg[F, O2] =
       new StepLeg[F, O2](nextHead, scopeId, next)
 
-    /** Provides an `uncons`-like operation on this leg of the stream. */
+    /** Provides an `uncons`-like operation on this leg of the stream, dropping current `head` */
     def stepLeg: Pull[F, Nothing, Option[StepLeg[F, O]]] =
       Pull.stepLeg(self)
   }
@@ -5081,6 +5212,17 @@ object Stream extends StreamLowPriority {
     private[fs2] def covary[F[_]]: Pipe2[F, I, I2, O] = self.asInstanceOf[Pipe2[F, I, I2, O]]
   }
 
+  private[fs2] class StreamMonad[F[_]] extends StackSafeMonad[Stream[F, *]] {
+    override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
+
+    override def map[A, B](fa: Stream[F, A])(f: A => B): Stream[F, B] = fa.map(f)
+
+    override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
+      fa.flatMap(f)
+
+    override def unit: Stream[F, Unit] = Stream.unit
+  }
+
   /** `MonadError` instance for `Stream`.
     *
     * @example {{{
@@ -5092,17 +5234,10 @@ object Stream extends StreamLowPriority {
   implicit def monadErrorInstance[F[_]](implicit
       ev: ApplicativeError[F, Throwable]
   ): MonadError[Stream[F, *], Throwable] =
-    new MonadError[Stream[F, *], Throwable] {
-      def pure[A](a: A) = Stream(a)
+    new StreamMonad[F] with MonadError[Stream[F, *], Throwable] {
       def handleErrorWith[A](s: Stream[F, A])(h: Throwable => Stream[F, A]) =
         s.handleErrorWith(h)
       def raiseError[A](t: Throwable) = Stream.raiseError[F](t)
-      def flatMap[A, B](s: Stream[F, A])(f: A => Stream[F, B]) = s.flatMap(f)
-      def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]) =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
     }
 
   /** `Monoid` instance for `Stream`. */
@@ -5237,18 +5372,5 @@ object Stream extends StreamLowPriority {
 
 private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
-    new Monad[Stream[F, *]] {
-      override def pure[A](x: A): Stream[F, A] = Stream.emit(x)
-
-      override def unit: Stream[F, Unit] = Stream.unit
-
-      override def flatMap[A, B](fa: Stream[F, A])(f: A => Stream[F, B]): Stream[F, B] =
-        fa.flatMap(f)
-
-      override def tailRecM[A, B](a: A)(f: A => Stream[F, Either[A, B]]): Stream[F, B] =
-        f(a).flatMap {
-          case Left(a)  => tailRecM(a)(f)
-          case Right(b) => Stream(b)
-        }
-    }
+    new Stream.StreamMonad[F]
 }

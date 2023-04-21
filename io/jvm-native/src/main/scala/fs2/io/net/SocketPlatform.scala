@@ -24,8 +24,8 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
-import cats.effect.{Async, Resource}
-import cats.effect.std.Semaphore
+import cats.effect.Async
+import cats.effect.std.Mutex
 import cats.syntax.all._
 
 import java.net.InetSocketAddress
@@ -35,22 +35,20 @@ import java.nio.{Buffer, ByteBuffer}
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
       ch: AsynchronousSocketChannel
-  ): Resource[F, Socket[F]] =
-    Resource.make {
-      (Semaphore[F](1), Semaphore[F](1)).mapN { (readSemaphore, writeSemaphore) =>
-        new AsyncSocket[F](ch, readSemaphore, writeSemaphore)
-      }
-    }(_ => Async[F].delay(if (ch.isOpen) ch.close else ()))
+  ): F[Socket[F]] =
+    (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
+      new AsyncSocket[F](ch, readMutex, writeMutex)
+    }
 
   private[net] abstract class BufferedReads[F[_]](
-      readSemaphore: Semaphore[F]
+      readMutex: Mutex[F]
   )(implicit F: Async[F])
       extends Socket[F] {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
 
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      readSemaphore.permit.use { _ =>
+      readMutex.lock.surround {
         F.delay {
           if (readBuffer.capacity() < size)
             readBuffer = ByteBuffer.allocateDirect(size)
@@ -107,10 +105,10 @@ private[net] trait SocketCompanionPlatform {
 
   private final class AsyncSocket[F[_]](
       ch: AsynchronousSocketChannel,
-      readSemaphore: Semaphore[F],
-      writeSemaphore: Semaphore[F]
+      readMutex: Mutex[F],
+      writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends BufferedReads[F](readSemaphore) {
+      extends BufferedReads[F](readMutex) {
 
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
@@ -142,8 +140,8 @@ private[net] trait SocketCompanionPlatform {
             go(buff)
           else F.unit
         }
-      writeSemaphore.permit.use { _ =>
-        go(bytes.toByteBuffer)
+      writeMutex.lock.surround {
+        F.delay(bytes.toByteBuffer).flatMap(go)
       }
     }
 

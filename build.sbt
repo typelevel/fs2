@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.5"
+ThisBuild / tlBaseVersion := "3.8"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -10,10 +10,10 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.1", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.2.2", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-22.04")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
 ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
@@ -27,6 +27,11 @@ ThisBuild / githubWorkflowBuild ++= Seq(
     cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
   )
 )
+
+ThisBuild / githubWorkflowBuildMatrixExclusions ++=
+  crossScalaVersions.value.filterNot(Set(scalaVersion.value)).map { scala =>
+    MatrixExclude(Map("scala" -> scala, "os" -> "macos-latest"))
+  }
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
@@ -70,6 +75,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectAbstractMethodProblem]("fs2.Pull#CloseScope.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#BindBind.*"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull#CloseScope.*"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Pull.uncons"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$CloseScope$"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$EvalView"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.Pull$View"),
@@ -174,7 +180,21 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.net.tls.S2nConnection#RecvCallbackContext.readBuffer"
-  )
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readBytesFromInputStream"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.readInputStreamGeneric"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.package.<clinit>"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.net.Socket.forAsync"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.SocketCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.DatagramSocketGroupCompanionPlatform#AsyncDatagramSocketGroup.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.file.Watcher#DefaultWatcher.this")
 )
 
 lazy val root = tlCrossRootProject
@@ -207,17 +227,17 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
+      "org.scodec" %%% "scodec-bits" % "1.1.37",
       "org.typelevel" %%% "cats-core" % "2.9.0",
+      "org.typelevel" %%% "cats-effect" % "3.6-1f95fd7",
+      "org.typelevel" %%% "cats-effect-laws" % "3.6-1f95fd7" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.6-1f95fd7" % Test,
       "org.typelevel" %%% "cats-laws" % "2.9.0" % Test,
-      "org.typelevel" %%% "cats-effect" % "3.5-6581dc4",
-      "org.typelevel" %%% "cats-effect-laws" % "3.5-6581dc4" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.5-6581dc4" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.34",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
     ),
-    tlJdkRelease := Some(8),
+    tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
                                        else Nil)
   )
@@ -225,6 +245,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val coreJVM = core.jvm
   .settings(
     Test / fork := true,
+    libraryDependencies ++= Seq(
+      "org.reactivestreams" % "reactive-streams-tck-flow" % "1.0.4" % Test,
+      "org.scalatestplus" %% "testng-7-5" % "3.2.14.0" % Test
+    ),
     doctestIgnoreRegex := Some(".*NotGiven.scala")
   )
 
@@ -246,7 +270,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.2.0"
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.3.0"
   )
   .jvmSettings(
     Test / fork := true,
@@ -263,7 +287,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
     libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.3" % Test
+      "com.armanbilge" %%% "epollcat" % "0.1.4" % Test
     ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
@@ -325,7 +349,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
                                                                scalaVersion.value.startsWith("2.")
                                                              )
                                                                "1.11.10"
-                                                             else "2.2.0"),
+                                                             else "2.2.1"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )
@@ -357,7 +381,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.4",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
-      "org.scalatestplus" %% "testng-7-5" % "3.2.14.0" % "test"
+      "org.scalatestplus" %% "testng-7-5" % "3.2.15.0" % "test"
     ),
     tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails

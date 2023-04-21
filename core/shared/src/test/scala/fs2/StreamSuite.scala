@@ -1001,7 +1001,7 @@ class StreamSuite extends Fs2Suite {
         }
 
         test("2") {
-          val p = (Deferred[IO, Outcome[IO, Throwable, Unit]]).flatMap { stop =>
+          val p = Deferred[IO, Outcome[IO, Throwable, Unit]].flatMap { stop =>
             val r = Stream
               .never[IO]
               .compile
@@ -1022,6 +1022,13 @@ class StreamSuite extends Fs2Suite {
     val p: Pipe[Pure, Int, List[Int]] = in => Stream(in.toList)
     identity(p) // Avoid unused warning
     assert(compileErrors("Stream.eval(IO(1)).through(p)").nonEmpty)
+  }
+
+  test("monad instance overrides map and preserves chunks") {
+    def countChunks(source: Stream[Pure, Int]): Int =
+      Stream.monadInstance.map(source)(_ => 1).chunks.toList.length
+    val source = Stream(0) ++ Stream(0, 0)
+    assertEquals(countChunks(source), 2)
   }
 
   group("Stream[F, Either[Throwable, O]]") {

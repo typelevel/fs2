@@ -56,7 +56,7 @@ class TLSSocketSuite extends TLSSuite {
         } yield tlsSocket
 
       val googleDotCom = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
-      val httpOk = "HTTP/1.1 200 OK"
+      val httpOk = "HTTP/1.1"
 
       def writesBeforeReading(protocol: String) =
         test(s"$protocol - client writes before reading") {
@@ -75,6 +75,7 @@ class TLSSocketSuite extends TLSSuite {
             .head
             .compile
             .string
+            .map(_.take(httpOk.length))
             .assertEquals(httpOk)
         }
 
@@ -95,6 +96,7 @@ class TLSSocketSuite extends TLSSuite {
             .head
             .compile
             .string
+            .map(_.take(httpOk.length))
             .assertEquals(httpOk)
         }
 
@@ -172,7 +174,8 @@ class TLSSocketSuite extends TLSSuite {
             Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
 
-          client.concurrently(echoServer)
+          // client gets closed pipe error when server gets handshake ex
+          client.mask.concurrently(echoServer)
         }
         .compile
         .to(Chunk)

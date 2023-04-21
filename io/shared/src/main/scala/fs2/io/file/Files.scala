@@ -23,6 +23,8 @@ package fs2
 package io
 package file
 
+import cats.effect.IO
+import cats.effect.LiftIO
 import cats.effect.Resource
 import cats.effect.kernel.Async
 import cats.effect.std.Hotswap
@@ -240,6 +242,9 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   /** Returns true if the supplied paths reference the same file. */
   def isSameFile(path1: Path, path2: Path): F[Boolean]
 
+  /** Returns the line separator for the specific OS */
+  def lineSeparator: String
+
   /** Gets the contents of the specified directory. */
   def list(path: Path): Stream[F, Path]
 
@@ -269,7 +274,10 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte]
 
   /** Returns a `ReadCursor` for the specified path, using the supplied flags when opening the file. */
-  def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]]
+  def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
+    open(path, flags.addIfAbsent(Flag.Read)).map { fileHandle =>
+      ReadCursor(fileHandle, 0L)
+    }
 
   /** Reads a range of data synchronously from the file at the specified path.
     * `start` is inclusive, `end` is exclusive, so when `start` is 0 and `end` is 2,
@@ -278,10 +286,10 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte]
 
   /** Reads all bytes from the file specified and decodes them as a utf8 string. */
-  def readUtf8(path: Path): Stream[F, String]
+  def readUtf8(path: Path): Stream[F, String] = readAll(path).through(text.utf8.decode)
 
   /** Reads all bytes from the file specified and decodes them as utf8 lines. */
-  def readUtf8Lines(path: Path): Stream[F, String]
+  def readUtf8Lines(path: Path): Stream[F, String] = readUtf8(path).through(text.lines)
 
   /** Returns the real path i.e. the actual location of `path`.
     * The precise definition of this method is implementation dependent but in general
@@ -409,9 +417,49 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
       limit: Long,
       flags: Flags
   ): Pipe[F, Byte, Nothing]
+
+  /** Writes to the specified file as an utf8 string.
+    *
+    * The file is created if it does not exist and is truncated.
+    * Use `writeUtf8(path, Flags.Append)` to append to the end of
+    * the file, or pass other flags to further customize behavior.
+    */
+  def writeUtf8(path: Path): Pipe[F, String, Nothing] = writeUtf8(path, Flags.Write)
+
+  /** Writes to the specified file as an utf8 string using
+    * the specified flags to open the file.
+    */
+  def writeUtf8(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
+    in.through(text.utf8.encode).through(writeAll(path, flags))
+
+  /** Writes each string to the specified file as utf8 lines.
+    *
+    * The file is created if it does not exist and is truncated.
+    * Use `writeUtf8Lines(path, Flags.Append)` to append to the end
+    * of the file, or pass other flags to further customize behavior.
+    */
+  def writeUtf8Lines(path: Path): Pipe[F, String, Nothing] = writeUtf8Lines(path, Flags.Write)
+
+  /** Writes each string to the specified file as utf8 lines
+    * using the specified flags to open the file.
+    */
+  def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
+    in.flatMap(s => Stream[F, String](s, lineSeparator)).through(writeUtf8(path, flags))
 }
 
-object Files extends FilesCompanionPlatform {
+private[fs2] trait FilesLowPriority { this: Files.type =>
+  @deprecated("Add Files constraint or use forAsync", "3.7.0")
+  implicit def implicitForAsync[F[_]: Async]: Files[F] = forAsync
+}
+
+object Files extends FilesCompanionPlatform with FilesLowPriority {
+  def forIO: Files[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Files[F] = {
+    val _ = LiftIO[F]
+    forAsync
+  }
+
   private[fs2] abstract class UnsealedFiles[F[_]](implicit F: Async[F]) extends Files[F] {
 
     def readAll(path: Path, chunkSize: Int, flags: Flags): Stream[F, Byte] =
@@ -419,21 +467,10 @@ object Files extends FilesCompanionPlatform {
         cursor.readAll(chunkSize).void.stream
       }
 
-    def readCursor(path: Path, flags: Flags): Resource[F, ReadCursor[F]] =
-      open(path, flags.addIfAbsent(Flag.Read)).map { fileHandle =>
-        ReadCursor(fileHandle, 0L)
-      }
-
     def readRange(path: Path, chunkSize: Int, start: Long, end: Long): Stream[F, Byte] =
       Stream.resource(readCursor(path, Flags.Read)).flatMap { cursor =>
         cursor.seek(start).readUntil(chunkSize, end).void.stream
       }
-
-    def readUtf8(path: Path): Stream[F, String] =
-      readAll(path).through(text.utf8.decode)
-
-    def readUtf8Lines(path: Path): Stream[F, String] =
-      readUtf8(path).through(text.lines)
 
     def tail(
         path: Path,
@@ -468,27 +505,28 @@ object Files extends FilesCompanionPlatform {
         Stream.emit(start) ++ {
           if (maxDepth == 0) Stream.empty
           else
-            Stream.eval(getBasicFileAttributes(start, followLinks = false)).flatMap { attr =>
+            Stream.eval(getBasicFileAttributes(start, followLinks = false)).mask.flatMap { attr =>
               if (attr.isDirectory)
-                list(start).flatMap { path =>
+                list(start).mask.flatMap { path =>
                   go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                }.mask
+                }
               else if (attr.isSymbolicLink && followLinks)
-                Stream.eval(getBasicFileAttributes(start, followLinks = true)).flatMap { attr =>
-                  val fileKey = attr.fileKey
-                  val isCycle = Traverse[List].existsM(ancestry) {
-                    case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
-                    case Left(ancestorPath) => isSameFile(start, ancestorPath)
-                  }
+                Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap {
+                  attr =>
+                    val fileKey = attr.fileKey
+                    val isCycle = Traverse[List].existsM(ancestry) {
+                      case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                      case Left(ancestorPath) => isSameFile(start, ancestorPath)
+                    }
 
-                  Stream.eval(isCycle).flatMap { isCycle =>
-                    if (!isCycle)
-                      list(start).flatMap { path =>
-                        go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                      }.mask
-                    else
-                      Stream.raiseError(new FileSystemLoopException(start.toString))
-                  }
+                    Stream.eval(isCycle).flatMap { isCycle =>
+                      if (!isCycle)
+                        list(start).mask.flatMap { path =>
+                          go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                        }
+                      else
+                        Stream.raiseError(new FileSystemLoopException(start.toString))
+                    }
 
                 }
               else

@@ -42,4 +42,8 @@ private[io] object process {
   @JSImport("process", "cwd")
   def cwd(): String = js.native
 
+  @js.native
+  @JSImport("process", "env")
+  def env: js.Dictionary[String] = js.native
+
 }

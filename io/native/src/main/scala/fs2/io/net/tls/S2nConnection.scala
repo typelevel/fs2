@@ -164,7 +164,7 @@ private[tls] object S2nConnection {
         go(0)
       }
 
-      def write(bytes: Chunk[Byte]) = {
+      def write(bytes: Chunk[Byte]) = if (bytes.nonEmpty) {
         val Chunk.ArraySlice(buf, offset, n) = bytes.toArraySlice
 
         def go(i: Int): F[Unit] =
@@ -180,7 +180,7 @@ private[tls] object S2nConnection {
             }
 
         go(0)
-      }
+      } else F.unit
 
       def shutdown =
         F.delay {

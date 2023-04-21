@@ -82,7 +82,7 @@ object Examples {
     *
     * We have two options:
     * - call pathWithGreatestIn using the inverse of the feature, ensuring to "undo" the inverse on the
-    *   result. This requires a `Group` constraint on A`
+    *   result. This requires a `Group` constraint on `A`
     * - pass a different `Order` instance which reverses the order
     *
     * The second option is better for callers and is more general (it doesn't require a `Group[A]` instance).

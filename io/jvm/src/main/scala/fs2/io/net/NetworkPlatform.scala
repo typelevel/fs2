@@ -28,7 +28,7 @@ import cats.effect.LiftIO
 import cats.effect.SelectorPoller
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
 
 import fs2.internal.ThreadFactories
 import fs2.io.net.tls.TLSContext
@@ -69,14 +69,23 @@ private[net] trait NetworkPlatform[F[_]] {
 
 }
 
-private[net] trait NetworkCompanionPlatform extends NetworkCompanionPlatformLowPriority {
-  self: Network.type =>
+private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
+  private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
+    1,
+    ThreadFactories.named("fs2-global-tcp", true)
+  )
+  private lazy val globalAdsg =
+    AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
 
-  implicit def forLiftIO[F[_]: LiftIO](implicit F: Async[F]): Network[F] =
+  def forIO: Network[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
     new UnsealedNetwork[F] {
       private lazy val fallback = forAsync[F]
 
       private def tryGetPoller = IO.poller[SelectorPoller].to[F]
+
+      private implicit def dns: Dns[F] = Dns.forAsync[F]
 
       def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
         Resource.eval(tryGetPoller).flatMap {
@@ -126,17 +135,10 @@ private[net] trait NetworkCompanionPlatform extends NetworkCompanionPlatformLowP
       def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
 
-}
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    forAsyncAndDns(F, Dns.forAsync(F))
 
-private[net] trait NetworkCompanionPlatformLowPriority { self: Network.type =>
-  private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
-    1,
-    ThreadFactories.named("fs2-global-tcp", true)
-  )
-  private lazy val globalAdsg =
-    AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
-
-  implicit def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new UnsealedNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](globalAcg)
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)

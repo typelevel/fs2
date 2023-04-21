@@ -21,7 +21,9 @@
 
 package fs2
 
+import cats.effect.kernel.Async
 import cats.effect.kernel.Sync
+import cats.effect.syntax.all._
 import cats.syntax.all._
 
 import java.io.{InputStream, OutputStream}
@@ -43,7 +45,19 @@ package object io extends ioplatform {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       closeAfterUse
-    )
+    )((is, buf) => F.blocking(is.read(buf)))
+
+  private[io] def readInputStreamCancelable[F[_]](
+      fis: F[InputStream],
+      cancel: F[Unit],
+      chunkSize: Int,
+      closeAfterUse: Boolean = true
+  )(implicit F: Async[F]): Stream[F, Byte] =
+    readInputStreamGeneric(
+      fis,
+      F.delay(new Array[Byte](chunkSize)),
+      closeAfterUse
+    )((is, buf) => F.blocking(is.read(buf)).cancelable(cancel))
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -62,26 +76,28 @@ package object io extends ioplatform {
       fis,
       F.pure(new Array[Byte](chunkSize)),
       closeAfterUse
-    )
+    )((is, buf) => F.blocking(is.read(buf)))
 
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(implicit
+  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
+      read: (InputStream, Array[Byte]) => F[Int]
+  )(implicit
       F: Sync[F]
   ): F[Option[Chunk[Byte]]] =
-    F.blocking(is.read(buf)).map { numBytes =>
+    read(is, buf).map { numBytes =>
       if (numBytes < 0) None
       else if (numBytes == 0) Some(Chunk.empty)
       else if (numBytes < buf.size) Some(Chunk.array(buf, 0, numBytes))
       else Some(Chunk.array(buf))
     }
 
-  private def readInputStreamGeneric[F[_]](
+  private[fs2] def readInputStreamGeneric[F[_]](
       fis: F[InputStream],
       buf: F[Array[Byte]],
       closeAfterUse: Boolean
-  )(implicit F: Sync[F]): Stream[F, Byte] = {
+  )(read: (InputStream, Array[Byte]) => F[Int])(implicit F: Sync[F]): Stream[F, Byte] = {
     def useIs(is: InputStream) =
       Stream
-        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)))
+        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)(read)))
         .repeat
         .unNoneTerminate
         .flatMap(c => Stream.chunk(c))
@@ -92,19 +108,45 @@ package object io extends ioplatform {
       Stream.eval(fis).flatMap(useIs)
   }
 
-  /** Writes all bytes to the specified `OutputStream`. Set `closeAfterUse` to false if
+  /** Writes all bytes to the specified `OutputStream`. Each chunk is flushed
+    * immediately after writing. Set `closeAfterUse` to false if
     * the `OutputStream` should not be closed after use.
-    *
-    * Each write operation is performed on the supplied execution context. Writes are
-    * blocking so the execution context should be configured appropriately.
     */
   def writeOutputStream[F[_]](
       fos: F[OutputStream],
       closeAfterUse: Boolean = true
   )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
+    writeOutputStreamGeneric(fos, closeAfterUse) { (os, b, off, len) =>
+      F.interruptible {
+        os.write(b, off, len)
+        os.flush()
+      }
+    }
+
+  private[io] def writeOutputStreamCancelable[F[_]](
+      fos: F[OutputStream],
+      cancel: F[Unit],
+      closeAfterUse: Boolean = true
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
+    writeOutputStreamGeneric(fos, closeAfterUse) { (os, b, off, len) =>
+      F.blocking {
+        os.write(b, off, len)
+        os.flush()
+      }.cancelable(cancel)
+    }
+
+  private def writeOutputStreamGeneric[F[_]](
+      fos: F[OutputStream],
+      closeAfterUse: Boolean
+  )(
+      write: (OutputStream, Array[Byte], Int, Int) => F[Unit]
+  )(implicit F: Sync[F]): Pipe[F, Byte, Nothing] =
     s => {
       def useOs(os: OutputStream): Stream[F, Nothing] =
-        s.chunks.foreach(c => F.interruptible(os.write(c.toArray)))
+        s.chunks.foreach { c =>
+          val Chunk.ArraySlice(b, off, len) = c.toArraySlice[Byte]
+          write(os, b, off, len)
+        }
 
       val os =
         if (closeAfterUse) Stream.bracket(fos)(os => F.blocking(os.close()))

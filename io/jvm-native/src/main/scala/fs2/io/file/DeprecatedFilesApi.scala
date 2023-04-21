@@ -134,7 +134,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * readAttributes method and the file type tested with the BasicFileAttributes.isDirectory() method.
     *
     * @param path the path to the file to test
-    * @param options - options indicating how symbolic links are handled
+    * @param linkOption - options indicating how symbolic links are handled
     * @return true if the file is a directory; false if the file does not exist, is not a directory, or it cannot be determined if the file is a directory or not.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
@@ -158,7 +158,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
     * method and the file type tested with the BasicFileAttributes.isRegularFile() method.
     *
     * @param path the path to the file
-    * @param options options indicating how symbolic links are handled
+    * @param linkOption options indicating how symbolic links are handled
     * @return true if the file is a regular file; false if the file does not exist, is not a regular file, or it cannot be determined if the file is a regular file or not.
     */
   @deprecated("Use isRegularFile which uses fs2.io.file.Path", "3.1.0")

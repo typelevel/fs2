@@ -120,7 +120,9 @@ private[fs2] trait ioplatform {
             .concurrently(
               Stream.eval(
                 F.async_[Unit](cb =>
-                  duplex.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                  duplex.end { e =>
+                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  }
                 )
               )
             )
@@ -142,32 +144,32 @@ private[fs2] trait ioplatform {
       Stream
         .eval(writable)
         .flatMap { writable =>
-          def go(
-              s: Stream[F, Byte]
-          ): Pull[F, Nothing, Unit] = s.pull.uncons.flatMap {
-            case Some((head, tail)) =>
-              Pull.eval {
-                F.async_[Unit] { cb =>
-                  writable.write(
-                    head.toUint8Array,
-                    e => cb(e.toLeft(()).leftMap(js.JavaScriptException))
-                  )
-                  ()
-                }
-              } >> go(tail)
-            case None => Pull.done
+          val writes = in.chunks.foreach { chunk =>
+            F.async[Unit] { cb =>
+              F.delay {
+                writable.write(
+                  chunk.toUint8Array,
+                  e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                )
+                Some(F.delay(writable.destroy()))
+              }
+            }
           }
 
           val end =
             if (endAfterUse)
               Stream.exec {
-                F.async_[Unit] { cb =>
-                  writable.end(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
+                F.async[Unit] { cb =>
+                  F.delay(
+                    writable.end(e =>
+                      cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                    )
+                  ).as(Some(F.unit))
                 }
               }
             else Stream.empty
 
-          (go(in).stream ++ end).onFinalizeCase[F] {
+          (writes ++ end).onFinalizeCase[F] {
             case Resource.ExitCase.Succeeded =>
               F.unit
             case Resource.ExitCase.Errored(_) | Resource.ExitCase.Canceled =>

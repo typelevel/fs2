@@ -266,13 +266,7 @@ private[fs2] final class Scope[F[_]] private (
           resultResources <- traverseError[ScopedResource[F]](previous.resources, _.release(ec))
           _ <- self.interruptible.map(_.cancelParent).getOrElse(F.unit)
           _ <- self.parent.fold(F.unit)(_.releaseChildScope(self.id))
-        } yield {
-          val results = resultChildren.fold(List(_), _ => Nil) ++ resultResources.fold(
-            List(_),
-            _ => Nil
-          )
-          CompositeFailure.fromList(results.toList).toLeft(())
-        }
+        } yield CompositeFailure.fromResults(resultChildren, resultResources)
       case _: Scope.State.Closed[F] => F.pure(Right(()))
     }
 
@@ -303,7 +297,7 @@ private[fs2] final class Scope[F[_]] private (
     go(self, Chain.empty)
   }
 
-  /** @returns true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
+  /** @return true if the given `scopeId` identifies an ancestor of this scope, or false otherwise.
     */
   def descendsFrom(scopeId: Unique.Token): Boolean = findSelfOrAncestor(scopeId).isDefined
 

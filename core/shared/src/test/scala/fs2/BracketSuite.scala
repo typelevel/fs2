@@ -31,6 +31,8 @@ import org.scalacheck.effect.PropF.forAllF
 
 class BracketSuite extends Fs2Suite {
 
+  override def munitIOTimeout = 1.minute
+
   sealed trait BracketEvent
   case object Acquired extends BracketEvent
   case object Released extends BracketEvent

@@ -153,8 +153,8 @@ object Channel {
 
         def send(a: A) =
           F.deferred[Unit].flatMap { producer =>
-            F.uncancelable { poll =>
-              state.modify {
+            state.flatModifyFull { case (poll, state) =>
+              state match {
                 case s @ State(_, _, _, _, closed @ true) =>
                   (s, Channel.closed[Unit].pure[F])
 
@@ -169,12 +169,12 @@ object Channel {
                       State(values, size, None, (a, producer) :: producers, false),
                       notifyStream(waiting).as(rightUnit) <* waitOnBound(producer, poll)
                     )
-              }.flatten
+              }
             }
           }
 
         def trySend(a: A) =
-          state.modify {
+          state.flatModify {
             case s @ State(_, _, _, _, closed @ true) =>
               (s, Channel.closed[Boolean].pure[F])
 
@@ -186,22 +186,19 @@ object Channel {
                 )
               else
                 (s, rightFalse.pure[F])
-          }.flatten
+          }
 
         def close =
-          state
-            .modify {
-              case s @ State(_, _, _, _, closed @ true) =>
-                (s, Channel.closed[Unit].pure[F])
+          state.flatModify {
+            case s @ State(_, _, _, _, closed @ true) =>
+              (s, Channel.closed[Unit].pure[F])
 
-              case State(values, size, waiting, producers, closed @ false) =>
-                (
-                  State(values, size, None, producers, true),
-                  notifyStream(waiting).as(rightUnit) <* signalClosure
-                )
-            }
-            .flatten
-            .uncancelable
+            case State(values, size, waiting, producers, closed @ false) =>
+              (
+                State(values, size, None, producers, true),
+                notifyStream(waiting).as(rightUnit) <* signalClosure
+              )
+          }
 
         def isClosed = closedGate.tryGet.map(_.isDefined)
 

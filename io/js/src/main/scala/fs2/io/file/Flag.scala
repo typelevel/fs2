@@ -40,8 +40,8 @@ object Flag extends FlagCompanionApi {
   val Create = Flag(facade.fs.constants.O_CREAT)
   val CreateNew = Flag(facade.fs.constants.O_CREAT.toLong | facade.fs.constants.O_EXCL.toLong)
 
-  val Sync = Flag(facade.fs.constants.O_SYNC)
-  val Dsync = Flag(facade.fs.constants.O_DSYNC)
+  val Sync = Flag(facade.fs.constants.O_SYNC.getOrElse(0.0))
+  val Dsync = Flag(facade.fs.constants.O_DSYNC.getOrElse(0.0))
 
   private[file] implicit val monoid: Monoid[Flag] = new Monoid[Flag] {
     override def combine(x: Flag, y: Flag): Flag = Flag(x.bits | y.bits)

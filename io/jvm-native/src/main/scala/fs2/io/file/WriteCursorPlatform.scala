@@ -33,13 +33,13 @@ private[file] trait WriteCursorCompanionPlatform {
       file: FileHandle[F],
       append: Boolean
   ): F[WriteCursor[F]] =
-    Files[F].writeCursorFromFileHandle(file, append)
+    Files.forAsync[F].writeCursorFromFileHandle(file, append)
 
   @deprecated("Use Files[F].writeCursor", "3.0.0")
   def fromPath[F[_]: Async](
       path: JPath,
       flags: Seq[OpenOption] = List(StandardOpenOption.CREATE)
   ): Resource[F, WriteCursor[F]] =
-    Files[F].writeCursor(path, flags)
+    Files.forAsync[F].writeCursor(path, flags)
 
 }

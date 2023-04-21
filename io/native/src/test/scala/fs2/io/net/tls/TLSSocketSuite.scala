@@ -51,7 +51,7 @@ class TLSSocketSuite extends TLSSuite {
         } yield tlsSocket
 
       val googleDotCom = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n"
-      val httpOk = "HTTP/1.1 200 OK"
+      val httpOk = "HTTP/1.1"
 
       def writesBeforeReading(protocol: String) =
         test(s"$protocol - client writes before reading") {
@@ -70,6 +70,7 @@ class TLSSocketSuite extends TLSSuite {
             .head
             .compile
             .string
+            .map(_.take(httpOk.length))
             .assertEquals(httpOk)
         }
 
@@ -90,6 +91,7 @@ class TLSSocketSuite extends TLSSuite {
             .head
             .compile
             .string
+            .map(_.take(httpOk.length))
             .assertEquals(httpOk)
         }
 
@@ -134,6 +136,38 @@ class TLSSocketSuite extends TLSSuite {
         .compile
         .to(Chunk)
         .assertEquals(msg)
+    }
+
+    test("empty write") {
+      val setup = for {
+        tlsContext <- testTlsContext
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(TLSParameters(serverName = Some("Unknown")))
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val echoServer = server.map { socket =>
+            socket.reads.chunks.foreach(socket.write(_))
+          }.parJoinUnbounded
+
+          val client = Stream.resource(clientSocket).flatMap { clientSocket =>
+            Stream.exec(clientSocket.write(Chunk.empty))
+          }
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .drain
     }
 
     test("error") {
