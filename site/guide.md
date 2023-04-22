@@ -710,7 +710,7 @@ Want to learn more?
   * UDP networking
   * Contributions welcome! If you are familiar with one of the modules of the library and would like to contribute a more detailed guide for it, submit a PR.
 
-Also feel free to come discuss and ask/answer questions in [the gitter channel](https://gitter.im/functional-streams-for-scala/fs2) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
+Also feel free to come discuss and ask/answer questions in [the Typelevel Discord channel](https://discord.gg/9V8FZTVZ9R) and/or on StackOverflow using [the tag FS2](http://stackoverflow.com/tags/fs2).
 
 ### Appendixes
 
