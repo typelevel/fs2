@@ -1420,7 +1420,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         } yield {
 
           def push(o: O): F2[Unit] =
-            backpressure.acquire *> buffer.update(_.appended(o))
+            backpressure.acquire *> buffer.update(_ :+ o)
 
           val flush: F2[Vector[O]] =
             buffer.getAndSet(Vector.empty).flatTap(os => backpressure.releaseN(os.size.toLong))
