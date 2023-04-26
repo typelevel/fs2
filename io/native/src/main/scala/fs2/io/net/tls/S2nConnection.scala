@@ -51,7 +51,12 @@ private[tls] trait S2nConnection[F[_]] {
 
   def shutdown: F[Unit]
 
-  def applicationProtocol: F[String]
+  /**
+   * Returns [[None]] if there is no protocol being negotiated.
+   *
+   * @see [[https://aws.github.io/s2n-tls/doxygen/s2n_8h.html#ae53faa26669e258afff875d45140f14e]]
+   */
+  def applicationProtocol: F[Option[String]]
 
   def session: F[SSLSession]
 
@@ -199,7 +204,7 @@ private[tls] object S2nConnection {
           .void
 
       def applicationProtocol =
-        F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
+        F.delay(Option(s2n_get_application_protocol(conn)).map(fromCString(_)))
 
       def session = F.delay {
         val len = guard(s2n_connection_get_session_length(conn))

@@ -71,10 +71,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       tlsSock,
       readStream,
       sessionRef.discrete.unNone.head.compile.lastOrError,
-      F.delay[Any](tlsSock.alpnProtocol).flatMap {
-        case false            => "".pure // mimicking JVM
-        case protocol: String => protocol.pure
-        case _                => F.raiseError(new NoSuchElementException)
+      F.delay[Any](tlsSock.alpnProtocol).map {
+        case false            => Some("") // mimicking JVM
+        case protocol: String => Some(protocol)
+        case _                => None
       }
     )
 
@@ -82,7 +82,15 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       sock: facade.tls.TLSSocket,
       readStream: SuspendedStream[F, Byte],
       val session: F[SSLSession],
-      val applicationProtocol: F[String]
+      val applicationProtocolOption: F[Option[String]]
   ) extends Socket.AsyncSocket[F](sock, readStream)
       with UnsealedTLSSocket[F]
+  {
+    override def applicationProtocol: F[String] = applicationProtocolOption.flatMap {
+      case None => Async[F].raiseError(new NoSuchElementException(
+        "`tlsSock.alpnProtocol` returned neither false, nor a String"
+      ))
+      case Some(protocol) => Async[F].pure(protocol)
+    }
+  }
 }
