@@ -84,7 +84,7 @@ package object reactivestreams {
     /** Creates a lazy stream from an `org.reactivestreams.Publisher`
       *
       * @param bufferSize setup the number of elements asked each time from the `org.reactivestreams.Publisher`.
-      *                   A high number can be useful is the publisher is triggering from IO, like requesting elements from a database.
+      *                   A high number can be useful if the publisher is triggering from IO, like requesting elements from a database.
       *                   The publisher can use this `bufferSize` to query elements in batch.
       *                   A high number will also lead to more elements in memory.
       */
