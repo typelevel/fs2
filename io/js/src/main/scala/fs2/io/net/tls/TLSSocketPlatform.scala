@@ -84,12 +84,14 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       val session: F[SSLSession],
       val applicationProtocolOption: F[Option[String]]
   ) extends Socket.AsyncSocket[F](sock, readStream)
-      with UnsealedTLSSocket[F]
-  {
+      with UnsealedTLSSocket[F] {
     override def applicationProtocol: F[String] = applicationProtocolOption.flatMap {
-      case None => Async[F].raiseError(new NoSuchElementException(
-        "`tlsSock.alpnProtocol` returned neither false, nor a String"
-      ))
+      case None =>
+        Async[F].raiseError(
+          new NoSuchElementException(
+            "`tlsSock.alpnProtocol` returned neither false, nor a String"
+          )
+        )
       case Some(protocol) => Async[F].pure(protocol)
     }
   }

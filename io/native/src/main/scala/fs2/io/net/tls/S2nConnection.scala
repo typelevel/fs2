@@ -51,11 +51,10 @@ private[tls] trait S2nConnection[F[_]] {
 
   def shutdown: F[Unit]
 
-  /**
-   * Returns [[None]] if there is no protocol being negotiated.
-   *
-   * @see [[https://aws.github.io/s2n-tls/doxygen/s2n_8h.html#ae53faa26669e258afff875d45140f14e]]
-   */
+  /** Returns [[None]] if there is no protocol being negotiated.
+    *
+    * @see [[https://aws.github.io/s2n-tls/doxygen/s2n_8h.html#ae53faa26669e258afff875d45140f14e]]
+    */
   def applicationProtocol: F[Option[String]]
 
   def session: F[SSLSession]

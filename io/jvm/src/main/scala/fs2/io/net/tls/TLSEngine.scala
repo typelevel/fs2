@@ -38,11 +38,10 @@ import cats.syntax.all._
 private[tls] trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
 
-  /**
-    * Returns [[None]] if it has not yet been determined if application protocols might be used for this connection,
-    * [[Some]] with an empty String if application protocols values will not be used, or a non-empty application 
+  /** Returns [[None]] if it has not yet been determined if application protocols might be used for this connection,
+    * [[Some]] with an empty String if application protocols values will not be used, or a non-empty application
     * protocol String if a value was successfully negotiated.
-    * 
+    *
     * @see https://docs.oracle.com/javase/8/docs/api/javax/net/ssl/SSLEngine.html#getApplicationProtocol--
     */
   def applicationProtocol: F[Option[String]]

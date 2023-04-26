@@ -38,16 +38,16 @@ sealed trait TLSSocket[F[_]] extends Socket[F] with TLSSocketPlatform[F] {
   def session: F[SSLSession]
 
   /** Provides access to the current application protocol that has been negotiated.
-    * 
+    *
     * Raises a [[NoSuchElementException]] if it has not yet been determined if application protocols might
     * be used for this connection. See [[applicationProtocolOption]] for a safer option.
-    * 
+    *
     * @see https://discord.com/channels/632277896739946517/632310980449402880/1100649913223745597
     */
   def applicationProtocol: F[String]
 
-  /** Provides access to the current application protocol that has been negotiated. 
-    * 
+  /** Provides access to the current application protocol that has been negotiated.
+    *
     * Returns [[None]] if it has not yet been determined if application protocols might be used for this connection.
     */
   def applicationProtocolOption: F[Option[String]]

@@ -97,7 +97,8 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
       def applicationProtocol: F[String] = connection.applicationProtocol.flatMap {
         case Some(protocol) => F.pure(protocol)
-        case None           => F.raiseError(new NoSuchElementException("No application protocol was negotiated"))
+        case None =>
+          F.raiseError(new NoSuchElementException("No application protocol was negotiated"))
       }
 
       override def applicationProtocolOption: F[Option[String]] = connection.applicationProtocol
