@@ -36,8 +36,6 @@ import org.reactivestreams.tck.flow.{
 }
 import org.scalatestplus.testng._
 
-import scala.concurrent.duration._
-
 import java.util.concurrent.Flow.{Subscriber, Subscription}
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -70,9 +68,7 @@ final class WhiteboxSubscriber[A](
     sub.onSubscribe(s)
     probe.registerOnSubscribe(new SubscriberPuppet {
       override def triggerRequest(elements: Long): Unit =
-        (0 to elements.toInt)
-          .foldLeft(IO.unit)((t, _) => t.flatMap(_ => sub.subscriber.dequeue1.map(_ => ())))
-          .unsafeRunAsync(_ => ())
+        s.request(elements)
 
       override def signalCancel(): Unit =
         s.cancel()
@@ -94,15 +90,16 @@ final class SubscriberBlackboxSpec
     extends FlowSubscriberBlackboxVerification[Int](new TestEnvironment(1000L))
     with TestNGSuiteLike {
 
-  private val counter = new AtomicInteger()
-
   override def createFlowSubscriber(): StreamSubscriber[IO, Int] =
     StreamSubscriber[IO, Int](chunkSize = 1).unsafeRunSync()
 
-  override def triggerFlowRequest(s: Subscriber[_ >: Int]): Unit = {
-    val req = s.asInstanceOf[StreamSubscriber[IO, Int]].subscriber.dequeue1
-    Stream.eval(IO.sleep(100.milliseconds) >> req).compile.drain.unsafeRunAsync(_ => ())
-  }
+  override def triggerFlowRequest(subscriber: Subscriber[_ >: Int]): Unit =
+    subscriber
+      .asInstanceOf[StreamSubscriber[IO, Int]]
+      .stream(IO.unit)
+      .compile
+      .drain
+      .unsafeRunAndForget()
 
-  def createElement(i: Int): Int = counter.incrementAndGet()
+  override def createElement(i: Int): Int = i
 }

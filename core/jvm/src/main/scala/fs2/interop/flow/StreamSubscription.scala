@@ -23,12 +23,13 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.{Async, Deferred, Resource, Outcome}
-import cats.effect.std.{Dispatcher, Queue}
+import cats.effect.kernel.{Async, Outcome}
 import cats.effect.syntax.all._
 import cats.syntax.all._
 
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Flow.{Subscription, Subscriber}
+import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 
 /** Implementation of a [[Subscription]].
   *
@@ -39,132 +40,159 @@ import java.util.concurrent.Flow.{Subscription, Subscriber}
 private[flow] final class StreamSubscription[F[_], A] private (
     stream: Stream[F, A],
     sub: Subscriber[A],
-    requestDispatcher: Dispatcher[F],
-    requests: Queue[F, StreamSubscription.Request],
-    canceled: Deferred[F, Unit]
+    requests: AtomicLong,
+    resume: AtomicReference[() => Unit],
+    canceled: AtomicReference[() => Unit]
 )(implicit F: Async[F])
     extends Subscription {
-  // Ensure we are on a terminal state; i.e. set `canceled`, before signaling the subscriber.
-  private def onError(ex: Throwable): F[Unit] =
-    cancelMe >> F.delay(sub.onError(ex))
+  import StreamSubscription.Sentinel
 
-  private def onComplete: F[Unit] =
-    cancelMe >> F.delay(sub.onComplete())
+  // Ensure we are on a terminal state; i.e. call `cancel`, before signaling the subscriber.
+  private def onError(ex: Throwable): Unit = {
+    cancel()
+    sub.onError(ex)
+  }
+
+  private def onComplete(): Unit = {
+    cancel()
+    sub.onComplete()
+  }
 
   private[flow] def run: F[Unit] = {
-    def subscriptionPipe: Pipe[F, A, A] =
-      in => {
-        def go(s: Stream[F, A]): Pull[F, A, Unit] =
-          Pull.eval(requests.take).flatMap {
-            case StreamSubscription.Request.Infinite =>
-              s.pull.echo
-
-            case StreamSubscription.Request.Finite(n) =>
+    val subscriptionPipe: Pipe[F, A, A] = in => {
+      def go(s: Stream[F, A]): Pull[F, A, Unit] =
+        Pull.eval(F.delay(requests.get())).flatMap { n =>
+          if (n == Long.MaxValue)
+            s.pull.echo
+          else if (n == 0)
+            Pull.eval(F.asyncCheckAttempt[Unit] { cb =>
+              F.delay {
+                // If there aren't more pending request,
+                // we will wait until the next one.
+                resume.set(() => cb.apply(Either.unit))
+                // However, before blocking,
+                // we must check if it has been a concurrent request.
+                // In case it was, we abort the wait.
+                if (requests.get() > 0) {
+                  // And we remove the callback from resume, to avoid a memory leak.
+                  resume.set(Sentinel)
+                  Either.unit
+                } else {
+                  Left(Some(F.unit))
+                }
+              }
+            }) >> go(s)
+          else
+            Pull.eval(F.delay(requests.getAndAdd(-n))) >>
               s.pull.take(n).flatMap {
                 case None      => Pull.done
                 case Some(rem) => go(rem)
               }
-          }
+        }
 
-        go(in).stream
-      }
+      go(in).stream
+    }
 
     val events =
       stream
         .through(subscriptionPipe)
-        .foreach(x => F.delay(sub.onNext(x)))
+        .chunks
+        .foreach(chunk => F.delay(chunk.foreach(sub.onNext)))
         .compile
         .drain
 
+    val cancellation = F.asyncCheckAttempt[Unit] { cb =>
+      F.delay {
+        // Check if we were already cancelled before calling run.
+        if (!canceled.compareAndSet(Sentinel, () => cb.apply(Either.unit))) {
+          Either.unit
+        } else {
+          Left(Some(F.unit))
+        }
+      }
+    }
+
     events
-      .race(canceled.get)
+      .race(cancellation)
       .guaranteeCase {
         case Outcome.Succeeded(result) =>
           result.flatMap {
-            case Left(())  => onComplete // Events finished normally.
+            case Left(())  => F.delay(onComplete()) // Events finished normally.
             case Right(()) => F.unit // Events was canceled.
           }
-        case Outcome.Errored(ex) => onError(ex)
-        case Outcome.Canceled()  => cancelMe
+        case Outcome.Errored(ex) => F.delay(onError(ex))
+        case Outcome.Canceled() =>
+          F.delay(onError(new CancellationException("StreamSubscription.run was canceled")))
       }
       .void
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
-  // be processed immediately, but if you have synchronous `cancel();
-  // request()`, then the request _must_ be a NOOP. Fortunately,
-  // ordering is guaranteed by a sequential dispatcher.
+  // be processed immediately, but if you have synchronous
+  // `cancel(); request()`,
+  // then the request must be a NOOP.
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
-  private def cancelMe: F[Unit] =
-    canceled.complete(()).void
-
-  override def cancel(): Unit =
-    try
-      requestDispatcher.unsafeRunAndForget(cancelMe)
-    catch {
-      case _: IllegalStateException =>
-      // Dispatcher already shutdown, we are on terminal state, NOOP.
-    }
-
-  override def request(n: Long): Unit = {
-    val prog =
-      canceled.tryGet.flatMap {
-        case None =>
-          if (n == java.lang.Long.MAX_VALUE)
-            requests.offer(StreamSubscription.Request.Infinite)
-          else if (n > 0)
-            requests.offer(StreamSubscription.Request.Finite(n))
-          else
-            onError(
-              ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
-            )
-
-        case Some(()) =>
-          F.unit
-      }
-    try
-      requestDispatcher.unsafeRunAndForget(prog)
-    catch {
-      case _: IllegalStateException =>
-      // Dispatcher already shutdown, we are on terminal state, NOOP.
+  override def cancel(): Unit = {
+    val cancelCB = canceled.getAndSet(null)
+    if (cancelCB ne null) {
+      cancelCB.apply()
     }
   }
+
+  override def request(n: Long): Unit =
+    // First, confirm we are not yet cancelled.
+    if (canceled.get() ne null) {
+      // Second, ensure we were requested a positive number of elements.
+      if (n <= 0) {
+        // Otherwise, we raise an error according to the spec.
+        onError(
+          ex = new IllegalArgumentException(s"Invalid number of elements [${n}]")
+        )
+      } else {
+        // Then, we increment the pending number of requests, capping at `Long.MaxValue`.
+        requests.updateAndGet { r =>
+          val result = r + n
+          if (result < 0) {
+            // Overflow.
+            Long.MaxValue
+          } else {
+            result
+          }
+        }
+
+        // Finally, we get and remove the current resume callback, and call it.
+        resume.getAndSet(Sentinel).apply()
+      }
+    }
 }
 
 private[flow] object StreamSubscription {
-
-  /** Represents a downstream subscriber's request to publish elements. */
-  private sealed trait Request
-  private object Request {
-    case object Infinite extends Request
-    final case class Finite(n: Long) extends Request
-  }
+  private final val Sentinel = () => ()
 
   // Mostly for testing purposes.
   def apply[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
       F: Async[F]
-  ): Resource[F, StreamSubscription[F, A]] =
-    (
-      Dispatcher.sequential[F](await = true),
-      Resource.eval(Queue.unbounded[F, Request]),
-      Resource.eval(Deferred[F, Unit])
-    ).mapN { case (requestDispatcher, requests, canceled) =>
+  ): F[StreamSubscription[F, A]] =
+    F.delay {
+      val requests = new AtomicLong(0L)
+      val resume = new AtomicReference(Sentinel)
+      val canceled = new AtomicReference(Sentinel)
+
       new StreamSubscription(
         stream,
         subscriber,
-        requestDispatcher,
         requests,
+        resume,
         canceled
       )
-    }.evalTap { subscription =>
-      F.delay(subscriber.onSubscribe(subscription))
     }
 
   def subscribe[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
       F: Async[F]
   ): F[Unit] =
-    apply(stream, subscriber).use { subscription =>
-      subscription.run
+    apply(stream, subscriber).flatMap { subscription =>
+      F.delay(subscriber.onSubscribe(subscription)) >>
+        subscription.run
     }
 }

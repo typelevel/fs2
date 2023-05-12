@@ -25,19 +25,20 @@ package flow
 
 import cats.effect.IO
 import org.scalacheck.{Arbitrary, Gen}
-import org.scalacheck.Prop.forAll
+import org.scalacheck.effect.PropF.forAllF
 
 final class PublisherToSubscriberSpec extends Fs2Suite {
   import PublisherToSubscriberSpec._
 
   test("should have the same output as input") {
-    forAll(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
+    forAllF(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
       val subscriberStream =
         Stream
           .resource(toPublisher(Stream.emits(ints).covary[IO]))
           .flatMap(p => fromPublisher[IO](p, bufferSize))
+          .map(_ * 1) // Just to ensure the cast is safe.
 
-      assert(subscriberStream.compile.toVector.unsafeRunSync() == (ints.toVector))
+      subscriberStream.compile.toVector.assertEquals(ints.toVector)
     }
   }
 
@@ -46,18 +47,18 @@ final class PublisherToSubscriberSpec extends Fs2Suite {
     val output: Stream[IO, Int] =
       Stream.resource(toPublisher(input)).flatMap(p => fromPublisher[IO](p, 1))
 
-    assert(output.compile.drain.attempt.unsafeRunSync() == (Left(TestError)))
+    output.compile.drain.attempt.assertEquals(Left(TestError))
   }
 
   test("should cancel upstream if downstream completes") {
-    forAll(Arbitrary.arbitrary[Seq[Int]], Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) {
+    forAllF(Arbitrary.arbitrary[Seq[Int]], Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) {
       (as, bs, bufferSize) =>
         val subscriberStream =
           Stream
             .resource(toPublisher(Stream.emits(as ++ bs).covary[IO]))
             .flatMap(p => fromPublisher[IO](p, bufferSize).take(as.size.toLong))
 
-        assert(subscriberStream.compile.toVector.unsafeRunSync() == (as.toVector))
+        subscriberStream.compile.toVector.assertEquals(as.toVector)
     }
   }
 }

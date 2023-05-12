@@ -35,24 +35,27 @@ import java.util.concurrent.atomic.AtomicBoolean
   * failures due to race conditions more repeatable
   */
 class CancellationSpec extends Fs2Suite {
-  final class Sub[A](b: AtomicBoolean) extends Subscriber[A] {
-    def onNext(t: A): Unit = b.set(true)
+  final class DummySubscriber(b: AtomicBoolean, program: Subscription => Unit)
+      extends Subscriber[Int] {
+    def onNext(i: Int): Unit = b.set(true)
     def onComplete(): Unit = b.set(true)
     def onError(e: Throwable): Unit = b.set(true)
-    def onSubscribe(s: Subscription): Unit = ()
+    def onSubscribe(s: Subscription): Unit =
+      program(s)
   }
 
   val s = Stream.range(0, 5).covary[IO]
 
-  val attempts = 5000
+  val attempts = 10000
 
   def testStreamSubscription(clue: String)(program: Subscription => Unit): IO[Unit] =
     IO(new AtomicBoolean(false))
       .flatMap { flag =>
-        StreamSubscription(s, new Sub(flag)).use { subscription =>
+        val subscriber = new DummySubscriber(flag, program)
+        StreamSubscription(s, subscriber).flatMap { subscription =>
           (
             subscription.run,
-            IO(program(subscription))
+            IO(subscriber.onSubscribe(subscription))
           ).parTupled
         } >>
           IO(flag.get()).assertEquals(false, clue)

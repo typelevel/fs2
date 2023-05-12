@@ -31,6 +31,8 @@ import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
 import scala.concurrent.duration._
 
 class SubscriberStabilitySpec extends Fs2Suite {
+  val attempts = 100
+
   test("StreamSubscriber has no race condition") {
     val publisher = new Publisher[ByteBuffer] {
 
@@ -47,43 +49,22 @@ class SubscriberStabilitySpec extends Fs2Suite {
         s.onSubscribe(new SubscriptionImpl(s))
     }
 
-    def randomDelay(rnd: Random[IO]): IO[Unit] =
-      for {
-        ms <- rnd.nextIntBounded(50)
-        _ <- IO.sleep(ms.millis)
-      } yield ()
-
-    val randomStream = Stream.eval(Random.scalaUtilRandom[IO]).flatMap { rnd =>
-      Stream.repeatEval(randomDelay(rnd))
-    }
-
-    val stream = fromPublisher[IO](publisher, chunkSize = 16)
-      .map(Left(_))
-      .interleave(randomStream.map(Right(_)))
-      .collect { case Left(buf) => buf }
-
-    val N = 100
-    @volatile var failed: Boolean = false
-    Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler {
-      def uncaughtException(thread: Thread, error: Throwable): Unit =
-        failed = true
-    })
-
-    def loop(remaining: Int): IO[Unit] =
-      IO.delay(failed).flatMap { alreadyFailed =>
-        if (!alreadyFailed) {
-          val f = stream.compile.drain
-          if (remaining > 0)
-            f *> loop(remaining - 1)
-          else
-            f
-        } else
-          IO.unit
+    def randomDelays(seed: Long) =
+      Stream.eval(Random.scalaUtilRandomSeedLong[IO](seed)).flatMap { rnd =>
+        Stream.repeatEval(
+          rnd.nextIntBounded(50).flatMap(ms => IO.sleep(ms.millis))
+        )
       }
 
-    loop(N).unsafeRunSync()
+    def stream(seed: Long) =
+      fromPublisher[IO](publisher, chunkSize = 16).zipLeft(randomDelays(seed))
 
-    if (failed)
-      fail("Uncaught exception was reported")
+    Random.scalaUtilRandom[IO].flatMap { seedRnd =>
+      seedRnd.nextLong
+        .flatMap { seed =>
+          stream(seed).compile.drain.as(true).assert
+        }
+        .replicateA_(attempts)
+    }
   }
 }
