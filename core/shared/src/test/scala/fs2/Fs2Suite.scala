@@ -89,6 +89,9 @@ abstract class Fs2Suite
         expect <- expected.compile.toList
       } yield assertEquals(actual.toSet, expect.toSet)
 
+    def assertCompletes: IO[Unit] =
+      str.compile.drain.assert
+
     def intercept[T <: Throwable](implicit T: ClassTag[T], loc: Location): IO[T] =
       str.compile.drain.intercept[T]
   }

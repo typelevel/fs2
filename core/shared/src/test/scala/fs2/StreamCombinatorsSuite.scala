@@ -23,7 +23,7 @@ package fs2
 
 import cats.effect.kernel.Deferred
 import cats.effect.kernel.Ref
-import cats.effect.std.{Semaphore, Queue}
+import cats.effect.std.{Queue, Semaphore}
 import cats.effect.testkit.TestControl
 import cats.effect.{IO, SyncIO}
 import cats.syntax.all._
@@ -34,6 +34,7 @@ import org.scalacheck.Prop.forAll
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
+import scala.util.control.NoStackTrace
 
 class StreamCombinatorsSuite extends Fs2Suite {
   override def munitIOTimeout = 1.minute
@@ -748,7 +749,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       }
     }
 
-    test("accumulation and splitting".flaky) {
+    test("accumulation and splitting") {
       val t = 200.millis
       val size = 5
       val sleep = Stream.sleep_[IO](2 * t)
@@ -770,6 +771,36 @@ class StreamCombinatorsSuite extends Fs2Suite {
         List(9, 10, 11, 12, 13),
         List(14, 15, 16, 17, 18),
         List(19, 20, 21, 22)
+      )
+
+      source.groupWithin(size, t).map(_.toList).assertEmits(expected)
+    }
+
+    test("accumulation and splitting 2") {
+      val t = 200.millis
+      val size = 5
+      val sleep = Stream.sleep_[IO](2 * t)
+      val longSleep = sleep.repeatN(5)
+
+      def chunk(from: Int, size: Int) =
+        Stream.range(from, from + size).chunkAll.unchunks
+
+      // this test example is designed to have good coverage of
+      // the chunk manipulation logic in groupWithin
+      val source =
+        chunk(from = 1, size = 3) ++
+          sleep ++
+          chunk(from = 4, size = 1) ++ longSleep ++
+          chunk(from = 5, size = 11) ++
+          chunk(from = 16, size = 7)
+
+      val expected = List(
+        List(1, 2, 3),
+        List(4),
+        List(5, 6, 7, 8, 9),
+        List(10, 11, 12, 13, 14),
+        List(15, 16, 17, 18, 19),
+        List(20, 21, 22)
       )
 
       source.groupWithin(size, t).map(_.toList).assertEmits(expected)
@@ -833,6 +864,122 @@ class StreamCombinatorsSuite extends Fs2Suite {
             }
         )
         .assertEquals(0.millis)
+    }
+
+    test("stress test (short execution): all elements are processed") {
+
+      val rangeLength = 100000
+
+      Stream
+        .eval(Ref[IO].of(0))
+        .flatMap { counter =>
+          Stream
+            .range(0, rangeLength)
+            .covary[IO]
+            .groupWithin(256, 100.micros)
+            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+        }
+        .compile
+        .lastOrError
+        .assertEquals(rangeLength)
+
+    }
+
+    // ignoring because it's a (relatively) long running test (around 3/4 minutes), but it's useful
+    // to asses the validity of permits management and timeout logic over an extended period of time
+    test("stress test (long execution): all elements are processed".ignore) {
+      val rangeLength = 10000000
+
+      Stream
+        .eval(Ref[IO].of(0))
+        .flatMap { counter =>
+          Stream
+            .range(0, rangeLength)
+            .covary[IO]
+            .evalTap(d => IO.sleep((d % 10 + 2).micros))
+            .groupWithin(275, 5.millis)
+            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+        }
+        .compile
+        .lastOrError
+        .assertEquals(rangeLength)
+    }
+
+    test("upstream failures are propagated downstream") {
+
+      case object SevenNotAllowed extends NoStackTrace
+
+      val source = Stream
+        .unfold(0)(s => Some((s, s + 1)))
+        .covary[IO]
+        .evalMap(n => if (n == 7) IO.raiseError(SevenNotAllowed) else IO.pure(n))
+
+      val downstream = source.groupWithin(100, 2.seconds)
+
+      downstream.compile.lastOrError.intercept[SevenNotAllowed.type]
+    }
+
+    test(
+      "upstream interruption causes immediate downstream termination with all elements being emitted"
+    ) {
+
+      val sourceTimeout = 5.5.seconds
+      val downstreamTimeout = sourceTimeout + 2.seconds
+
+      TestControl
+        .executeEmbed(
+          Ref[IO]
+            .of(0.millis)
+            .flatMap { ref =>
+              val source: Stream[IO, Int] =
+                Stream
+                  .unfold(0)(s => Some((s, s + 1)))
+                  .covary[IO]
+                  .meteredStartImmediately(1.second)
+                  .interruptAfter(sourceTimeout)
+
+              // large chunkSize and timeout (no emissions expected in the window
+              // specified, unless source ends, due to interruption or
+              // natural termination (i.e runs out of elements)
+              val downstream: Stream[IO, Chunk[Int]] =
+                source.groupWithin(Int.MaxValue, 1.day)
+
+              downstream.compile.lastOrError
+                .map(_.toList)
+                .timeout(downstreamTimeout)
+                .flatTap(_ => IO.monotonic.flatMap(ref.set))
+                .flatMap(emit => ref.get.map(timeLapsed => (timeLapsed, emit)))
+            }
+        )
+        .assertEquals(
+          // downstream ended immediately (i.e timeLapsed = sourceTimeout)
+          // emitting whatever was accumulated at the time of interruption
+          (sourceTimeout, List(0, 1, 2, 3, 4, 5))
+        )
+    }
+
+    test(
+      "Edge case: if the buffer fills up and timeout expires at the same time there won't be a deadlock"
+    ) {
+
+      forAllF { (s0: Stream[Pure, Int], b: Byte) =>
+        TestControl
+          .executeEmbed {
+
+            // preventing empty or singleton streams that would bypass the logic being tested
+            val n = b.max(2).toInt
+            val s = s0 ++ Stream.range(0, n)
+
+            // the buffer will reach its full capacity every
+            // n seconds exactly when the timeout expires
+            s
+              .covary[IO]
+              .metered(1.second)
+              .groupWithin(n, n.seconds)
+              .map(_.toList)
+              .assertCompletes
+          }
+      }
     }
   }
 
