@@ -30,7 +30,12 @@ private[fs2] trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
 
   def toJSArrayBuffer[B >: O](implicit ev: B =:= Byte): ArrayBuffer = {
     val bb = toByteBuffer[B]
-    if (bb.hasArrayBuffer())
+    if (
+      bb.hasArrayBuffer() &&
+      bb.position() == 0 &&
+      bb.arrayBufferOffset() == 0 &&
+      bb.arrayBuffer().byteLength == bb.remaining()
+    )
       bb.arrayBuffer()
     else {
       val ab = new ArrayBuffer(bb.remaining())
@@ -40,8 +45,11 @@ private[fs2] trait ChunkRuntimePlatform[+O] { self: Chunk[O] =>
   }
 
   def toUint8Array[B >: O](implicit ev: B =:= Byte): Uint8Array = {
-    val ab = toJSArrayBuffer[B]
-    new Uint8Array(ab, 0, ab.byteLength)
+    val bb = toByteBuffer[B]
+    if (bb.hasArrayBuffer())
+      new Uint8Array(bb.arrayBuffer(), bb.position() + bb.arrayBufferOffset(), bb.remaining())
+    else
+      new Uint8Array(toJSArrayBuffer(ev))
   }
 
 }
