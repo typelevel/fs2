@@ -326,6 +326,23 @@ class TextSuite extends Fs2Suite {
     }
   }
 
+  group("string2char / char2string") {
+
+    property("string to char conversion") {
+      forAll { (strings: Stream[Pure, String]) =>
+        val chars = strings.through(text.string2char)
+        assertEquals(chars.toList.mkString, strings.toList.mkString)
+      }
+    }
+
+    property("char to string conversion") {
+      forAll { (chars: Stream[Pure, Char]) =>
+        val strings = chars.through(text.char2string)
+        assertEquals(strings.toList.mkString, chars.toList.mkString)
+      }
+    }
+  }
+
   property("base64.encode") {
     forAll { (bs: List[Array[Byte]]) =>
       assertEquals(

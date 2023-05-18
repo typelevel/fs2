@@ -22,6 +22,7 @@
 package fs2
 
 import cats.ApplicativeThrow
+import cats.syntax.foldable._
 import java.nio.{Buffer, ByteBuffer, CharBuffer}
 import java.nio.charset.{
   CharacterCodingException,
@@ -559,6 +560,13 @@ object text {
 
     s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
   }
+
+  /** Transforms a stream of `String` to a stream of `Char`. */
+  def string2char[F[_]]: Pipe[F, String, Char] =
+    _.map(s => Chunk.charBuffer(CharBuffer.wrap(s))).flatMap(Stream.chunk)
+
+  /** Transforms a stream of `Char` to a stream of `String`. */
+  def char2string[F[_]]: Pipe[F, Char, String] = _.chunks.map(_.mkString_(""))
 
   class LineTooLongException(val length: Int, val max: Int)
       extends RuntimeException(
