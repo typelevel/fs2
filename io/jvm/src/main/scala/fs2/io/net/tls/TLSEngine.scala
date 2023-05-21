@@ -37,7 +37,15 @@ import cats.syntax.all._
   */
 private[tls] trait TLSEngine[F[_]] {
   def beginHandshake: F[Unit]
-  def applicationProtocol: F[String]
+
+  /** Returns [[None]] if it has not yet been determined if application protocols might be used for this connection,
+    * [[Some]] with an empty String if application protocols values will not be used, or a non-empty application
+    * protocol String if a value was successfully negotiated.
+    *
+    * @see https://docs.oracle.com/javase/8/docs/api/javax/net/ssl/SSLEngine.html#getApplicationProtocol--
+    */
+  def applicationProtocol: F[Option[String]]
+
   def session: F[SSLSession]
   def stopWrap: F[Unit]
   def stopUnwrap: F[Unit]
@@ -80,7 +88,7 @@ private[tls] object TLSEngine {
 
       def beginHandshake = Sync[F].delay(engine.beginHandshake())
       def session = Sync[F].delay(engine.getSession())
-      def applicationProtocol = Sync[F].delay(Option(engine.getApplicationProtocol()).get)
+      def applicationProtocol = Sync[F].delay(Option(engine.getApplicationProtocol()))
       def stopWrap = Sync[F].delay(engine.closeOutbound())
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 

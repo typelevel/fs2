@@ -103,6 +103,17 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         engine.session
 
       def applicationProtocol: F[String] =
+        engine.applicationProtocol.flatMap {
+          case Some(protocol) => Applicative[F].pure(protocol)
+          case None =>
+            Async[F].raiseError(
+              new NoSuchElementException(
+                "It has not yet been determined if application protocols might be used for this connection."
+              )
+            )
+        }
+
+      def applicationProtocolOption: F[Option[String]] =
         engine.applicationProtocol
 
       def isOpen: F[Boolean] = socket.isOpen
