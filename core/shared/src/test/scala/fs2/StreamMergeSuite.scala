@@ -242,4 +242,37 @@ class StreamMergeSuite extends Fs2Suite {
         }
     }
   }
+
+  test("mergePreferred prefers") {
+    forAllF { (leftStream: Stream[Pure, Int], rightStream: Stream[Pure, Int]) =>
+      val leftTagged = leftStream.covary[IO]
+      val rightTagged = rightStream.covary[IO].delayBy(10.milli)
+      leftTagged
+        .mergePreferred(rightTagged)
+        .assertEmitsSameAs(leftStream ++ rightStream)
+    }
+  }
+
+  test("mergePreferred fully consumes this") {
+    forAllF { (stream: Stream[Pure, Int]) =>
+      stream.covary[IO].mergePreferred(Stream.empty.covary[IO]).assertEmitsSameAs(stream)
+    }
+  }
+
+  test("mergePreferred fully consumes that") {
+    forAllF { (stream: Stream[Pure, Int]) =>
+      Stream.empty.covary[IO].mergePreferred(stream.covary[IO]).assertEmitsSameAs(stream)
+    }
+  }
+
+  test("mergePreferred fully consumes both") {
+    forAllF { (leftStream: Stream[Pure, Int], rightStream: Stream[Pure, Int]) =>
+      val leftTagged = leftStream.covary[IO]
+      val rightTagged = rightStream.covary[IO]
+      leftTagged
+        .mergePreferred(rightTagged)
+        .assertEmitsUnorderedSameAs(leftStream ++ rightStream)
+    }
+  }
+
 }
