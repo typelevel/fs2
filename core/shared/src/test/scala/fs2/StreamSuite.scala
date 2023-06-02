@@ -401,6 +401,12 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
+    test("mergePreferred") {
+      testCancelation {
+        constantStream.mergePreferred(constantStream)
+      }
+    }
+
     test("parJoin") {
       testCancelation {
         Stream(constantStream, constantStream).parJoin(2)
