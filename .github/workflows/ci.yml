@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        scala: [3.2.2, 2.12.17, 2.13.10]
+        scala: [3.2.2, 2.12.17, 2.13.11]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
         exclude:
@@ -106,7 +106,7 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
       - name: Scalafix tests
-        if: matrix.scala == '2.13.10' && matrix.project == 'rootJVM'
+        if: matrix.scala == '2.13.11' && matrix.project == 'rootJVM'
         run: |
           cd scalafix
           sbt testCI
