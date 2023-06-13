@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.7"
+ThisBuild / tlBaseVersion := "3.8"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.2", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.3.0", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
