@@ -117,10 +117,7 @@ private[net] trait SocketCompanionPlatform {
           null,
           new IntCompletionHandler(cb)
         )
-        F.delay(Some(F.delay {
-          ch.shutdownInput()
-          ()
-        }))
+        F.delay(Some(endOfInput.voidError))
       }
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
@@ -131,10 +128,7 @@ private[net] trait SocketCompanionPlatform {
             null,
             new IntCompletionHandler(cb)
           )
-          F.delay(Some(F.delay {
-            ch.shutdownOutput()
-            ()
-          }))
+          F.delay(Some(endOfOutput.voidError))
         }.flatMap { written =>
           if (written >= 0 && buff.remaining() > 0)
             go(buff)

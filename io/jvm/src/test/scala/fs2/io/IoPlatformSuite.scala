@@ -39,7 +39,7 @@ import java.util.concurrent.Executors
 class IoPlatformSuite extends Fs2Suite {
 
   // This suite runs for a long time, this avoids timeouts in CI.
-  override def munitIOTimeout: Duration = 1.minute
+  override def munitIOTimeout: Duration = 2.minutes
 
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
