@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.7"
+ThisBuild / tlBaseVersion := "3.8"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -10,7 +10,7 @@ ThisBuild / startYear := Some(2013)
 
 val NewScala = "2.13.10"
 
-ThisBuild / crossScalaVersions := Seq("3.2.2", "2.12.17", NewScala)
+ThisBuild / crossScalaVersions := Seq("3.3.0", "2.12.17", NewScala)
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
@@ -296,7 +296,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.19" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.20" % Optional,
       "com.google.jimfs" % "jimfs" % "1.2" % Test
     )
   )
