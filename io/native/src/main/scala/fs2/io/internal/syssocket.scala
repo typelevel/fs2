@@ -19,12 +19,29 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.io.internal
 
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
+import scala.scalanative.posix.sys.socket._
+import scala.scalanative.unsafe._
 
-private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forAsync[F[_]: Async: LiftIO]: UnixSockets[F] =
-    new FdPollingUnixSockets[F]
+@extern
+private[io] object syssocket {
+  // only in Linux and FreeBSD, but not macOS
+  final val SOCK_NONBLOCK = 2048
+
+  // only on macOS and some BSDs (?)
+  final val SO_NOSIGPIPE = 0x1022 /* APPLE: No SIGPIPE on EPIPE */
+
+  def bind(sockfd: CInt, addr: Ptr[sockaddr], addrlen: socklen_t): CInt =
+    extern
+
+  def connect(sockfd: CInt, addr: Ptr[sockaddr], addrlen: socklen_t): CInt =
+    extern
+
+  def accept(sockfd: CInt, addr: Ptr[sockaddr], addrlen: Ptr[socklen_t]): CInt =
+    extern
+
+  // only supported on Linux and FreeBSD, but not macOS
+  def accept4(sockfd: CInt, addr: Ptr[sockaddr], addrlen: Ptr[socklen_t], flags: CInt): CInt =
+    extern
 }

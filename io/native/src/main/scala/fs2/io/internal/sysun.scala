@@ -19,7 +19,30 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
+package fs2.io.internal
 
-abstract class Fs2IoSuite extends Fs2Suite
+import scala.scalanative.posix.sys.socket._
+import scala.scalanative.unsafe._
+
+private[io] object sysun {
+  import Nat._
+  type _108 = Digit3[_1, _0, _8]
+
+  type sockaddr_un = CStruct2[
+    sa_family_t,
+    CArray[CChar, _108]
+  ]
+
+}
+
+private[io] object sysunOps {
+  import sysun._
+
+  implicit final class sockaddr_unOps(val sockaddr_un: Ptr[sockaddr_un]) extends AnyVal {
+    def sun_family: sa_family_t = sockaddr_un._1
+    def sun_family_=(sun_family: sa_family_t): Unit = sockaddr_un._1 = sun_family
+    def sun_path: CArray[CChar, _108] = sockaddr_un._2
+    def sun_path_=(sun_path: CArray[CChar, _108]): Unit = sockaddr_un._2 = sun_path
+  }
+
+}

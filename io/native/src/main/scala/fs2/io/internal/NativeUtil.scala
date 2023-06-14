@@ -21,52 +21,59 @@
 
 package fs2.io.internal
 
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
-import cats.effect.std.Semaphore
-import cats.syntax.all._
+import cats.effect.Sync
 
+import java.io.IOException
+import java.net.BindException
+import java.net.ConnectException
+import scala.scalanative.annotation.alwaysinline
 import scala.scalanative.libc.errno._
-import scala.scalanative.libc.stdlib._
+import scala.scalanative.posix.fcntl._
+import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._
 import scala.scalanative.unsafe._
-import scala.scalanative.unsigned._
 
-private[io] final class ResizableBuffer[F[_]] private (
-    semaphore: Semaphore[F],
-    private var ptr: Ptr[Byte],
-    private[this] var size: Int
-)(implicit F: Async[F]) {
+private[io] object NativeUtil {
 
-  def get(size: Int): Resource[F, Ptr[Byte]] = semaphore.permit.evalMap { _ =>
-    F.delay {
-      if (size <= this.size)
-        ptr
-      else {
-        ptr = realloc(ptr, size.toUInt)
-        this.size = size
-        if (ptr == null)
-          throw new RuntimeException(fromCString(strerror(errno)))
-        else ptr
-      }
-    }
+  @alwaysinline def guard_(thunk: => CInt): Unit = {
+    guard(thunk)
+    ()
   }
 
-}
+  @alwaysinline def guard(thunk: => CInt): CInt = {
+    val rtn = thunk
+    if (rtn < 0) {
+      val e = errno
+      if (e == EAGAIN || e == EWOULDBLOCK)
+        rtn
+      else throw errnoToThrowable(e)
+    } else
+      rtn
+  }
 
-private[io] object ResizableBuffer {
+  @alwaysinline def guardSSize(thunk: => CSSize): CSSize = {
+    val rtn = thunk
+    if (rtn < 0) {
+      val e = errno
+      if (e == EAGAIN || e == EWOULDBLOCK)
+        rtn
+      else throw errnoToThrowable(e)
+    } else
+      rtn
+  }
 
-  def apply[F[_]](size: Int)(implicit F: Async[F]): Resource[F, ResizableBuffer[F]] =
-    Resource.make {
-      Semaphore[F](1).flatMap { semaphore =>
-        F.delay {
-          val ptr = malloc(size.toUInt)
-          if (ptr == null)
-            throw new RuntimeException(fromCString(strerror(errno)))
-          else new ResizableBuffer(semaphore, ptr, size)
-        }
-      }
+  @alwaysinline def errnoToThrowable(e: CInt): Throwable = {
+    val msg = fromCString(strerror(e))
+    if (e == EADDRINUSE /* || e == EADDRNOTAVAIL */ )
+      new BindException(msg)
+    else if (e == ECONNREFUSED)
+      new ConnectException(msg)
+    else
+      new IOException(msg)
+  }
 
-    }(buf => F.delay(free(buf.ptr)))
+  def setNonBlocking[F[_]](fd: CInt)(implicit F: Sync[F]): F[Unit] = F.delay {
+    guard_(fcntl(fd, F_SETFL, O_NONBLOCK))
+  }
 
 }

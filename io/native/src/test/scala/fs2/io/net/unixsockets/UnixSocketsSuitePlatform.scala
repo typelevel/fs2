@@ -20,10 +20,10 @@
  */
 
 package fs2
-package io
+package io.net.unixsocket
 
-import epollcat.unsafe.EpollRuntime
+import cats.effect.IO
 
-abstract class Fs2IoSuite extends Fs2Suite {
-  override def munitIORuntime = EpollRuntime.global
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  testProvider("native")(UnixSockets.forAsync[IO])
 }

@@ -31,7 +31,7 @@ import com.comcast.ip4s._
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
-class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
+class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
   val timeout = 30.seconds
 
@@ -239,7 +239,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
               client
                 .readN(msg.size)
                 .flatMap { c =>
-                  if (isJVM || isNative) {
+                  if (isJVM) {
                     assertEquals(c.size, 0)
                     // Read again now that the pending read is no longer pending
                     client.readN(msg.size).map(c => assertEquals(c.size, 0))
