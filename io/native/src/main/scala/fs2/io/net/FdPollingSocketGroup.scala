@@ -133,10 +133,10 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
             }
           }(addrFd => F.delay(guard_(close(addrFd._2))))
           (address, fd) = addrFd
-          _ <-
-            if (!LinktimeInfo.isLinux)
-              Resource.eval(setNonBlocking(fd))
-            else Resource.unit[F]
+          _ <- Resource.eval {
+            val setNonBlock = if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit
+            setNonBlock *> options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value))
+          }
           handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
           socket <- FdPollingSocket[F](
             fd,
