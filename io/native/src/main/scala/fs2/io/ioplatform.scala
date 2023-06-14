@@ -43,9 +43,9 @@ import scala.scalanative.unsigned._
 private[fs2] trait ioplatform extends iojvmnative {
 
   private[fs2] def fileDescriptorPoller[F[_]: LiftIO]: F[FileDescriptorPoller] =
-    IO.poller[FileDescriptorPoller]
+    IO.pollers
       .flatMap(
-        _.liftTo[IO](
+        _.collectFirst { case poller: FileDescriptorPoller => poller }.liftTo[IO](
           new RuntimeException("Installed PollingSystem does not provide a FileDescriptorPoller")
         )
       )

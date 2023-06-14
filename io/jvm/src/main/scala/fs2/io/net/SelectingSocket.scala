@@ -23,7 +23,7 @@ package fs2
 package io.net
 
 import cats.effect.LiftIO
-import cats.effect.SelectorPoller
+import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
@@ -35,8 +35,8 @@ import java.nio.channels.SelectionKey.OP_READ
 import java.nio.channels.SelectionKey.OP_WRITE
 import java.nio.channels.SocketChannel
 
-private final class SelectorPollingSocket[F[_]: LiftIO] private (
-    poller: SelectorPoller,
+private final class SelectingSocket[F[_]: LiftIO] private (
+    selector: Selector,
     ch: SocketChannel,
     readMutex: Mutex[F],
     writeMutex: Mutex[F],
@@ -47,7 +47,7 @@ private final class SelectorPollingSocket[F[_]: LiftIO] private (
 
   protected def readChunk(buf: ByteBuffer): F[Int] =
     F.delay(ch.read(buf)).flatMap { readed =>
-      if (readed == 0) poller.select(ch, OP_READ).to *> readChunk(buf)
+      if (readed == 0) selector.select(ch, OP_READ).to *> readChunk(buf)
       else F.pure(readed)
     }
 
@@ -58,7 +58,7 @@ private final class SelectorPollingSocket[F[_]: LiftIO] private (
         buf.remaining()
       }.flatMap { remaining =>
         if (remaining > 0) {
-          poller.select(ch, OP_WRITE).to *> go(buf)
+          selector.select(ch, OP_WRITE).to *> go(buf)
         } else F.unit
       }
     writeMutex.lock.surround {
@@ -80,17 +80,17 @@ private final class SelectorPollingSocket[F[_]: LiftIO] private (
 
 }
 
-private object SelectorPollingSocket {
+private object SelectingSocket {
   def apply[F[_]: LiftIO](
-      poller: SelectorPoller,
+      selector: Selector,
       ch: SocketChannel,
       localAddress: F[SocketAddress[IpAddress]],
       remoteAddress: F[SocketAddress[IpAddress]]
   )(implicit F: Async[F]): F[Socket[F]] =
     (Mutex[F], Mutex[F]).flatMapN { (readMutex, writeMutex) =>
       F.delay {
-        new SelectorPollingSocket[F](
-          poller,
+        new SelectingSocket[F](
+          selector,
           ch,
           readMutex,
           writeMutex,

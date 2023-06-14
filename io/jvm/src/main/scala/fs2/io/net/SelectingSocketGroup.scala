@@ -23,7 +23,7 @@ package fs2
 package io.net
 
 import cats.effect.LiftIO
-import cats.effect.SelectorPoller
+import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
@@ -40,7 +40,7 @@ import java.nio.channels.SelectionKey.OP_ACCEPT
 import java.nio.channels.SelectionKey.OP_CONNECT
 import java.nio.channels.SocketChannel
 
-private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: SelectorPoller)(implicit
+private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(implicit
     F: Async[F]
 ) extends SocketGroup[F] {
 
@@ -49,7 +49,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
     Resource
-      .make(F.delay(poller.provider.openSocketChannel())) { ch =>
+      .make(F.delay(selector.provider.openSocketChannel())) { ch =>
         F.delay(ch.close())
       }
       .evalMap { ch =>
@@ -60,7 +60,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
 
         val connect = to.resolve.flatMap { ip =>
           F.delay(ch.connect(ip.toInetSocketAddress)).flatMap { connected =>
-            poller
+            selector
               .select(ch, OP_CONNECT)
               .to
               .untilM_(F.delay(ch.finishConnect()))
@@ -68,8 +68,8 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
           }
         }
 
-        val make = SelectorPollingSocket[F](
-          poller,
+        val make = SelectingSocket[F](
+          selector,
           ch,
           localAddress(ch),
           remoteAddress(ch)
@@ -99,7 +99,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
       options: List[SocketOption]
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
     Resource
-      .make(F.delay(poller.provider.openServerSocketChannel())) { ch =>
+      .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
       }
       .evalMap { serverCh =>
@@ -119,7 +119,7 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
           .bracketFull[F, SocketChannel] { poll =>
             def go: F[SocketChannel] =
               F.delay(serverCh.accept()).flatMap {
-                case null => poll(poller.select(serverCh, OP_ACCEPT).to) *> go
+                case null => poll(selector.select(serverCh, OP_ACCEPT).to) *> go
                 case ch   => F.pure(ch)
               }
             go
@@ -138,8 +138,8 @@ private final class SelectorPollingSocketGroup[F[_]: LiftIO: Dns](poller: Select
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
-          } *> SelectorPollingSocket[F](
-            poller,
+          } *> SelectingSocket[F](
+            selector,
             ch,
             localAddress(ch),
             remoteAddress(ch)

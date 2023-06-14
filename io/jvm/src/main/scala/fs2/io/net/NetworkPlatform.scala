@@ -25,7 +25,7 @@ package net
 
 import cats.effect.IO
 import cats.effect.LiftIO
-import cats.effect.SelectorPoller
+import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
@@ -83,14 +83,15 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
     new UnsealedNetwork[F] {
       private lazy val fallback = forAsync[F]
 
-      private def tryGetPoller = IO.poller[SelectorPoller].to[F]
+      private def tryGetSelector =
+        IO.pollers.map(_.collectFirst { case selector: Selector => selector }).to[F]
 
       private implicit def dns: Dns[F] = Dns.forAsync[F]
 
       def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
-        Resource.eval(tryGetPoller).flatMap {
-          case Some(poller) => Resource.pure(new SelectorPollingSocketGroup[F](poller))
-          case None         => fallback.socketGroup(threadCount, threadFactory)
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) => Resource.pure(new SelectingSocketGroup[F](selector))
+          case None           => fallback.socketGroup(threadCount, threadFactory)
         }
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
@@ -99,18 +100,18 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       def client(
           to: SocketAddress[Host],
           options: List[SocketOption]
-      ): Resource[F, Socket[F]] = Resource.eval(tryGetPoller).flatMap {
-        case Some(poller) => new SelectorPollingSocketGroup(poller).client(to, options)
-        case None         => fallback.client(to, options)
+      ): Resource[F, Socket[F]] = Resource.eval(tryGetSelector).flatMap {
+        case Some(selector) => new SelectingSocketGroup(selector).client(to, options)
+        case None           => fallback.client(to, options)
       }
 
       def server(
           address: Option[Host],
           port: Option[Port],
           options: List[SocketOption]
-      ): Stream[F, Socket[F]] = Stream.eval(tryGetPoller).flatMap {
-        case Some(poller) => new SelectorPollingSocketGroup(poller).server(address, port, options)
-        case None         => fallback.server(address, port, options)
+      ): Stream[F, Socket[F]] = Stream.eval(tryGetSelector).flatMap {
+        case Some(selector) => new SelectingSocketGroup(selector).server(address, port, options)
+        case None           => fallback.server(address, port, options)
       }
 
       def serverResource(
@@ -118,9 +119,9 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           port: Option[Port],
           options: List[SocketOption]
       ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        Resource.eval(tryGetPoller).flatMap {
-          case Some(poller) =>
-            new SelectorPollingSocketGroup(poller).serverResource(address, port, options)
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) =>
+            new SelectingSocketGroup(selector).serverResource(address, port, options)
           case None => fallback.serverResource(address, port, options)
         }
 
