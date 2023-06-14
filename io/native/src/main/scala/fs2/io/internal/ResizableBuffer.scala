@@ -23,7 +23,7 @@ package fs2.io.internal
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.effect.std.Semaphore
+import cats.effect.std.Mutex
 import cats.syntax.all._
 
 import scala.scalanative.libc.errno._
@@ -33,12 +33,12 @@ import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 private[io] final class ResizableBuffer[F[_]] private (
-    semaphore: Semaphore[F],
+    mutex: Mutex[F],
     private var ptr: Ptr[Byte],
     private[this] var size: Int
 )(implicit F: Async[F]) {
 
-  def get(size: Int): Resource[F, Ptr[Byte]] = semaphore.permit.evalMap { _ =>
+  def get(size: Int): Resource[F, Ptr[Byte]] = mutex.lock.evalMap { _ =>
     F.delay {
       if (size <= this.size)
         ptr
@@ -58,15 +58,14 @@ private[io] object ResizableBuffer {
 
   def apply[F[_]](size: Int)(implicit F: Async[F]): Resource[F, ResizableBuffer[F]] =
     Resource.make {
-      Semaphore[F](1).flatMap { semaphore =>
+      Mutex[F].flatMap { mutex =>
         F.delay {
           val ptr = malloc(size.toUInt)
           if (ptr == null)
             throw new RuntimeException(fromCString(strerror(errno)))
-          else new ResizableBuffer(semaphore, ptr, size)
+          else new ResizableBuffer(mutex, ptr, size)
         }
       }
-
     }(buf => F.delay(free(buf.ptr)))
 
 }

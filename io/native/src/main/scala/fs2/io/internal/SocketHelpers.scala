@@ -293,11 +293,7 @@ private[io] object SocketHelpers {
     val addrBytes = addr.sin6_addr.at1.asInstanceOf[Ptr[Byte]]
     val host = Ipv6Address.fromBytes {
       val addr = new Array[Byte](16)
-      var i = 0
-      while (i < addr.length) {
-        addr(i) = addrBytes(i.toLong)
-        i += 1
-      }
+      memcpy(addr.at(0), addrBytes, 16.toULong)
       addr
     }.get
     SocketAddress(host, port)
