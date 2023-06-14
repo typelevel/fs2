@@ -263,5 +263,24 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
+
+    test("closing/re-opening a server does not throw BindException: Address already in use") {
+      Network[IO]
+        .serverResource()
+        .use { case (bindAddress, clients) =>
+          clients
+            .evalTap(_ => IO.sleep(1.second))
+            .compile
+            .drain
+            .background
+            .surround {
+              Network[IO].client(bindAddress).surround(IO.sleep(1.second))
+            }
+            .as(bindAddress.port)
+        }
+        .flatMap { port =>
+          Network[IO].serverResource(port = Some(port)).use_
+        }
+    }
   }
 }

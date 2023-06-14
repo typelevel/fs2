@@ -94,13 +94,16 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
     ipv4 = address.isInstanceOf[Ipv4Address]
     fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_STREAM)
     handle <- poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
+
     _ <- Resource.eval {
-      F.delay {
+      val bindF = F.delay {
         val socketAddress = SocketAddress(address, port.getOrElse(port"0"))
         SocketHelpers.toSockaddr(socketAddress) { (addr, len) =>
           guard_(bind(fd, addr, len))
         }
-      } *> F.delay(guard_(listen(fd, 0)))
+      }
+
+      SocketHelpers.setOption(fd, SO_REUSEADDR, 1) *> bindF *> F.delay(guard_(listen(fd, 0)))
     }
 
     sockets = Stream
