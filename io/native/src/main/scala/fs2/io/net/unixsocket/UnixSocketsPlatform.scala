@@ -25,6 +25,6 @@ import cats.effect.LiftIO
 import cats.effect.kernel.Async
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forAsync[F[_]: Async: LiftIO]: UnixSockets[F] =
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
     new FdPollingUnixSockets[F]
 }

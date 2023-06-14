@@ -25,5 +25,5 @@ package io.net.unixsocket
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("native")(UnixSockets.forAsync[IO])
+  testProvider("native")(UnixSockets.forLiftIO[IO])
 }
