@@ -148,23 +148,27 @@ private[fs2] trait ioplatform extends iojvmnative {
     stdin(bufSize).through(text.utf8.decode)
 
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
-  def stdin[F[_]](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
+  def stdin[F[_], SourceBreakingDummy](bufSize: Int, F: Sync[F]): Stream[F, Byte] =
     readInputStream(F.blocking(System.in), bufSize, false)(F)
 
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
-  def stdout[F[_]](F: Sync[F]): Pipe[F, Byte, Nothing] =
+  def stdout[F[_], SourceBreakingDummy](F: Sync[F]): Pipe[F, Byte, Nothing] =
     writeOutputStream(F.blocking(System.out: OutputStream), false)(F)
 
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
-  def stderr[F[_]](F: Sync[F]): Pipe[F, Byte, Nothing] =
+  def stderr[F[_], SourceBreakingDummy](F: Sync[F]): Pipe[F, Byte, Nothing] =
     writeOutputStream(F.blocking(System.err: OutputStream), false)(F)
 
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
-  def stdoutLines[F[_], O](charset: Charset, F: Sync[F], O: Show[O]): Pipe[F, O, Nothing] =
+  def stdoutLines[F[_], O, SourceBreakingDummy](
+      charset: Charset,
+      F: Sync[F],
+      O: Show[O]
+  ): Pipe[F, O, Nothing] =
     _.map(O.show(_)).through(text.encode(charset)).through(stdout(F))
 
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
-  def stdinUtf8[F[_]](bufSize: Int, F: Sync[F]): Stream[F, String] =
+  def stdinUtf8[F[_], SourceBreakingDummy](bufSize: Int, F: Sync[F]): Stream[F, String] =
     stdin(bufSize, F).through(text.utf8.decode)
 
 }
