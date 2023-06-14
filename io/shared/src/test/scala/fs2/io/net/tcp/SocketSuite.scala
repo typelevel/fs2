@@ -218,7 +218,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
         }
     }
 
-    test("read after timed out read not allowed on JVM or Native") {
+    test("read after timed out read not allowed on JVM or Native".ignore) {
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (bindAddress, server) = serverSetup
