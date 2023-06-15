@@ -1,0 +1,25 @@
+arm_task:
+  arm_container:
+    dockerfile: .cirrus/Dockerfile
+    cpu: 2
+    memory: 8G
+  matrix:
+    - name: Native Linux ARM
+      script: sbt ioNative/test
+
+macos_task:
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-ventura-base:latest
+  matrix:
+    - name: Node.js Apple Silicon
+      script:
+        - brew install sbt node
+        - sbt ioJS/test
+    - name: JVM Apple Silicon
+      script:
+        - brew install sbt
+        - sbt ioJVM/test
+    - name: Native Apple Silicon 2.13
+      script:
+        - brew install sbt s2n
+        - sbt ioNative/test
