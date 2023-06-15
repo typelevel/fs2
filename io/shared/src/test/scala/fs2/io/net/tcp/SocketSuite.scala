@@ -270,5 +270,15 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
+
+    test("accepted socket closes timely") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        clients.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
+          Network[IO].client(bindAddress).use { client =>
+            client.read(1).assertEquals(None)
+          }
+        }
+      }
+    }
   }
 }
