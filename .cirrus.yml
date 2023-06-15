@@ -19,7 +19,7 @@ macos_task:
       script:
         - brew install sbt
         - sbt ioJVM/test
-    - name: Native Apple Silicon 2.13
+    - name: Native Apple Silicon
       script:
         - brew install sbt s2n
         - sbt ioNative/test
