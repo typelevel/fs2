@@ -30,7 +30,6 @@ import com.comcast.ip4s.Ipv6Address
 import com.comcast.ip4s.Port
 import com.comcast.ip4s.SocketAddress
 
-import java.io.IOException
 import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
@@ -145,7 +144,9 @@ private[io] object SocketHelpers {
   def checkSocketError[F[_]](fd: Int)(implicit F: Sync[F]): F[Unit] = F.delay {
     val optval = stackalloc[CInt]()
     val optlen = stackalloc[socklen_t]()
+    !optlen = sizeof[CInt].toUInt
     guard_ {
+      println("running")
       getsockopt(
         fd,
         SOL_SOCKET,
@@ -155,7 +156,7 @@ private[io] object SocketHelpers {
       )
     }
     if (!optval != 0)
-      throw new IOException(fromCString(strerror(!optval)))
+      throw errnoToThrowable(!optval)
   }
 
   def getLocalAddress[F[_]](fd: Int, ipv4: Boolean)(implicit

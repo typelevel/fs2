@@ -25,7 +25,6 @@ package net
 package tcp
 
 import cats.effect.IO
-import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
@@ -161,28 +160,36 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .drain
     }
 
-    test("errors - should be captured in the effect") {
-      (for {
+    test("errors - should be captured in the effect".only) {
+      val connectionRefused = for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
-        _ <- Network[IO].client(bindAddress).use(_ => IO.unit).recover {
-          case ex: ConnectException => assertEquals(ex.getMessage, "Connection refused")
-        }
-      } yield ()) >> (for {
-        bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
         _ <- Network[IO]
-          .serverResource(Some(bindAddress.host), Some(bindAddress.port))
-          .void
-          .recover { case ex: BindException =>
-            assertEquals(ex.getMessage, "Address already in use")
-          }
-      } yield ()).use_ >> (for {
-        _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_.recover {
-          case ex: UnknownHostException =>
+          .client(bindAddress)
+          .use_
+          .interceptMessage[ConnectException]("Connection refused")
+      } yield ()
+
+      val addressAlreadyInUse =
+        Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1).use { bindAddress =>
+          Network[IO]
+            .serverResource(Some(bindAddress.host), Some(bindAddress.port))
+            .use_
+            .interceptMessage[BindException]("Address already in use")
+        }
+
+      val unknownHost = Network[IO]
+        .client(SocketAddress.fromString("not.example.com:80").get)
+        .use_
+        .attempt
+        .map {
+          case Left(ex: UnknownHostException) =>
             assert(
               ex.getMessage == "not.example.com: Name or service not known" || ex.getMessage == "not.example.com: nodename nor servname provided, or not known"
             )
+          case _ => assert(false)
         }
-      } yield ())
+
+      connectionRefused *> addressAlreadyInUse *> unknownHost
     }
 
     test("options - should work with socket options") {
