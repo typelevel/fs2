@@ -160,7 +160,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .drain
     }
 
-    test("errors - should be captured in the effect".only) {
+    test("errors - should be captured in the effect") {
       val connectionRefused = for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
         _ <- Network[IO]
