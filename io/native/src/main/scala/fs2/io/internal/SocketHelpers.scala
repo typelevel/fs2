@@ -146,7 +146,6 @@ private[io] object SocketHelpers {
     val optlen = stackalloc[socklen_t]()
     !optlen = sizeof[CInt].toUInt
     guard_ {
-      println("running")
       getsockopt(
         fd,
         SOL_SOCKET,
