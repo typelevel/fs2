@@ -74,5 +74,3 @@ Since Haskell is the purely functional lazily-evaluated programming language _pa
 ### Older References ###
 
 The Github page for [Additional resources](https://github.com/functional-streams-for-scala/fs2/wiki/Additional-Resources) lists some of the references above and several older ones, mostly from the `scalaz-stream` days.
-
-

@@ -7,6 +7,6 @@
 - I/O (networking, files) computations in constant memory
 - Stateful transformations
 - Resource safety and effect evaluation
-- Built on [Cats Effect](https://typelevel.org/cats-effect/) and powers [http4s](https://http4s.org), [skunk](https://tpolecat.github.io/skunk/), and [doobie](https://tpolecat.github.io/doobie/)
+- Built on [Cats Effect](https://typelevel.org/cats-effect/) and powers [http4s](https://http4s.org), [skunk](https://typelevel.org/skunk/), and [doobie](https://tpolecat.github.io/doobie/)
 
 [Get Started](getstarted/install.md)
