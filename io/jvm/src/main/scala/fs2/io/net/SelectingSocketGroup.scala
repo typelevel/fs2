@@ -115,23 +115,20 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
           }
         }
 
-        def acceptLoop: Stream[F, SocketChannel] = {
-          def go = Stream
-            .bracketFull[F, SocketChannel] { poll =>
-              def go: F[SocketChannel] =
-                F.delay(serverCh.accept()).flatMap {
-                  case null => poll(selector.select(serverCh, OP_ACCEPT).to) *> go
-                  case ch   => F.pure(ch)
-                }
-              go
-            }((ch, _) => F.delay(ch.close()))
-            .repeat
-
-          go.handleErrorWith {
-            case _: AsynchronousCloseException | _: ClosedChannelException => go
+        def acceptLoop: Stream[F, SocketChannel] = Stream
+          .bracketFull[F, SocketChannel] { poll =>
+            def go: F[SocketChannel] =
+              F.delay(serverCh.accept()).flatMap {
+                case null => poll(selector.select(serverCh, OP_ACCEPT).to) *> go
+                case ch   => F.pure(ch)
+              }
+            go
+          }((ch, _) => F.delay(ch.close()))
+          .repeat
+          .handleErrorWith {
+            case _: AsynchronousCloseException | _: ClosedChannelException => acceptLoop
             case ex                                                        => Stream.raiseError(ex)
           }
-        }
 
         val clients = acceptLoop.evalMap { ch =>
           F.delay {
