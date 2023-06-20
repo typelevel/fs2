@@ -1994,8 +1994,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             // both streams will stop gracefully and the fibers will complete.
             val setup: F2[Fiber[F2, Throwable, Unit]] =
               run(this).start >> run(that).start >> waitForBoth.start
-            Stream.bracket(setup)(waitForBoth =>
-              signalStop >> waitForBoth.joinWithUnit
+            Stream.bracket(setup)(wfb => signalStop >> wfb.joinWithUnit)
             ) >> output.stream.flatten.interruptWhen(stop)
           }
         }
