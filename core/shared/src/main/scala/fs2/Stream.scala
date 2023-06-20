@@ -1974,6 +1974,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
             (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
               // Stop when the other upstream has errored or the downstream has completed.
+              // This may also interrupt the initial call to `guard.acquire` as the call is made at the
+              // beginning of the stream.
               .interruptWhen(stop)
               .compile
               .drain
