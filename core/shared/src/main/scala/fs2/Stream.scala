@@ -1963,16 +1963,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             def run(s: Stream[F2, O2]): F2[Unit] =
               // `guard` ensures we do not pull another chunk until the previous one has been consumed downstream.
               Semaphore[F2](1).flatMap { guard =>
-                Stream
-                  .exec(guard.acquire)
-                  .append(s)
-                  .chunks
-                  .evalMap(chk =>
-                    output.send(
-                      Stream.chunk(chk).onFinalize(guard.release)
-                    )
-                  )
-                  .evalTap(_ => guard.acquire)
+                def sendChunk(ch: Chunk[O2]): F2[Unit] = {
+                  val outStr = Stream.chunk(chk).onFinalize(guard.release)
+                  output.send(outStr) >> guard.acquire
+                }
+                
+                (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
                   // Stop when the other upstream has errored or the downstream has completed.
                   .interruptWhen(stop)
                   .compile
