@@ -1942,13 +1942,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       type State = Option[Either[Throwable, Unit]]
       // `bothStates` keeps track of the state of `this` and `that` stream so we can terminate the
       // downstream when both upstreams terminate.
-      SignallingRef.of[F2, (State, State)]((None, None)).flatMap { bothStates =>
-        // `output` is used to send chunks from upstreams to downstream. It sends streams, not chunks,
-        // as each chunk has a finalizer associated with it.
-        Channel.synchronous[F2, Stream[F2, O2]].flatMap { output =>
-          // `stopDef` is used to interrupt the streams in the case that an upstream errors, or
-          // in the case that the downstream terminates.
-          Deferred[F2, Unit].map { stopDef =>
+      for {
+        // `bothStates` keeps track of the state of `this` and `that` stream 
+        // so we can terminate downstream when both upstreams terminate.      
+        bothStates <- SignallingRef.of[F2, (State, State)]((None, None))
+        // `output` is used to send chunks from upstreams to downstream. 
+        // It sends streams, not chunks, to tie each chunk with a finalizer
+        output <- Channel.synchronous[F2, Stream[F2, O2]]
+        // `stopDef` is used to interrupt the upstreams if a) any of the
+        // upstreams raises an error, or b) the downstream terminates.
+        stopDef <- Deferred[F2, Unit]
+      } yield {
             val signalStop: F2[Unit] = stopDef.complete(()).void
             val stop: F2[Either[Throwable, Unit]] = stopDef.get.as(Right(()))
             def complete(result: Either[Throwable, Unit]): F2[Unit] =
