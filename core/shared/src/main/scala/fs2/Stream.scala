@@ -1936,12 +1936,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   )(implicit F: Concurrent[F2]): Stream[F2, O2] =
     Stream.force {
       // `State` describes the state of an upstream stream (`this` and `that` are both upstream streams)
-      // None            : the stream is has not yet terminated
+      // None            : the stream has not yet terminated
       // Some(Left(t))   : the stream terminated with an error
       // Some(Right(())) : the stream terminated successfully
       type State = Option[Either[Throwable, Unit]]
-      // `bothStates` keeps track of the state of `this` and `that` stream so we can terminate the
-      // downstream when both upstreams terminate.
       for {
         // `bothStates` keeps track of the state of `this` and `that` stream
         // so we can terminate downstream when both upstreams terminate.
