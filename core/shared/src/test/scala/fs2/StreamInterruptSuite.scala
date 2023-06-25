@@ -362,7 +362,7 @@ class StreamInterruptSuite extends Fs2Suite {
 
   test("23 - sync compiler interruption - succeeds when interrupted never") {
     val ioNever = IO.never[Either[Throwable, Unit]]
-    compileWithSync(Stream.empty[IO].interruptWhen(ioNever)).toList.assertEquals(Nil)
+    compileWithSync(Stream.empty.covary[IO].interruptWhen(ioNever)).toList.assertEquals(Nil)
   }
 
   test("24 - sync compiler interruption - non-terminating when interrupted") {
