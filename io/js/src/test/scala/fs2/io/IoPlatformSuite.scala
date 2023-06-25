@@ -108,7 +108,8 @@ class IoPlatformSuite extends Fs2Suite {
     }
 
     Stream
-      .empty[IO]
+      .empty
+      .covary[IO]
       .through(writeWritable[IO](writable))
       .compile
       .drain
