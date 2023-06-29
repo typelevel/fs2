@@ -308,9 +308,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
-    libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.5" % Test
-    ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
   )
