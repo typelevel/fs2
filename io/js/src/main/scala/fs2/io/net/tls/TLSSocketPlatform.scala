@@ -70,6 +70,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
+      socket,
       sessionRef.discrete.unNone.head.compile.lastOrError,
       F.delay[Any](tlsSock.alpnProtocol).flatMap {
         case false            => "".pure // mimicking JVM
@@ -81,8 +82,12 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
   private[tls] final class AsyncTLSSocket[F[_]: Async](
       sock: facade.tls.TLSSocket,
       readStream: SuspendedStream[F, Byte],
+      underlying: Socket[F],
       val session: F[SSLSession],
       val applicationProtocol: F[String]
   ) extends Socket.AsyncSocket[F](sock, readStream)
-      with UnsealedTLSSocket[F]
+      with UnsealedTLSSocket[F] {
+    override def localAddress = underlying.localAddress
+    override def remoteAddress = underlying.remoteAddress
+  }
 }

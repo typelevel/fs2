@@ -360,5 +360,46 @@ class TLSSocketSuite extends TLSSuite {
         .to(Chunk)
         .intercept[SSLException]
     }
+
+    test("get local and remote address") {
+      val setup = for {
+        tlsContext <- Resource.eval(testTlsContext(true))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(
+                TLSParameters(checkServerIdentity =
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                )
+              )
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val serverSocketAddresses = server.evalMap { socket =>
+            socket.localAddress.product(socket.remoteAddress)
+          }
+
+          val clientSocketAddresses =
+            Stream.resource(clientSocket).evalMap { socket =>
+              socket.localAddress.product(socket.remoteAddress)
+            }
+
+          serverSocketAddresses.parZip(clientSocketAddresses).map {
+            case ((serverLocal, serverRemote), (clientLocal, clientRemote)) =>
+              assertEquals(clientRemote, serverLocal)
+              assertEquals(clientLocal, serverRemote)
+          }
+        }
+        .compile
+        .drain
+    }
   }
 }
