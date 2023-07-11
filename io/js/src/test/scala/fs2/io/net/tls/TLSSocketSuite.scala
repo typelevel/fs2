@@ -270,7 +270,9 @@ class TLSSocketSuite extends TLSSuite {
             val echoServer = server
               .evalTap(s => s.applicationProtocol.assertEquals("h2"))
               .flatMap { socket =>
-                socket.reads.chunks.foreach(socket.write(_)) ++ Stream.eval(socket.session.void)
+                Stream
+                  .eval(socket.session)
+                  .concurrently(socket.reads.chunks.foreach(socket.write(_)))
               }
 
             val client = Stream.resource(clientSocket).flatMap { clientSocket =>

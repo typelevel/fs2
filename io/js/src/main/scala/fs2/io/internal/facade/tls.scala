@@ -188,6 +188,8 @@ package tls {
 
     def ssl: SSL = js.native
 
+    def getSession(): js.UndefOr[Uint8Array] = js.native
+
   }
 
   @js.native
