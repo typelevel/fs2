@@ -269,23 +269,23 @@ class TLSSocketSuite extends TLSSuite {
           .flatMap { case (server, clientSocket) =>
             val echoServer = server
               .evalTap(s => s.applicationProtocol.assertEquals("h2"))
-              .map { socket =>
-                socket.reads.chunks.foreach(socket.write(_)) ++ Stream.exec(socket.session.void)
+              .flatMap { socket =>
+                Stream
+                  .eval(socket.session)
+                  .concurrently(socket.reads.chunks.foreach(socket.write(_)))
               }
-              .parJoinUnbounded
 
             val client = Stream.resource(clientSocket).flatMap { clientSocket =>
               Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
                 Stream.exec(clientSocket.session.void) ++
                 Stream.exec(clientSocket.write(msg)) ++
-                clientSocket.reads.take(msg.size.toLong)
+                Stream.eval(clientSocket.readN(msg.size).assertEquals(msg))
             }
 
-            client.concurrently(echoServer)
+            client.parZip(echoServer)
           }
           .compile
-          .to(Chunk)
-          .assertEquals(msg)
+          .drain
       }
     }
 

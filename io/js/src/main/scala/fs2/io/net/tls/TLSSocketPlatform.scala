@@ -26,15 +26,11 @@ package tls
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.concurrent.SignallingRef
 import fs2.io.internal.facade
 import fs2.io.internal.SuspendedStream
 import scodec.bits.ByteVector
-
-import scala.scalajs.js
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -42,36 +38,23 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
-      upgrade: fs2.io.Duplex => facade.tls.TLSSocket,
-      dispatcher: Dispatcher[F]
+      upgrade: fs2.io.Duplex => facade.tls.TLSSocket
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
       duplexOut <- mkDuplex(socket.reads)
       (duplex, out) = duplexOut
       _ <- out.through(socket.writes).compile.drain.background
-      sessionRef <- SignallingRef[F].of(Option.empty[SSLSession]).toResource
       tlsSockReadable <- suspendReadableAndRead(
         destroyIfNotEnded = false,
         destroyIfCanceled = false
-      ) {
-        val tlsSock = upgrade(duplex)
-        tlsSock.on[js.typedarray.Uint8Array](
-          "session",
-          session =>
-            dispatcher.unsafeRunAndForget(
-              sessionRef.set(Some(new SSLSession(ByteVector.view(session))))
-            )
-        )
-        tlsSock
-      }
+      )(upgrade(duplex))
       (tlsSock, readable) = tlsSockReadable
-      _ <- Resource.unit[F].onFinalize(F.delay(tlsSock.removeAllListeners("session")))
       readStream <- SuspendedStream(readable)
     } yield new AsyncTLSSocket(
       tlsSock,
       readStream,
       socket,
-      sessionRef.discrete.unNone.head.compile.lastOrError,
+      F.delay(new SSLSession(ByteVector.view(tlsSock.getSession().get))),
       F.delay[Any](tlsSock.alpnProtocol).flatMap {
         case false            => "".pure // mimicking JVM
         case protocol: String => protocol.pure
