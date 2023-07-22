@@ -265,7 +265,11 @@ private[fs2] final class Scope[F[_]] private (
           resultChildren <- traverseError[Scope[F]](previous.children, _.close(ec))
           resultResources <- traverseError[ScopedResource[F]](previous.resources, _.release(ec))
           _ <- self.interruptible.map(_.cancelParent).getOrElse(F.unit)
-          _ <- self.parent.fold(F.unit)(_.releaseChildScope(self.id))
+          // NOTE: written as match, lambda has to allocate every time it uses `self.id`
+          _ <- self.parent match {
+            case None    => F.unit
+            case Some(p) => p.releaseChildScope(self.id)
+          }
         } yield CompositeFailure.fromResults(resultChildren, resultResources)
       case _: Scope.State.Closed[F] => F.pure(Right(()))
     }
