@@ -3529,6 +3529,10 @@ object Stream extends StreamLowPriority {
   )(implicit F: Functor[F]): Stream[F, A] = {
     F match {
       case f0: Async[F] =>
+        /** specialized case for BoundedAsyncQueue / UnboundedAsyncQueue,
+         * which both have an efficient implementation of tryTakeN.
+         * See implementation of [[Queue.bounded]] / [[Queue.bounded]]
+         */
         Stream.evalSeq(queue.tryTakeN(None)(f0)).repeat
 
       case _ =>
