@@ -3526,14 +3526,26 @@ object Stream extends StreamLowPriority {
   def fromQueueUnterminated[F[_], A](
       queue: QueueSource[F, A],
       limit: Int = Int.MaxValue
-  )(implicit F: Functor[F]): Stream[F, A] = {
+  )(implicit F: Functor[F]): Stream[F, A] =
     F match {
       case f0: Async[F] =>
         /** specialized case for BoundedAsyncQueue / UnboundedAsyncQueue,
-         * which both have an efficient implementation of tryTakeN.
-         * See implementation of [[Queue.bounded]] / [[Queue.bounded]]
-         */
-        Stream.evalSeq(queue.tryTakeN(None)(f0)).repeat
+          * which both have an efficient implementation of tryTakeN.
+          * See implementation of [[Queue.bounded]] / [[Queue.bounded]]
+          */
+
+        implicit val F: Async[F] = f0
+        val someLimit = Some(limit)
+
+        /** First, try non-blocking batch dequeue.
+           *  Only if the result is an empty list, semantically block and get exactly one element. 
+           */
+        val asf = queue.tryTakeN(someLimit).flatMap {
+          case Nil => queue.take.map(_ :: Nil)
+          case as  => F.pure(as)
+        }
+
+        Stream.evalSeq(asf).repeat
 
       case _ =>
         fromQueueNoneTerminatedSingletons_[F, A](
@@ -3542,7 +3554,6 @@ object Stream extends StreamLowPriority {
           limit
         )
     }
-  }
 
   /** Returns a stream of elements from the supplied queue.
     *
