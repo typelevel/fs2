@@ -3538,8 +3538,8 @@ object Stream extends StreamLowPriority {
         val someLimit = Some(limit)
 
         /** First, try non-blocking batch dequeue.
-           *  Only if the result is an empty list, semantically block and get exactly one element. 
-           */
+          *  Only if the result is an empty list, semantically block and get exactly one element.
+          */
         val asf = queue.tryTakeN(someLimit).flatMap {
           case Nil => queue.take.map(_ :: Nil)
           case as  => F.pure(as)
