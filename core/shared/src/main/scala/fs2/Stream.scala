@@ -3523,15 +3523,22 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueueUnterminated[F[_]: Functor, A](
+  def fromQueueUnterminated[F[_], A](
       queue: QueueSource[F, A],
       limit: Int = Int.MaxValue
-  ): Stream[F, A] =
-    fromQueueNoneTerminatedSingletons_[F, A](
-      queue.take.map(a => Some(a)),
-      queue.tryTake.map(_.map(a => Some(a))),
-      limit
-    )
+  )(implicit F: Functor[F]): Stream[F, A] = {
+    F match {
+      case f0: Async[F] =>
+        Stream.evalSeq(queue.tryTakeN(None)(f0)).repeat
+
+      case _ =>
+        fromQueueNoneTerminatedSingletons_[F, A](
+          queue.take.map(a => Some(a)),
+          queue.tryTake.map(_.map(a => Some(a))),
+          limit
+        )
+    }
+  }
 
   /** Returns a stream of elements from the supplied queue.
     *
