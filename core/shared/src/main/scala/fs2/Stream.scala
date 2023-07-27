@@ -2167,34 +2167,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMap[F2[x] >: F[x], O2](
       maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def init(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      Deferred[F2, Either[Throwable, O2]].flatTap { value =>
-        ch.send(release *> value.get)
-      }
-
-    def send(v: Deferred[F2, Either[Throwable, O2]]) =
-      (el: Either[Throwable, O2]) => v.complete(el).void
-
-    parEvalMapAction(maxConcurrent, f)((ch, release) => init(ch, release).map(send))
-  }
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    if (maxConcurrent == 1) evalMap(f)
+    else {
+      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+      // One is taken by inner stream read.
+      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
+      val channelF = Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency)
+      parEvalMapActionImpl[F2, O2](concurrency.toLong, channelF, true, f)
+    }
 
   /** Like parEvalMap but with unbounded concurrency.
     */
   def parEvalMapUnbounded[F2[x] >: F[x], O2](f: O => F2[O2])(implicit
       F: Concurrent[F2]
   ): Stream[F2, O2] = {
-
-    def init(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      Deferred[F2, Either[Throwable, O2]].flatTap { value =>
-        ch.send(release *> value.get)
-      }
-
-    def send(v: Deferred[F2, Either[Throwable, O2]]) =
-      (el: Either[Throwable, O2]) => v.complete(el).void
-
-    parEvalMapUnboundedAction(f)((ch, release) => init(ch, release).map(send))
+    val channelF = Channel.unbounded[F2, F2[Either[Throwable, O2]]]
+    parEvalMapActionImpl(Long.MaxValue, channelF, true, f)
   }
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -2210,71 +2199,30 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMapUnordered[F2[x] >: F[x], O2](
       maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
-
-    parEvalMapAction(maxConcurrent, f)((ch, release) => send(ch, release).pure[F2])
-  }
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    if (maxConcurrent == 1) evalMap(f)
+    else {
+      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+      // One is taken by inner stream read.
+      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
+      val channelF = Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency)
+      parEvalMapActionImpl[F2, O2](concurrency.toLong, channelF, false, f)
+    }
 
   /** Like parEvalMapUnordered but with unbounded concurrency.
     */
   def parEvalMapUnorderedUnbounded[F2[x] >: F[x], O2](
       f: O => F2[O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
-
-    parEvalMapUnboundedAction(f)((ch, release) => send(ch, release).pure[F2])
+    val channelF = Channel.unbounded[F2, F2[Either[Throwable, O2]]]
+    parEvalMapActionImpl(Long.MaxValue, channelF, false, f)
   }
 
-  private def parEvalMapAction[F2[x] >: F[x], O2, T](
-      maxConcurrent: Int,
-      f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    if (maxConcurrent == 1) evalMap(f)
-    else {
-      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
-
-      // One is taken by inner stream read.
-      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
-      parEvalMapActionImpl[F2, O2, T](
-        concurrency.toLong,
-        Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency),
-        f
-      )(initFork)
-    }
-
-  private def parEvalMapUnboundedAction[F2[x] >: F[x], O2, T](
-      f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    parEvalMapActionImpl(
-      Long.MaxValue,
-      Channel.unbounded[F2, F2[Either[Throwable, O2]]],
-      f
-    )(initFork)
-
-  private def parEvalMapActionImpl[F2[x] >: F[x], O2, T](
+  private def parEvalMapActionImpl[F2[x] >: F[x], O2](
       concurrency: Long,
       channel: F2[Channel[F2, F2[Either[Throwable, O2]]]],
+      isOrdered: Boolean,
       f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val action =
       (
@@ -2283,6 +2231,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         Deferred[F2, Unit],
         Deferred[F2, Unit]
       ).mapN { (semaphore, channel, stop, end) =>
+        def initFork(release: F2[Unit]): F2[Either[Throwable, O2] => F2[Unit]] = {
+          def ordered: F2[Either[Throwable, O2] => F2[Unit]] = {
+            def send(v: Deferred[F2, Either[Throwable, O2]]) =
+              (el: Either[Throwable, O2]) => v.complete(el).void
+
+            Deferred[F2, Either[Throwable, O2]]
+              .flatTap(value => channel.send(release *> value.get))
+              .map(send)
+          }
+
+          def unordered: Either[Throwable, O2] => F2[Unit] =
+            (el: Either[Throwable, O2]) => release <* channel.send(F.pure(el))
+
+          if (isOrdered) ordered else F.pure(unordered)
+        }
+
         val releaseAndCheckCompletion =
           semaphore.release *>
             semaphore.available.flatMap {
@@ -2294,7 +2258,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           F.uncancelable { poll =>
             poll(semaphore.acquire) <*
               Deferred[F2, Unit].flatMap { pushed =>
-                val init = initFork(channel, pushed.complete(()).void)
+                val init = initFork(pushed.complete(()).void)
                 poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
                   val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                   F.start(stop.get.race(action) *> releaseAndCheckCompletion)
