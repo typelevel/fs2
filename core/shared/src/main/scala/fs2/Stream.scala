@@ -253,7 +253,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           }
 
         val dumpAll: Stream[F2, O2] = Stream(pipes: _*).map(dump).parJoinUnbounded
-        // Wait until all pupes are checked in before pullin.
+        // Wait until all pipes are checked in before pulling
         val pump = Stream.exec(allReady.await) ++ topic.publish(chunks)
         dumpAll.concurrently(pump)
       }
