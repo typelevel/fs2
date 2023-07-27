@@ -22,9 +22,18 @@
 package fs2
 
 import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.util.Pretty
 import Arbitrary.arbitrary
 
 trait Generators extends ChunkGenerators {
+
+  implicit def streamPretty(s: Stream[Pure, Int]): Pretty = Pretty { _ =>
+    val n = 3
+    val xs = s.take(n.toLong + 1).compile.toList
+    val text = xs.take(n).mkString(", ")
+    val omission = if (xs.size == n + 1) ", ..." else ""
+    s"Stream($text$omission)"
+  }
 
   implicit def pureStreamGenerator[A: Arbitrary]: Arbitrary[Stream[Pure, A]] =
     Arbitrary {
