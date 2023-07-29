@@ -3529,16 +3529,37 @@ object Stream extends StreamLowPriority {
   )(implicit F: Functor[F]): Stream[F, A] =
     F match {
       case f0: Monad[F] =>
-        val someLimit = Some(limit)
+        if (limit > 1) {
 
-        /** use non-blocking tryTakeN, which is possibly more performant than n * take */
-        Stream
-          .eval(queue.tryTakeN(someLimit)(f0))
-          .flatMap {
-            case Nil => Stream.eval(queue.take)
-            case as  => Stream.emits(as)
+          /** use non-blocking tryTakeN, which is possibly more performant than n * take */
+
+          val someLimit = Some(limit)
+          val someLimitLess1 = Some(limit - 1)
+
+          /** First, try non-blocking batch dequeue.
+            * Only if the result is an empty list, semantically block to get one element,
+            * then attempt 2nd tryTakeN to get any other elements that are immediately available.
+            */
+          val asf = f0.flatMap(queue.tryTakeN(someLimit)(f0)) {
+            case Nil => f0.flatMap(queue.take)(h => queue.tryTakeN(someLimitLess1)(f0).map(h :: _))
+            case as  => f0.pure(as)
           }
-          .repeat
+
+          Stream.evalSeq(asf).repeat
+
+        } else {
+          val someOne = Some(1)
+
+          /** First, try non-blocking batch dequeue.
+            * Only if the result is an empty list, semantically block to get exactly one element.
+            */
+          val asf = f0.flatMap(queue.tryTakeN(someOne)(f0)) {
+            case Nil => queue.take
+            case as  => f0.pure(as.head)
+          }
+
+          Stream.eval(asf).repeat
+        }
 
       case _ =>
         fromQueueNoneTerminatedSingletons_[F, A](
