@@ -3541,25 +3541,13 @@ object Stream extends StreamLowPriority {
             * then attempt 2nd tryTakeN to get any other elements that are immediately available.
             */
           val asf = f0.flatMap(queue.tryTakeN(someLimit)(f0)) {
-            case Nil => f0.flatMap(queue.take)(h => queue.tryTakeN(someLimitLess1)(f0).map(h :: _))
+            case Nil => f0.map2(queue.take, queue.tryTakeN(someLimitLess1)(f0))(_ :: _)
             case as  => f0.pure(as)
           }
 
           Stream.evalSeq(asf).repeat
 
-        } else {
-          val someOne = Some(1)
-
-          /** First, try non-blocking batch dequeue.
-            * Only if the result is an empty list, semantically block to get exactly one element.
-            */
-          val asf = f0.flatMap(queue.tryTakeN(someOne)(f0)) {
-            case Nil => queue.take
-            case as  => f0.pure(as.head)
-          }
-
-          Stream.eval(asf).repeat
-        }
+        } else Stream.repeatEval(queue.take)
 
       case _ =>
         fromQueueNoneTerminatedSingletons_[F, A](
