@@ -3495,15 +3495,39 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueueUnterminated[F[_]: Functor, A](
+  def fromQueueUnterminated[F[_], A](
       queue: QueueSource[F, A],
       limit: Int = Int.MaxValue
-  ): Stream[F, A] =
-    fromQueueNoneTerminatedSingletons_[F, A](
-      queue.take.map(a => Some(a)),
-      queue.tryTake.map(_.map(a => Some(a))),
-      limit
-    )
+  )(implicit F: Functor[F]): Stream[F, A] =
+    F match {
+      case f0: Monad[F] =>
+        if (limit > 1) {
+
+          /** use non-blocking tryTakeN, which is possibly more performant than n * take */
+
+          val someLimit = Some(limit)
+          val someLimitLess1 = Some(limit - 1)
+
+          /** First, try non-blocking batch dequeue.
+            * Only if the result is an empty list, semantically block to get one element,
+            * then attempt 2nd tryTakeN to get any other elements that are immediately available.
+            */
+          val asf = f0.flatMap(queue.tryTakeN(someLimit)(f0)) {
+            case Nil => f0.map2(queue.take, queue.tryTakeN(someLimitLess1)(f0))(_ :: _)
+            case as  => f0.pure(as)
+          }
+
+          Stream.evalSeq(asf).repeat
+
+        } else Stream.repeatEval(queue.take)
+
+      case _ =>
+        fromQueueNoneTerminatedSingletons_[F, A](
+          queue.take.map(a => Some(a)),
+          queue.tryTake.map(_.map(a => Some(a))),
+          limit
+        )
+    }
 
   /** Returns a stream of elements from the supplied queue.
     *
