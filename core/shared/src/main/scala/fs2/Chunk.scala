@@ -120,6 +120,9 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.array(b.result()).asInstanceOf[Chunk[O]]
   }
 
+  /** Returns a chunk that has only the elements that do not satisfy the supplied predicate. */
+  def filterNot(p: O => Boolean): Chunk[O] = filter(!p(_))
+
   /** Returns the first element for which the predicate returns true or `None` if no elements satisfy the predicate. */
   def find(p: O => Boolean): Option[O] =
     iterator.find(p)

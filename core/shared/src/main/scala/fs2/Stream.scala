@@ -1082,6 +1082,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def filter(p: O => Boolean): Stream[F, O] = mapChunks(_.filter(p))
 
+  /** Emits only inputs which do not match the supplied predicate.
+    */
+  def filterNot(p: O => Boolean): Stream[F, O] = mapChunks(_.filterNot(p))
+
   /** Like `filter`, but allows filtering based on an effect.
     *
     * Note: The result Stream will consist of chunks that are empty or 1-element-long.
