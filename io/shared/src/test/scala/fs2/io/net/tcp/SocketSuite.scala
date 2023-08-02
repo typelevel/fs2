@@ -161,12 +161,15 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
         .drain
     }
 
-    test("errors - should be captured in the effect") {
+    test("errors - should be captured in the effect".only) {
       (for {
-        bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
-        _ <- Network[IO].client(bindAddress).use(_ => IO.unit).recover {
-          case ex: ConnectException => assertEquals(ex.getMessage, "Connection refused")
-        }
+        port <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1.port))
+        _ <- Network[IO]
+          .client(SocketAddress(host"localhost", port))
+          .use_
+          .recover { case ex: ConnectException =>
+            assertEquals(ex.getMessage, "Connection refused")
+          }
       } yield ()) >> (for {
         bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
         _ <- Network[IO]
