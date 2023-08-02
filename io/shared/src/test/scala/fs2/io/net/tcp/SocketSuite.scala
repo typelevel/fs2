@@ -161,7 +161,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
         .drain
     }
 
-    test("errors - should be captured in the effect".only) {
+    test("errors - should be captured in the effect") {
       (for {
         port <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1.port))
         _ <- Network[IO]
