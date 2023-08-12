@@ -28,7 +28,6 @@ import scala.concurrent.duration._
 
 import cats.effect._
 import cats.effect.testkit.TestControl
-import cats.syntax.all._
 import scodec.bits._
 
 import munit.Location

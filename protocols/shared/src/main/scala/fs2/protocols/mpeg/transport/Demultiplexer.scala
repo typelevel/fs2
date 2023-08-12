@@ -54,7 +54,7 @@ object Demultiplexer {
     */
   case class ResetDecodeState(context: List[String]) extends Err {
     def message = "reset decode state"
-    def pushContext(ctx: String) = ResetDecodeState(ctx :: context)
+    def pushContext(ctx: String): ResetDecodeState = ResetDecodeState(ctx :: context)
   }
 
   final case class State(byPid: Map[Pid, DecodeState])

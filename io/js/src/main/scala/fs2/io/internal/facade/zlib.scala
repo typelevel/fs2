@@ -21,66 +21,65 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
-package object zlib {
+@nowarn212("cat=unused")
+private[io] object zlib {
 
   @js.native
   @JSImport("zlib", "createDeflate")
-  private[io] def createDeflate(options: Options): Zlib = js.native
+  def createDeflate(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "createDeflateRaw")
-  private[io] def createDeflateRaw(options: Options): Zlib = js.native
+  def createDeflateRaw(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "deflateSync")
-  private[io] def deflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  def deflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createGzip")
-  private[io] def createGzip(options: Options): Zlib = js.native
+  def createGzip(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "deflateRawSync")
-  private[io] def deflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  def deflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createGunzip")
-  private[io] def createGunzip(options: Options): Zlib = js.native
+  def createGunzip(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "inflateRawSync")
-  private[io] def inflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  def inflateRawSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "createInflate")
-  private[io] def createInflate(options: Options): Zlib = js.native
+  def createInflate(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "createInflateRaw")
-  private[io] def createInflateRaw(options: Options): Zlib = js.native
+  def createInflateRaw(options: Options): Zlib = js.native
 
   @js.native
   @JSImport("zlib", "inflateSync")
-  private[io] def inflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
+  def inflateSync(buffer: Uint8Array, options: Options): Uint8Array = js.native
 
   @js.native
   @JSImport("zlib", "gunzipSync")
-  private[io] def gunzipSync(buffer: Uint8Array): Uint8Array = js.native
-
-}
-
-package zlib {
+  def gunzipSync(buffer: Uint8Array): Uint8Array = js.native
 
   @js.native
-  private[io] trait Zlib extends fs2.io.Duplex {
+  trait Zlib extends fs2.io.Duplex {
     def close(cb: js.Function0[Unit]): Unit = js.native
   }
 
-  private[io] trait Options extends js.Object {
+  trait Options extends js.Object {
 
     var chunkSize: js.UndefOr[Int] = js.undefined
 

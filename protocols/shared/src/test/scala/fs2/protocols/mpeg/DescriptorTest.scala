@@ -47,7 +47,8 @@ class DescriptorTest extends Fs2Suite {
 
   private def roundtrip[A](codec: Codec[A], value: A) = {
     val encoded = codec.encode(value)
-    val Attempt.Successful(DecodeResult(decoded, remainder)) = codec.decode(encoded.require)
+    val Attempt.Successful(DecodeResult(decoded, remainder)) =
+      codec.decode(encoded.require): @unchecked
     assertEquals(remainder, BitVector.empty)
     assertEquals(decoded, value)
   }
@@ -300,10 +301,7 @@ object DescriptorTestData {
   } yield UnknownDescriptor(tag, length, ByteVector(data: _*))
 
   lazy val genDescriptor: Gen[Descriptor] =
-    Gen.oneOf(genKnownDescriptor, genUnknownDescriptor).map {
-      case known: KnownDescriptor     => Right(known)
-      case unknown: UnknownDescriptor => Left(unknown)
-    }
+    Gen.oneOf(genKnownDescriptor.map(Right(_)), genUnknownDescriptor.map(Left(_)))
 
   implicit lazy val arbitraryDescriptor: Arbitrary[Descriptor] = Arbitrary(genDescriptor)
 }

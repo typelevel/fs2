@@ -21,6 +21,8 @@
 
 package fs2.io.internal.facade.events
 
+import org.typelevel.scalaccompat.annotation._
+
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
 import cats.effect.std.Dispatcher
@@ -29,6 +31,7 @@ import cats.syntax.all._
 import scala.scalajs.js
 
 @js.native
+@nowarn212("cat=unused")
 private[io] trait EventEmitter extends js.Object {
 
   protected[io] def on[E](eventName: String, listener: js.Function1[E, Unit]): this.type = js.native

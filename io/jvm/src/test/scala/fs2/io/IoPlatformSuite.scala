@@ -25,7 +25,6 @@ package io
 import cats.data.EitherT
 import cats.effect.{IO, Resource}
 import cats.effect.unsafe.{IORuntime, IORuntimeConfig}
-import fs2.{Err, Fs2Suite}
 import org.scalacheck.{Arbitrary, Gen, Shrink}
 import org.scalacheck.effect.PropF.forAllF
 

@@ -21,25 +21,25 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
 import events.EventEmitter
 
-package object net {
+@nowarn212("cat=unused")
+private[io] object net {
   @js.native
   @JSImport("net", "createServer")
-  private[io] def createServer(
+  def createServer(
       options: ServerOptions,
       connectionListener: js.Function1[Socket, Unit]
   ): Server =
     js.native
-}
-
-package net {
 
   @js.native
-  private[io] trait Server extends EventEmitter {
+  trait Server extends EventEmitter {
 
     def address(): ServerAddress = js.native
 
@@ -56,23 +56,23 @@ package net {
   }
 
   @js.native
-  private[io] trait ServerAddress extends js.Object {
+  trait ServerAddress extends js.Object {
     def address: String = js.native
     def port: Int = js.native
   }
 
-  private[io] trait ServerOptions extends js.Object {
+  trait ServerOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
 
     var pauseOnConnect: js.UndefOr[Boolean] = js.undefined
   }
 
-  private[io] trait ListenOptions extends js.Object {
+  trait ListenOptions extends js.Object {
     var path: js.UndefOr[String] = js.undefined
   }
 
-  private[io] trait SocketOptions extends js.Object {
+  trait SocketOptions extends js.Object {
 
     var allowHalfOpen: js.UndefOr[Boolean] = js.undefined
 
@@ -80,7 +80,7 @@ package net {
 
   @JSImport("net", "Socket")
   @js.native
-  private[io] class Socket extends fs2.io.Duplex {
+  class Socket extends fs2.io.Duplex {
 
     def this(options: SocketOptions) = this()
 

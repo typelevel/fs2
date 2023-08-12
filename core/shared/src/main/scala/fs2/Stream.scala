@@ -35,6 +35,7 @@ import cats.syntax.all._
 import fs2.compat._
 import fs2.concurrent._
 import fs2.internal._
+import org.typelevel.scalaccompat.annotation._
 import Pull.StreamPullOps
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
@@ -2489,6 +2490,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, -1)
     * }}}
     */
+  @nowarn212("cat=unused")
   def rethrow[F2[x] >: F[x], O2](implicit
       ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
@@ -4101,6 +4103,7 @@ object Stream extends StreamLowPriority {
       * If either of `left` or `right` fails, then resulting stream will fail.
       * If either `halts` the evaluation will halt too.
       */
+    @nowarn212("cat=unused")
     def observeEither[L, R](
         left: Pipe[F, L, Nothing],
         right: Pipe[F, R, Nothing]
@@ -5023,6 +5026,7 @@ object Stream extends StreamLowPriority {
       * res0: String = Hello world!
       * }}}
       */
+    @nowarn212("cat=unused")
     def string(implicit ev: O <:< String): G[String] =
       new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
 

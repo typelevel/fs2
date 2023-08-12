@@ -48,7 +48,7 @@ object CaptureFile {
           go(idbs :+ idb, tail)
         case Some((epb: EnhancedPacketBlock, tail)) =>
           val idb = idbs(epb.interfaceId.toInt)
-          val ts = ((epb.timestampHigh << 32) | epb.timestampLow) * idb.if_tsresol
+          val ts = idb.if_tsresol * ((epb.timestampHigh << 32) | epb.timestampLow)
           val timeStamped = f(idb.linkType, epb.packetData).map(TimeStamped(ts, _))
           Pull.outputOption1(timeStamped) >> go(idbs, tail)
         case Some((_, tail)) => go(idbs, tail)
