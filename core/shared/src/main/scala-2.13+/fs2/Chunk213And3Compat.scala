@@ -51,7 +51,9 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
     new ChunkAsSeq(this)
 }
 
-private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends immutable.Seq[O] {
+private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O])
+    extends immutable.Seq[O]
+    with Serializable {
   override def iterator: Iterator[O] =
     chunk.iterator
 
