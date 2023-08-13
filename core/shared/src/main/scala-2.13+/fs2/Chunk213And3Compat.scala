@@ -21,9 +21,28 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
     }
     buf.result()
   }
+
+  /** Views this Chunk as a Scala immutable Seq.
+    * Contrary to all methods that start with _"to"_ (e.g. {{toVector}}, {{toArray}}),
+    * this method does not copy data.
+    */
+  def asSeq: Seq[O] =
+    new ChunkAsSeq(this)
+}
+
+private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends immutable.Seq[O] {
+  override def iterator: Iterator[O] =
+    chunk.iterator
+
+  override def apply(i: Int): O =
+    chunk.apply(i)
+
+  override def length: Int =
+    chunk.size
 }
 
 private[fs2] trait ChunkCompanion213And3Compat { self: Chunk.type =>
+
   protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
     i match {
       case a: immutable.ArraySeq[O] => Some(arraySeq(a))
