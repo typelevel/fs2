@@ -176,7 +176,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def getBasicFileAttributes(path: Path): F[BasicFileAttributes] =
     getBasicFileAttributes(path, false)
 
-  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are not followed when `followLinks` is true. */
+  /** Gets `BasicFileAttributes` for the supplied path. Symbolic links are followed when `followLinks` is true. */
   def getBasicFileAttributes(path: Path, followLinks: Boolean): F[BasicFileAttributes]
 
   /** Gets the last modified time of the supplied path.
