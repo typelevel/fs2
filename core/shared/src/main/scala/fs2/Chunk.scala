@@ -643,11 +643,14 @@ object Chunk
     override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
   }
 
-  /** Creates a chunk from a `java.util.List`. */
+  /** Creates a chunk from a mutable `java.util.List`. */
   def javaList[O](javaList: ju.List[O]): Chunk[O] =
     javaList match {
       case chunkAsJavaList: ChunkAsJavaList[O] =>
         chunkAsJavaList.chunk
+
+      case randomAccess: ju.RandomAccess =>
+        new JavaListChunk(randomAccess)
 
       case _ =>
         val size = javaList.size
@@ -655,6 +658,28 @@ object Chunk
         javaList.toArray(arr)
         new ArraySlice(arr, 0, size)(ClassTag.Object.asInstanceOf[ClassTag[O with Object]])
     }
+
+  private final class JavaListChunk[O](
+      javaList: ju.List[O] with ju.RandomAccess
+  ) extends Chunk[O] {
+    override val size: Int =
+      javaList.size
+
+    override def apply(i: Int): O =
+      javaList.get(i)
+
+    override def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
+      val javaListAsArray = javaList.toArray
+      System.arraycopy(javaListAsArray, 0, xs, start, javaListAsArray.length)
+    }
+
+    override protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
+      val left = javaList.subList(0, n + 1).asInstanceOf[ju.List[O] with ju.RandomAccess]
+      val right = javaList.subList(n + 1, size).asInstanceOf[ju.List[O] with ju.RandomAccess]
+
+      new JavaListChunk(left) -> new JavaListChunk(right)
+    }
+  }
 
   /** Creates a chunk from a `scala.collection.Seq`. */
   def seq[O](s: GSeq[O]): Chunk[O] = iterable(s)
