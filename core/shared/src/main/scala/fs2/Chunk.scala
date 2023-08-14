@@ -89,8 +89,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   }
 
   /** Returns true if the Chunk contains the given element. */
-  def contains[O2 >: O](elem: O2): Boolean =
-    iterator.contains(elem)
+  def contains[O2 >: O: Eq](elem: O2): Boolean =
+    iterator.exists(o => Eq[O2].eqv(o, elem))
 
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
