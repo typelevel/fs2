@@ -1310,5 +1310,17 @@ object Chunk
           fa: Chunk[A]
       )(f: A => F[Option[B]])(implicit F: Applicative[F]): F[Chunk[B]] = fa.traverseFilter(f)
       override def mapFilter[A, B](fa: Chunk[A])(f: A => Option[B]): Chunk[B] = fa.mapFilter(f)
+
+      override def contains_[A](fa: Chunk[A], v: A)(implicit ev: Eq[A]): Boolean =
+        fa.contains(v)
+
+      override def count[A](fa: Chunk[A])(p: A => Boolean): Long =
+        fa.count(p).toLong
+
+      override def exists[A](fa: Chunk[A])(p: A => Boolean): Boolean =
+        fa.exists(p)
+
+      override def forall[A](fa: Chunk[A])(p: A => Boolean): Boolean =
+        fa.forall(p)
     }
 }
