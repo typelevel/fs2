@@ -1338,6 +1338,7 @@ object Chunk
 private[fs2] final class ChunkAsJavaList[O](
     private[fs2] val chunk: Chunk[O]
 ) extends ju.AbstractList[O]
+    with ju.RandomAccess
     with Serializable {
   override def size: Int =
     chunk.size
