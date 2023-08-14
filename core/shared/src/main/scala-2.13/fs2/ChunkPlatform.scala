@@ -21,7 +21,32 @@
 
 package fs2
 
-private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] { self: Chunk[O] => }
+import scala.collection.immutable.ArraySeq
 
-private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat { self: Chunk.type =>
+private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
+  self: Chunk[O] =>
+
+  def asSeqPlatform: Option[Seq[O]] =
+    this match {
+      case arraySlice: Chunk.ArraySlice[_] =>
+        Some(
+          ArraySeq
+            .unsafeWrapArray(arraySlice.values)
+            .slice(
+              from = arraySlice.offset,
+              until = arraySlice.offset + arraySlice.length
+            )
+        )
+
+      case _ =>
+        None
+    }
+}
+
+private[fs2] trait ChunkAsSeqPlatform[+O] extends ChunkAsSeq213And3Compat[O] {
+  self: ChunkAsSeq[O] =>
+}
+
+private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat {
+  self: Chunk.type =>
 }
