@@ -59,6 +59,14 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
             new ChunkAsSeq(this)
         }
 
+      case arraySlice: Chunk.ArraySlice[_] =>
+        ArraySeq
+          .unsafeWrapArray(arraySlice.values)
+          .slice(
+            from = arraySlice.offset,
+            until = arraySlice.offset + arraySlice.length
+          )
+
       case _ =>
         new ChunkAsSeq(this)
     }
