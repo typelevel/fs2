@@ -49,7 +49,19 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
     * As such, this method is mostly intended for `foreach` kind of interop.
     */
   def asSeq: Seq[O] =
-    new ChunkAsSeq(this)
+    this match {
+      case indexedSeqChunk: Chunk.IndexedSeqChunk[_] =>
+        indexedSeqChunk.s match {
+          case seq: Seq[O] =>
+            seq
+
+          case _ =>
+            new ChunkAsSeq(this)
+        }
+
+      case _ =>
+        new ChunkAsSeq(this)
+    }
 }
 
 private[fs2] final class ChunkAsSeq[+O](

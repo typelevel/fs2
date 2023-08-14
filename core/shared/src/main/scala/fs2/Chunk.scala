@@ -611,7 +611,9 @@ object Chunk
       singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
     else new IndexedSeqChunk(s)
 
-  private final class IndexedSeqChunk[O](s: GIndexedSeq[O]) extends Chunk[O] {
+  private[fs2] final class IndexedSeqChunk[O](
+      private[fs2] val s: GIndexedSeq[O]
+  ) extends Chunk[O] {
     def size = s.length
     def apply(i: Int) = s(i)
     def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
