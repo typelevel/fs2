@@ -21,12 +21,49 @@
 
 package fs2
 
-import scala.collection.mutable.WrappedArray
+import scala.annotation.unchecked.uncheckedVariance
+import scala.collection.generic.{CanBuildFrom, GenericCompanion}
+import scala.collection.mutable.{Builder, WrappedArray}
 import scala.reflect.ClassTag
 
-private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
+private[fs2] trait ChunkPlatform[+O] {
+  self: Chunk[O] =>
 
-private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
+  def asSeqPlatform: Option[Seq[O]] =
+    None
+}
+
+private[fs2] trait ChunkAsSeqPlatform[+O] {
+  self: ChunkAsSeq[O] =>
+
+  override val hasDefiniteSize: Boolean =
+    true
+
+  override def copyToArray[O2 >: O](xs: Array[O2], start: Int, len: Int): Unit =
+    chunk.take(len).copyToArray(xs, start)
+
+  override def map[O2, That](f: O ⇒ O2)(implicit bf: CanBuildFrom[Seq[O], O2, That]): That =
+    new ChunkAsSeq(chunk.map(f)).asInstanceOf[That]
+
+  override def zipWithIndex[O2 >: O, That](implicit
+      bf: CanBuildFrom[Seq[O], (O2, Int), That]
+  ): That =
+    new ChunkAsSeq(chunk.zipWithIndex).asInstanceOf[That]
+
+  override def to[Col[_]](implicit
+      cbf: CanBuildFrom[Nothing, O, Col[O @uncheckedVariance]]
+  ): Col[O @uncheckedVariance] =
+    chunk.to(cbf)
+
+  override def genericBuilder[B]: Builder[B, Seq[B]] =
+    Vector.newBuilder
+
+  override def companion: GenericCompanion[Seq] =
+    Vector
+}
+
+private[fs2] trait ChunkCompanionPlatform {
+  self: Chunk.type =>
 
   protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
     i match {
