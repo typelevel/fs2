@@ -528,6 +528,26 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   override def toString: String =
     iterator.mkString("Chunk(", ", ", ")")
 
+  /** Views this Chunk as a Scala immutable Seq.
+    * Contrary to all methods that start with _"to"_ (e.g. {{toVector}}, {{toArray}}),
+    * this method does not copy data.
+    * As such, this method is mostly intended for `foreach` kind of interop.
+    */
+  def asSeq: Seq[O] =
+    asSeqPlatform.getOrElse(this match {
+      case indexedSeqChunk: Chunk.IndexedSeqChunk[_] =>
+        indexedSeqChunk.s match {
+          case seq: Seq[O] =>
+            seq
+
+          case _ =>
+            new ChunkAsSeq(this)
+        }
+
+      case _ =>
+        new ChunkAsSeq(this)
+    })
+
   /** Views this Chunk as a Java unmodifiable List.
     * Contrary to all methods that start with _"to"_ (e.g. {{toVector}}, {{toArray}}),
     * this method does not copy data.
@@ -1372,6 +1392,74 @@ object Chunk
 
       override def forall[A](fa: Chunk[A])(p: A => Boolean): Boolean =
         fa.forall(p)
+    }
+}
+
+private[fs2] final class ChunkAsSeq[+O](
+    private[fs2] val chunk: Chunk[O]
+) extends Seq[O]
+    with ChunkAsSeqPlatform[O]
+    with Serializable {
+  override def iterator: Iterator[O] =
+    chunk.iterator
+
+  override def apply(i: Int): O =
+    chunk.apply(i)
+
+  override def length: Int =
+    chunk.size
+
+  override def isEmpty: Boolean =
+    chunk.isEmpty
+
+  override def reverseIterator: Iterator[O] =
+    chunk.reverseIterator
+
+  override def foreach[U](f: O => U): Unit =
+    chunk.foreach { o => f(o); () }
+
+  override def headOption: Option[O] =
+    chunk.head
+
+  override def head: O =
+    if (chunk.nonEmpty) chunk.apply(0)
+    else throw new NoSuchElementException("head of empty Seq")
+
+  override def lastOption: Option[O] =
+    chunk.last
+
+  override def last: O =
+    if (chunk.nonEmpty) chunk.apply(chunk.size - 1)
+    else throw new NoSuchElementException("tail of empty Seq")
+
+  override def filter(p: O => Boolean): Seq[O] =
+    new ChunkAsSeq(chunk.filter(p))
+
+  override def take(n: Int): Seq[O] =
+    new ChunkAsSeq(chunk.take(n))
+
+  override def takeRight(n: Int): Seq[O] =
+    new ChunkAsSeq(chunk.takeRight(n))
+
+  override def toArray[O2 >: O: ClassTag]: Array[O2] =
+    chunk.toArray
+
+  override def toList: List[O] =
+    chunk.toList
+
+  override def toVector: Vector[O] =
+    chunk.toVector
+
+  override def toString: String =
+    chunk.iterator.mkString("ChunkAsSeq(", ", ", ")")
+
+  override def equals(that: Any): Boolean =
+    that match {
+      case thatChunkWrapper: ChunkAsSeq[_] =>
+        chunk == thatChunkWrapper.chunk
+
+      case _ =>
+        false
     }
 }
 
