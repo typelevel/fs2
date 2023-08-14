@@ -51,7 +51,10 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
     new ChunkAsSeq(this)
 }
 
-private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends Seq[O] with Serializable {
+private[fs2] final class ChunkAsSeq[+O](
+    private val chunk: Chunk[O]
+) extends Seq[O]
+    with Serializable {
   override def iterator: Iterator[O] =
     chunk.iterator
 
@@ -61,6 +64,12 @@ private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends Seq[O] with Ser
   override def length: Int =
     chunk.size
 
+  override def knownSize: Int =
+    chunk.size
+
+  override def isEmpty: Boolean =
+    chunk.isEmpty
+
   override def foreach[U](f: O => U): Unit =
     chunk.foreach { o => f(o); () }
 
@@ -69,10 +78,7 @@ private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends Seq[O] with Ser
     this
   }
 
-  override def isEmpty: Boolean =
-    chunk.isEmpty
-
-  override def copyToArray[B >: O](xs: Array[B], start: Int, len: Int): Int = {
+  override def copyToArray[O2 >: O](xs: Array[O2], start: Int, len: Int): Int = {
     chunk.take(len).copyToArray(xs, start)
     math.min(len, xs.length - start)
   }
@@ -100,7 +106,7 @@ private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends Seq[O] with Ser
   override def to[C1](factory: Factory[O, C1]): C1 =
     chunk.to(factory)
 
-  override def toArray[B >: O: ClassTag]: Array[B] =
+  override def toArray[O2 >: O: ClassTag]: Array[O2] =
     chunk.toArray
 
   override def toList: List[O] =
@@ -114,6 +120,15 @@ private[fs2] final class ChunkAsSeq[+O](chunk: Chunk[O]) extends Seq[O] with Ser
 
   override def zipWithIndex: Seq[(O, Int)] =
     new ChunkAsSeq(chunk.zipWithIndex)
+
+  override def equals(that: Any): Boolean =
+    that match {
+      case thatChunkWrapper: ChunkAsSeq[_] =>
+        chunk == thatChunkWrapper.chunk
+
+      case _ =>
+        false
+    }
 }
 
 private[fs2] trait ChunkCompanion213And3Compat { self: Chunk.type =>
