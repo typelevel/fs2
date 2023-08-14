@@ -1339,9 +1339,37 @@ private[fs2] final class ChunkAsJavaList[O](
     private[fs2] val chunk: Chunk[O]
 ) extends ju.AbstractList[O]
     with Serializable {
-  override def size(): Int =
+  override def size: Int =
     chunk.size
 
   override def get(index: Int): O =
     chunk.apply(index)
+
+  override def isEmpty: Boolean =
+    chunk.isEmpty
+
+  override def iterator: ju.Iterator[O] = new ju.Iterator[O] {
+    private var i = 0
+
+    override def hasNext: Boolean =
+      i < chunk.size
+
+    override def next(): O = {
+      val result = chunk.apply(i)
+      i += 1
+      result
+    }
+  }
+
+  override def toArray: Array[Object] =
+    chunk.toArray[Any].asInstanceOf[Array[Object]]
+
+  override def toArray[T](a: Array[T with Object]): Array[T with Object] = {
+    val arr: Array[Object] =
+      if (a.length >= chunk.size) a.asInstanceOf[Array[Object]]
+      else new Array[Object](chunk.size)
+
+    chunk.asInstanceOf[Chunk[Object]].copyToArray(arr)
+    arr.asInstanceOf[Array[T with Object]]
+  }
 }
