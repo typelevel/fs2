@@ -88,6 +88,10 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
+  /** Returns true if the Chunk contains the given element. */
+  def contains[O2 >: O](elem: O2): Boolean =
+    iterator.contains(elem)
+
   /** Copies the elements of this chunk in to the specified array at the specified start index. */
   def copyToArray[O2 >: O](xs: Array[O2], start: Int = 0): Unit
 
@@ -104,11 +108,19 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def compactUntagged[O2 >: O]: Chunk.ArraySlice[O2] =
     Chunk.ArraySlice(toArray[Any], 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
 
+  /** Counts the number of elements which satisfy a predicate. */
+  def count(p: O => Boolean): Int =
+    iterator.count(p)
+
   /** Drops the first `n` elements of this chunk. */
   def drop(n: Int): Chunk[O] = splitAt(n)._2
 
   /** Drops the right-most `n` elements of this chunk queue in a way that preserves chunk structure. */
   def dropRight(n: Int): Chunk[O] = if (n <= 0) this else take(size - n)
+
+  /** Returns true if at least one element passes the predicate. */
+  def exists(p: O => Boolean): Boolean =
+    iterator.exists(p)
 
   protected def thisClassTag: ClassTag[Any] = implicitly[ClassTag[Any]]
 
