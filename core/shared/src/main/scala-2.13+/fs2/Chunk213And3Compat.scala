@@ -120,7 +120,7 @@ private[fs2] final class ChunkAsSeq[+O](
     chunk.toVector
 
   override def toString: String =
-    chunk.toString
+    chunk.iterator.mkString("ChunkAsSeq(", ", ", ")")
 
   override def zipWithIndex: Seq[(O, Int)] =
     new ChunkAsSeq(chunk.zipWithIndex)
