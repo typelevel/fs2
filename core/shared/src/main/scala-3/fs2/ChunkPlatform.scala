@@ -27,7 +27,9 @@ import scala.collection.immutable.ArraySeq
 import scala.collection.immutable
 import scala.reflect.ClassTag
 
-private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] { self: Chunk[O] =>
+private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
+  self: Chunk[O] =>
+
   def toIArray[O2 >: O: ClassTag]: IArray[O2] = IArray.unsafeFromArray(toArray)
 
   def toIArraySlice[O2 >: O](implicit ct: ClassTag[O2]): Chunk.IArraySlice[O2] =
@@ -36,9 +38,42 @@ private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] { self: Chunk
         as.asInstanceOf[Chunk.IArraySlice[O2]]
       case _ => new Chunk.IArraySlice(IArray.unsafeFromArray(toArray(ct)), 0, size)
     }
+
+  def asSeqPlatform: Option[Seq[O]] =
+    this match {
+      case arraySlice: Chunk.ArraySlice[_] =>
+        Some(
+          ArraySeq
+            .unsafeWrapArray(arraySlice.values)
+            .slice(
+              from = arraySlice.offset,
+              until = arraySlice.offset + arraySlice.length
+            )
+        )
+
+      case iArraySlice: Chunk.IArraySlice[_] =>
+        Some(
+          ArraySeq
+            .unsafeWrapArray(
+              IArray.genericWrapArray(iArraySlice.values).toArray(iArraySlice.ct)
+            )
+            .slice(
+              from = iArraySlice.offset,
+              until = iArraySlice.offset + iArraySlice.length
+            )
+        )
+
+      case _ =>
+        None
+    }
 }
 
-private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat { self: Chunk.type =>
+private[fs2] trait ChunkAsSeqPlatform[+O] extends ChunkAsSeq213And3Compat[O] {
+  self: ChunkAsSeq[O] =>
+}
+
+private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat {
+  self: Chunk.type =>
 
   /** Creates a chunk backed by an immutable array. */
   def iarray[O: ClassTag](arr: IArray[O]): Chunk[O] = new IArraySlice(arr, 0, arr.length)
@@ -47,8 +82,9 @@ private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat { 
   def iarray[O: ClassTag](arr: IArray[O], offset: Int, length: Int): Chunk[O] =
     new IArraySlice(arr, offset, length)
 
-  case class IArraySlice[O](values: IArray[O], offset: Int, length: Int)(implicit ct: ClassTag[O])
-      extends Chunk[O] {
+  case class IArraySlice[O](values: IArray[O], offset: Int, length: Int)(implicit
+      private[fs2] val ct: ClassTag[O]
+  ) extends Chunk[O] {
     require(
       offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
     )
