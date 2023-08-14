@@ -641,6 +641,19 @@ object Chunk
     override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
   }
 
+  /** Creates a chunk from a `java.util.List`. */
+  def javaList[O](javaList: ju.List[O]): Chunk[O] =
+    javaList match {
+      case chunkAsJavaList: ChunkAsJavaList[O] =>
+        chunkAsJavaList.chunk
+
+      case _ =>
+        val size = javaList.size
+        val arr = new Array[Object](size).asInstanceOf[Array[O with Object]]
+        javaList.toArray(arr)
+        new ArraySlice(arr, 0, size)(ClassTag.Object.asInstanceOf[ClassTag[O with Object]])
+    }
+
   /** Creates a chunk from a `scala.collection.Seq`. */
   def seq[O](s: GSeq[O]): Chunk[O] = iterable(s)
 
