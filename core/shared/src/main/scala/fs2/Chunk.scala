@@ -22,11 +22,13 @@
 package fs2
 
 import scala.annotation.tailrec
+import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.immutable.{Queue => SQueue}
 import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
+import java.{util => ju}
 
 import cats._
 import cats.data.{Chain, NonEmptyList}
@@ -525,6 +527,14 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   override def toString: String =
     iterator.mkString("Chunk(", ", ", ")")
+
+  /** Views this Chunk as a Java unmodifiable List.
+    * Contrary to all methods that start with _"to"_ (e.g. {{toVector}}, {{toArray}}),
+    * this method does not copy data.
+    * As such, this method is mostly intended for `foreach` kind of interop.
+    */
+  def asJava: ju.List[O @uncheckedVariance] =
+    new ChunkAsJavaList(this)
 }
 
 object Chunk
@@ -1323,4 +1333,15 @@ object Chunk
       override def forall[A](fa: Chunk[A])(p: A => Boolean): Boolean =
         fa.forall(p)
     }
+}
+
+private[fs2] final class ChunkAsJavaList[O](
+    private[fs2] val chunk: Chunk[O]
+) extends ju.AbstractList[O]
+    with Serializable {
+  override def size(): Int =
+    chunk.size
+
+  override def get(index: Int): O =
+    chunk.apply(index)
 }
