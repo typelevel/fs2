@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.collection.Factory
+import scala.collection.{Factory, SeqFactory}
 import scala.collection.immutable.ArraySeq
 import scala.reflect.ClassTag
 
@@ -133,6 +133,12 @@ private[fs2] final class ChunkAsSeq[+O](
       case _ =>
         false
     }
+
+  override val iterableFactory: SeqFactory[Seq] =
+    ArraySeq.untagged
+
+  override val empty: Seq[O] =
+    new ChunkAsSeq(Chunk.empty)
 }
 
 private[fs2] trait ChunkCompanion213And3Compat { self: Chunk.type =>
