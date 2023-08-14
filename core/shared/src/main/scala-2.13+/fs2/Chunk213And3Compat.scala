@@ -70,6 +70,9 @@ private[fs2] final class ChunkAsSeq[+O](
   override def isEmpty: Boolean =
     chunk.isEmpty
 
+  override def reverseIterator: Iterator[O] =
+    chunk.reverseIterator
+
   override def foreach[U](f: O => U): Unit =
     chunk.foreach { o => f(o); () }
 
