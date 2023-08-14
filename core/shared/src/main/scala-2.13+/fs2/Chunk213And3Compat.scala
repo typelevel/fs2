@@ -52,7 +52,7 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
 }
 
 private[fs2] final class ChunkAsSeq[+O](
-    private val chunk: Chunk[O]
+    private[fs2] val chunk: Chunk[O]
 ) extends Seq[O]
     with Serializable {
   override def iterator: Iterator[O] =
@@ -138,8 +138,9 @@ private[fs2] trait ChunkCompanion213And3Compat { self: Chunk.type =>
 
   protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
     i match {
-      case a: ArraySeq[O] => Some(arraySeq(a))
-      case _              => None
+      case a: ArraySeq[O]   => Some(arraySeq(a))
+      case w: ChunkAsSeq[O] => Some(w.chunk)
+      case _                => None
     }
 
   /** Creates a chunk backed by an immutable `ArraySeq`. */
