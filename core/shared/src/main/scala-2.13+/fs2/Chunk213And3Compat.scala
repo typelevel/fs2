@@ -46,6 +46,7 @@ private[fs2] trait Chunk213And3Compat[+O] { self: Chunk[O] =>
   /** Views this Chunk as a Scala immutable Seq.
     * Contrary to all methods that start with _"to"_ (e.g. {{toVector}}, {{toArray}}),
     * this method does not copy data.
+    * As such, this method is mostly intended for `foreach` kind of interop.
     */
   def asSeq: Seq[O] =
     new ChunkAsSeq(this)
