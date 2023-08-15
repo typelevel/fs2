@@ -24,7 +24,7 @@ package fs2
 import scala.annotation.tailrec
 import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.immutable.{Queue => SQueue}
-import scala.collection.{IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
+import scala.collection.{Iterable => GIterable, IndexedSeq => GIndexedSeq, Seq => GSeq, mutable}
 import scala.reflect.ClassTag
 import scodec.bits.{BitVector, ByteVector}
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
@@ -289,7 +289,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   /** Check to see if this starts with the items in the given seq. */
   def startsWith[O2 >: O](seq: Seq[O2]): Boolean =
-    startsWith(Chunk.seq(seq))
+    startsWith(Chunk.from(seq))
 
   /** Takes the first `n` elements of this chunk. */
   def take(n: Int): Chunk[O] = splitAt(n)._1
@@ -622,14 +622,20 @@ object Chunk
   }
 
   /** Creates a chunk backed by a vector. */
-  def vector[O](v: Vector[O]): Chunk[O] = indexedSeq(v)
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def vector[O](v: Vector[O]): Chunk[O] =
+    from(v)
 
   /** Creates a chunk backed by an `IndexedSeq`. */
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
   def indexedSeq[O](s: GIndexedSeq[O]): Chunk[O] =
-    if (s.isEmpty) empty
-    else if (s.size == 1)
-      singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
-    else new IndexedSeqChunk(s)
+    from(s)
 
   private[fs2] final class IndexedSeqChunk[O](
       private[fs2] val s: GIndexedSeq[O]
@@ -649,18 +655,20 @@ object Chunk
     override def drop(n: Int): Chunk[O] =
       if (n <= 0) this
       else if (n >= size) Chunk.empty
-      else indexedSeq(s.drop(n))
+      else from(s.drop(n))
 
     override def take(n: Int): Chunk[O] =
       if (n <= 0) Chunk.empty
       else if (n >= size) this
-      else indexedSeq(s.take(n))
+      else from(s.take(n))
 
     protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
       val (fst, snd) = s.splitAt(n)
-      indexedSeq(fst) -> indexedSeq(snd)
+      from(fst) -> from(snd)
     }
-    override def map[O2](f: O => O2): Chunk[O2] = indexedSeq(s.map(f))
+
+    override def map[O2](f: O => O2): Chunk[O2] =
+      from(s.map(f))
   }
 
   /** Creates a chunk from a mutable `java.util.List`. */
@@ -704,13 +712,27 @@ object Chunk
   }
 
   /** Creates a chunk from a `scala.collection.Seq`. */
-  def seq[O](s: GSeq[O]): Chunk[O] = iterable(s)
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def seq[O](s: GSeq[O]): Chunk[O] =
+    from(s)
 
   /** Creates a chunk from a `scala.collection.Iterable`. */
-  def iterable[O](i: collection.Iterable[O]): Chunk[O] =
-    platformIterable(i).getOrElse(i match {
-      case a: mutable.ArraySeq[o] => arraySeq[o](a).asInstanceOf[Chunk[O]]
-      case v: Vector[O]           => vector(v)
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def iterable[O](i: GIterable[O]): Chunk[O] =
+    from(i)
+
+  def from[O](i: GIterable[O]): Chunk[O] =
+    platformFrom(i).getOrElse(i match {
+      case a: mutable.ArraySeq[o] =>
+        val arr = a.array.asInstanceOf[Array[O]]
+        array(arr)(ClassTag(arr.getClass.getComponentType))
+
       case l: List[O] =>
         if (l.isEmpty) empty
         else if (l.tail.isEmpty) singleton(l.head)
@@ -719,7 +741,13 @@ object Chunk
           bldr ++= l
           array(bldr.result()).asInstanceOf[Chunk[O]]
         }
-      case ix: GIndexedSeq[O] => indexedSeq(ix)
+
+      case s: GIndexedSeq[O] =>
+        if (s.isEmpty) empty
+        else if (s.size == 1)
+          singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
+        else new IndexedSeqChunk(s)
+
       case _ =>
         if (i.isEmpty) empty
         else iterator(i.iterator)
@@ -740,10 +768,12 @@ object Chunk
 
   /** Creates a chunk backed by a mutable `ArraySeq`.
     */
-  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] = {
-    val arr = arraySeq.array.asInstanceOf[Array[O]]
-    array(arr)(ClassTag(arr.getClass.getComponentType))
-  }
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
+    from(arraySeq)
 
   /** Creates a chunk backed by a `Chain`. */
   def chain[O](c: Chain[O]): Chunk[O] =
@@ -767,7 +797,8 @@ object Chunk
     }
 
   /** Creates a chunk with the specified values. */
-  def apply[O](os: O*): Chunk[O] = seq(os)
+  def apply[O](os: O*): Chunk[O] =
+    from(os)
 
   /** Creates a chunk backed by an array. */
   def array[O: ClassTag](values: Array[O]): Chunk[O] =
@@ -1037,7 +1068,7 @@ object Chunk
     }
 
     override def map[O2](f: Byte => O2): Chunk[O2] =
-      Chunk.indexedSeq(bv.toIndexedSeq.map(f))
+      Chunk.from(bv.toIndexedSeq.map(f))
 
     override def toByteVector[B >: Byte](implicit ev: B =:= Byte): ByteVector = bv
 
@@ -1078,7 +1109,12 @@ object Chunk
 
   /** Creates a chunk consisting of the elements of `queue`.
     */
-  def queue[A](queue: collection.immutable.Queue[A]): Chunk[A] = seq(queue)
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def queue[A](queue: collection.immutable.Queue[A]): Chunk[A] =
+    from(queue)
 
   /** Creates a chunk consisting of the first `n` elements of `queue` and returns the remainder.
     */

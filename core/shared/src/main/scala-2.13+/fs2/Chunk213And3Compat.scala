@@ -21,7 +21,7 @@
 
 package fs2
 
-import scala.collection.{Factory, SeqFactory}
+import scala.collection.{Iterable => GIterable, Factory, SeqFactory}
 import scala.collection.immutable.ArraySeq
 import scala.reflect.ClassTag
 
@@ -81,18 +81,26 @@ private[fs2] trait ChunkAsSeq213And3Compat[+O] {
 private[fs2] trait ChunkCompanion213And3Compat {
   self: Chunk.type =>
 
-  protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
+  protected def platformFrom[O](i: GIterable[O]): Option[Chunk[O]] =
     i match {
-      case a: ArraySeq[O]   => Some(arraySeq(a))
-      case w: ChunkAsSeq[O] => Some(w.chunk)
-      case _                => None
+      case arraySeq: ArraySeq[O] =>
+        val arr = arraySeq.unsafeArray.asInstanceOf[Array[O]]
+        Some(array(arr)(ClassTag[O](arr.getClass.getComponentType)))
+
+      case w: ChunkAsSeq[O] =>
+        Some(w.chunk)
+
+      case _ =>
+        None
     }
 
   /** Creates a chunk backed by an immutable `ArraySeq`. */
-  def arraySeq[O](arraySeq: ArraySeq[O]): Chunk[O] = {
-    val arr = arraySeq.unsafeArray.asInstanceOf[Array[O]]
-    array(arr)(ClassTag[O](arr.getClass.getComponentType))
-  }
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def arraySeq[O](arraySeq: ArraySeq[O]): Chunk[O] =
+    from(arraySeq)
 
   /** Creates a chunk from a `scala.collection.IterableOnce`. */
   def iterableOnce[O](i: IterableOnce[O]): Chunk[O] =
