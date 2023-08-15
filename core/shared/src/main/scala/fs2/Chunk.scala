@@ -679,6 +679,8 @@ object Chunk
         new ArraySlice(arr, 0, size)(ClassTag.Object.asInstanceOf[ClassTag[O with Object]])
     }
 
+  // Added in the "Avoid copying" spirit.
+  // It may be better removed if data shows it has little usage.
   private final class JavaListChunk[O](
       javaList: ju.List[O] with ju.RandomAccess
   ) extends Chunk[O] {
