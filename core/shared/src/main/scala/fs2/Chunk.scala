@@ -533,12 +533,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * this method does not copy data.
     * As such, this method is mostly intended for `foreach` kind of interop.
     */
-  def asSeq: Seq[O] =
+  def asSeq: IndexedSeq[O] =
     asSeqPlatform.getOrElse(this match {
       case indexedSeqChunk: Chunk.IndexedSeqChunk[_] =>
         indexedSeqChunk.s match {
-          case seq: Seq[O] =>
-            seq
+          case indexedSeq: IndexedSeq[O] =>
+            indexedSeq
 
           case _ =>
             new ChunkAsSeq(this)
@@ -1397,7 +1397,7 @@ object Chunk
 
 private[fs2] final class ChunkAsSeq[+O](
     private[fs2] val chunk: Chunk[O]
-) extends Seq[O]
+) extends IndexedSeq[O]
     with ChunkAsSeqPlatform[O]
     with Serializable {
   override def iterator: Iterator[O] =
@@ -1432,13 +1432,13 @@ private[fs2] final class ChunkAsSeq[+O](
     if (chunk.nonEmpty) chunk.apply(chunk.size - 1)
     else throw new NoSuchElementException("tail of empty Seq")
 
-  override def filter(p: O => Boolean): Seq[O] =
+  override def filter(p: O => Boolean): IndexedSeq[O] =
     new ChunkAsSeq(chunk.filter(p))
 
-  override def take(n: Int): Seq[O] =
+  override def take(n: Int): IndexedSeq[O] =
     new ChunkAsSeq(chunk.take(n))
 
-  override def takeRight(n: Int): Seq[O] =
+  override def takeRight(n: Int): IndexedSeq[O] =
     new ChunkAsSeq(chunk.takeRight(n))
 
   override def toArray[O2 >: O: ClassTag]: Array[O2] =

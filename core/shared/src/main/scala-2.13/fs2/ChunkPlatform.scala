@@ -26,7 +26,7 @@ import scala.collection.immutable.ArraySeq
 private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
   self: Chunk[O] =>
 
-  def asSeqPlatform: Option[Seq[O]] =
+  def asSeqPlatform: Option[IndexedSeq[O]] =
     this match {
       case arraySlice: Chunk.ArraySlice[_] =>
         Some(

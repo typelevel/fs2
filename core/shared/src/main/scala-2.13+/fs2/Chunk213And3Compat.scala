@@ -57,13 +57,13 @@ private[fs2] trait ChunkAsSeq213And3Compat[+O] {
     math.min(len, xs.length - start)
   }
 
-  override def map[O2](f: O => O2): Seq[O2] =
+  override def map[O2](f: O => O2): IndexedSeq[O2] =
     new ChunkAsSeq(chunk.map(f))
 
-  override def zipWithIndex: Seq[(O, Int)] =
+  override def zipWithIndex: IndexedSeq[(O, Int)] =
     new ChunkAsSeq(chunk.zipWithIndex)
 
-  override def tapEach[U](f: O => U): Seq[O] = {
+  override def tapEach[U](f: O => U): IndexedSeq[O] = {
     chunk.foreach { o => f(o); () }
     this
   }
@@ -71,10 +71,10 @@ private[fs2] trait ChunkAsSeq213And3Compat[+O] {
   override def to[C1](factory: Factory[O, C1]): C1 =
     chunk.to(factory)
 
-  override val iterableFactory: SeqFactory[Seq] =
+  override val iterableFactory: SeqFactory[IndexedSeq] =
     ArraySeq.untagged
 
-  override val empty: Seq[O] =
+  override val empty: IndexedSeq[O] =
     new ChunkAsSeq(Chunk.empty)
 }
 

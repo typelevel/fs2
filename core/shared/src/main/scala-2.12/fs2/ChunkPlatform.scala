@@ -29,7 +29,7 @@ import scala.reflect.ClassTag
 private[fs2] trait ChunkPlatform[+O] {
   self: Chunk[O] =>
 
-  def asSeqPlatform: Option[Seq[O]] =
+  def asSeqPlatform: Option[IndexedSeq[O]] =
     None
 }
 
@@ -42,11 +42,11 @@ private[fs2] trait ChunkAsSeqPlatform[+O] {
   override def copyToArray[O2 >: O](xs: Array[O2], start: Int, len: Int): Unit =
     chunk.take(len).copyToArray(xs, start)
 
-  override def map[O2, That](f: O ⇒ O2)(implicit bf: CanBuildFrom[Seq[O], O2, That]): That =
+  override def map[O2, That](f: O ⇒ O2)(implicit bf: CanBuildFrom[IndexedSeq[O], O2, That]): That =
     new ChunkAsSeq(chunk.map(f)).asInstanceOf[That]
 
   override def zipWithIndex[O2 >: O, That](implicit
-      bf: CanBuildFrom[Seq[O], (O2, Int), That]
+      bf: CanBuildFrom[IndexedSeq[O], (O2, Int), That]
   ): That =
     new ChunkAsSeq(chunk.zipWithIndex).asInstanceOf[That]
 
@@ -55,10 +55,10 @@ private[fs2] trait ChunkAsSeqPlatform[+O] {
   ): Col[O @uncheckedVariance] =
     chunk.to(cbf)
 
-  override def genericBuilder[B]: Builder[B, Seq[B]] =
+  override def genericBuilder[B]: Builder[B, IndexedSeq[B]] =
     Vector.newBuilder
 
-  override def companion: GenericCompanion[Seq] =
+  override def companion: GenericCompanion[IndexedSeq] =
     Vector
 }
 
