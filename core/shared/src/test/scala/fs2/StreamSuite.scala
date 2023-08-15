@@ -1031,6 +1031,13 @@ class StreamSuite extends Fs2Suite {
     assertEquals(countChunks(source), 2)
   }
 
+  test("rechunkRandomly sometimes emits everything in a single chunk") {
+    val fiveChunks = Stream(1) ++ Stream(2) ++ Stream(3) ++ Stream(4) ++ Stream(5)
+
+    val source = fiveChunks.rechunkRandomlyWithSeed(0.1, 2.0)(5).chunks.toList
+    assert(source.forall(_.size <= 2), "Some Chunks have larger size than maxFactor * chunkSize")
+  }
+
   group("Stream[F, Either[Throwable, O]]") {
     test(".evalMap(_.pure.rethrow).mask <-> .rethrow.mask") {
       forAllF { (stream: Stream[Pure, Int]) =>

@@ -2379,7 +2379,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.suspend {
       assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
       val random = new scala.util.Random(seed)
-      def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
+      def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor + 1e-4
 
       def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
 
@@ -2390,10 +2390,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             if (acc.size < size)
               go(acc ++ hd, size, tl)
             else if (acc.size == size)
-              Pull.output(acc) >> go(hd, size, tl)
+              Pull.output(acc) >> go(hd, -1, tl)
             else {
               val (out, rem) = acc.splitAt(size - 1)
-              Pull.output(out) >> go(rem ++ hd, -1, tl)
+              Pull.output(out) >> go(rem, -1, s)
             }
           case None =>
             Pull.output(acc)
