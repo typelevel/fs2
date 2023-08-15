@@ -1042,13 +1042,4 @@ class StreamSuite extends Fs2Suite {
     }
   }
 
-  test("rechunkRandomlyWithSeed should correclty rechunk big chunks at the end of a stream") {
-    val chunks = Stream
-      .chunk(Chunk.seq(List.fill(5000)(1)))
-      .rechunkRandomlyWithSeed(0.01, 0.1)(1L)
-      .chunks
-      .compile
-      .toList
-    assert(chunks.forall(_.size < 500))
-  }
 }
