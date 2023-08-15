@@ -563,10 +563,13 @@ object text {
 
   /** Transforms a stream of `String` to a stream of `Char`. */
   def string2char[F[_]]: Pipe[F, String, Char] =
-    _.map(s => Chunk.charBuffer(CharBuffer.wrap(s))).flatMap(Stream.chunk)
+    _.flatMap(s => Stream.chunk(Chunk.charBuffer(CharBuffer.wrap(s))))
 
   /** Transforms a stream of `Char` to a stream of `String`. */
-  def char2string[F[_]]: Pipe[F, Char, String] = _.chunks.map(_.mkString_(""))
+  def char2string[F[_]]: Pipe[F, Char, String] = _.chunks.map { chunk =>
+    val Chunk.ArraySlice(chars, offset, length) = chunk.toArraySlice
+    new String(chars, offset, length)
+  }
 
   class LineTooLongException(val length: Int, val max: Int)
       extends RuntimeException(
