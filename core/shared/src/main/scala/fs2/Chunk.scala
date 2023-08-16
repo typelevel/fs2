@@ -1533,6 +1533,9 @@ private[fs2] final class ChunkAsSeq[+O](
       case thatChunkWrapper: ChunkAsSeq[_] =>
         chunk == thatChunkWrapper.chunk
 
+      case seq: GSeq[_] =>
+        chunk.iterator.sameElements(seq.iterator)
+
       case _ =>
         false
     }
