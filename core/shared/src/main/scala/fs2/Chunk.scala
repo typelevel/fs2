@@ -1180,13 +1180,40 @@ object Chunk
     override def reverseIterator: Iterator[O] = chunks.reverseIterator.flatMap(_.reverseIterator)
 
     override def ++[O2 >: O](that: Chunk[O2]): Chunk[O2] =
-      if (that.isEmpty) this
-      else if (isEmpty) that
-      else new Queue(chunks :+ that, size + that.size)
+      if (that.isEmpty)
+        this
+      else if (this.isEmpty)
+        that
+      else
+        that match {
+          case q: Queue[O2] =>
+            new Queue(
+              q.chunks ++ this.chunks,
+              this.size + q.size
+            )
+
+          case _ =>
+            new Queue(
+              that +: this.chunks,
+              this.size + that.size
+            )
+        }
 
     /** Prepends a chunk to the start of this chunk queue. */
     def +:[O2 >: O](c: Chunk[O2]): Queue[O2] =
-      if (c.isEmpty) this
+      if (c.isEmpty)
+        this
+      else if (this.isEmpty)
+        c match {
+          case q: Queue[O2] =>
+            q
+
+          case _ =>
+            new Queue(
+              chunks = collection.immutable.Queue(c),
+              size = c.size
+            )
+        }
       else
         c match {
           case q: Queue[O2] =>
@@ -1204,7 +1231,19 @@ object Chunk
 
     /** Appends a chunk to the end of this chunk queue. */
     def :+[O2 >: O](c: Chunk[O2]): Queue[O2] =
-      if (c.isEmpty) this
+      if (c.isEmpty)
+        this
+      else if (this.isEmpty)
+        c match {
+          case q: Queue[O2] =>
+            q
+
+          case _ =>
+            new Queue(
+              chunks = collection.immutable.Queue(c),
+              size = c.size
+            )
+        }
       else
         c match {
           case q: Queue[O2] =>
