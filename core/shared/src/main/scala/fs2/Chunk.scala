@@ -1560,11 +1560,7 @@ private[fs2] final class ChunkAsSeq[+O](
 
   override def hashCode: Int = {
     import util.hashing.MurmurHash3
-    var h = MurmurHash3.stringHash("ChunkAsSeq")
-    chunk.foreach { o =>
-      h = MurmurHash3.mix(h, o.##)
-    }
-    MurmurHash3.finalizeHash(h, chunk.size)
+    MurmurHash3.indexedSeqHash(this, seed = MurmurHash3.seqSeed)
   }
 
   override def equals(that: Any): Boolean =
