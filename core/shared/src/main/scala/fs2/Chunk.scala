@@ -1519,6 +1519,15 @@ private[fs2] final class ChunkAsSeq[+O](
   override def toString: String =
     chunk.iterator.mkString("ChunkAsSeq(", ", ", ")")
 
+  override def hashCode: Int = {
+    import util.hashing.MurmurHash3
+    var h = MurmurHash3.stringHash("ChunkAsSeq")
+    chunk.foreach { o =>
+      h = MurmurHash3.mix(h, o.##)
+    }
+    MurmurHash3.finalizeHash(h, chunk.size)
+  }
+
   override def equals(that: Any): Boolean =
     that match {
       case thatChunkWrapper: ChunkAsSeq[_] =>
