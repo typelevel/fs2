@@ -1186,11 +1186,39 @@ object Chunk
 
     /** Prepends a chunk to the start of this chunk queue. */
     def +:[O2 >: O](c: Chunk[O2]): Queue[O2] =
-      if (c.isEmpty) this else new Queue(c +: chunks, c.size + size)
+      if (c.isEmpty) this
+      else
+        c match {
+          case q: Queue[O2] =>
+            new Queue(
+              q.chunks ++ this.chunks,
+              this.size + q.size
+            )
+
+          case _ =>
+            new Queue(
+              c +: this.chunks,
+              this.size + c.size
+            )
+        }
 
     /** Appends a chunk to the end of this chunk queue. */
     def :+[O2 >: O](c: Chunk[O2]): Queue[O2] =
-      if (c.isEmpty) this else new Queue(chunks :+ c, size + c.size)
+      if (c.isEmpty) this
+      else
+        c match {
+          case q: Queue[O2] =>
+            new Queue(
+              this.chunks ++ q.chunks,
+              this.size + q.size
+            )
+
+          case _ =>
+            new Queue(
+              this.chunks :+ c,
+              this.size + c.size
+            )
+        }
 
     def apply(i: Int): O = {
       if (i < 0 || i >= size) throw new IndexOutOfBoundsException()
