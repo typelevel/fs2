@@ -1362,7 +1362,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .chunks
         .compile
         .toList
-      assert(chunks.forall(_.size < 500))
+      assert(chunks.forall(_.size <= 500))
     }
   }
 

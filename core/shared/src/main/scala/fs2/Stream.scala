@@ -2378,44 +2378,45 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] =
     Stream.suspend {
       assert(maxFactor >= minFactor, "maxFactor should be greater or equal to minFactor")
-      val random = new scala.util.Random(seed)
-      def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
-
-      def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
-
-      def go(
-          acc: Chunk[O],
-          sizeOpt: Int,
-          lastChunkSize: Int,
-          s: Pull[F2, O, Unit]
-      ): Pull[F2, O, Unit] = {
-
-        val size = if (sizeOpt > 0) sizeOpt else nextSize(lastChunkSize)
-
-        if (acc.size < size)
-          s.uncons.flatMap {
-            case None => Pull.output(acc)
-            case Some((hd, tl)) =>
-              go(acc ++ hd, size, hd.size, tl)
-          }
-        else if (acc.size == size)
-          Pull.output(acc) >>
-            s.uncons.flatMap {
-              case None => Pull.done
-              case Some((hd, tl)) =>
-                go(hd, size, hd.size, tl)
-            }
-        else {
-          val (out, rem) = acc.splitAt(size - 1)
-          Pull.output(out) >> go(rem, -1, lastChunkSize, s)
-
-        }
-
-      }
 
       underlying.uncons.flatMap {
         case None => Pull.done
         case Some((hd, tl)) =>
+          val random = new scala.util.Random(seed)
+          def factor: Double = Math.abs(random.nextInt()) % (maxFactor - minFactor) + minFactor
+
+          def nextSize(sourceSize: Int): Int = (factor * sourceSize).toInt
+
+          def go(
+              acc: Chunk[O],
+              sizeOpt: Int,
+              lastChunkSize: Int,
+              s: Pull[F2, O, Unit]
+          ): Pull[F2, O, Unit] = {
+
+            val size = if (sizeOpt > 0) sizeOpt else nextSize(lastChunkSize)
+
+            if (acc.size < size)
+              s.uncons.flatMap {
+                case None => Pull.output(acc)
+                case Some((hd, tl)) =>
+                  go(acc ++ hd, size, hd.size, tl)
+              }
+            else if (acc.size == size)
+              Pull.output(acc) >>
+                s.uncons.flatMap {
+                  case None => Pull.done
+                  case Some((hd, tl)) =>
+                    go(hd, size, hd.size, tl)
+                }
+            else {
+              val (out, rem) = acc.splitAt(size - 1)
+              Pull.output(out) >> go(rem, -1, lastChunkSize, s)
+
+            }
+
+          }
+
           go(hd, -1, hd.size, tl)
       }.stream
     }
