@@ -265,4 +265,20 @@ class ChannelSuite extends Fs2Suite {
     p._1F.assertEquals(v.take(capacity))
     p._2F.assertEquals(true)
   }
+
+  test("racing send and sendAndClose should work in bounded case") {
+    val test = Channel.bounded[IO, Int](2).flatMap { ch =>
+      ch.send(0).both(ch.sendAndClose(1))
+    }
+    test.assertEquals((Right(()), Right(())))
+  }
+
+  test("racing send and sendAndClose should work in unbounded case") {
+    val test = Channel.unbounded[IO, Int].flatMap { ch =>
+      ch.send(0).both(ch.sendAndClose(1))
+    }
+
+    test.assertEquals((Right(()), Right(())))
+  }
+
 }

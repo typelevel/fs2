@@ -157,7 +157,7 @@ object Channel {
             .drain
         }
 
-        def send(a: A) =
+        def sendImpl(a: A, close: Boolean) =
           F.deferred[Unit].flatMap { producer =>
             state.flatModifyFull { case (poll, state) =>
               state match {
@@ -170,6 +170,11 @@ object Channel {
                       State(a :: values, size + 1, None, producers, false),
                       notifyStream(waiting).as(rightUnit)
                     )
+                  else if (close)
+                    (
+                      State(values, size, None, producers, true),
+                      notifyStream(waiting).as(rightUnit) <* signalClosure
+                    )
                   else
                     (
                       State(values, size, None, (a, producer) :: producers, false),
@@ -178,6 +183,10 @@ object Channel {
               }
             }
           }
+
+        def send(a: A) = sendImpl(a, false)
+
+        def sendAndClose(a: A) = sendImpl(a, true)
 
         def trySend(a: A) =
           state.flatModify {
@@ -192,28 +201,6 @@ object Channel {
                 )
               else
                 (s, rightFalse.pure[F])
-          }
-
-        def sendAndClose(a: A) =
-          F.deferred[Unit].flatMap { producer =>
-            state.flatModifyFull { case (_, state) =>
-              state match {
-                case s @ State(_, _, _, _, closed @ true) =>
-                  (s, Channel.closed[Unit].pure[F])
-
-                case State(values, size, waiting, producers, closed @ false) =>
-                  if (size < capacity)
-                    (
-                      State(a :: values, size + 1, None, producers, false),
-                      notifyStream(waiting).as(rightUnit)
-                    )
-                  else
-                    (
-                      State(values, size, None, (a, producer) :: producers, true),
-                      notifyStream(waiting).as(rightUnit) <* signalClosure
-                    )
-              }
-            }
           }
 
         def close =
