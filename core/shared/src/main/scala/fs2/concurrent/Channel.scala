@@ -110,6 +110,12 @@ sealed trait Channel[F[_], A] {
     */
   def close: F[Either[Channel.Closed, Unit]]
 
+  /** Sends an element through this channel, and closes it right after.
+    *
+    * No-op if the channel is closed, see [[close]] for further info.
+    */
+  def sendAndClose(a: A): F[Either[Channel.Closed, Unit]]
+
   /** Returns true if this channel is closed */
   def isClosed: F[Boolean]
 
@@ -186,6 +192,28 @@ object Channel {
                 )
               else
                 (s, rightFalse.pure[F])
+          }
+
+        def sendAndClose(a: A) =
+          F.deferred[Unit].flatMap { producer =>
+            state.flatModifyFull { case (_, state) =>
+              state match {
+                case s @ State(_, _, _, _, closed @ true) =>
+                  (s, Channel.closed[Unit].pure[F])
+
+                case State(values, size, waiting, producers, closed @ false) =>
+                  if (size < capacity)
+                    (
+                      State(a :: values, size + 1, None, producers, false),
+                      notifyStream(waiting).as(rightUnit)
+                    )
+                  else
+                    (
+                      State(values, size, None, (a, producer) :: producers, true),
+                      notifyStream(waiting).as(rightUnit) <* signalClosure
+                    )
+              }
+            }
           }
 
         def close =
