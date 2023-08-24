@@ -273,7 +273,12 @@ class ChannelSuite extends Fs2Suite {
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
+    val test2 = Channel.bounded[IO, Int](1).flatMap { ch =>
+      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
+    }
+
     test.assertEquals(((Right(()), Right(())), List(0, 1)))
+    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
   }
 
   test("racing send and sendAndClose should work in bounded(2) case") {
@@ -281,7 +286,12 @@ class ChannelSuite extends Fs2Suite {
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
+    val test2 = Channel.bounded[IO, Int](2).flatMap { ch =>
+      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
+    }
+
     test.assertEquals(((Right(()), Right(())), List(0, 1)))
+    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
   }
 
   test("racing send and sendAndClose should work in unbounded case") {
@@ -289,7 +299,12 @@ class ChannelSuite extends Fs2Suite {
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
+    val test2 = Channel.unbounded[IO, Int].flatMap { ch =>
+      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
+    }
+
     test.assertEquals(((Right(()), Right(())), List(0, 1)))
+    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
   }
 
   test("racing send and sendAndClose should work in synchronous case") {
@@ -297,6 +312,12 @@ class ChannelSuite extends Fs2Suite {
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
+    val test2 = Channel.synchronous[IO, Int].flatMap { ch =>
+      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
+    }
+
     test.assertEquals(((Right(()), Right(())), List(0, 1)))
+    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
   }
+
 }
