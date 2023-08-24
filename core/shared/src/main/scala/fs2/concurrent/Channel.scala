@@ -167,12 +167,12 @@ object Channel {
                 case State(values, size, waiting, producers, closed @ false) =>
                   if (size < capacity)
                     (
-                      State(a :: values, size + 1, None, producers, false),
+                      State(a :: values, size + 1, None, producers, close),
                       signalClosure.whenA(close) *> notifyStream(waiting).as(rightUnit)
                     )
                   else
                     (
-                      State(values, size, None, (a, producer) :: producers, false),
+                      State(values, size, None, (a, producer) :: producers, close),
                       signalClosure.whenA(close) *>
                         notifyStream(waiting).as(rightUnit) <*
                         waitOnBound(producer, poll)
