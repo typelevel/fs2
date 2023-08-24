@@ -252,8 +252,16 @@ class ChannelSuite extends Fs2Suite {
     TestControl.executeEmbed(test)
   }
 
-  test("sendAndClose closes right after sending the last element") {
+  test("sendAndClose closes right after sending the last element (bounded case)") {
     val result = Channel.bounded[IO, Int](1).flatMap { ch =>
+      ch.sendAndClose(0) *> ch.isClosed
+    }
+
+    result.assertEquals(true)
+  }
+
+  test("sendAndClose closes right after sending the last element (unbounded case)") {
+    val result = Channel.unbounded[IO, Int].flatMap { ch =>
       ch.sendAndClose(0) *> ch.isClosed
     }
 
