@@ -168,17 +168,14 @@ object Channel {
                   if (size < capacity)
                     (
                       State(a :: values, size + 1, None, producers, false),
-                      notifyStream(waiting).as(rightUnit)
-                    )
-                  else if (close)
-                    (
-                      State(values, size, None, producers, true),
-                      notifyStream(waiting).as(rightUnit) <* signalClosure
+                      signalClosure.whenA(close) *> notifyStream(waiting).as(rightUnit)
                     )
                   else
                     (
                       State(values, size, None, (a, producer) :: producers, false),
-                      notifyStream(waiting).as(rightUnit) <* waitOnBound(producer, poll)
+                      signalClosure.whenA(close) *>
+                        notifyStream(waiting).as(rightUnit) <*
+                        waitOnBound(producer, poll)
                     )
               }
             }

@@ -253,17 +253,11 @@ class ChannelSuite extends Fs2Suite {
   }
 
   test("sendAndClose closes right after sending the last element") {
-    val v = Vector(1, 2, 3, 4)
-    val capacity = 3
-    val p = for {
-      chan <- Channel.bounded[IO, Int](capacity)
-      _ <- v.traverse(chan.sendAndClose)
-      isClosed <- chan.isClosed
-      res <- chan.stream.chunks.take(1).compile.lastOrError
-    } yield (res.toVector, isClosed)
+    val result = Channel.bounded[IO, Int](1).flatMap { ch =>
+      ch.sendAndClose(0) *> ch.isClosed
+    }
 
-    p._1F.assertEquals(v.take(capacity))
-    p._2F.assertEquals(true)
+    result.assertEquals(true)
   }
 
   test("racing send and sendAndClose should work in bounded case") {
