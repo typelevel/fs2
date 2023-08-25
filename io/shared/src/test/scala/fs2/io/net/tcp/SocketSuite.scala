@@ -280,5 +280,21 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
+
+    test("endOfOutput / endOfInput ignores ENOTCONN") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        Network[IO].client(bindAddress).surround(IO.sleep(100.millis)).background.surround {
+          clients
+            .take(1)
+            .foreach { socket =>
+              socket.write(Chunk.array("fs2.rocks".getBytes)) *>
+                IO.sleep(1.second) *>
+                socket.endOfOutput *> socket.endOfInput
+            }
+            .compile
+            .drain
+        }
+      }
+    }
   }
 }

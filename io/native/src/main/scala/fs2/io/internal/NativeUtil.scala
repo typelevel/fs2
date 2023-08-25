@@ -40,7 +40,10 @@ private[io] object NativeUtil {
     ()
   }
 
-  @alwaysinline def guard(thunk: => CInt): CInt = {
+  @alwaysinline def guard(thunk: => CInt): CInt =
+    guardMask(thunk)(e => e == EAGAIN || e == EWOULDBLOCK)
+
+  @alwaysinline def guardSSize(thunk: => CSSize): CSSize = {
     val rtn = thunk
     if (rtn < 0) {
       val e = errno
@@ -51,12 +54,16 @@ private[io] object NativeUtil {
       rtn
   }
 
-  @alwaysinline def guardSSize(thunk: => CSSize): CSSize = {
+  @alwaysinline def guardMask_(thunk: => CInt)(mask: Int => Boolean): Unit = {
+    guardMask(thunk)(mask)
+    ()
+  }
+
+  @alwaysinline def guardMask(thunk: => CInt)(mask: Int => Boolean): CInt = {
     val rtn = thunk
     if (rtn < 0) {
       val e = errno
-      if (e == EAGAIN || e == EWOULDBLOCK)
-        rtn
+      if (mask(e)) rtn
       else throw errnoToThrowable(e)
     } else
       rtn

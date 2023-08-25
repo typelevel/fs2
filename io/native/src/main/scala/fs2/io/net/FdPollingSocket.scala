@@ -34,6 +34,7 @@ import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
 
 import scala.scalanative.meta.LinktimeInfo
+import scala.scalanative.posix.errno._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd
 import scala.scalanative.unsafe._
@@ -51,8 +52,11 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
 )(implicit F: Async[F])
     extends Socket[F] {
 
-  def endOfInput: F[Unit] = F.delay(guard_(shutdown(fd, 0)))
-  def endOfOutput: F[Unit] = F.delay(guard_(shutdown(fd, 1)))
+  def endOfInput: F[Unit] = shutdownF(0)
+  def endOfOutput: F[Unit] = shutdownF(1)
+  private[this] def shutdownF(how: Int): F[Unit] = F.delay {
+    guardMask_(shutdown(fd, how))(_ == ENOTCONN)
+  }
 
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readBuffer.get(maxBytes).use { buf =>
     handle
