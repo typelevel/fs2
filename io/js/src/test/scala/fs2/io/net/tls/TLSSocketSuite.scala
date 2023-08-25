@@ -269,23 +269,23 @@ class TLSSocketSuite extends TLSSuite {
           .flatMap { case (server, clientSocket) =>
             val echoServer = server
               .evalTap(s => s.applicationProtocol.assertEquals("h2"))
-              .map { socket =>
-                socket.reads.chunks.foreach(socket.write(_)) ++ Stream.exec(socket.session.void)
+              .flatMap { socket =>
+                Stream
+                  .eval(socket.session)
+                  .concurrently(socket.reads.chunks.foreach(socket.write(_)))
               }
-              .parJoinUnbounded
 
             val client = Stream.resource(clientSocket).flatMap { clientSocket =>
               Stream.exec(clientSocket.applicationProtocol.assertEquals("h2")) ++
                 Stream.exec(clientSocket.session.void) ++
                 Stream.exec(clientSocket.write(msg)) ++
-                clientSocket.reads.take(msg.size.toLong)
+                Stream.eval(clientSocket.readN(msg.size).assertEquals(msg))
             }
 
-            client.concurrently(echoServer)
+            client.parZip(echoServer)
           }
           .compile
-          .to(Chunk)
-          .assertEquals(msg)
+          .drain
       }
     }
 
@@ -359,6 +359,47 @@ class TLSSocketSuite extends TLSSuite {
         .compile
         .to(Chunk)
         .intercept[SSLException]
+    }
+
+    test("get local and remote address") {
+      val setup = for {
+        tlsContext <- Resource.eval(testTlsContext(true))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
+        client = Network[IO]
+          .client(serverAddress)
+          .flatMap(
+            tlsContext
+              .clientBuilder(_)
+              .withParameters(
+                TLSParameters(checkServerIdentity =
+                  Some((sn, _) => Either.cond(sn == "localhost", (), new RuntimeException()))
+                )
+              )
+              .build
+          )
+      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clientSocket) =>
+          val serverSocketAddresses = server.evalMap { socket =>
+            socket.localAddress.product(socket.remoteAddress)
+          }
+
+          val clientSocketAddresses =
+            Stream.resource(clientSocket).evalMap { socket =>
+              socket.localAddress.product(socket.remoteAddress)
+            }
+
+          serverSocketAddresses.parZip(clientSocketAddresses).map {
+            case ((serverLocal, serverRemote), (clientLocal, clientRemote)) =>
+              assertEquals(clientRemote, serverLocal)
+              assertEquals(clientLocal, serverRemote)
+          }
+        }
+        .compile
+        .drain
     }
   }
 }

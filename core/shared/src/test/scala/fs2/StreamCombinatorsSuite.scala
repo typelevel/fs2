@@ -41,18 +41,20 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   group("awakeEvery") {
     test("basic") {
-      Stream
-        .awakeEvery[IO](500.millis)
-        .map(_.toMillis)
-        .take(5)
-        .compile
-        .toVector
-        .map { r =>
-          r.sliding(2)
-            .map(s => (s.head, s.tail.head))
-            .map { case (prev, next) => next - prev }
-            .foreach(delta => assert(delta >= 350L && delta <= 650L))
-        }
+      TestControl.executeEmbed {
+        Stream
+          .awakeEvery[IO](500.millis)
+          .map(_.toMillis)
+          .take(5)
+          .compile
+          .toVector
+          .map { r =>
+            r.sliding(2)
+              .map(s => (s.head, s.tail.head))
+              .map { case (prev, next) => next - prev }
+              .foreach(delta => assert(clue(delta) == 500L))
+          }
+      }
     }
 
     test("liveness") {
@@ -65,17 +67,17 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(1.nanos).assertEmitsSameAs(input)
+      TestControl.executeEmbed(input.metered(1.nanos).assertEmitsSameAs(input))
     }
 
     test("very short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(0.3.nanos).assertEmitsSameAs(input)
+      TestControl.executeEmbed(input.metered(0.3.nanos).assertEmitsSameAs(input))
     }
 
     test("zero-length periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
-      input.metered(0.nanos).assertEmitsSameAs(input)
+      TestControl.executeEmbed(input.metered(0.nanos).assertEmitsSameAs(input))
     }
 
     test("dampening") {
@@ -90,7 +92,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .toVector
         .map { v =>
           val elapsed = v.last - v.head
-          assert(elapsed > count * period)
+          assert(clue(elapsed) > count * period)
         }
     }
   }
@@ -261,19 +263,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
   test("duration") {
     val delay = 200.millis
-    Stream
-      .emit(())
-      .append(Stream.eval(IO.sleep(delay)))
-      .zip(Stream.duration[IO])
-      .drop(1)
-      .map(_._2)
-      .compile
-      .toVector
-      .map { result =>
-        assertEquals(result.size, 1)
-        val head = result.head
-        assert(clue(head.toMillis) >= clue(delay.toMillis - 5))
-      }
+    TestControl.executeEmbed {
+      Stream.unit
+        .append(Stream.sleep[IO](delay))
+        .zipRight(Stream.duration[IO])
+        .tail
+        .compile
+        .toVector
+        .map { result =>
+          assertEquals(clue(result.size), 1)
+          assert(clue(result.head.toMillis) == clue(delay.toMillis))
+        }
+    }
   }
 
   test("either") {
@@ -566,6 +567,40 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  group("filterNot") {
+    property("1") {
+      forAll { (s: Stream[Pure, Int], n0: Int) =>
+        val n = (n0 % 20).abs + 1
+        val predicate = (i: Int) => i % n == 0
+        s.filterNot(predicate).assertEmits(s.toList.filterNot(predicate))
+      }
+    }
+
+    property("2") {
+      forAll { (s: Stream[Pure, Double]) =>
+        val predicate = (i: Double) => i - i.floor < 0.5
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
+        assertEquals(s2.filterNot(predicate).toList, s2.toList.filterNot(predicate))
+      }
+    }
+
+    property("3") {
+      forAll { (s: Stream[Pure, Byte]) =>
+        val predicate = (b: Byte) => b < 0
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
+        s2.filterNot(predicate).assertEmits(s2.toList.filterNot(predicate))
+      }
+    }
+
+    property("4") {
+      forAll { (s: Stream[Pure, Boolean]) =>
+        val predicate = (b: Boolean) => !b
+        val s2 = s.mapChunks(c => Chunk.array(c.toArray))
+        s2.filterNot(predicate).assertEmits(s2.toList.filterNot(predicate))
+      }
+    }
+  }
+
   property("find") {
     forAll { (s: Stream[Pure, Int], i: Int) =>
       val predicate = (item: Int) => item < i
@@ -681,45 +716,47 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   group("groupWithin") {
+    implicit val groupSizeArb: Arbitrary[Int] = Arbitrary(Gen.choose(1, 20))
+    implicit val timeoutArb: Arbitrary[FiniteDuration] = Arbitrary(Gen.choose(0, 50).map(_.millis))
+
+    def sleep(d: Int): IO[Unit] = IO.sleep((d % 500).abs.micros)
+
     test("should never lose any elements") {
-      forAllF { (s0: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
-        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
-        val d = (d0 % 50).abs.millis
-        val s = s0.map(i => (i % 500).abs)
-        s.covary[IO]
-          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
-          .groupWithin(maxGroupSize, d)
-          .flatMap(s => Stream.emits(s.toList))
-          .assertEmitsSameAs(s)
+      forAllF { (s: Stream[Pure, Int], timeout: FiniteDuration, groupSize: Int) =>
+        TestControl.executeEmbed {
+          s.covary[IO]
+            .evalTap(sleep)
+            .groupWithin(groupSize, timeout)
+            .flatMap(Stream.chunk)
+            .assertEmitsSameAs(s)
+        }
       }
     }
 
     test("should never emit empty groups") {
-      forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
-        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
-        val d = (d0 % 50).abs.millis
-
-        s
-          .map(i => (i % 500).abs)
-          .covary[IO]
-          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
-          .groupWithin(maxGroupSize, d)
-          .compile
-          .toList
-          .map(it => assert(it.forall(_.nonEmpty)))
+      forAllF { (s: Stream[Pure, Int], timeout: FiniteDuration, groupSize: Int) =>
+        TestControl.executeEmbed {
+          s
+            .covary[IO]
+            .evalTap(sleep)
+            .groupWithin(groupSize, timeout)
+            .compile
+            .toList
+            .map(it => assert(it.forall(_.nonEmpty)))
+        }
       }
     }
 
     test("should never have more elements than in its specified limit") {
-      forAllF { (s: Stream[Pure, Int], d0: Int, maxGroupSize0: Int) =>
-        val maxGroupSize = (maxGroupSize0 % 20).abs + 1
-        val d = (d0 % 50).abs.millis
-        s.map(i => (i % 500).abs)
-          .evalTap(shortDuration => IO.sleep(shortDuration.micros))
-          .groupWithin(maxGroupSize, d)
-          .compile
-          .toList
-          .map(it => assert(it.forall(_.size <= maxGroupSize)))
+      forAllF { (s: Stream[Pure, Int], timeout: FiniteDuration, groupSize: Int) =>
+        TestControl.executeEmbed {
+          s
+            .evalTap(sleep)
+            .groupWithin(groupSize, timeout)
+            .compile
+            .toList
+            .map(it => assert(it.forall(_.size <= groupSize)))
+        }
       }
     }
 
@@ -730,7 +767,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       val groupedWithin = s.covary[IO].groupWithin(size, 1.second).map(_.toList)
       val expected = s.chunkN(size).map(_.toList)
 
-      groupedWithin.assertEmitsSameAs(expected)
+      TestControl.executeEmbed(groupedWithin.assertEmitsSameAs(expected))
     }
 
     test(
@@ -738,18 +775,20 @@ class StreamCombinatorsSuite extends Fs2Suite {
     ) {
       forAllF { (streamAsList0: List[Int]) =>
         val streamAsList = 0 :: streamAsList0
-        Stream
-          .emits(streamAsList)
-          .covary[IO]
-          .groupWithin(streamAsList.size, (Int.MaxValue - 1L).nanoseconds)
-          .compile
-          .toList
-          .map(_.head.toList)
-          .assertEquals(streamAsList)
+        TestControl.executeEmbed {
+          Stream
+            .emits(streamAsList)
+            .covary[IO]
+            .groupWithin(streamAsList.size, (Int.MaxValue - 1L).nanoseconds)
+            .compile
+            .toList
+            .map(_.head.toList)
+            .assertEquals(streamAsList)
+        }
       }
     }
 
-    test("accumulation and splitting".flaky) {
+    test("accumulation and splitting") {
       val t = 200.millis
       val size = 5
       val sleep = Stream.sleep_[IO](2 * t)
@@ -773,7 +812,12 @@ class StreamCombinatorsSuite extends Fs2Suite {
         List(19, 20, 21, 22)
       )
 
-      source.groupWithin(size, t).map(_.toList).assertEmits(expected)
+      TestControl.executeEmbed {
+        source
+          .groupWithin(size, t)
+          .map(_.toList)
+          .assertEmits(expected)
+      }
     }
 
     test("does not reset timeout if nothing is emitted") {
@@ -890,18 +934,20 @@ class StreamCombinatorsSuite extends Fs2Suite {
     test("stress test: all elements are processed") {
       val rangeLength = 10000
 
-      Stream
-        .eval(Ref.of[IO, Int](0))
-        .flatMap { counter =>
-          Stream
-            .range(0, rangeLength)
-            .covary[IO]
-            .groupWithin(4096, 100.micros)
-            .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
-        }
-        .compile
-        .lastOrError
-        .assertEquals(rangeLength)
+      TestControl.executeEmbed {
+        Stream
+          .eval(Ref.of[IO, Int](0))
+          .flatMap { counter =>
+            Stream
+              .range(0, rangeLength)
+              .covary[IO]
+              .groupWithin(4096, 100.micros)
+              .evalTap(ch => counter.update(_ + ch.size)) *> Stream.eval(counter.get)
+          }
+          .compile
+          .lastOrError
+          .assertEquals(rangeLength)
+      }
     }
   }
 
@@ -1209,17 +1255,19 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
 
     test("starts in paused state") {
-      SignallingRef[IO, Boolean](true)
-        .product(Ref[IO].of(false))
-        .flatMap { case (pause, written) =>
-          Stream
-            .eval(written.set(true))
-            .pauseWhen(pause)
-            .timeout(200.millis)
-            .compile
-            .drain
-            .attempt >> written.get.assertEquals(false)
-        }
+      TestControl.executeEmbed {
+        SignallingRef[IO, Boolean](true)
+          .product(Ref[IO].of(false))
+          .flatMap { case (pause, written) =>
+            Stream
+              .eval(written.set(true))
+              .pauseWhen(pause)
+              .timeout(200.millis)
+              .compile
+              .drain
+              .attempt >> written.get.assertEquals(false)
+          }
+      }
     }
   }
 

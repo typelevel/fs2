@@ -1,4 +1,4 @@
-# Scodec 
+# Scodec
 
 The `fs2-scodec` library provides the ability to do streaming binary encoding and decoding, powered by [scodec](https://github.com/scodec/scodec). It was originally called [scodec-stream](https://github.com/scodec/scodec-stream) and released independently for many years before being imported in to fs2.
 

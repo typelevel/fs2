@@ -55,7 +55,7 @@ class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
   }
 
   test("empty input") {
-    Stream.empty[IO].through(sha1).compile.count.assertEquals(20L)
+    Stream.empty.covary[IO].through(sha1).compile.count.assertEquals(20L)
   }
 
   test("zero or one output") {

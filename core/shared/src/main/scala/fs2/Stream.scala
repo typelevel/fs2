@@ -29,7 +29,7 @@ import cats.data.Ior
 import cats.effect.Concurrent
 import cats.effect.kernel._
 import cats.effect.kernel.implicits._
-import cats.effect.std.{Console, Queue, QueueSink, QueueSource, Semaphore}
+import cats.effect.std.{Console, CountDownLatch, Queue, QueueSink, QueueSource, Semaphore}
 import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 import fs2.compat._
@@ -231,37 +231,33 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * 2. chunks from each pipe come out of the resulting stream in the same
     *    order as they came out of the pipe, and without skipping any chunk.
     */
-  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](
-      pipes: Pipe[F2, O, O2]*
-  ): Stream[F2, O2] = {
+  def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] = {
     assert(pipes.nonEmpty, s"pipes should not be empty")
-    Stream
-      .eval {
-        (
-          cats.effect.std.CountDownLatch[F2](pipes.length),
-          fs2.concurrent.Topic[F2, Chunk[O]]
-        ).tupled
-      }
-      .flatMap { case (latch, topic) =>
-        def produce = chunks.through(topic.publish)
+    Stream.force {
+      for {
+        // topic: contains the chunk that the pipes are processing at one point.
+        // until and unless all pipes are finished with it, won't move to next one
+        topic <- Topic[F2, Chunk[O]]
+        // Coordination: neither the producer nor any consumer starts
+        // until and unless all consumers are subscribed to topic.
+        allReady <- CountDownLatch[F2](pipes.length)
+      } yield {
+        val checkIn = allReady.release >> allReady.await
 
-        def consume(pipe: Pipe[F2, O, O2]): Pipe[F2, Chunk[O], O2] =
-          _.unchunks.through(pipe)
-
-        Stream(pipes: _*)
-          .map { pipe =>
-            Stream
-              .resource(topic.subscribeAwait(1))
-              .flatMap { sub =>
-                // crucial that awaiting on the latch is not passed to
-                // the pipe, so that the pipe cannot interrupt it and alter
-                // the latch count
-                Stream.exec(latch.release >> latch.await) ++ sub.through(consume(pipe))
-              }
+        def dump(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
+          Stream.resource(topic.subscribeAwait(1)).flatMap { sub =>
+            // Wait until all pipes are ready before consuming.
+            // Crucial: checkin is not passed to the pipe,
+            // so pipe cannot interrupt it and alter the latch count
+            Stream.exec(checkIn) ++ pipe(sub.unchunks)
           }
-          .parJoinUnbounded
-          .concurrently(Stream.eval(latch.await) ++ produce)
+
+        val dumpAll: Stream[F2, O2] = Stream(pipes: _*).map(dump).parJoinUnbounded
+        // Wait until all pipes are checked in before pulling
+        val pump = Stream.exec(allReady.await) ++ topic.publish(chunks)
+        dumpAll.concurrently(pump)
       }
+    }
   }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
@@ -1085,6 +1081,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def filter(p: O => Boolean): Stream[F, O] = mapChunks(_.filter(p))
+
+  /** Emits only inputs which do not match the supplied predicate.
+    */
+  def filterNot(p: O => Boolean): Stream[F, O] = mapChunks(_.filterNot(p))
 
   /** Like `filter`, but allows filtering based on an effect.
     *
@@ -1933,63 +1933,75 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def merge[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-    val fstream: F2[Stream[F2, O2]] = for {
-      interrupt <- F.deferred[Unit]
-      resultL <- F.deferred[Either[Throwable, Unit]]
-      resultR <- F.deferred[Either[Throwable, Unit]]
-      otherSideDone <- F.ref[Boolean](false)
-      resultChan <- Channel.unbounded[F2, Stream[F2, O2]]
-    } yield {
-
-      def watchInterrupted(str: Stream[F2, O2]): Stream[F2, O2] =
-        str.interruptWhen(interrupt.get.attempt)
-
-      // action to signal that one stream is finished, and if it is te last one
-      // then close te queue (by putting a None in it)
-      val doneAndClose: F2[Unit] = otherSideDone.getAndSet(true).flatMap {
-        // complete only if other side is done too.
-        case true  => resultChan.close.void
-        case false => F.unit
-      }
-
-      // action to interrupt the processing of both streams by completing interrupt
-      // We need to use `attempt` because `interruption` may already be completed.
-      val signalInterruption: F2[Unit] = interrupt.complete(()).void
-
-      def go(s: Stream[F2, O2], guard: Semaphore[F2]): Pull[F2, Nothing, Unit] =
-        Pull.eval(guard.acquire) >> s.pull.uncons.flatMap {
-          case Some((hd, tl)) =>
-            val send = resultChan.send(Stream.chunk(hd).onFinalize(guard.release))
-            Pull.eval(send) >> go(tl, guard)
-          case None => Pull.done
-        }
-
-      def runStream(s: Stream[F2, O2], whenDone: Deferred[F2, Either[Throwable, Unit]]): F2[Unit] =
-        // guarantee we process only single chunk at any given time from any given side.
-        Semaphore(1).flatMap { guard =>
-          val str = watchInterrupted(go(s, guard).stream)
-          str.compile.drain.attempt.flatMap {
-            // signal completion of our side before we will signal interruption,
-            // to make sure our result is always available to others
-            case r @ Left(_)  => whenDone.complete(r) >> signalInterruption
-            case r @ Right(_) => whenDone.complete(r) >> doneAndClose
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    Stream.force {
+      // `State` describes the state of an upstream stream (`this` and `that` are both upstream streams)
+      // None            : the stream has not yet terminated
+      // Some(Left(t))   : the stream terminated with an error
+      // Some(Right(())) : the stream terminated successfully
+      type State = Option[Either[Throwable, Unit]]
+      for {
+        // `bothStates` keeps track of the state of `this` and `that` stream
+        // so we can terminate downstream when both upstreams terminate.
+        bothStates <- SignallingRef.of[F2, (State, State)]((None, None))
+        // `output` is used to send chunks from upstreams to downstream.
+        // It sends streams, not chunks, to tie each chunk with a finalizer
+        output <- Channel.synchronous[F2, Stream[F2, O2]]
+        // `stopDef` is used to interrupt the upstreams if a) any of the
+        // upstreams raises an error, or b) the downstream terminates.
+        stopDef <- Deferred[F2, Unit]
+      } yield {
+        val signalStop: F2[Unit] = stopDef.complete(()).void
+        val stop: F2[Either[Throwable, Unit]] = stopDef.get.as(Right(()))
+        def complete(result: Either[Throwable, Unit]): F2[Unit] =
+          bothStates.update {
+            case (None, None)  => (Some(result), None)
+            case (other, None) => (other, Some(result))
+            case _             => sys.error("impossible")
           }
+        val bothStopped: PartialFunction[(State, State), Either[Throwable, Unit]] = {
+          case (Some(r1), Some(r2)) => CompositeFailure.fromResults(r1, r2)
         }
+        def run(s: Stream[F2, O2]): F2[Unit] =
+          // `guard` ensures we do not pull another chunk until the previous one has been consumed downstream.
+          Semaphore[F2](1).flatMap { guard =>
+            def sendChunk(chk: Chunk[O2]): F2[Unit] = {
+              val outStr = Stream.chunk(chk).onFinalize(guard.release)
+              output.send(outStr) >> guard.acquire
+            }
 
-      val atRunEnd: F2[Unit] = for {
-        _ <- signalInterruption // interrupt so the upstreams have chance to complete
-        left <- resultL.get
-        right <- resultR.get
-        r <- F.fromEither(CompositeFailure.fromResults(left, right))
-      } yield r
+            (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
+              // Stop when the other upstream has errored or the downstream has completed.
+              // This may also interrupt the initial call to `guard.acquire` as the call is made at the
+              // beginning of the stream.
+              .interruptWhen(stop)
+              .compile
+              .drain
+              .attempt
+              .flatMap {
+                case r @ Left(_) =>
+                  // On error, interrupt the other upstream and downstream.
+                  complete(r) >> signalStop
+                case r @ Right(()) => complete(r)
+              }
+          }
 
-      val runStreams = runStream(this, resultL).start >> runStream(that, resultR).start
+        val waitForBoth: F2[Unit] = bothStates.discrete
+          .collect(bothStopped)
+          .head
+          .rethrow
+          .compile
+          .drain
+          .guarantee(output.close.void)
 
-      Stream.bracket(runStreams)(_ => atRunEnd) >> watchInterrupted(resultChan.stream.flatten)
+        // There is no need to clean up these fibers. If the downstream is cancelled,
+        // both streams will stop gracefully and the fibers will complete.
+        val setup: F2[Fiber[F2, Throwable, Unit]] =
+          run(this).start >> run(that).start >> waitForBoth.start
+        Stream.bracket(setup)(wfb => signalStop >> wfb.joinWithUnit) >> output.stream.flatten
+          .interruptWhen(stop)
+      }
     }
-    Stream.eval(fstream).flatten
-  }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](
@@ -2155,34 +2167,23 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMap[F2[x] >: F[x], O2](
       maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def init(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      Deferred[F2, Either[Throwable, O2]].flatTap { value =>
-        ch.send(release *> value.get)
-      }
-
-    def send(v: Deferred[F2, Either[Throwable, O2]]) =
-      (el: Either[Throwable, O2]) => v.complete(el).void
-
-    parEvalMapAction(maxConcurrent, f)((ch, release) => init(ch, release).map(send))
-  }
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    if (maxConcurrent == 1) evalMap(f)
+    else {
+      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+      // One is taken by inner stream read.
+      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
+      val channelF = Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency)
+      parEvalMapActionImpl[F2, O2](concurrency.toLong, channelF, true, f)
+    }
 
   /** Like parEvalMap but with unbounded concurrency.
     */
   def parEvalMapUnbounded[F2[x] >: F[x], O2](f: O => F2[O2])(implicit
       F: Concurrent[F2]
   ): Stream[F2, O2] = {
-
-    def init(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      Deferred[F2, Either[Throwable, O2]].flatTap { value =>
-        ch.send(release *> value.get)
-      }
-
-    def send(v: Deferred[F2, Either[Throwable, O2]]) =
-      (el: Either[Throwable, O2]) => v.complete(el).void
-
-    parEvalMapUnboundedAction(f)((ch, release) => init(ch, release).map(send))
+    val channelF = Channel.unbounded[F2, F2[Either[Throwable, O2]]]
+    parEvalMapActionImpl(Long.MaxValue, channelF, true, f)
   }
 
   /** Like [[Stream#evalMap]], but will evaluate effects in parallel, emitting the results
@@ -2198,71 +2199,30 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def parEvalMapUnordered[F2[x] >: F[x], O2](
       maxConcurrent: Int
-  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
-
-    parEvalMapAction(maxConcurrent, f)((ch, release) => send(ch, release).pure[F2])
-  }
+  )(f: O => F2[O2])(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    if (maxConcurrent == 1) evalMap(f)
+    else {
+      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
+      // One is taken by inner stream read.
+      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
+      val channelF = Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency)
+      parEvalMapActionImpl[F2, O2](concurrency.toLong, channelF, false, f)
+    }
 
   /** Like parEvalMapUnordered but with unbounded concurrency.
     */
   def parEvalMapUnorderedUnbounded[F2[x] >: F[x], O2](
       f: O => F2[O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-
-    def send(ch: Channel[F2, F2[Either[Throwable, O2]]], release: F2[Unit]) =
-      (el: Either[Throwable, O2]) => release <* ch.send(el.pure[F2])
-
-    parEvalMapUnboundedAction(f)((ch, release) => send(ch, release).pure[F2])
+    val channelF = Channel.unbounded[F2, F2[Either[Throwable, O2]]]
+    parEvalMapActionImpl(Long.MaxValue, channelF, false, f)
   }
 
-  private def parEvalMapAction[F2[x] >: F[x], O2, T](
-      maxConcurrent: Int,
-      f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    if (maxConcurrent == 1) evalMap(f)
-    else {
-      assert(maxConcurrent > 0, "maxConcurrent must be > 0, was: " + maxConcurrent)
-
-      // One is taken by inner stream read.
-      val concurrency = if (maxConcurrent == Int.MaxValue) Int.MaxValue else maxConcurrent + 1
-      parEvalMapActionImpl[F2, O2, T](
-        concurrency.toLong,
-        Channel.bounded[F2, F2[Either[Throwable, O2]]](concurrency),
-        f
-      )(initFork)
-    }
-
-  private def parEvalMapUnboundedAction[F2[x] >: F[x], O2, T](
-      f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    parEvalMapActionImpl(
-      Long.MaxValue,
-      Channel.unbounded[F2, F2[Either[Throwable, O2]]],
-      f
-    )(initFork)
-
-  private def parEvalMapActionImpl[F2[x] >: F[x], O2, T](
+  private def parEvalMapActionImpl[F2[x] >: F[x], O2](
       concurrency: Long,
       channel: F2[Channel[F2, F2[Either[Throwable, O2]]]],
+      isOrdered: Boolean,
       f: O => F2[O2]
-  )(
-      initFork: (
-          Channel[F2, F2[Either[Throwable, O2]]],
-          F2[Unit]
-      ) => F2[Either[Throwable, O2] => F2[Unit]]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
     val action =
       (
@@ -2271,6 +2231,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         Deferred[F2, Unit],
         Deferred[F2, Unit]
       ).mapN { (semaphore, channel, stop, end) =>
+        def initFork(release: F2[Unit]): F2[Either[Throwable, O2] => F2[Unit]] = {
+          def ordered: F2[Either[Throwable, O2] => F2[Unit]] = {
+            def send(v: Deferred[F2, Either[Throwable, O2]]) =
+              (el: Either[Throwable, O2]) => v.complete(el).void
+
+            Deferred[F2, Either[Throwable, O2]]
+              .flatTap(value => channel.send(release *> value.get))
+              .map(send)
+          }
+
+          def unordered: Either[Throwable, O2] => F2[Unit] =
+            (el: Either[Throwable, O2]) => release <* channel.send(F.pure(el))
+
+          if (isOrdered) ordered else F.pure(unordered)
+        }
+
         val releaseAndCheckCompletion =
           semaphore.release *>
             semaphore.available.flatMap {
@@ -2282,7 +2258,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           F.uncancelable { poll =>
             poll(semaphore.acquire) <*
               Deferred[F2, Unit].flatMap { pushed =>
-                val init = initFork(channel, pushed.complete(()).void)
+                val init = initFork(pushed.complete(()).void)
                 poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
                   val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                   F.start(stop.get.race(action) *> releaseAndCheckCompletion)
@@ -3523,15 +3499,39 @@ object Stream extends StreamLowPriority {
     * All elements that are available, up to the specified limit,
     * are dequeued and emitted as a single chunk.
     */
-  def fromQueueUnterminated[F[_]: Functor, A](
+  def fromQueueUnterminated[F[_], A](
       queue: QueueSource[F, A],
       limit: Int = Int.MaxValue
-  ): Stream[F, A] =
-    fromQueueNoneTerminatedSingletons_[F, A](
-      queue.take.map(a => Some(a)),
-      queue.tryTake.map(_.map(a => Some(a))),
-      limit
-    )
+  )(implicit F: Functor[F]): Stream[F, A] =
+    F match {
+      case f0: Monad[F] =>
+        if (limit > 1) {
+
+          /** use non-blocking tryTakeN, which is possibly more performant than n * take */
+
+          val someLimit = Some(limit)
+          val someLimitLess1 = Some(limit - 1)
+
+          /** First, try non-blocking batch dequeue.
+            * Only if the result is an empty list, semantically block to get one element,
+            * then attempt 2nd tryTakeN to get any other elements that are immediately available.
+            */
+          val asf = f0.flatMap(queue.tryTakeN(someLimit)(f0)) {
+            case Nil => f0.map2(queue.take, queue.tryTakeN(someLimitLess1)(f0))(_ :: _)
+            case as  => f0.pure(as)
+          }
+
+          Stream.evalSeq(asf).repeat
+
+        } else Stream.repeatEval(queue.take)
+
+      case _ =>
+        fromQueueNoneTerminatedSingletons_[F, A](
+          queue.take.map(a => Some(a)),
+          queue.tryTake.map(_.map(a => Some(a))),
+          limit
+        )
+    }
 
   /** Returns a stream of elements from the supplied queue.
     *
