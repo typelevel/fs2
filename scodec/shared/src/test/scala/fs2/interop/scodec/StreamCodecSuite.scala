@@ -42,16 +42,19 @@ class StreamCodecSuite extends Fs2Suite {
     Prop.forAll { (ints: List[Int]) =>
       val bits = vector(int32).encode(Vector.empty[Int] ++ ints).require
       val bits2 = StreamEncoder.many(int32).encodeAllValid(ints)
-      bits == bits2 &&
-      StreamDecoder.many(int32).decode[Fallible](Stream(bits)).toList == Right(ints) &&
-      StreamDecoder.tryMany(int32).decode[Fallible](Stream(bits2)).toList == Right(ints)
+      assertEquals(bits, bits2)
+      assertEquals(StreamDecoder.many(int32).decode[Fallible](Stream(bits)).toList, Right(ints))
+      assertEquals(StreamDecoder.tryMany(int32).decode[Fallible](Stream(bits2)).toList, Right(ints))
     }
   }
 
   test("many/tryMany insufficient") {
     val bits = hex"00000001 00000002 0000".bits
-    assert(StreamDecoder.many(int32).decode[Fallible](Stream(bits)).toList == Right(List(1, 2)))
-    assert(StreamDecoder.tryMany(int32).decode[Fallible](Stream(bits)).toList == Right(List(1, 2)))
+    assertEquals(StreamDecoder.many(int32).decode[Fallible](Stream(bits)).toList, Right(List(1, 2)))
+    assertEquals(
+      StreamDecoder.tryMany(int32).decode[Fallible](Stream(bits)).toList,
+      Right(List(1, 2))
+    )
   }
 
   test("tryMany example") {
@@ -84,8 +87,11 @@ class StreamCodecSuite extends Fs2Suite {
         StreamDecoder.many(int32).isolate(bits.size).map(_ => 0) ++
           StreamDecoder.many(int32).isolate(bits.size).map(_ => 1)
       val s = Stream(bits ++ bits)
-      d.decode[Fallible](s).toVector == Right(
-        Vector.fill(ints.size)(0) ++ Vector.fill(ints.size.toInt)(1)
+      assertEquals(
+        d.decode[Fallible](s).toVector,
+        Right(
+          Vector.fill(ints.size)(0) ++ Vector.fill(ints.size.toInt)(1)
+        )
       )
     }
   }
@@ -141,5 +147,53 @@ class StreamCodecSuite extends Fs2Suite {
       .compile
       .toList
       .map(actual => assert(actual == expected))
+  }
+
+  test("isolate raises error at end of input") {
+    val decoder = StreamDecoder.isolate(800)(StreamDecoder.once(fixedSizeBytes(100, bytes)))
+    val result = Stream
+      .chunk(Chunk.byteVector(hex"00"))
+      .covary[Fallible]
+      .through(decoder.toPipeByte[Fallible])
+      .compile
+      .drain
+    assertEquals(result, Left(CodecError(Err.InsufficientBits(800, 8, Nil))))
+  }
+
+  test("records with various chunks") {
+    import _root_.scodec.bits._
+    import _root_.scodec.codecs._
+    case class Record(id: Int, bytes: ByteVector)
+    val record = (int32 :: variableSizeBytes(int32, bytes)).as[Record]
+    val count = 1024
+    val all = (0 until count).map(i => Record(i, ByteVector.high(40))).toVector
+    val encoded = vector(record).encode(all).require
+
+    val decoder =
+      StreamDecoder.many(int32).flatMap { id =>
+        StreamDecoder.once(int32).flatMap { size =>
+          StreamDecoder
+            .once(
+              StreamDecoder
+                .isolate(size * 8)(StreamDecoder.once(fixedSizeBytes(size, bytes)))
+                .strict
+            )
+            .flatMap(StreamDecoder.emits)
+        }
+      }
+
+    val chunky = {
+      var chunks = List.empty[BitVector]
+      var rem = encoded
+      while (rem.nonEmpty) {
+        val (hd, tl) = rem.splitAt(11 * 8)
+        chunks = hd :: chunks
+        rem = tl
+      }
+      Chunk.seq(chunks.reverse)
+    }
+
+    val result = Stream.chunk(chunky).unchunk.through(decoder.toPipe[Fallible]).compile.toVector
+    assertEquals(result.toOption.get.size, count)
   }
 }
