@@ -170,12 +170,12 @@ class StreamCodecSuite extends Fs2Suite {
     val encoded = vector(record).encode(all).require
 
     val decoder =
-      StreamDecoder.many(int32).flatMap { id =>
+      StreamDecoder.many(int32).flatMap { _ =>
         StreamDecoder.once(int32).flatMap { size =>
           StreamDecoder
             .once(
               StreamDecoder
-                .isolate(size * 8)(StreamDecoder.once(fixedSizeBytes(size, bytes)))
+                .isolate(size * 8L)(StreamDecoder.once(fixedSizeBytes(size.toLong, bytes)))
                 .strict
             )
             .flatMap(StreamDecoder.emits)
@@ -193,7 +193,8 @@ class StreamCodecSuite extends Fs2Suite {
       Chunk.seq(chunks.reverse)
     }
 
-    val result = Stream.chunk(chunky).unchunk.through(decoder.toPipe[Fallible]).compile.toVector
+    val result =
+      Stream.chunk(chunky).chunkLimit(1).unchunks.through(decoder.toPipe[Fallible]).compile.toVector
     assertEquals(result.toOption.get.size, count)
   }
 }
