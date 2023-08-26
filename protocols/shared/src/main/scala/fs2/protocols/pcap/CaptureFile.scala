@@ -80,7 +80,7 @@ object CaptureFile {
       RecordHeader.codec(global.ordering).flatMap { header =>
         fixedSizeBytes(header.includedLength.toInt, decoderFn(header).strict.decodeOnly)
         // TODO: This **should** be the same but appears to drop some data when decoding
-        //StreamDecoder.isolate(header.includedLength * 8)(decoderFn(header)).strict
+        // StreamDecoder.isolate(header.includedLength * 8)(decoderFn(header)).strict
       }
     values <- StreamDecoder.many(recordDecoder).flatMap(x => StreamDecoder.emits(x))
   } yield values
