@@ -46,9 +46,9 @@ class ChunkSuite extends Fs2Suite {
     }
 
     property("chunk-formation (2)") {
-      forAll { (c: Vector[Int]) =>
-        assertEquals(Chunk.from(c).toVector, c)
-        assertEquals(Chunk.from(c).toList, c.toList)
+      forAll { (v: Vector[Int]) =>
+        assertEquals(Chunk.from(v).toVector, v)
+        assertEquals(Chunk.from(v).toList, v.toList)
       }
     }
 
@@ -65,12 +65,48 @@ class ChunkSuite extends Fs2Suite {
 
     test("Chunk.from is optimized") {
       assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[_]])
     }
 
     test("Array casts in Chunk.from are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.from(as)
       assert(c.isInstanceOf[Chunk.ArraySlice[_]])
+    }
+
+    test("Chunk.asSeq roundtrip") {
+      forAll { (c: Chunk[Int]) =>
+        // Chunk -> Seq -> Chunk
+        val seq = c.asSeq
+        val result = Chunk.from(seq)
+
+        // Check data consistency.
+        assertEquals(result, c)
+
+        // Check unwrap.
+        if (seq.isInstanceOf[ChunkAsSeq[_]]) {
+          assert(result eq c)
+        }
+      } && forAll { (e: Either[Seq[Int], Vector[Int]]) =>
+        // Seq -> Chunk -> Seq
+        val seq = e.merge
+        val chunk = Chunk.from(seq)
+        val result = chunk.asSeq
+
+        // Check data consistency.
+        assertEquals(result, seq)
+
+        // Check unwrap.
+        if (seq.isInstanceOf[Vector[_]] && chunk.size >= 2) {
+          assert(result eq seq)
+        }
+      }
+    }
+
+    test("Chunk.javaList unwraps asJava") {
+      forAll { (c: Chunk[Int]) =>
+        assert(Chunk.javaList(c.asJava) eq c)
+      }
     }
   }
 

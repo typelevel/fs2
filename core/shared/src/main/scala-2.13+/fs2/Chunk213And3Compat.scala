@@ -74,7 +74,7 @@ private[fs2] trait ChunkAsSeq213And3Compat[+O] {
   override val iterableFactory: SeqFactory[IndexedSeq] =
     ArraySeq.untagged
 
-  override val empty: IndexedSeq[O] =
+  override lazy val empty: IndexedSeq[O] =
     new ChunkAsSeq(Chunk.empty)
 }
 
