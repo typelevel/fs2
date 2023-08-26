@@ -1190,13 +1190,13 @@ object Chunk
         that match {
           case q: Queue[O2] =>
             new Queue(
-              q.chunks ++ this.chunks,
+              this.chunks ++ q.chunks,
               this.size + q.size
             )
 
           case _ =>
             new Queue(
-              that +: this.chunks,
+              this.chunks :+ that,
               this.size + that.size
             )
         }
