@@ -87,9 +87,6 @@ private[fs2] trait ChunkCompanion213And3Compat {
         val arr = arraySeq.unsafeArray.asInstanceOf[Array[O]]
         Some(array(arr)(ClassTag[O](arr.getClass.getComponentType)))
 
-      case w: ChunkAsSeq[O] =>
-        Some(w.chunk)
-
       case _ =>
         None
     }

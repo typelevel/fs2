@@ -688,7 +688,7 @@ object Chunk
     }
 
   // Added in the "Avoid copying" spirit.
-  // It may be better removed if data shows it has little usage.
+  // It may be latter removed if data shows it has little usage.
   private final class JavaListChunk[O](
       javaList: ju.List[O] with ju.RandomAccess
   ) extends Chunk[O] {
@@ -729,6 +729,9 @@ object Chunk
 
   def from[O](i: GIterable[O]): Chunk[O] =
     platformFrom(i).getOrElse(i match {
+      case w: ChunkAsSeq[O] =>
+        w.chunk
+
       case a: mutable.ArraySeq[o] =>
         val arr = a.array.asInstanceOf[Array[O]]
         array(arr)(ClassTag(arr.getClass.getComponentType))
@@ -744,8 +747,7 @@ object Chunk
 
       case s: GIndexedSeq[O] =>
         if (s.isEmpty) empty
-        else if (s.size == 1)
-          singleton(s.head) // Use size instead of tail.isEmpty as indexed seqs know their size
+        else if (s.size == 1) singleton(s.head)
         else new IndexedSeqChunk(s)
 
       case _ =>
