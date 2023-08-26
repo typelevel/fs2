@@ -25,6 +25,7 @@ import cats.data.Chain
 import scala.reflect.ClassTag
 import scodec.bits.ByteVector
 import java.nio.{Buffer => JBuffer, ByteBuffer => JByteBuffer, CharBuffer => JCharBuffer}
+import java.util.{List => JList}
 
 import org.scalacheck.{Arbitrary, Cogen, Gen}
 import Arbitrary.arbitrary
@@ -40,6 +41,7 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
       5 -> genA.map(Chunk.singleton),
       10 -> Gen.listOf(genA).map(Chunk.from),
       10 -> Gen.listOf(genA).map(_.toVector).map(Chunk.from),
+      10 -> Gen.listOf(genA).map(l => JList.of(l: _*)).map(Chunk.javaList),
       10 -> Gen
         .listOf(genA)
         .map(_.toVector)

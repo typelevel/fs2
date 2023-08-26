@@ -118,7 +118,11 @@ class ChunkSuite extends Fs2Suite {
   ): Unit =
     group(s"$name") {
       implicit val implicitChunkArb: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
-      property("size")(forAll((c: Chunk[A]) => assertEquals(c.size, c.toList.size)))
+      property("size") {
+        forAll { (c: Chunk[A]) =>
+          assertEquals(c.size, c.toList.size)
+        }
+      }
       property("take") {
         forAll { (c: Chunk[A], n: Int) =>
           assertEquals(c.take(n).toVector, c.toVector.take(n))
