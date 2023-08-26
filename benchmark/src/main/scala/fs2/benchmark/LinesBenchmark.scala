@@ -49,7 +49,7 @@ class LinesBenchmark {
           .grouped(chunkSize)
           .grouped(chunkSize)
           .foldLeft(Stream[IO, String]()) { case (acc, strings) =>
-            acc ++ Stream.chunk(Chunk.seq(strings))
+            acc ++ Stream.chunk(Chunk.from(strings))
           }
       }
 

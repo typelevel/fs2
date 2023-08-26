@@ -34,7 +34,7 @@ class PullBenchmark {
   @Benchmark
   def unconsPull(): Int = {
     val s: Stream[Pure, Int] = Stream
-      .chunk(Chunk.seq(0 to 2560))
+      .chunk(Chunk.from(0 to 2560))
       .repeatPull { s =>
         s.unconsN(n).flatMap {
           case Some((h, t)) => Pull.output(h).as(Some(t))

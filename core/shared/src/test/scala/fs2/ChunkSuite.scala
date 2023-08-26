@@ -47,10 +47,8 @@ class ChunkSuite extends Fs2Suite {
 
     property("chunk-formation (2)") {
       forAll { (c: Vector[Int]) =>
-        assertEquals(Chunk.seq(c).toVector, c)
-        assertEquals(Chunk.seq(c).toList, c.toList)
-        assertEquals(Chunk.indexedSeq(c).toVector, c)
-        assertEquals(Chunk.indexedSeq(c).toList, c.toList)
+        assertEquals(Chunk.from(c).toVector, c)
+        assertEquals(Chunk.from(c).toList, c.toList)
       }
     }
 
@@ -65,13 +63,13 @@ class ChunkSuite extends Fs2Suite {
       }
     }
 
-    test("Chunk.seq is optimized") {
-      assert(Chunk.seq(List(1)).isInstanceOf[Chunk.Singleton[_]])
+    test("Chunk.from is optimized") {
+      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[_]])
     }
 
-    test("Array casts in Chunk.seq are safe") {
+    test("Array casts in Chunk.from are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
-      val c = Chunk.seq(as)
+      val c = Chunk.from(as)
       assert(c.isInstanceOf[Chunk.ArraySlice[_]])
     }
   }

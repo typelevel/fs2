@@ -38,8 +38,8 @@ trait ChunkGeneratorsLowPriority1 extends MiscellaneousGenerators {
     val gen = Gen.frequency(
       1 -> Gen.const(Chunk.empty[A]),
       5 -> genA.map(Chunk.singleton),
-      10 -> Gen.listOf(genA).map(Chunk.seq),
-      10 -> Gen.listOf(genA).map(_.toVector).map(Chunk.vector),
+      10 -> Gen.listOf(genA).map(Chunk.from),
+      10 -> Gen.listOf(genA).map(_.toVector).map(Chunk.from),
       10 -> Gen
         .listOf(genA)
         .map(_.toVector)
