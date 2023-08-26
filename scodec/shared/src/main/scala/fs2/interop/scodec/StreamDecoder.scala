@@ -116,7 +116,10 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
               val (buffer, remainder) = (carry ++ hd).splitAt(bits)
               if (buffer.size == bits)
                 decoder[F](Stream(buffer)) >> Pull.pure(Some(tl.cons1(remainder)))
-              else loop(buffer, tl)
+              else {
+                assert(remainder.isEmpty)
+                loop(buffer, tl)
+              }
             case None => if (carry.isEmpty) Pull.pure(None) else Pull.pure(Some(Stream(carry)))
           }
         loop(BitVector.empty, s)
