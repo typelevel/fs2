@@ -31,6 +31,7 @@ import scodec.bits.ByteVector
 
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
+import java.util.{List => JList}
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
@@ -194,6 +195,28 @@ class ChunkSuite extends Fs2Suite {
           // Copy to array.
           assertEquals(s.toArray.toVector, v.toArray.toVector)
           assertEquals(s.toArray.toVector, l.toArray.toVector)
+        }
+      }
+      property("asJava") {
+        forAll { (c: Chunk[A]) =>
+          val view = c.asJava
+          val copy = JList.of(c.toVector: _*)
+
+          // Equality.
+          assertEquals(view, copy)
+
+          // Hashcode.
+          assertEquals(view.hashCode, copy.hashCode)
+
+          // Copy to array (untyped).
+          assertEquals(view.toArray.toVector, copy.toArray.toVector)
+
+          // Copy to array (typed).
+          val hint = Array.empty[A with Object]
+          val viewArray = view.toArray(hint)
+          val copyArray = copy.toArray(hint)
+          assertEquals(viewArray.toVector, copyArray.toVector)
+          assertEquals(viewArray.toVector, c.toVector)
         }
       }
 
