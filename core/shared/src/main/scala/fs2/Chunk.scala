@@ -698,8 +698,15 @@ object Chunk
       javaList.get(i)
 
     override def copyToArray[O2 >: O](xs: Array[O2], start: Int): Unit = {
-      val javaListAsArray = javaList.toArray
-      System.arraycopy(javaListAsArray, 0, xs, start, javaListAsArray.length)
+      var i = start
+      var j = 0
+      val end = javaList.size
+
+      while (j < end) {
+        xs(i) = javaList.get(j)
+        i += 1
+        j += 1
+      }
     }
 
     override protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
