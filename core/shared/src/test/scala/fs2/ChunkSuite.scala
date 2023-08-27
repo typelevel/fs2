@@ -211,11 +211,13 @@ class ChunkSuite extends Fs2Suite {
           assertEquals(view.toArray.toVector, copy.toArray.toVector)
 
           // Copy to array (typed).
-          val hint = Array.empty[A with Object]
+          val hint = implicitly[ClassTag[A]].newArray(0).asInstanceOf[Array[A with Object]]
           val viewArray = view.toArray(hint)
           val copyArray = copy.toArray(hint)
-          assertEquals(viewArray.toVector, copyArray.toVector)
-          assertEquals(viewArray.toVector, c.toVector)
+          val viewVector: Vector[A] = viewArray.toVector
+          val copyVector: Vector[A] = copyArray.toVector
+          assertEquals(viewVector, copyVector)
+          assertEquals(viewVector, c.toVector)
         }
       }
 
