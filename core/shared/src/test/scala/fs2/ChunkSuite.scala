@@ -177,6 +177,25 @@ class ChunkSuite extends Fs2Suite {
           assertEquals((chunkScan.toList, chunkCarry), ((listScan.tail, listScan.last)))
         }
       }
+      property("asSeq") {
+        forAll { (c: Chunk[A]) =>
+          val s = c.asSeq
+          val v = c.toVector
+          val l = c.toList
+
+          // Equality.
+          assertEquals(s, v)
+          assertEquals(s, l: Seq[A])
+
+          // Hashcode.
+          assertEquals(s.hashCode, v.hashCode)
+          assertEquals(s.hashCode, l.hashCode)
+
+          // Copy to array.
+          assertEquals(s.toArray.toVector, v.toArray.toVector)
+          assertEquals(s.toArray.toVector, l.toArray.toVector)
+        }
+      }
 
       if (implicitly[ClassTag[A]] == ClassTag.Byte) {
         property("toByteBuffer.byte") {
