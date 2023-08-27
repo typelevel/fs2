@@ -31,7 +31,6 @@ import scodec.bits.ByteVector
 
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
-import java.util.{List => JList}
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
@@ -200,7 +199,7 @@ class ChunkSuite extends Fs2Suite {
       property("asJava") {
         forAll { (c: Chunk[A]) =>
           val view = c.asJava
-          val copy = JList.of(c.toVector: _*)
+          val copy = java.util.Arrays.asList(c.toVector: _*)
 
           // Equality.
           assertEquals(view, copy)
