@@ -1559,10 +1559,8 @@ private[fs2] final class ChunkAsSeq[+O](
   override def toString: String =
     chunk.iterator.mkString("ChunkAsSeq(", ", ", ")")
 
-  override def hashCode: Int = {
-    import util.hashing.MurmurHash3
-    MurmurHash3.indexedSeqHash(this, seed = MurmurHash3.seqSeed)
-  }
+  override def hashCode: Int =
+    util.hashing.MurmurHash3.seqHash(this)
 
   override def equals(that: Any): Boolean =
     that match {
