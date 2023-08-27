@@ -571,7 +571,6 @@ object Chunk
       sys.error("impossible")
     override def map[O2](f: Nothing => O2): Chunk[O2] = this
     override def toByteVector[B](implicit ev: B =:= Byte): ByteVector = ByteVector.empty
-    override def toString = "empty"
   }
 
   private[fs2] val unit: Chunk[Unit] = singleton(())
