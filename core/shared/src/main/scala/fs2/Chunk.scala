@@ -704,8 +704,8 @@ object Chunk
     }
 
     override protected def splitAtChunk_(n: Int): (Chunk[O], Chunk[O]) = {
-      val left = javaList.subList(0, n + 1).asInstanceOf[ju.List[O] with ju.RandomAccess]
-      val right = javaList.subList(n + 1, size).asInstanceOf[ju.List[O] with ju.RandomAccess]
+      val left = javaList.subList(0, n).asInstanceOf[ju.List[O] with ju.RandomAccess]
+      val right = javaList.subList(n, size).asInstanceOf[ju.List[O] with ju.RandomAccess]
 
       new JavaListChunk(left) -> new JavaListChunk(right)
     }
