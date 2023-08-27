@@ -215,6 +215,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.file.Watcher#DefaultWatcher.this"
+  ),
+  // Private internal method: #3274
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.Chunk.platformIterable"
   )
 )
 
