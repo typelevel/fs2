@@ -99,13 +99,13 @@ class ChunkPlatformSuite extends Fs2Suite {
     group(s"fromArraySeq ArraySeq[$testTypeName]") {
       property("mutable") {
         forAll { (arraySeq: mutable.ArraySeq[A]) =>
-          assertEquals(Chunk.arraySeq(arraySeq).toVector, arraySeq.toVector)
+          assertEquals(Chunk.from(arraySeq).toVector, arraySeq.toVector)
         }
       }
 
       property("immutable") {
         forAll { (arraySeq: immutable.ArraySeq[A]) =>
-          assertEquals(Chunk.arraySeq(arraySeq).toVector, arraySeq.toVector)
+          assertEquals(Chunk.from(arraySeq).toVector, arraySeq.toVector)
         }
       }
     }
@@ -122,19 +122,5 @@ class ChunkPlatformSuite extends Fs2Suite {
     testChunkFromArraySeq[Boolean]
     testChunkFromArraySeq[Unit]
     testChunkFromArraySeq[String]
-  }
-
-  group("Chunk iterable") {
-    property("mutable ArraySeq") {
-      forAll { (a: mutable.ArraySeq[String]) =>
-        assertEquals(Chunk.iterable(a).toVector, a.toVector)
-      }
-    }
-
-    property("immutable ArraySeq") {
-      forAll { (a: immutable.ArraySeq[String]) =>
-        assertEquals(Chunk.iterable(a).toVector, a.toVector)
-      }
-    }
   }
 }

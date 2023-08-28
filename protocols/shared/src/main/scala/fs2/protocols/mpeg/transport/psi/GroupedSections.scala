@@ -96,7 +96,7 @@ object GroupedSections {
           (newState, out)
         case Some(sections) =>
           val newState = ExtendedSectionGrouperState(state.accumulatorByIds - key)
-          val out = Chunk.seq((Right(sections) :: err.map(e => Left(e)).toList).reverse)
+          val out = Chunk.from((Right(sections) :: err.map(e => Left(e)).toList).reverse)
           (newState, out)
       }
     }

@@ -158,7 +158,7 @@ object TimeSeries {
                 ((next.time.toMillis - nextTick.toMillis) / tickPeriod.toMillis + 1).toInt
               val tickTimes = (0 until tickCount).map(tickTime)
               val ticks = tickTimes.map(TimeStamped.tick)
-              val rest = Pull.output(Chunk.seq(ticks)) >> go(tickTime(tickCount), tl.cons(suffix))
+              val rest = Pull.output(Chunk.from(ticks)) >> go(tickTime(tickCount), tl.cons(suffix))
               out >> rest
           }
         case None => Pull.done
