@@ -27,15 +27,10 @@ jobs:
     name: Build and Test
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         scala: [2.12, 2.13, 3]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
-        exclude:
-          - scala: 2.12
-            os: macos-latest
-          - scala: 3
-            os: macos-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -60,10 +55,6 @@ jobs:
       - name: Install brew formulae (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
         run: /home/linuxbrew/.linuxbrew/bin/brew install openssl s2n
-
-      - name: Install brew formulae (macOS)
-        if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'macos')
-        run: brew install openssl s2n
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
@@ -246,6 +237,9 @@ jobs:
           echo "$PGP_SECRET" | base64 -di > /tmp/signing-key.gpg
           echo "$PGP_PASSPHRASE" | gpg --pinentry-mode loopback --passphrase-fd 0 --import /tmp/signing-key.gpg
           (echo "$PGP_PASSPHRASE"; echo; echo) | gpg --command-fd 0 --pinentry-mode loopback --change-passphrase $(gpg --list-secret-keys --with-colons 2> /dev/null | grep '^sec:' | cut --delimiter ':' --fields 5 | tail -n 1)
+
+      - name: Wait for Cirrus CI
+        uses: typelevel/await-cirrus@main
 
       - name: Publish
         env:

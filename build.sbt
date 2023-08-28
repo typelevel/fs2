@@ -14,7 +14,7 @@ ThisBuild / scalaVersion := Scala213
 ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.0")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
-ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
 ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
@@ -27,10 +27,11 @@ ThisBuild / githubWorkflowBuild ++= Seq(
   )
 )
 
-ThisBuild / githubWorkflowBuildMatrixExclusions ++=
-  List("2.12", "3").map { scala =>
-    MatrixExclude(Map("scala" -> scala, "os" -> "macos-latest"))
-  }
+ThisBuild / githubWorkflowPublishPreamble +=
+  WorkflowStep.Use(
+    UseRef.Public("typelevel", "await-cirrus", "main"),
+    name = Some("Wait for Cirrus CI")
+  )
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
