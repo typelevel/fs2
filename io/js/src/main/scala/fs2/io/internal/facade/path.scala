@@ -21,52 +21,52 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
-package object path {
+@nowarn212("cat=unused")
+private[io] object path {
 
   @js.native
   @JSImport("path", "sep")
-  private[io] def sep: String = js.native
+  def sep: String = js.native
 
   @js.native
   @JSImport("path", "join")
-  private[io] def join(paths: String*): String = js.native
+  def join(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "resolve")
-  private[io] def resolve(paths: String*): String = js.native
+  def resolve(paths: String*): String = js.native
 
   @js.native
   @JSImport("path", "relative")
-  private[io] def relative(from: String, to: String): String = js.native
+  def relative(from: String, to: String): String = js.native
 
   @js.native
   @JSImport("path", "normalize")
-  private[io] def normalize(path: String): String = js.native
+  def normalize(path: String): String = js.native
 
   @js.native
   @JSImport("path", "isAbsolute")
-  private[io] def isAbsolute(path: String): Boolean = js.native
+  def isAbsolute(path: String): Boolean = js.native
 
   @js.native
   @JSImport("path", "basename")
-  private[io] def basename(path: String): String = js.native
+  def basename(path: String): String = js.native
 
   @js.native
   @JSImport("path", "extname")
-  private[io] def extname(path: String): String = js.native
+  def extname(path: String): String = js.native
 
   @js.native
   @JSImport("path", "parse")
-  private[io] def parse(path: String): ParsedPath = js.native
+  def parse(path: String): ParsedPath = js.native
 
-}
-
-package path {
   @js.native
-  private[io] trait ParsedPath extends js.Object {
+  trait ParsedPath extends js.Object {
     def dir: String = js.native
     def root: String = js.native
     def base: String = js.native

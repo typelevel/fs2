@@ -8,9 +8,10 @@ ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val NewScala = "2.13.11"
+val Scala213 = "2.13.11"
 
-ThisBuild / crossScalaVersions := Seq("3.3.0", "2.12.18", NewScala)
+ThisBuild / scalaVersion := Scala213
+ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.0")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest", "macos-latest")
@@ -18,18 +19,16 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
 ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
-ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
-
 ThisBuild / githubWorkflowBuild ++= Seq(
   WorkflowStep.Run(
     List("cd scalafix", "sbt testCI"),
     name = Some("Scalafix tests"),
-    cond = Some(s"matrix.scala == '$NewScala' && matrix.project == 'rootJVM'")
+    cond = Some(s"matrix.scala == '2.13' && matrix.project == 'rootJVM'")
   )
 )
 
 ThisBuild / githubWorkflowBuildMatrixExclusions ++=
-  crossScalaVersions.value.filterNot(Set(scalaVersion.value)).map { scala =>
+  List("2.12", "3").map { scala =>
     MatrixExclude(Map("scala" -> scala, "os" -> "macos-latest"))
   }
 
@@ -229,11 +228,10 @@ lazy val root = tlCrossRootProject
     scodec,
     protocols,
     reactiveStreams,
+    integration,
     unidocs,
     benchmark
   )
-
-lazy val IntegrationTest = config("it").extend(Test)
 
 lazy val commonNativeSettings = Seq[Setting[_]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
@@ -242,13 +240,6 @@ lazy val commonNativeSettings = Seq[Setting[_]](
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings: _*)
-  .settings(
-    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings),
-    IntegrationTest / fork := true,
-    IntegrationTest / javaOptions += "-Dcats.effect.tracing.mode=none"
-  )
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
@@ -290,12 +281,26 @@ lazy val coreNative = core.native
   .disablePlugins(DoctestPlugin)
   .settings(commonNativeSettings)
 
+lazy val integration = project
+  .in(file("integration"))
+  .settings(
+    fork := true,
+    javaOptions += "-Dcats.effect.tracing.mode=none",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test
+    )
+  )
+  .enablePlugins(NoPublishPlugin)
+  .disablePlugins(DoctestPlugin)
+  .dependsOn(coreJVM)
+
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.3.0"
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.3.0",
+    tlJdkRelease := None
   )
   .jvmSettings(
     Test / fork := true,
@@ -362,7 +367,10 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       ProblemFilters.exclude[IncompatibleResultTypeProblem](
         "fs2.io.net.tls.SecureContext#SecureVersion#TLSv1.3.toJS"
       ),
-      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync")
+      ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.tls.TLSSocket.forAsync"),
+      ProblemFilters.exclude[IncompatibleResultTypeProblem](
+        "fs2.io.net.tls.TLSParameters#DefaultTLSParameters.toTLSConnectOptions"
+      )
     )
   )
 
@@ -418,6 +426,7 @@ lazy val unidocs = project
   .enablePlugins(TypelevelUnidocPlugin)
   .settings(
     name := "fs2-docs",
+    tlJdkRelease := None,
     tlFatalWarnings := false,
     ScalaUnidoc / unidoc / unidocProjectFilter := inProjects(
       core.jvm,
@@ -446,7 +455,8 @@ lazy val microsite = project
       sbt.IO.copyDirectory(mdocOut.value, (laikaSite / target).value)
       Set.empty
     },
-    tlFatalWarningsInCi := false,
+    tlJdkRelease := None,
+    tlFatalWarnings := false,
     tlSiteApiPackage := Some("fs2")
   )
   .dependsOn(coreJVM, io.jvm, reactiveStreams, scodec.jvm)

@@ -33,6 +33,7 @@ import java.{util => ju}
 import cats._
 import cats.data.{Chain, NonEmptyList}
 import cats.syntax.all._
+import org.typelevel.scalaccompat.annotation._
 
 import fs2.internal._
 
@@ -323,6 +324,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
     * so this method should be considered as unsafely allocating mutable state.
     */
+  @nowarn212("cat=unused")
   def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
     val slice = this.asInstanceOf[Chunk[Byte]].toArraySlice
     JByteBuffer.wrap(slice.values, slice.offset, slice.length)
@@ -332,6 +334,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
     * so this method should be considered as unsafely allocating mutable state.
     */
+  @nowarn212("cat=unused")
   def toCharBuffer[C >: O](implicit ev: C =:= Char): JCharBuffer = {
     val slice = this.asInstanceOf[Chunk[Char]].toArraySlice
     JCharBuffer.wrap(slice.values, slice.offset, slice.length)
@@ -521,7 +524,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   override def equals(a: Any): Boolean =
     a match {
       case c: Chunk[_] =>
-        size == c.size && iterator.sameElements(c.iterator)
+        size == c.size && iterator.sameElements(c.iterator: Iterator[Any])
       case _ => false
     }
 
@@ -997,7 +1000,7 @@ object Chunk
       new ByteBuffer(buf, buf.position, buf.remaining)
   }
 
-  case class ByteBuffer private (
+  case class ByteBuffer private[Chunk] (
       buf: JByteBuffer,
       override val offset: Int,
       override val size: Int

@@ -742,7 +742,7 @@ object Pull extends PullLowPriority {
       del: Bind[F, O, X, Unit]
   ): Pull[F, O, Unit] =
     py match {
-      case ty: Terminal[_] =>
+      case ty: Terminal[X] =>
         del match {
           case cici: BindBind[F, O, _, X] =>
             bindBindAux(cici.bb.cont(ty), cici.del)
@@ -887,14 +887,15 @@ object Pull extends PullLowPriority {
         case e: Action[G, X, Unit] =>
           contP = IdContP
           e
-        case b: Bind[G, X, _, Unit] =>
+        case b: Bind[G, X, y, Unit] =>
+          type Y = y
           b.step match {
-            case c: Bind[G, X, _, _] =>
-              viewL(new BindBind(c.step, c.delegate, b.delegate))
+            case c: Bind[G, X, z, Y] =>
+              viewL(new BindBind[G, X, z, Y](c.step, c.delegate, b.delegate))
             case e: Action[G, X, _] =>
               contP = b.delegate
               e
-            case r: Terminal[_] => viewL(b.cont(r))
+            case r: Terminal[Y] => viewL(b.cont(r))
           }
         case r: Terminal[Unit] => r
       }

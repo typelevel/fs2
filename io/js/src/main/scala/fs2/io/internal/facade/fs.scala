@@ -21,34 +21,37 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
-package object fs {
+@nowarn212("cat=unused")
+private[io] object fs {
 
   @js.native
   @JSImport("fs", "constants")
-  private[io] def constants: FsConstants = js.native
+  def constants: FsConstants = js.native
 
   @js.native
   @JSImport("fs", "promises")
-  private[io] def promises: FsPromises = js.native
+  def promises: FsPromises = js.native
 
   @js.native
   @JSImport("fs", "createReadStream")
-  private[io] def createReadStream(path: String, options: ReadStreamOptions): fs2.io.Readable =
+  def createReadStream(path: String, options: ReadStreamOptions): fs2.io.Readable =
     js.native
 
   @js.native
   @JSImport("fs", "createWriteStream")
-  private[io] def createWriteStream(path: String, options: WriteStreamOptions): fs2.io.Writable =
+  def createWriteStream(path: String, options: WriteStreamOptions): fs2.io.Writable =
     js.native
 
   @js.native
   @JSImport("fs", "read")
-  private[io] def read(
+  def read(
       fd: Int,
       buffer: Uint8Array,
       offset: Int,
@@ -59,7 +62,7 @@ package object fs {
 
   @js.native
   @JSImport("fs", "write")
-  private[io] def write(
+  def write(
       fd: Int,
       buffer: Uint8Array,
       offset: Int,
@@ -68,11 +71,7 @@ package object fs {
       cb: js.Function3[js.Error, Int, Uint8Array, Unit]
   ): Unit = js.native
 
-}
-
-package fs {
-
-  private[io] trait ReadStreamOptions extends js.Object {
+  trait ReadStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
 
@@ -84,7 +83,7 @@ package fs {
 
   }
 
-  private[io] trait WriteStreamOptions extends js.Object {
+  trait WriteStreamOptions extends js.Object {
 
     var flags: js.UndefOr[Double] = js.undefined
 
@@ -92,7 +91,7 @@ package fs {
 
   @js.native
   @nowarn
-  private[io] trait FsConstants extends js.Object {
+  trait FsConstants extends js.Object {
 
     val COPYFILE_EXCL: Double = js.native
 
@@ -128,7 +127,7 @@ package fs {
 
   @js.native
   @nowarn
-  private[io] trait FsPromises extends js.Object {
+  trait FsPromises extends js.Object {
 
     def access(path: String, mode: Double = js.native): js.Promise[Unit] = js.native
 
@@ -167,7 +166,7 @@ package fs {
 
   }
 
-  private[io] trait MkdirOptions extends js.Object {
+  trait MkdirOptions extends js.Object {
 
     var recursive: js.UndefOr[Boolean] = js.undefined
 
@@ -175,7 +174,7 @@ package fs {
 
   }
 
-  private[io] trait RmOptions extends js.Object {
+  trait RmOptions extends js.Object {
 
     var force: js.UndefOr[Boolean] = js.undefined
 
@@ -183,14 +182,14 @@ package fs {
 
   }
 
-  private[io] trait StatOptions extends js.Object {
+  trait StatOptions extends js.Object {
 
     var bigint: js.UndefOr[Boolean] = js.undefined
 
   }
 
   @js.native
-  private[io] trait Dir extends js.Object {
+  trait Dir extends js.Object {
 
     def close(): js.Promise[Unit] = js.native
 
@@ -199,14 +198,14 @@ package fs {
   }
 
   @js.native
-  private[io] trait DirEnt extends js.Object {
+  trait DirEnt extends js.Object {
 
     def name: String = js.native
 
   }
 
   @js.native
-  private[io] trait BigIntStats extends js.Object {
+  trait BigIntStats extends js.Object {
 
     def dev: js.BigInt = js.native
 
@@ -237,7 +236,7 @@ package fs {
   }
 
   @js.native
-  private[io] trait FileHandle extends js.Object {
+  trait FileHandle extends js.Object {
 
     def fd: Int = js.native
 
@@ -252,7 +251,7 @@ package fs {
   }
 
   @js.native
-  private[io] trait FileHandleReadResult extends js.Object {
+  trait FileHandleReadResult extends js.Object {
 
     def bytesRead: Int = js.native
 
@@ -261,7 +260,7 @@ package fs {
   }
 
   @js.native
-  private[io] trait FileHandleWriteResult extends js.Object {
+  trait FileHandleWriteResult extends js.Object {
 
     def bytesWritten: Int = js.native
 

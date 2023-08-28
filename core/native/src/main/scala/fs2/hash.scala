@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect.kernel.Sync
+import org.typelevel.scalaccompat.annotation._
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -94,6 +95,7 @@ object hash {
 
   @link("crypto")
   @extern
+  @nowarn212("cat=unused")
   private[fs2] object openssl {
 
     final val EVP_MAX_MD_SIZE = 64
