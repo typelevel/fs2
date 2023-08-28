@@ -46,11 +46,9 @@ class ChunkSuite extends Fs2Suite {
     }
 
     property("chunk-formation (2)") {
-      forAll { (c: Vector[Int]) =>
-        assertEquals(Chunk.seq(c).toVector, c)
-        assertEquals(Chunk.seq(c).toList, c.toList)
-        assertEquals(Chunk.indexedSeq(c).toVector, c)
-        assertEquals(Chunk.indexedSeq(c).toList, c.toList)
+      forAll { (v: Vector[Int]) =>
+        assertEquals(Chunk.from(v).toVector, v)
+        assertEquals(Chunk.from(v).toList, v.toList)
       }
     }
 
@@ -65,14 +63,50 @@ class ChunkSuite extends Fs2Suite {
       }
     }
 
-    test("Chunk.seq is optimized") {
-      assert(Chunk.seq(List(1)).isInstanceOf[Chunk.Singleton[_]])
+    test("Chunk.from is optimized") {
+      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[_]])
     }
 
-    test("Array casts in Chunk.seq are safe") {
+    test("Array casts in Chunk.from are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
-      val c = Chunk.seq(as)
+      val c = Chunk.from(as)
       assert(c.isInstanceOf[Chunk.ArraySlice[_]])
+    }
+
+    test("Chunk.asSeq roundtrip") {
+      forAll { (c: Chunk[Int]) =>
+        // Chunk -> Seq -> Chunk
+        val seq = c.asSeq
+        val result = Chunk.from(seq)
+
+        // Check data consistency.
+        assertEquals(result, c)
+
+        // Check unwrap.
+        if (seq.isInstanceOf[ChunkAsSeq[_]]) {
+          assert(result eq c)
+        }
+      } && forAll { (e: Either[Seq[Int], Vector[Int]]) =>
+        // Seq -> Chunk -> Seq
+        val seq = e.merge
+        val chunk = Chunk.from(seq)
+        val result = chunk.asSeq
+
+        // Check data consistency.
+        assertEquals(result, seq)
+
+        // Check unwrap.
+        if (seq.isInstanceOf[Vector[_]] && chunk.size >= 2) {
+          assert(result eq seq)
+        }
+      }
+    }
+
+    test("Chunk.javaList unwraps asJava") {
+      forAll { (c: Chunk[Int]) =>
+        assert(Chunk.javaList(c.asJava) eq c)
+      }
     }
   }
 
@@ -84,7 +118,11 @@ class ChunkSuite extends Fs2Suite {
   ): Unit =
     group(s"$name") {
       implicit val implicitChunkArb: Arbitrary[Chunk[A]] = Arbitrary(genChunk)
-      property("size")(forAll((c: Chunk[A]) => assertEquals(c.size, c.toList.size)))
+      property("size") {
+        forAll { (c: Chunk[A]) =>
+          assertEquals(c.size, c.toList.size)
+        }
+      }
       property("take") {
         forAll { (c: Chunk[A], n: Int) =>
           assertEquals(c.take(n).toVector, c.toVector.take(n))
@@ -137,6 +175,49 @@ class ChunkSuite extends Fs2Suite {
           val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
 
           assertEquals((chunkScan.toList, chunkCarry), ((listScan.tail, listScan.last)))
+        }
+      }
+      property("asSeq") {
+        forAll { (c: Chunk[A]) =>
+          val s = c.asSeq
+          val v = c.toVector
+          val l = c.toList
+
+          // Equality.
+          assertEquals(s, v)
+          assertEquals(s, l: Seq[A])
+
+          // Hashcode.
+          assertEquals(s.hashCode, v.hashCode)
+          assertEquals(s.hashCode, l.hashCode)
+
+          // Copy to array.
+          assertEquals(s.toArray.toVector, v.toArray.toVector)
+          assertEquals(s.toArray.toVector, l.toArray.toVector)
+        }
+      }
+      property("asJava") {
+        forAll { (c: Chunk[A]) =>
+          val view = c.asJava
+          val copy = java.util.Arrays.asList(c.toVector: _*)
+
+          // Equality.
+          assertEquals(view, copy)
+
+          // Hashcode.
+          assertEquals(view.hashCode, copy.hashCode)
+
+          // Copy to array (untyped).
+          assertEquals(view.toArray.toVector, copy.toArray.toVector)
+
+          // Copy to array (typed).
+          val hint = Array.emptyObjectArray.asInstanceOf[Array[A with Object]]
+          val viewArray = view.toArray(hint)
+          val copyArray = copy.toArray(hint)
+          val viewVector: Vector[A] = viewArray.toVector
+          val copyVector: Vector[A] = copyArray.toVector
+          assertEquals(viewVector, copyVector)
+          assertEquals(viewVector, c.toVector)
         }
       }
 

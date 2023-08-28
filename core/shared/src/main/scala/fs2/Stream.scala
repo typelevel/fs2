@@ -332,13 +332,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               case ((out, buf, last), i) =>
                 val cur = f(i)
                 if (!cur && last)
-                  (Chunk.vector(buf :+ i) :: out, Vector.empty, cur)
+                  (Chunk.from(buf :+ i) :: out, Vector.empty, cur)
                 else (out, buf :+ i, cur)
             }
           if (out.isEmpty)
-            go(Chunk.vector(buf) :: buffer, newLast, tl)
+            go(Chunk.from(buf) :: buffer, newLast, tl)
           else
-            dumpBuffer(buffer) >> dumpBuffer(out) >> go(List(Chunk.vector(buf)), newLast, tl)
+            dumpBuffer(buffer) >> dumpBuffer(out) >> go(List(Chunk.from(buf)), newLast, tl)
 
         case None => dumpBuffer(buffer)
       }
@@ -576,7 +576,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Prepends a chunk onto the front of this stream.
     *
     * @example {{{
-    * scala> Stream(1,2,3).consChunk(Chunk.vector(Vector(-1, 0))).toList
+    * scala> Stream(1,2,3).consChunk(Chunk.from(Vector(-1, 0))).toList
     * res0: List[Int] = List(-1, 0, 1, 2, 3)
     * }}}
     */
@@ -1153,7 +1153,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               if (f(last, o)) (acc :+ o, o)
               else (acc, last)
             }
-            Pull.output(Chunk.vector(acc)) >> go(newLast, tl)
+            Pull.output(Chunk.from(acc)) >> go(newLast, tl)
           }
       }
     this.pull.uncons1.flatMap {
@@ -1183,7 +1183,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * the source stream and concatenated all of the results.
     *
     * @example {{{
-    * scala> Stream(1, 2, 3).flatMap { i => Stream.chunk(Chunk.seq(List.fill(i)(i))) }.toList
+    * scala> Stream(1, 2, 3).flatMap { i => Stream.chunk(Chunk.from(List.fill(i)(i))) }.toList
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3)
     * }}}
     */
@@ -1338,10 +1338,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         // whole chunk matches the current key, add this chunk to the accumulated output
         if (out.size + chunk.size < limit) {
           val newCurrent = Some((k1, out ++ chunk))
-          Pull.output(Chunk.seq(acc)) >> go(newCurrent, s)
+          Pull.output(Chunk.from(acc)) >> go(newCurrent, s)
         } else {
           val (prefix, suffix) = chunk.splitAt(limit - out.size)
-          Pull.output(Chunk.seq(acc :+ ((k1, out ++ prefix)))) >> go(
+          Pull.output(Chunk.from(acc :+ ((k1, out ++ prefix)))) >> go(
             Some((k1, suffix)),
             s
           )
@@ -1505,7 +1505,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           Stream
             .eval(dequeueNextOutput)
             .repeat
-            .collectWhile { case Some(data) => Chunk.vector(data) }
+            .collectWhile { case Some(data) => Chunk.from(data) }
 
         Stream
           .bracketCase(enqueueAsync) { case (upstream, exitCase) =>
@@ -1736,7 +1736,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         bldr += separator
         bldr += o
       }
-      Chunk.vector(bldr.result())
+      Chunk.from(bldr.result())
     }
     def go(str: Stream[F, O]): Pull[F, O2, Unit] =
       str.pull.uncons.flatMap {
@@ -2061,7 +2061,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               rChunk.indexWhere(order.gteq(_, lLast)).getOrElse(rChunk.size)
             )
         Pull.output(
-          Chunk.vector((emitLeft ++ emitRight).toVector.sorted(order))
+          Chunk.from((emitLeft ++ emitRight).toVector.sorted(order))
         ) >> go(leftLeg.setHead(keepLeft), rightLeg.setHead(keepRight))
       } else { // otherwise, we need to shift leg
         if (lChunk.isEmpty) {
@@ -2706,7 +2706,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     *
     * @example {{{
     * scala> Stream.range(0, 10).split(_ % 4 == 0).toList
-    * res0: List[Chunk[Int]] = List(empty, Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
+    * res0: List[Chunk[Int]] = List(Chunk(), Chunk(1, 2, 3), Chunk(5, 6, 7), Chunk(9))
     * }}}
     */
   def split(f: O => Boolean): Stream[F, Chunk[O]] = {
@@ -3255,7 +3255,7 @@ object Stream extends StreamLowPriority {
     os match {
       case Nil               => empty
       case collection.Seq(x) => emit(x)
-      case _                 => Pull.output(Chunk.seq(os)).streamNoScope
+      case _                 => Pull.output(Chunk.from(os)).streamNoScope
     }
 
   /** Empty pure stream. */
@@ -3468,7 +3468,7 @@ object Stream extends StreamLowPriority {
         F.suspend(hint) {
           for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
         }.map { s =>
-          if (s.isEmpty) None else Some((Chunk.seq(s), i))
+          if (s.isEmpty) None else Some((Chunk.from(s), i))
         }
 
       Stream.unfoldChunkEval(iterator)(getNextChunk)
@@ -3697,7 +3697,7 @@ object Stream extends StreamLowPriority {
   /** Like `emits`, but works for any class that extends `Iterable`
     */
   def iterable[F[x] >: Pure[x], A](os: Iterable[A]): Stream[F, A] =
-    Stream.chunk(Chunk.iterable(os))
+    Stream.chunk(Chunk.from(os))
 
   /** An infinite `Stream` that repeatedly applies a given function
     * to a start value. `start` is the first value emitted, followed
@@ -3943,7 +3943,7 @@ object Stream extends StreamLowPriority {
   /** Like [[unfold]] but each invocation of `f` provides a chunk of output.
     *
     * @example {{{
-    * scala> Stream.unfoldChunk(0)(i => if (i < 5) Some(Chunk.seq(List.fill(i)(i)) -> (i+1)) else None).toList
+    * scala> Stream.unfoldChunk(0)(i => if (i < 5) Some(Chunk.from(List.fill(i)(i)) -> (i+1)) else None).toList
     * res0: List[Int] = List(1, 2, 2, 3, 3, 3, 4, 4, 4, 4)
     * }}}
     */
