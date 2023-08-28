@@ -1357,7 +1357,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
 
     test("correctly rechunk big chunks at the end of a stream") {
       val chunks = Stream
-        .chunk(Chunk.seq(List.fill(5000)(1)))
+        .chunk(Chunk.from(List.fill(5000)(1)))
         .rechunkRandomlyWithSeed(0.01, 0.1)(1L)
         .chunks
         .compile
