@@ -21,23 +21,67 @@
 
 package fs2
 
-import scala.collection.mutable.WrappedArray
+import scala.annotation.unchecked.uncheckedVariance
+import scala.collection.{Iterable => GIterable}
+import scala.collection.generic.{CanBuildFrom, GenericCompanion}
+import scala.collection.mutable.{Builder, WrappedArray}
 import scala.reflect.ClassTag
 
-private[fs2] trait ChunkPlatform[+O] { self: Chunk[O] => }
+private[fs2] trait ChunkPlatform[+O] {
+  self: Chunk[O] =>
 
-private[fs2] trait ChunkCompanionPlatform { self: Chunk.type =>
+  def asSeqPlatform: Option[IndexedSeq[O]] =
+    None
+}
 
-  protected def platformIterable[O](i: Iterable[O]): Option[Chunk[O]] =
+private[fs2] trait ChunkAsSeqPlatform[+O] {
+  self: ChunkAsSeq[O] =>
+
+  override val hasDefiniteSize: Boolean =
+    true
+
+  override def copyToArray[O2 >: O](xs: Array[O2], start: Int, len: Int): Unit =
+    chunk.take(len).copyToArray(xs, start)
+
+  override def map[O2, That](f: O ⇒ O2)(implicit bf: CanBuildFrom[IndexedSeq[O], O2, That]): That =
+    new ChunkAsSeq(chunk.map(f)).asInstanceOf[That]
+
+  override def zipWithIndex[O2 >: O, That](implicit
+      bf: CanBuildFrom[IndexedSeq[O], (O2, Int), That]
+  ): That =
+    new ChunkAsSeq(chunk.zipWithIndex).asInstanceOf[That]
+
+  override def to[Col[_]](implicit
+      cbf: CanBuildFrom[Nothing, O, Col[O @uncheckedVariance]]
+  ): Col[O @uncheckedVariance] =
+    chunk.to(cbf)
+
+  override def genericBuilder[B]: Builder[B, IndexedSeq[B]] =
+    Vector.newBuilder
+
+  override def companion: GenericCompanion[IndexedSeq] =
+    Vector
+}
+
+private[fs2] trait ChunkCompanionPlatform {
+  self: Chunk.type =>
+
+  protected def platformFrom[O](i: GIterable[O]): Option[Chunk[O]] =
     i match {
-      case a: WrappedArray[O] => Some(wrappedArray(a))
-      case _                  => None
+      case wrappedArray: WrappedArray[O] =>
+        val arr = wrappedArray.array.asInstanceOf[Array[O]]
+        Some(array(arr)(ClassTag(arr.getClass.getComponentType)))
+
+      case _ =>
+        None
     }
 
   /** Creates a chunk backed by a `WrappedArray`
     */
-  def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] = {
-    val arr = wrappedArray.array.asInstanceOf[Array[O]]
-    array(arr)(ClassTag(arr.getClass.getComponentType))
-  }
+  @deprecated(
+    "Use the `from` general factory instead",
+    "3.8.1"
+  )
+  def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] =
+    from(wrappedArray)
 }

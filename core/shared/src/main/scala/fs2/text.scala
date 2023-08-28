@@ -169,7 +169,7 @@ object text {
               buf1 = processSingleChunk(bldr, buf1, nextBytes)
               idx = idx + 1
             }
-            Pull.output(Chunk.seq(bldr.result())) >> doPull(buf1, tail)
+            Pull.output(Chunk.from(bldr.result())) >> doPull(buf1, tail)
           case None if buf.nonEmpty =>
             Pull.output1(new String(buf.toArray, utf8Charset))
           case None =>
@@ -554,7 +554,7 @@ object text {
                 new LineTooLongException(stringBuilder.length, max)
               )(raiseThrowable)
             case _ =>
-              Pull.output(Chunk.indexedSeq(linesBuffer)) >> go(stream, stringBuilder, first = false)
+              Pull.output(Chunk.from(linesBuffer)) >> go(stream, stringBuilder, first = false)
           }
       }
 
@@ -563,10 +563,13 @@ object text {
 
   /** Transforms a stream of `String` to a stream of `Char`. */
   def string2char[F[_]]: Pipe[F, String, Char] =
-    _.map(s => Chunk.charBuffer(CharBuffer.wrap(s))).flatMap(Stream.chunk)
+    _.flatMap(s => Stream.chunk(Chunk.charBuffer(CharBuffer.wrap(s))))
 
   /** Transforms a stream of `Char` to a stream of `String`. */
-  def char2string[F[_]]: Pipe[F, Char, String] = _.chunks.map(_.mkString_(""))
+  def char2string[F[_]]: Pipe[F, Char, String] = _.chunks.map { chunk =>
+    val Chunk.ArraySlice(chars, offset, length) = chunk.toArraySlice
+    new String(chars, offset, length)
+  }
 
   class LineTooLongException(val length: Int, val max: Int)
       extends RuntimeException(
