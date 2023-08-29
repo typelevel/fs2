@@ -156,9 +156,8 @@ object TimeSeries {
               val next = suffix(0)
               val tickCount =
                 ((next.time.toMillis - nextTick.toMillis) / tickPeriod.toMillis + 1).toInt
-              val tickTimes = (0 until tickCount).map(tickTime)
-              val ticks = tickTimes.map(TimeStamped.tick)
-              val rest = Pull.output(Chunk.from(ticks)) >> go(tickTime(tickCount), tl.cons(suffix))
+              val ticks = Stream.range(0, tickCount).map(i => TimeStamped.tick(tickTime(i)))
+              val rest = ticks.pull.echo >> go(tickTime(tickCount), tl.cons(suffix))
               out >> rest
           }
         case None => Pull.done
