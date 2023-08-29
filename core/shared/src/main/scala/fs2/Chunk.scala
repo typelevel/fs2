@@ -1388,6 +1388,18 @@ object Chunk
       if (c.isEmpty) empty else new Queue(collection.immutable.Queue(c), c.size)
     def apply[O](chunks: Chunk[O]*): Queue[O] =
       chunks.foldLeft(empty[O])(_ :+ _)
+
+    private[Chunk] def build[O](chunks: Chunk[Chunk[O]]): Queue[O] = {
+      val sqb = SQueue.newBuilder[Chunk[O]]
+      var totalSize = 0
+      chunks.foreach { (ch: Chunk[O]) =>
+        if (!ch.isEmpty) {
+          sqb += ch
+          totalSize += ch.size
+        }
+      }
+      new Chunk.Queue[O](sqb.result(), totalSize)
+    }
   }
 
   def newBuilder[O]: Collector.Builder[O, Chunk[O]] =
@@ -1437,11 +1449,7 @@ object Chunk
       override def flatten[A](ffa: Chunk[Chunk[A]]): Chunk[A] =
         if (ffa.isEmpty) Chunk.empty
         else if (ffa.size == 1) ffa(0) // short-circuit and simply return the first chunk
-        else {
-          var acc = Chunk.Queue.empty[A]
-          ffa.foreach(x => acc = acc :+ x)
-          acc
-        }
+        else Queue.build(ffa)
 
       override def traverse_[F[_], A, B](
           fa: Chunk[A]
