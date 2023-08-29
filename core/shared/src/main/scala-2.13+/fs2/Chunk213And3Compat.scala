@@ -94,7 +94,7 @@ private[fs2] trait ChunkCompanion213And3Compat {
   /** Creates a chunk backed by an immutable `ArraySeq`. */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def arraySeq[O](arraySeq: ArraySeq[O]): Chunk[O] =
     from(arraySeq)

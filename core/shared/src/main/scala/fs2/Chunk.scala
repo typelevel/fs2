@@ -626,7 +626,7 @@ object Chunk
   /** Creates a chunk backed by a vector. */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def vector[O](v: Vector[O]): Chunk[O] =
     from(v)
@@ -634,7 +634,7 @@ object Chunk
   /** Creates a chunk backed by an `IndexedSeq`. */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def indexedSeq[O](s: GIndexedSeq[O]): Chunk[O] =
     from(s)
@@ -723,7 +723,7 @@ object Chunk
   /** Creates a chunk from a `scala.collection.Seq`. */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def seq[O](s: GSeq[O]): Chunk[O] =
     from(s)
@@ -731,7 +731,7 @@ object Chunk
   /** Creates a chunk from a `scala.collection.Iterable`. */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def iterable[O](i: GIterable[O]): Chunk[O] =
     from(i)
@@ -781,7 +781,7 @@ object Chunk
     */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def arraySeq[O](arraySeq: mutable.ArraySeq[O]): Chunk[O] =
     from(arraySeq)
@@ -1122,7 +1122,7 @@ object Chunk
     */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def queue[A](queue: collection.immutable.Queue[A]): Chunk[A] =
     from(queue)

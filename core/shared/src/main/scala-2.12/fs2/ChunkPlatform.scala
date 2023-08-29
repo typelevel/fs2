@@ -83,7 +83,7 @@ private[fs2] trait ChunkCompanionPlatform {
     */
   @deprecated(
     "Use the `from` general factory instead",
-    "3.8.1"
+    "3.9.0"
   )
   def wrappedArray[O](wrappedArray: WrappedArray[O]): Chunk[O] =
     from(wrappedArray)
