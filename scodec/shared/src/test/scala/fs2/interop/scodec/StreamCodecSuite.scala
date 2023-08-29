@@ -190,7 +190,7 @@ class StreamCodecSuite extends Fs2Suite {
         chunks = hd :: chunks
         rem = tl
       }
-      Chunk.seq(chunks.reverse)
+      Chunk.from(chunks.reverse)
     }
 
     val result =
