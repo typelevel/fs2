@@ -53,7 +53,7 @@ class BracketSuite extends Fs2Suite {
       withBracketEventRecorder { recorder =>
         (recorder.recordBracketEvents.evalMap(_ => recorder.assertHistoryIs(Acquired))
           >> testCase).compile.drain
-          .handleError { case _: Err => () } >>
+          .recover { case _: Err => () } >>
           recorder.assertHistoryIs(Acquired, Released)
       }
 
@@ -74,7 +74,7 @@ class BracketSuite extends Fs2Suite {
           .append(recorder.recordBracketEvents >> use2)
           .compile
           .drain
-          .handleError { case _: Err => () } >>
+          .recover { case _: Err => () } >>
           recorder.assertHistoryIs(Acquired, Released, Acquired, Released)
       }
 

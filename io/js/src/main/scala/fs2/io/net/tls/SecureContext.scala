@@ -24,10 +24,10 @@ package io.net.tls
 
 import cats.syntax.all._
 import fs2.io.internal.facade
+import org.typelevel.scalaccompat.annotation._
 
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
-import scala.scalajs.js.|
 import scala.scalajs.js.JSConverters._
 import scala.scalajs.js.typedarray.Uint8Array
 
@@ -35,7 +35,9 @@ import scala.scalajs.js.typedarray.Uint8Array
 @js.native
 sealed trait SecureContext extends js.Object
 
+@nowarn3("msg=unused import")
 object SecureContext {
+  import scala.scalajs.js.|
 
   def default: SecureContext = fromJS(facade.tls.createSecureContext())
 

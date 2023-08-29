@@ -26,7 +26,6 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
 import cats.effect.std.Semaphore
-import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamSwitchMapSuite extends Fs2Suite {

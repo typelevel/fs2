@@ -21,27 +21,26 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 
 import events.EventEmitter
 
-package object child_process {
+@nowarn212("cat=unused")
+private[io] object child_process {
 
   @js.native
   @JSImport("child_process", "spawn")
-  private[io] def spawn(
+  def spawn(
       command: String,
       args: js.Array[String],
       options: SpawnOptions
   ): ChildProcess =
     js.native
 
-}
-
-package child_process {
-
-  private[io] trait SpawnOptions extends js.Object {
+  trait SpawnOptions extends js.Object {
 
     var cwd: js.UndefOr[String] = js.undefined
 
@@ -50,7 +49,7 @@ package child_process {
   }
 
   @js.native
-  private[io] trait ChildProcess extends EventEmitter {
+  trait ChildProcess extends EventEmitter {
 
     def stdin: fs2.io.Writable = js.native
 

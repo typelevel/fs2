@@ -41,11 +41,11 @@ object DemultiplexerError {
       with MpegError {
     def message =
       s"pid discontinuity: $last to $current with adaptation field control $adaptationFieldControl"
-    def toMpegError = this
+    def toMpegError: Discontinuity = this
   }
 
   case class Decoding(data: BitVector, decodingError: Err) extends DemultiplexerError {
     def message = s"decoding error ($decodingError) while decoding ${data.toHex}"
-    def toMpegError = MpegError.Decoding(data, decodingError)
+    def toMpegError: MpegError.Decoding = MpegError.Decoding(data, decodingError)
   }
 }
