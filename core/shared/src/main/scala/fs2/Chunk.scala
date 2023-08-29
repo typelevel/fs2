@@ -1578,7 +1578,7 @@ private[fs2] final class ChunkAsSeq[+O](
         chunk == thatChunkWrapper.chunk
 
       case seq: GSeq[_] =>
-        chunk.iterator.sameElements(seq.iterator)
+        chunk.iterator.sameElements(seq.iterator): @nowarn213("msg=a type was inferred to be `Any`")
 
       case _ =>
         false

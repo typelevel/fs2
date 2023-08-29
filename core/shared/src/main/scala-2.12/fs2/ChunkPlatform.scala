@@ -21,6 +21,7 @@
 
 package fs2
 
+import scala.annotation.nowarn
 import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.{Iterable => GIterable}
 import scala.collection.generic.{CanBuildFrom, GenericCompanion}
@@ -43,9 +44,11 @@ private[fs2] trait ChunkAsSeqPlatform[+O] {
   override def copyToArray[O2 >: O](xs: Array[O2], start: Int, len: Int): Unit =
     chunk.take(len).copyToArray(xs, start)
 
+  @nowarn("cat=unused")
   override def map[O2, That](f: O ⇒ O2)(implicit bf: CanBuildFrom[IndexedSeq[O], O2, That]): That =
     new ChunkAsSeq(chunk.map(f)).asInstanceOf[That]
 
+  @nowarn("cat=unused")
   override def zipWithIndex[O2 >: O, That](implicit
       bf: CanBuildFrom[IndexedSeq[O], (O2, Int), That]
   ): That =
