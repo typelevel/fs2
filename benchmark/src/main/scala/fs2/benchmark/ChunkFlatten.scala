@@ -42,11 +42,11 @@ class ChunkFlatten {
 
   @Setup
   def setup() =
-    chunkSeq = Seq.range(0, numberChunks).map(_ => Chunk.seq(Seq.fill(chunkSize)(Obj.create)))
+    chunkSeq = Seq.range(0, numberChunks).map(_ => Chunk.from(Seq.fill(chunkSize)(Obj.create)))
 
   @Benchmark
   def flatten(): Unit = {
-    Chunk.seq(chunkSeq).flatten
+    Chunk.from(chunkSeq).flatten
     ()
   }
 

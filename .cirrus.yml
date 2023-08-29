@@ -1,16 +1,7 @@
 macos_task:
   macos_instance:
     image: ghcr.io/cirruslabs/macos-ventura-base:latest
-  matrix:
-    - name: Node.js Apple Silicon
-      script:
-        - brew install sbt
-        - sbt ioJS/test
-    - name: JVM Apple Silicon
-      script:
-        - brew install sbt
-        - sbt ioJVM/test
-    - name: Native Apple Silicon
-      script:
-        - brew install sbt s2n
-        - sbt ioNative/test
+  name: Apple Silicon 
+  script:
+    - brew install sbt s2n
+    - sbt ioJVM/test ioJS/test ioNative/test
