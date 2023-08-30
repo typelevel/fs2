@@ -1,8 +1,8 @@
 # API Reference
 
-### FS2 3.8.0 (Cats Effect 3)
+### FS2 3.9.0 (Cats Effect 3)
 
-* [fs2-core, fs2-io, fs2-reactive-streams, fs2-scodec](https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/3.8.0/fs2/index.html)
+* [fs2-core, fs2-io, fs2-reactive-streams, fs2-scodec](https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/3.9.0/fs2/index.html)
 
 ### FS2 2.5.11 (Cats Effect 2)
 
