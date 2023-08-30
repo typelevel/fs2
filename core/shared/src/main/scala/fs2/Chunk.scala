@@ -324,8 +324,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * @note that even "read-only" interaction with a `ByteBuffer` may increment its `position`,
     * so this method should be considered as unsafely allocating mutable state.
     */
-  @nowarn212("cat=unused")
-  def toByteBuffer[B >: O](implicit ev: B =:= Byte): JByteBuffer = {
+  def toByteBuffer[B >: O](implicit @nowarn212("cat=unused") ev: B =:= Byte): JByteBuffer = {
     val slice = this.asInstanceOf[Chunk[Byte]].toArraySlice
     JByteBuffer.wrap(slice.values, slice.offset, slice.length)
   }
@@ -334,8 +333,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * @note that even "read-only" interaction with a `CharBuffer` may increment its position,
     * so this method should be considered as unsafely allocating mutable state.
     */
-  @nowarn212("cat=unused")
-  def toCharBuffer[C >: O](implicit ev: C =:= Char): JCharBuffer = {
+  def toCharBuffer[C >: O](implicit @nowarn212("cat=unused") ev: C =:= Char): JCharBuffer = {
     val slice = this.asInstanceOf[Chunk[Char]].toArraySlice
     JCharBuffer.wrap(slice.values, slice.offset, slice.length)
   }

@@ -2509,9 +2509,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * res0: List[Int] = List(1, 2, -1)
     * }}}
     */
-  @nowarn212("cat=unused")
   def rethrow[F2[x] >: F[x], O2](implicit
-      ev: O <:< Either[Throwable, O2],
+      @nowarn212("cat=unused") ev: O <:< Either[Throwable, O2],
       rt: RaiseThrowable[F2]
   ): Stream[F2, O2] =
     this.asInstanceOf[Stream[F, Either[Throwable, O2]]].chunks.flatMap { c =>
@@ -4122,11 +4121,13 @@ object Stream extends StreamLowPriority {
       * If either of `left` or `right` fails, then resulting stream will fail.
       * If either `halts` the evaluation will halt too.
       */
-    @nowarn212("cat=unused")
     def observeEither[L, R](
         left: Pipe[F, L, Nothing],
         right: Pipe[F, R, Nothing]
-    )(implicit F: Concurrent[F], ev: O <:< Either[L, R]): Stream[F, Either[L, R]] = {
+    )(implicit
+        F: Concurrent[F],
+        @nowarn212("cat=unused") ev: O <:< Either[L, R]
+    ): Stream[F, Either[L, R]] = {
       val src = self.asInstanceOf[Stream[F, Either[L, R]]]
       src
         .observe(_.collect { case Left(l) => l }.through(left))
@@ -5045,8 +5046,7 @@ object Stream extends StreamLowPriority {
       * res0: String = Hello world!
       * }}}
       */
-    @nowarn212("cat=unused")
-    def string(implicit ev: O <:< String): G[String] =
+    def string(implicit @nowarn212("cat=unused") ev: O <:< String): G[String] =
       new Stream(underlying).asInstanceOf[Stream[F, String]].compile.to(Collector.string)
 
     /** Compiles this stream into a value of the target effect type `G` by collecting
