@@ -23,7 +23,6 @@ package fs2
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
-import cats.syntax.all._
 import org.scalacheck.effect.PropF.forAllF
 
 import scala.concurrent.duration._

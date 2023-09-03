@@ -88,7 +88,7 @@ object DeflateParams {
   sealed abstract class Level(private[fs2] val juzDeflaterLevel: Int)
   case object Level {
     private[fs2] def apply(level: Int): Level =
-      level match {
+      (level: @unchecked) match {
         case DEFAULT.juzDeflaterLevel => Level.DEFAULT
         case ZERO.juzDeflaterLevel    => Level.ZERO
         case ONE.juzDeflaterLevel     => Level.ONE
@@ -121,7 +121,7 @@ object DeflateParams {
   sealed abstract class Strategy(private[fs2] val juzDeflaterStrategy: Int)
   case object Strategy {
     private[fs2] def apply(strategy: Int): Strategy =
-      strategy match {
+      (strategy: @unchecked) match {
         case DEFAULT.juzDeflaterStrategy      => Strategy.DEFAULT
         case FILTERED.juzDeflaterStrategy     => Strategy.FILTERED
         case HUFFMAN_ONLY.juzDeflaterStrategy => Strategy.HUFFMAN_ONLY
@@ -137,7 +137,7 @@ object DeflateParams {
   sealed abstract class FlushMode(private[fs2] val juzDeflaterFlushMode: Int)
   case object FlushMode {
     private[fs2] def apply(flushMode: Int): FlushMode =
-      flushMode match {
+      (flushMode: @unchecked) match {
         case DEFAULT.juzDeflaterFlushMode    => FlushMode.NO_FLUSH
         case SYNC_FLUSH.juzDeflaterFlushMode => FlushMode.SYNC_FLUSH
         case FULL_FLUSH.juzDeflaterFlushMode => FlushMode.FULL_FLUSH

@@ -173,7 +173,7 @@ class StreamPerformanceSuite extends Fs2Suite {
     Ns.foreach { N =>
       test(N.toString) {
         val s: Stream[Pure, Int] = Stream
-          .chunk(Chunk.seq(0 until N))
+          .chunk(Chunk.from(0 until N))
           .repeatPull {
             _.uncons1.flatMap {
               case None           => Pull.pure(None)

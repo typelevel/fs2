@@ -45,9 +45,9 @@ class ChunksBenchmark {
 
   @Setup
   def setup() = {
-    chunkSeq = Seq.range(0, chunkCount).map(_ => Chunk.seq(Seq.fill(chunkSize)(Obj.create)))
+    chunkSeq = Seq.range(0, chunkCount).map(_ => Chunk.from(Seq.fill(chunkSize)(Obj.create)))
     sizeHint = chunkSeq.foldLeft(0)(_ + _.size)
-    flattened = Chunk.seq(chunkSeq).flatten
+    flattened = Chunk.from(chunkSeq).flatten
   }
 
   @Benchmark

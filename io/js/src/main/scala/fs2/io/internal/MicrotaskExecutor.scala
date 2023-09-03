@@ -21,6 +21,8 @@
 
 package fs2.io.internal
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSGlobal
 import scala.concurrent.ExecutionContext
@@ -33,6 +35,7 @@ private[io] object MicrotaskExecutor extends ExecutionContext {
 
   @JSGlobal("queueMicrotask")
   @js.native
+  @nowarn212("cat=unused")
   private def queueMicrotask(function: js.Function0[Any]): Unit = js.native
 
 }

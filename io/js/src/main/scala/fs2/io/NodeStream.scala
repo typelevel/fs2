@@ -22,6 +22,7 @@
 package fs2.io
 
 import fs2.io.internal.facade.events.EventEmitter
+import org.typelevel.scalaccompat.annotation._
 
 import scala.scalajs.js
 
@@ -29,6 +30,7 @@ import scala.scalajs.js
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
+@nowarn212("cat=unused")
 trait Readable extends EventEmitter {
 
   protected[io] def read(): js.typedarray.Uint8Array = js.native
@@ -45,6 +47,7 @@ trait Readable extends EventEmitter {
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
+@nowarn212("cat=unused")
 trait Writable extends EventEmitter {
 
   protected[io] def destroy(): this.type = js.native
@@ -64,6 +67,7 @@ trait Writable extends EventEmitter {
   * @see [[https://nodejs.org/api/stream.html]]
   */
 @js.native
+@nowarn212("cat=unused")
 trait Duplex extends Readable with Writable {
   protected[io] override def destroy(): this.type = js.native
 }

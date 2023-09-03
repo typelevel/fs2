@@ -33,7 +33,7 @@ class ChunkBenchmark {
 
   @Setup
   def setup() =
-    ints = Chunk.seq((0 until chunkSize).map(_ + 1000)).compact
+    ints = Chunk.from((0 until chunkSize).map(_ + 1000)).compact
 
   @Benchmark
   def map(): Unit = {

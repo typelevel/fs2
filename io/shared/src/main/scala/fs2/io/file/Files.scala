@@ -32,7 +32,6 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 import cats.Traverse
-import fs2.text
 
 /** Provides operations related to working with files in the effect `F`.
   *

@@ -19,33 +19,13 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package benchmark
+package fs2.io.internal.facade
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSGlobal
 
-@State(Scope.Thread)
-class PullBenchmark {
-  @Param(Array("8", "256"))
-  var n: Int = _
-
-  @Benchmark
-  def unconsPull(): Int = {
-    val s: Stream[Pure, Int] = Stream
-      .chunk(Chunk.from(0 to 2560))
-      .repeatPull { s =>
-        s.unconsN(n).flatMap {
-          case Some((h, t)) => Pull.output(h).as(Some(t))
-          case None         => Pull.pure(None)
-        }
-      }
-    s
-      .covary[IO]
-      .compile
-      .last
-      .unsafeRunSync()
-      .get
-  }
+@JSGlobal
+@js.native
+private[io] class AggregateError extends js.Error {
+  def errors: js.Array[js.Error] = js.native
 }

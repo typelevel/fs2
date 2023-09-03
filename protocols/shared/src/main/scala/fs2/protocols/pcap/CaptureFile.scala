@@ -78,7 +78,7 @@ object CaptureFile {
     decoderFn <- f(global).fold(StreamDecoder.raiseError, StreamDecoder.emit)
     recordDecoder =
       RecordHeader.codec(global.ordering).flatMap { header =>
-        StreamDecoder.isolate(header.includedLength * 8)(decoderFn(header)).strict
+        fixedSizeBytes(header.includedLength, decoderFn(header).strict.decodeOnly)
       }
     values <- StreamDecoder.many(recordDecoder).flatMap(x => StreamDecoder.emits(x))
   } yield values

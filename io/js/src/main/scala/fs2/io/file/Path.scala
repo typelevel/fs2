@@ -27,7 +27,7 @@ import fs2.io.internal.facade
 
 import scala.annotation.tailrec
 
-final case class Path private (override val toString: String) extends PathApi {
+final case class Path private[file] (override val toString: String) extends PathApi {
 
   def /(name: String): Path =
     if (toString.isEmpty & name.isEmpty)

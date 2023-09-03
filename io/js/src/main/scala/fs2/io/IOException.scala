@@ -22,6 +22,7 @@
 package fs2.io
 
 import fs2.io.file.FileSystemException
+import fs2.io.internal.facade.AggregateError
 import fs2.io.net.SocketException
 import fs2.io.net.SocketTimeoutException
 import fs2.io.net.UnknownHostException
@@ -35,20 +36,22 @@ private class JavaScriptIOException(message: String, cause: js.JavaScriptExcepti
     with NoStackTrace
 
 object IOException {
-  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] =
-    InterruptedIOException
-      .unapply(cause)
-      .orElse(SocketException.unapply(cause))
-      .orElse(SSLException.unapply(cause))
-      .orElse(FileSystemException.unapply(cause))
-      .orElse(UnknownHostException.unapply(cause))
-      .orElse {
-        cause.exception match {
-          case error: js.Error if error.message.contains("EPIPE") =>
-            Some(new JavaScriptIOException("Broken pipe", cause))
-          case _ => None
-        }
+  private[io] def unapply(cause: js.JavaScriptException): Option[IOException] = cause match {
+    case js.JavaScriptException(aggregate: AggregateError) =>
+      // just use the first one. catching aggregated / CompositeFailures is impractical
+      unapply(js.JavaScriptException(aggregate.errors(0)))
+    case InterruptedIOException(ex) => Some(ex)
+    case SocketException(ex)        => Some(ex)
+    case SSLException(ex)           => Some(ex)
+    case FileSystemException(ex)    => Some(ex)
+    case UnknownHostException(ex)   => Some(ex)
+    case _ =>
+      cause.exception match {
+        case error: js.Error if error.message.contains("EPIPE") =>
+          Some(new JavaScriptIOException("Broken pipe", cause))
+        case _ => None
       }
+  }
 }
 
 class InterruptedIOException(message: String = null, cause: Throwable = null)
