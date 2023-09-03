@@ -215,6 +215,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.file.Watcher#DefaultWatcher.this"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.concurrent.Channel.sendAndClose"
   )
 )
 
