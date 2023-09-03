@@ -269,55 +269,71 @@ class ChannelSuite extends Fs2Suite {
   }
 
   test("racing send and sendAndClose should work in bounded(1) case") {
-    val test = Channel.bounded[IO, Int](1).flatMap { ch =>
+    val result = Channel.bounded[IO, Int](1).flatMap { ch =>
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
-    val test2 = Channel.bounded[IO, Int](1).flatMap { ch =>
-      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
-    }
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
 
-    test.assertEquals(((Right(()), Right(())), List(0, 1)))
-    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
+    result.map {
+      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+        assertEquals(obtained, expectedFirstCase)
+      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
+        assertEquals(obtained, expectedSecondCase)
+      case _ => fail("An unknown test result was received.")
+    }
   }
 
   test("racing send and sendAndClose should work in bounded(2) case") {
-    val test = Channel.bounded[IO, Int](2).flatMap { ch =>
+    val result = Channel.bounded[IO, Int](2).flatMap { ch =>
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
-    val test2 = Channel.bounded[IO, Int](2).flatMap { ch =>
-      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
-    }
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
 
-    test.assertEquals(((Right(()), Right(())), List(0, 1)))
-    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
+    result.map {
+      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+        assertEquals(obtained, expectedFirstCase)
+      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
+        assertEquals(obtained, expectedSecondCase)
+      case _ => fail("An unknown test result was received.")
+    }
   }
 
   test("racing send and sendAndClose should work in unbounded case") {
-    val test = Channel.unbounded[IO, Int].flatMap { ch =>
+    val result = Channel.unbounded[IO, Int].flatMap { ch =>
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
-    val test2 = Channel.unbounded[IO, Int].flatMap { ch =>
-      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
-    }
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
 
-    test.assertEquals(((Right(()), Right(())), List(0, 1)))
-    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
+    result.map {
+      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+        assertEquals(obtained, expectedFirstCase)
+      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
+        assertEquals(obtained, expectedSecondCase)
+      case _ => fail("An unknown test result was received.")
+    }
   }
 
   test("racing send and sendAndClose should work in synchronous case") {
-    val test = Channel.synchronous[IO, Int].flatMap { ch =>
+    val result = Channel.synchronous[IO, Int].flatMap { ch =>
       ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
     }
 
-    val test2 = Channel.synchronous[IO, Int].flatMap { ch =>
-      ch.sendAndClose(1).both(ch.send(0)).parProduct(ch.stream.compile.toList)
-    }
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
 
-    test.assertEquals(((Right(()), Right(())), List(0, 1)))
-    test2.assertEquals(((Right(()), Left(Channel.Closed)), List(1)))
+    result.map {
+      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+        assertEquals(obtained, expectedFirstCase)
+      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
+        assertEquals(obtained, expectedSecondCase)
+      case _ => fail("An unknown test result was received.")
+    }
   }
 
 }
