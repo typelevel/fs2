@@ -73,7 +73,7 @@ private[fs2] trait ioplatform extends iojvmnative {
               .pollReadRec(()) { _ =>
                 IO {
                   val buf = new Array[Byte](bufSize)
-                  val readed = guard(read(STDIN_FILENO, buf.at(0), bufSize.toULong))
+                  val readed = guard(read(STDIN_FILENO, buf.atUnsafe(0), bufSize.toULong))
                   if (readed > 0)
                     Right(Some(Chunk.array(buf, 0, readed)))
                   else if (readed == 0)
@@ -120,7 +120,7 @@ private[fs2] trait ioplatform extends iojvmnative {
           val Chunk.ArraySlice(buf, offset, length) = bytes.toArraySlice
 
           def go(pos: Int): IO[Either[Int, Unit]] =
-            IO(write(fd, buf.at(offset + pos), (length - pos).toULong)).flatMap { wrote =>
+            IO(write(fd, buf.atUnsafe(offset + pos), (length - pos).toULong)).flatMap { wrote =>
               if (wrote >= 0) {
                 val newPos = pos + wrote
                 if (newPos < length)

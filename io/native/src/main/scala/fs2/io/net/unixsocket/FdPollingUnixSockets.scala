@@ -136,7 +136,7 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
 
     val addr = stackalloc[sockaddr_un]()
     addr.sun_family = AF_UNIX.toUShort
-    memcpy(addr.sun_path.at(0), pathBytes.at(0), pathBytes.length.toULong)
+    memcpy(addr.sun_path.at(0), pathBytes.atUnsafe(0), pathBytes.length.toULong)
 
     f(addr.asInstanceOf[Ptr[sockaddr]])
   }
