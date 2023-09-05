@@ -42,9 +42,9 @@ final class CertChainAndKey private (chainPem: ByteVector, privateKeyPem: ByteVe
           guard_ {
             s2n_cert_chain_and_key_load_pem_bytes(
               certChainAndKey,
-              chainPem.toArray.at(0),
+              chainPem.toArray.atUnsafe(0),
               chainPem.length.toUInt,
-              privateKeyPem.toArray.at(0),
+              privateKeyPem.toArray.atUnsafe(0),
               privateKeyPem.length.toUInt
             )
           }

@@ -57,7 +57,7 @@ sealed trait TLSParameters {
           guard_ {
             s2n_connection_append_protocol_preference(
               conn,
-              protocol.getBytes().at(0),
+              protocol.getBytes().atUnsafe(0),
               protocol.length.toByte
             )
           }
@@ -66,13 +66,13 @@ sealed trait TLSParameters {
 
       _ <- cipherPreferences.traverse_ { version =>
         F.delay {
-          guard_(s2n_connection_set_cipher_preferences(conn, toCStringArray(version).at(0)))
+          guard_(s2n_connection_set_cipher_preferences(conn, toCStringArray(version).atUnsafe(0)))
         }
       }.toResource
 
       _ <- serverName.traverse { sn =>
         F.delay {
-          guard_(s2n_set_server_name(conn, toCStringArray(sn).at(0)))
+          guard_(s2n_set_server_name(conn, toCStringArray(sn).atUnsafe(0)))
         }
       }.toResource
 
