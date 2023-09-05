@@ -1354,6 +1354,16 @@ class StreamCombinatorsSuite extends Fs2Suite {
         }
       }
     }
+
+    test("correctly rechunk big chunks at the end of a stream") {
+      val chunks = Stream
+        .chunk(Chunk.from(List.fill(5000)(1)))
+        .rechunkRandomlyWithSeed(0.01, 0.1)(1L)
+        .chunks
+        .compile
+        .toList
+      assert(chunks.forall(_.size <= 500))
+    }
   }
 
   group("rechunkRandomly") {
@@ -1373,7 +1383,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     )
     assertEquals(
       Stream("hel", "l", "o Wor", "ld")
-        .repartition(s => Chunk.indexedSeq(s.grouped(2).toVector))
+        .repartition(s => Chunk.from(s.grouped(2).toVector))
         .toList,
       List("he", "ll", "o ", "Wo", "rl", "d")
     )
@@ -1381,7 +1391,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     Stream("hello").repartition(_ => Chunk.empty).assertEmpty()
 
     def input = Stream("ab").repeat
-    def ones(s: String) = Chunk.vector(s.grouped(1).toVector)
+    def ones(s: String) = Chunk.from(s.grouped(1).toVector)
     assertEquals(input.take(2).repartition(ones).toVector, Vector("a", "b", "a", "b"))
     assertEquals(
       input.take(4).repartition(ones).toVector,
@@ -1398,7 +1408,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
       List(1, 3, 6, 10, 15, 15)
     )
     assertEquals(
-      Stream(1, 10, 100).repartition(_ => Chunk.seq(1 to 1000)).take(4).toList,
+      Stream(1, 10, 100).repartition(_ => Chunk.from(1 to 1000)).take(4).toList,
       List(1, 2, 3, 4)
     )
   }

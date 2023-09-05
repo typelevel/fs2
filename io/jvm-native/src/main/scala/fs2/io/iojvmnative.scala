@@ -23,7 +23,6 @@ package fs2
 package io
 
 import cats.effect.kernel.Sync
-import cats.effect.kernel.implicits._
 import cats.syntax.all._
 
 import scala.reflect.ClassTag

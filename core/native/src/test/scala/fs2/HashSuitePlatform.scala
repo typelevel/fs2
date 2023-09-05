@@ -31,11 +31,11 @@ trait HashSuitePlatform {
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
-    val `type` = EVP_get_digestbyname((algo.replace("-", "") + "\u0000").getBytes.at(0))
+    val `type` = EVP_get_digestbyname((algo.replace("-", "") + "\u0000").getBytes.atUnsafe(0))
     EVP_Digest(
-      if (bytes.length > 0) bytes.at(0) else null,
+      if (bytes.length > 0) bytes.atUnsafe(0) else null,
       bytes.length.toULong,
-      md.at(0),
+      md.atUnsafe(0),
       size,
       `type`,
       null

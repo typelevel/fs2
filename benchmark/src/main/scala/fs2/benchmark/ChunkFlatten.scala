@@ -20,32 +20,34 @@
  */
 
 package fs2
-package benchmark
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
+import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, Setup, State}
+
+import cats.syntax.all._
 
 @State(Scope.Thread)
-class PullBenchmark {
-  @Param(Array("8", "256"))
-  var n: Int = _
+class ChunkFlatten {
+  @Param(Array("8", "32", "128"))
+  var numberChunks: Int = _
+
+  @Param(Array("1", "2", "10", "50"))
+  var chunkSize: Int = _
+
+  case class Obj(dummy: Boolean)
+  object Obj {
+    def create: Obj = Obj(true)
+  }
+
+  var chunkSeq: Seq[Chunk[Obj]] = _
+
+  @Setup
+  def setup() =
+    chunkSeq = Seq.range(0, numberChunks).map(_ => Chunk.from(Seq.fill(chunkSize)(Obj.create)))
 
   @Benchmark
-  def unconsPull(): Int = {
-    val s: Stream[Pure, Int] = Stream
-      .chunk(Chunk.from(0 to 2560))
-      .repeatPull { s =>
-        s.unconsN(n).flatMap {
-          case Some((h, t)) => Pull.output(h).as(Some(t))
-          case None         => Pull.pure(None)
-        }
-      }
-    s
-      .covary[IO]
-      .compile
-      .last
-      .unsafeRunSync()
-      .get
+  def flatten(): Unit = {
+    Chunk.from(chunkSeq).flatten
+    ()
   }
+
 }

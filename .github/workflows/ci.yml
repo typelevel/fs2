@@ -15,12 +15,12 @@ on:
     tags: [v*]
 
 env:
-  PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-  SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-  SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
-  SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-  PGP_SECRET: ${{ secrets.PGP_SECRET }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+concurrency:
+  group: ${{ github.workflow }} @ ${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -28,43 +28,29 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.3.0, 2.12.18, 2.13.11]
+        scala: [2.12, 2.13, 3]
         java: [temurin@17]
         project: [rootJS, rootJVM, rootNative]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Checkout current branch (full)
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Download Java (temurin@17)
-        id: download-java-temurin-17
-        if: matrix.java == 'temurin@17'
-        uses: typelevel/download-java@v2
-        with:
-          distribution: temurin
-          java-version: 17
-
       - name: Setup Java (temurin@17)
+        id: setup-java-temurin-17
         if: matrix.java == 'temurin@17'
         uses: actions/setup-java@v3
         with:
-          distribution: jdkfile
+          distribution: temurin
           java-version: 17
-          jdkFile: ${{ steps.download-java-temurin-17.outputs.jdkFile }}
+          cache: sbt
 
-      - name: Cache sbt
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.sbt
-            ~/.ivy2/cache
-            ~/.coursier/cache/v1
-            ~/.cache/coursier/v1
-            ~/AppData/Local/Coursier/Cache/v1
-            ~/Library/Caches/Coursier/v1
-          key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+      - name: sbt update
+        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
 
       - name: Install brew formulae (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
@@ -97,21 +83,21 @@ jobs:
         run: sbt 'project ${{ matrix.project }}' '++ ${{ matrix.scala }}' doc
 
       - name: Scalafix tests
-        if: matrix.scala == '2.13.11' && matrix.project == 'rootJVM'
+        if: matrix.scala == '2.13' && matrix.project == 'rootJVM'
         run: |
           cd scalafix
           sbt testCI
 
       - name: Make target directories
-        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
-        run: mkdir -p target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target protocols/native/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target benchmark/target project/target
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        run: mkdir -p protocols/js/target io/native/target unidocs/target core/native/target core/js/target protocols/native/target core/jvm/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target project/target
 
       - name: Compress target directories
-        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
-        run: tar cf targets.tar target protocols/js/target io/native/target unidocs/target .js/target core/native/target core/js/target protocols/native/target mdoc/target core/jvm/target .jvm/target .native/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target benchmark/target project/target
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+        run: tar cf targets.tar protocols/js/target io/native/target unidocs/target core/native/target core/js/target protocols/native/target core/jvm/target scodec/jvm/target scodec/js/target io/js/target reactive-streams/target io/jvm/target protocols/jvm/target scodec/native/target project/target
 
       - name: Upload target directories
-        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
+        if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v3
         with:
           name: target-${{ matrix.os }}-${{ matrix.java }}-${{ matrix.scala }}-${{ matrix.project }}
@@ -120,7 +106,7 @@ jobs:
   publish:
     name: Publish Artifacts
     needs: [build]
-    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/series/2.5.x')
+    if: github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -132,130 +118,121 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Java (temurin@17)
-        id: download-java-temurin-17
-        if: matrix.java == 'temurin@17'
-        uses: typelevel/download-java@v2
-        with:
-          distribution: temurin
-          java-version: 17
-
       - name: Setup Java (temurin@17)
+        id: setup-java-temurin-17
         if: matrix.java == 'temurin@17'
         uses: actions/setup-java@v3
         with:
-          distribution: jdkfile
+          distribution: temurin
           java-version: 17
-          jdkFile: ${{ steps.download-java-temurin-17.outputs.jdkFile }}
+          cache: sbt
 
-      - name: Cache sbt
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.sbt
-            ~/.ivy2/cache
-            ~/.coursier/cache/v1
-            ~/.cache/coursier/v1
-            ~/AppData/Local/Coursier/Cache/v1
-            ~/Library/Caches/Coursier/v1
-          key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+      - name: sbt update
+        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
 
-      - name: Download target directories (3.3.0, rootJS)
+      - name: Download target directories (2.12, rootJS)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-3.3.0-rootJS
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-rootJS
 
-      - name: Inflate target directories (3.3.0, rootJS)
+      - name: Inflate target directories (2.12, rootJS)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (3.3.0, rootJVM)
+      - name: Download target directories (2.12, rootJVM)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-3.3.0-rootJVM
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-rootJVM
 
-      - name: Inflate target directories (3.3.0, rootJVM)
+      - name: Inflate target directories (2.12, rootJVM)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (3.3.0, rootNative)
+      - name: Download target directories (2.12, rootNative)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-3.3.0-rootNative
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-rootNative
 
-      - name: Inflate target directories (3.3.0, rootNative)
+      - name: Inflate target directories (2.12, rootNative)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.12.18, rootJS)
+      - name: Download target directories (2.13, rootJS)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12.18-rootJS
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-rootJS
 
-      - name: Inflate target directories (2.12.18, rootJS)
+      - name: Inflate target directories (2.13, rootJS)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.12.18, rootJVM)
+      - name: Download target directories (2.13, rootJVM)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12.18-rootJVM
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-rootJVM
 
-      - name: Inflate target directories (2.12.18, rootJVM)
+      - name: Inflate target directories (2.13, rootJVM)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.12.18, rootNative)
+      - name: Download target directories (2.13, rootNative)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12.18-rootNative
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-rootNative
 
-      - name: Inflate target directories (2.12.18, rootNative)
+      - name: Inflate target directories (2.13, rootNative)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.11, rootJS)
+      - name: Download target directories (3, rootJS)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13.11-rootJS
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootJS
 
-      - name: Inflate target directories (2.13.11, rootJS)
+      - name: Inflate target directories (3, rootJS)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.11, rootJVM)
+      - name: Download target directories (3, rootJVM)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13.11-rootJVM
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootJVM
 
-      - name: Inflate target directories (2.13.11, rootJVM)
+      - name: Inflate target directories (3, rootJVM)
         run: |
           tar xf targets.tar
           rm targets.tar
 
-      - name: Download target directories (2.13.11, rootNative)
+      - name: Download target directories (3, rootNative)
         uses: actions/download-artifact@v3
         with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13.11-rootNative
+          name: target-${{ matrix.os }}-${{ matrix.java }}-3-rootNative
 
-      - name: Inflate target directories (2.13.11, rootNative)
+      - name: Inflate target directories (3, rootNative)
         run: |
           tar xf targets.tar
           rm targets.tar
 
       - name: Import signing key
         if: env.PGP_SECRET != '' && env.PGP_PASSPHRASE == ''
+        env:
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
         run: echo $PGP_SECRET | base64 -di | gpg --import
 
       - name: Import signing key and strip passphrase
         if: env.PGP_SECRET != '' && env.PGP_PASSPHRASE != ''
+        env:
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
         run: |
           echo "$PGP_SECRET" | base64 -di > /tmp/signing-key.gpg
           echo "$PGP_PASSPHRASE" | gpg --pinentry-mode loopback --passphrase-fd 0 --import /tmp/signing-key.gpg
@@ -265,7 +242,44 @@ jobs:
         uses: typelevel/await-cirrus@main
 
       - name: Publish
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_CREDENTIAL_HOST: ${{ secrets.SONATYPE_CREDENTIAL_HOST }}
         run: sbt tlCiRelease
+
+  dependency-submission:
+    name: Submit Dependencies
+    if: github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        java: [temurin@17]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout current branch (full)
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java (temurin@17)
+        id: setup-java-temurin-17
+        if: matrix.java == 'temurin@17'
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Submit Dependencies
+        uses: scalacenter/sbt-dependency-submission@v2
+        with:
+          modules-ignore: integration_2.12 integration_2.13 integration_3 rootjs_2.12 rootjs_2.13 rootjs_3 microsite_2.12 microsite_2.13 microsite_3 rootjvm_2.12 rootjvm_2.13 rootjvm_3 rootnative_2.12 rootnative_2.13 rootnative_3 fs2-benchmark_2.12 fs2-benchmark_2.13 fs2-benchmark_3
+          configs-ignore: test scala-tool scala-doc-tool test-internal
 
   site:
     name: Generate Site
@@ -280,40 +294,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Java (temurin@17)
-        id: download-java-temurin-17
-        if: matrix.java == 'temurin@17'
-        uses: typelevel/download-java@v2
-        with:
-          distribution: temurin
-          java-version: 17
-
       - name: Setup Java (temurin@17)
+        id: setup-java-temurin-17
         if: matrix.java == 'temurin@17'
         uses: actions/setup-java@v3
         with:
-          distribution: jdkfile
+          distribution: temurin
           java-version: 17
-          jdkFile: ${{ steps.download-java-temurin-17.outputs.jdkFile }}
+          cache: sbt
 
-      - name: Cache sbt
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.sbt
-            ~/.ivy2/cache
-            ~/.coursier/cache/v1
-            ~/.cache/coursier/v1
-            ~/AppData/Local/Coursier/Cache/v1
-            ~/Library/Caches/Coursier/v1
-          key: ${{ runner.os }}-sbt-cache-v2-${{ hashFiles('**/*.sbt') }}-${{ hashFiles('project/build.properties') }}
+      - name: sbt update
+        if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
 
       - name: Generate site
         run: sbt microsite/tlSite
 
       - name: Publish site
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v3.9.0
+        uses: peaceiris/actions-gh-pages@v3.9.3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: mdoc/target/docs/site

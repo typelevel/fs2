@@ -31,8 +31,6 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import fs2.io.net.Socket
-
 private[tls] trait TLSSocketPlatform[F[_]] {
 
   /** Initiates handshaking -- either the initial or a renegotiation. */

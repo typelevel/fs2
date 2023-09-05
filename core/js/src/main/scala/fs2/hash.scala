@@ -21,6 +21,8 @@
 
 package fs2
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
@@ -67,9 +69,11 @@ object hash {
 
   @js.native
   @JSImport("crypto", "createHash")
+  @nowarn212("cat=unused")
   private[fs2] def createHash(algorithm: String): Hash = js.native
 
   @js.native
+  @nowarn212("cat=unused")
   private[fs2] trait Hash extends js.Object {
     def update(data: Uint8Array): Unit = js.native
     def digest(): Uint8Array = js.native

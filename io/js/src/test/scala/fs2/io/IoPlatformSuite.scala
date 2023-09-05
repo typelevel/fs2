@@ -23,7 +23,6 @@ package fs2
 package io
 
 import cats.effect.IO
-import fs2.Fs2Suite
 import fs2.io.internal.facade
 import org.scalacheck.effect.PropF.forAllF
 

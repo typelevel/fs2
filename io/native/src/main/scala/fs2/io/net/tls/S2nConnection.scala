@@ -164,14 +164,14 @@ private[tls] object S2nConnection {
         go(0)
       }
 
-      def write(bytes: Chunk[Byte]) = if (bytes.nonEmpty) {
+      def write(bytes: Chunk[Byte]) = {
         val Chunk.ArraySlice(buf, offset, n) = bytes.toArraySlice
 
         def go(i: Int): F[Unit] =
           F.delay {
             writeTasks.set(F.unit)
             val blocked = stackalloc[s2n_blocked_status]()
-            val wrote = guard(s2n_send(conn, buf.at(offset + i), (n - i).toLong, blocked))
+            val wrote = guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toLong, blocked))
             (!blocked, Math.max(wrote, 0))
           }.productL(F.delay(writeTasks.get).flatten)
             .flatMap { case (blocked, wrote) =>
@@ -180,7 +180,7 @@ private[tls] object S2nConnection {
             }
 
         go(0)
-      } else F.unit
+      }
 
       def shutdown =
         F.delay {
@@ -204,7 +204,7 @@ private[tls] object S2nConnection {
       def session = F.delay {
         val len = guard(s2n_connection_get_session_length(conn))
         val buf = new Array[Byte](len)
-        val copied = guard(s2n_connection_get_session(conn, buf.at(0), len.toUInt))
+        val copied = guard(s2n_connection_get_session(conn, buf.atUnsafe(0), len.toUInt))
         new SSLSession(ByteVector.view(buf, 0, copied))
       }
 

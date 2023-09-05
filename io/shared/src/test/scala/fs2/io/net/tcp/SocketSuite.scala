@@ -162,9 +162,9 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
     test("errors - should be captured in the effect") {
       val connectionRefused = for {
-        bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1))
+        port <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1.port))
         _ <- Network[IO]
-          .client(bindAddress)
+          .client(SocketAddress(host"localhost", port))
           .use_
           .interceptMessage[ConnectException]("Connection refused")
       } yield ()
