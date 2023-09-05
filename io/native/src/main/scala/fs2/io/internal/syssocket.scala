@@ -21,9 +21,12 @@
 
 package fs2.io.internal
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.unsafe._
 
+@nowarn212("cat=unused")
 @extern
 private[io] object syssocket {
   // only in Linux and FreeBSD, but not macOS
