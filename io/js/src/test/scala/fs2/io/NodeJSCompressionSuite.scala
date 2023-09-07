@@ -23,7 +23,6 @@ package fs2
 package io
 
 import cats.effect._
-import fs2.CompressionSuite
 import fs2.compression._
 import fs2.io.compression._
 import fs2.io.internal.facade

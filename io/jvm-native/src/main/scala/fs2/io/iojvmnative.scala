@@ -24,7 +24,6 @@ package io
 
 import cats._
 import cats.effect.kernel.Sync
-import cats.effect.kernel.implicits._
 import cats.syntax.all._
 
 import java.nio.charset.Charset

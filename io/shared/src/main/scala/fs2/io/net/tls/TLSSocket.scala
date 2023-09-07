@@ -24,8 +24,6 @@ package io
 package net
 package tls
 
-import fs2.io.net.Socket
-
 /** TCP socket that supports encryption via TLS.
   *
   * To construct a `TLSSocket`, use the `client` and `server` methods on `TLSContext`.

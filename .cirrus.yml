@@ -1,0 +1,7 @@
+macos_task:
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-ventura-base:latest
+  name: Apple Silicon 
+  script:
+    - brew install sbt s2n
+    - sbt ioJVM/test ioJS/test ioNative/test

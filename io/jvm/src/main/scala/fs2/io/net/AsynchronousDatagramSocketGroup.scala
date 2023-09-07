@@ -321,7 +321,10 @@ private[net] object AsynchronousDatagramSocketGroup {
                       while (success && attachment.hasReaders) {
                         val reader = attachment.peekReader.get
                         success = read1(channel, reader)
-                        if (success) attachment.dequeueReader
+                        if (success) {
+                          attachment.dequeueReader
+                          ()
+                        }
                       }
                     }
                     if (key.isWritable) {
@@ -329,13 +332,17 @@ private[net] object AsynchronousDatagramSocketGroup {
                       while (success && attachment.hasWriters) {
                         val (p, writer) = attachment.peekWriter.get
                         success = write1(channel, p, writer)
-                        if (success) attachment.dequeueWriter
+                        if (success) {
+                          attachment.dequeueWriter
+                          ()
+                        }
                       }
                     }
                     key.interestOps(
                       (if (attachment.hasReaders) SelectionKey.OP_READ else 0) |
                         (if (attachment.hasWriters) SelectionKey.OP_WRITE else 0)
                     )
+                    ()
                   }
                 catch {
                   case _: CancelledKeyException => // Ignore; key was closed

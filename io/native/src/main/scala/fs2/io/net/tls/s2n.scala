@@ -21,10 +21,13 @@
 
 package fs2.io.net.tls
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalanative.unsafe._
 
 @extern
 @link("s2n")
+@nowarn212("cat=unused")
 private[tls] object s2n {
 
   final val S2N_SUCCESS = 0

@@ -26,7 +26,6 @@ import java.nio.file.{Files => _, Path => JPath, _}
 import java.nio.file.attribute.{FileAttribute, PosixFilePermission}
 
 import cats.effect.kernel.{Async, Resource}
-import cats.syntax.all._
 
 import scala.concurrent.duration._
 

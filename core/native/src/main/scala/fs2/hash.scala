@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect.kernel.Sync
+import org.typelevel.scalaccompat.annotation._
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -74,7 +75,7 @@ object hash {
             .foreach { chunk =>
               F.delay {
                 val Chunk.ArraySlice(values, offset, size) = chunk.toArraySlice
-                if (EVP_DigestUpdate(ctx, values.at(offset), size.toULong) != 1)
+                if (EVP_DigestUpdate(ctx, values.atUnsafe(offset), size.toULong) != 1)
                   throw new RuntimeException(s"EVP_DigestUpdate: ${getError()}")
               }
             } ++ Stream
@@ -82,7 +83,7 @@ object hash {
               F.delay[Chunk[Byte]] {
                 val md = new Array[Byte](EVP_MAX_MD_SIZE)
                 val size = stackalloc[CUnsignedInt]()
-                if (EVP_DigestFinal_ex(ctx, md.at(0), size) != 1)
+                if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                   throw new RuntimeException(s"EVP_DigestFinal_ex: ${getError()}")
                 Chunk.ArraySlice(md, 0, (!size).toInt)
               }
@@ -94,6 +95,7 @@ object hash {
 
   @link("crypto")
   @extern
+  @nowarn212("cat=unused")
   private[fs2] object openssl {
 
     final val EVP_MAX_MD_SIZE = 64

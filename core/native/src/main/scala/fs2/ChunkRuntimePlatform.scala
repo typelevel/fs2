@@ -31,7 +31,7 @@ private[fs2] trait ChunkCompanionRuntimePlatform {
 
   def fromBytePtr(ptr: Ptr[Byte], length: Int): Chunk[Byte] = {
     val bytes = new Array[Byte](length)
-    memcpy(bytes.at(0), ptr, length.toULong)
+    memcpy(bytes.atUnsafe(0), ptr, length.toULong)
     Chunk.ArraySlice(bytes, 0, length)
   }
 

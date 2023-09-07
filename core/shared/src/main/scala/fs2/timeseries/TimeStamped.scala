@@ -156,7 +156,7 @@ object TimeStamped {
                 e2 = e2 + over
               }
               bldr += (tsa.map(Right.apply))
-              ((Some(e2), f(tsa.value)), Chunk.seq(bldr.result()))
+              ((Some(e2), f(tsa.value)), Chunk.from(bldr.result()))
             }
           case None => ((Some(tsa.time + over), f(tsa.value)), Chunk(tsa.map(Right.apply)))
         }

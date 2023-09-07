@@ -43,13 +43,14 @@ class LinesBenchmark {
       else {
         val rng = new java.util.Random(7919)
         val line = Array.fill(asciiLineSize)((rng.nextInt(126 - 32) + 32).toByte)
-        val List(string) = Stream.emits(line).through(text.utf8.decode).foldMonoid.toList
+        val List(string) =
+          Stream.emits(line).through(text.utf8.decode).foldMonoid.toList: @unchecked
 
         ((string + "\n") * lines)
           .grouped(chunkSize)
           .grouped(chunkSize)
           .foldLeft(Stream[IO, String]()) { case (acc, strings) =>
-            acc ++ Stream.chunk(Chunk.seq(strings))
+            acc ++ Stream.chunk(Chunk.from(strings))
           }
       }
 

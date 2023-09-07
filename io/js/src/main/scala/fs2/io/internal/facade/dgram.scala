@@ -21,25 +21,25 @@
 
 package fs2.io.internal.facade
 
+import org.typelevel.scalaccompat.annotation._
+
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
 import events.EventEmitter
 
-package object dgram {
+@nowarn212("cat=unused")
+private[io] object dgram {
 
   @js.native
   @JSImport("dgram", "createSocket")
-  private[io] def createSocket(`type`: String): Socket =
+  @nowarn212("cat=unused")
+  def createSocket(`type`: String): Socket =
     js.native
 
-}
-
-package dgram {
-
   @js.native
-  private[io] trait Socket extends EventEmitter {
+  trait Socket extends EventEmitter {
 
     def address(): AddressInfo = js.native
 
@@ -83,19 +83,19 @@ package dgram {
   }
 
   @js.native
-  private[io] trait AddressInfo extends js.Object {
+  trait AddressInfo extends js.Object {
     def address: String = js.native
     def family: Int = js.native
     def port: Int = js.native
   }
 
-  private[io] trait BindOptions extends js.Object {
+  trait BindOptions extends js.Object {
     var port: js.UndefOr[Int] = js.undefined
     var address: js.UndefOr[String] = js.undefined
   }
 
   @js.native
-  private[io] trait RemoteInfo extends js.Object {
+  trait RemoteInfo extends js.Object {
     def address: String = js.native
     def family: Int = js.native
     def port: Int = js.native

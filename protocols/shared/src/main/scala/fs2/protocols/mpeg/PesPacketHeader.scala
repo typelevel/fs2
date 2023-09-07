@@ -185,7 +185,10 @@ object PesPacketHeader {
       ("flags" | Codec[Flags]).flatPrepend { flags =>
         variableSizeBytes(
           uint8,
-          ("pts" | conditional(flags.ptsFlag, tsCodec(bin"0011"))) ::
+          ("pts" | conditional(
+            flags.ptsFlag,
+            if (flags.dtsFlag) tsCodec(bin"0011") else tsCodec(bin"0010")
+          )) ::
             ("dts" | conditional(flags.dtsFlag, tsCodec(bin"0001"))) ::
             ("escr" | conditional(flags.escrFlag, escrCodec)) ::
             ("es_rate" | conditional(flags.esRateFlag, ignore(1) ~> uint(22) <~ ignore(1))) ::
