@@ -277,6 +277,12 @@ class ChannelSuite extends Fs2Suite {
     checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
+  test("sendAndClose closes right after sending the last element in synchronous case") {
+    val channel = Channel.synchronous[IO, Int]
+
+    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+  }
+
   def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
     val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
     val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))

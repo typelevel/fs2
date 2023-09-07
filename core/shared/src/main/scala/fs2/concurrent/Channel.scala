@@ -176,7 +176,7 @@ object Channel {
                       State(values, size, None, (a, producer) :: producers, close),
                       signalClosure.whenA(close) *>
                         notifyStream(waiting).as(rightUnit) <*
-                        waitOnBound(producer, poll)
+                        waitOnBound(producer, poll).whenA(!close)
                     )
               }
             }
