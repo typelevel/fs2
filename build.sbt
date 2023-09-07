@@ -219,6 +219,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // Private internal method: #3274
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.Chunk.platformIterable"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.concurrent.Channel.sendAndClose"
   )
 )
 
