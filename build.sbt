@@ -415,7 +415,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.4",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
-      "org.scalatestplus" %% "testng-7-5" % "3.2.16.0" % "test"
+      "org.scalatestplus" %% "testng-7-5" % "3.2.17.0" % "test"
     ),
     tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
