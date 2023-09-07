@@ -252,88 +252,73 @@ class ChannelSuite extends Fs2Suite {
     TestControl.executeEmbed(test)
   }
 
-  test("sendAndClose closes right after sending the last element (bounded case)") {
-    val result = Channel.bounded[IO, Int](1).flatMap { ch =>
-      ch.sendAndClose(0) *> ch.isClosed
-    }
+  def checkIfSendAndCloseClosing(channel: IO[Channel[IO, Int]]) =
+    channel
+      .flatMap { ch =>
+        ch.sendAndClose(0) *> ch.isClosed
+      }
+      .assertEquals(true)
 
-    result.assertEquals(true)
+  test("sendAndClose closes right after sending the last element in bounded(1) case") {
+    val channel = Channel.bounded[IO, Int](1)
+
+    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
-  test("sendAndClose closes right after sending the last element (unbounded case)") {
-    val result = Channel.unbounded[IO, Int].flatMap { ch =>
-      ch.sendAndClose(0) *> ch.isClosed
-    }
+  test("sendAndClose closes right after sending the last element in bounded(2) case") {
+    val channel = Channel.bounded[IO, Int](2)
 
-    result.assertEquals(true)
+    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+  }
+
+  test("sendAndClose closes right after sending the last element in unbounded case") {
+    val channel = Channel.unbounded[IO, Int]
+
+    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+  }
+
+  def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
+    val expectedThirdCase = ((Left(Channel.Closed), Right(())), List(1))
+
+    channel
+      .flatMap { ch =>
+        ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
+      }
+      .map {
+        case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+          assertEquals(obtained, expectedFirstCase)
+        case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
+          assertEquals(obtained, expectedSecondCase)
+        case obtained @ ((Left(Channel.Closed), Right(())), List(1)) =>
+          assertEquals(obtained, expectedThirdCase)
+        case e => fail(s"An unknown test result: $e")
+      }
   }
 
   test("racing send and sendAndClose should work in bounded(1) case") {
-    val result = Channel.bounded[IO, Int](1).flatMap { ch =>
-      ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
-    }
+    val channel = Channel.bounded[IO, Int](1)
 
-    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
-    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
-
-    result.map {
-      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
-        assertEquals(obtained, expectedFirstCase)
-      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
-        assertEquals(obtained, expectedSecondCase)
-      case _ => fail("An unknown test result was received.")
-    }
+    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
   test("racing send and sendAndClose should work in bounded(2) case") {
-    val result = Channel.bounded[IO, Int](2).flatMap { ch =>
-      ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
-    }
+    val channel = Channel.bounded[IO, Int](2)
 
-    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
-    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
-
-    result.map {
-      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
-        assertEquals(obtained, expectedFirstCase)
-      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
-        assertEquals(obtained, expectedSecondCase)
-      case _ => fail("An unknown test result was received.")
-    }
+    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
   test("racing send and sendAndClose should work in unbounded case") {
-    val result = Channel.unbounded[IO, Int].flatMap { ch =>
-      ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
-    }
+    val channel = Channel.unbounded[IO, Int]
 
-    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
-    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
-
-    result.map {
-      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
-        assertEquals(obtained, expectedFirstCase)
-      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
-        assertEquals(obtained, expectedSecondCase)
-      case _ => fail("An unknown test result was received.")
-    }
+    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
   test("racing send and sendAndClose should work in synchronous case") {
-    val result = Channel.synchronous[IO, Int].flatMap { ch =>
-      ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
-    }
+    val channel = Channel.synchronous[IO, Int]
 
-    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
-    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
-
-    result.map {
-      case obtained @ ((Right(()), Right(())), List(0, 1)) =>
-        assertEquals(obtained, expectedFirstCase)
-      case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
-        assertEquals(obtained, expectedSecondCase)
-      case _ => fail("An unknown test result was received.")
-    }
+    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
   }
 
 }

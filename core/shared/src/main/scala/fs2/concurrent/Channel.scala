@@ -111,6 +111,7 @@ sealed trait Channel[F[_], A] {
   def close: F[Either[Channel.Closed, Unit]]
 
   /** Sends an element through this channel, and closes it right after.
+    * This operation is atomic so it is guaranteed that this will be the last element sent to the channel.
     *
     * No-op if the channel is closed, see [[close]] for further info.
     */
