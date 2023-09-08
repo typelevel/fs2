@@ -278,9 +278,17 @@ class ChannelSuite extends Fs2Suite {
   }
 
   test("sendAndClose closes right after sending the last element in synchronous case") {
-    val channel = Channel.synchronous[IO, Int]
+    val test = Channel
+      .synchronous[IO, Int]
+      .flatMap { ch =>
+        ch.stream
+          .concurrently(Stream.emit(0).covary[IO].evalMap(ch.sendAndClose))
+          .compile
+          .drain *> ch.isClosed
+      }
+      .assertEquals(true)
 
-    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    test.parReplicateA_(if (isJVM) 10000 else 1)
   }
 
   def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
