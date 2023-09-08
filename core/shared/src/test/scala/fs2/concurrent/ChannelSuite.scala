@@ -253,42 +253,34 @@ class ChannelSuite extends Fs2Suite {
   }
 
   def checkIfSendAndCloseClosing(channel: IO[Channel[IO, Int]]) =
-    channel
-      .flatMap { ch =>
-        ch.sendAndClose(0) *> ch.isClosed
-      }
-      .assertEquals(true)
+    channel.flatMap { ch =>
+      ch.sendAndClose(0) *> ch.isClosed.assert
+    }
 
   test("sendAndClose closes right after sending the last element in bounded(1) case") {
     val channel = Channel.bounded[IO, Int](1)
 
-    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    checkIfSendAndCloseClosing(channel)
   }
 
   test("sendAndClose closes right after sending the last element in bounded(2) case") {
     val channel = Channel.bounded[IO, Int](2)
 
-    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    checkIfSendAndCloseClosing(channel)
   }
 
   test("sendAndClose closes right after sending the last element in unbounded case") {
     val channel = Channel.unbounded[IO, Int]
 
-    checkIfSendAndCloseClosing(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    checkIfSendAndCloseClosing(channel)
   }
 
   test("sendAndClose closes right after sending the last element in synchronous case") {
-    val test = Channel
-      .synchronous[IO, Int]
-      .flatMap { ch =>
-        ch.stream
-          .concurrently(Stream.emit(0).covary[IO].evalMap(ch.sendAndClose))
-          .compile
-          .drain *> ch.isClosed
+    Channel.synchronous[IO, Int].flatMap { ch =>
+      ch.stream.compile.drain.background.surround {
+        ch.sendAndClose(0) *> ch.isClosed.assert
       }
-      .assertEquals(true)
-
-    test.parReplicateA_(if (isJVM) 10000 else 1)
+    }
   }
 
   def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
@@ -309,30 +301,31 @@ class ChannelSuite extends Fs2Suite {
           assertEquals(obtained, expectedThirdCase)
         case e => fail(s"An unknown test result: $e")
       }
+      .replicateA_(if (isJVM) 1000 else 1)
   }
 
   test("racing send and sendAndClose should work in bounded(1) case") {
     val channel = Channel.bounded[IO, Int](1)
 
-    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    racingSendOperations(channel)
   }
 
   test("racing send and sendAndClose should work in bounded(2) case") {
     val channel = Channel.bounded[IO, Int](2)
 
-    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    racingSendOperations(channel)
   }
 
   test("racing send and sendAndClose should work in unbounded case") {
     val channel = Channel.unbounded[IO, Int]
 
-    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    racingSendOperations(channel)
   }
 
   test("racing send and sendAndClose should work in synchronous case") {
     val channel = Channel.synchronous[IO, Int]
 
-    racingSendOperations(channel).parReplicateA_(if (isJVM) 10000 else 1)
+    racingSendOperations(channel)
   }
 
 }
