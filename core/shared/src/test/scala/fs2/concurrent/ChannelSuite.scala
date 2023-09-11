@@ -283,8 +283,7 @@ class ChannelSuite extends Fs2Suite {
 
   def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
     val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
-    val expectedSecondCase = ((Right(()), Left(Channel.Closed)), List(1))
-    val expectedThirdCase = ((Left(Channel.Closed), Right(())), List(1))
+    val expectedSecondCase = ((Left(Channel.Closed), Right(())), List(1))
 
     channel
       .flatMap { ch =>
@@ -293,10 +292,8 @@ class ChannelSuite extends Fs2Suite {
       .map {
         case obtained @ ((Right(()), Right(())), List(0, 1)) =>
           assertEquals(obtained, expectedFirstCase)
-        case obtained @ ((Right(()), Left(Channel.Closed)), List(1)) =>
-          assertEquals(obtained, expectedSecondCase)
         case obtained @ ((Left(Channel.Closed), Right(())), List(1)) =>
-          assertEquals(obtained, expectedThirdCase)
+          assertEquals(obtained, expectedSecondCase)
         case e => fail(s"An unknown test result: $e")
       }
       .replicateA_(if (isJVM) 1000 else 1)
