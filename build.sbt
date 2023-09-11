@@ -221,7 +221,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
     "fs2.Chunk.platformIterable"
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
-    "fs2.concurrent.Channel.sendAndClose"
+    "fs2.concurrent.Channel.closeWithElement"
   )
 )
 
