@@ -115,7 +115,7 @@ sealed trait Channel[F[_], A] {
     *
     * No-op if the channel is closed, see [[close]] for further info.
     */
-  def sendAndClose(a: A): F[Either[Channel.Closed, Unit]]
+  def closeWithElement(a: A): F[Either[Channel.Closed, Unit]]
 
   /** Returns true if this channel is closed */
   def isClosed: F[Boolean]
@@ -176,7 +176,7 @@ object Channel {
                       State(values, size, None, (a, producer) :: producers, close),
                       signalClosure.whenA(close) *>
                         notifyStream(waiting).as(rightUnit) <*
-                        waitOnBound(producer, poll)
+                        waitOnBound(producer, poll).whenA(!close)
                     )
               }
             }
@@ -184,7 +184,7 @@ object Channel {
 
         def send(a: A) = sendImpl(a, false)
 
-        def sendAndClose(a: A) = sendImpl(a, true)
+        def closeWithElement(a: A) = sendImpl(a, true)
 
         def trySend(a: A) =
           state.flatModify {

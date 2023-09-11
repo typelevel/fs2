@@ -252,35 +252,33 @@ class ChannelSuite extends Fs2Suite {
     TestControl.executeEmbed(test)
   }
 
-  def checkIfSendAndCloseClosing(channel: IO[Channel[IO, Int]]) =
+  def checkIfCloseWithElementClosing(channel: IO[Channel[IO, Int]]) =
     channel.flatMap { ch =>
-      ch.sendAndClose(0) *> ch.isClosed.assert
+      ch.closeWithElement(0) *> ch.isClosed.assert
     }
 
-  test("sendAndClose closes right after sending the last element in bounded(1) case") {
+  test("closeWithElement closes right after sending the last element in bounded(1) case") {
     val channel = Channel.bounded[IO, Int](1)
 
-    checkIfSendAndCloseClosing(channel)
+    checkIfCloseWithElementClosing(channel)
   }
 
-  test("sendAndClose closes right after sending the last element in bounded(2) case") {
+  test("closeWithElement closes right after sending the last element in bounded(2) case") {
     val channel = Channel.bounded[IO, Int](2)
 
-    checkIfSendAndCloseClosing(channel)
+    checkIfCloseWithElementClosing(channel)
   }
 
-  test("sendAndClose closes right after sending the last element in unbounded case") {
+  test("closeWithElement closes right after sending the last element in unbounded case") {
     val channel = Channel.unbounded[IO, Int]
 
-    checkIfSendAndCloseClosing(channel)
+    checkIfCloseWithElementClosing(channel)
   }
 
-  test("sendAndClose closes right after sending the last element in synchronous case") {
-    Channel.synchronous[IO, Int].flatMap { ch =>
-      ch.stream.compile.drain.background.surround {
-        ch.sendAndClose(0) *> ch.isClosed.assert
-      }
-    }
+  test("closeWithElement closes right after sending the last element in synchronous case") {
+    val channel = Channel.synchronous[IO, Int]
+
+    checkIfCloseWithElementClosing(channel)
   }
 
   def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
@@ -290,7 +288,7 @@ class ChannelSuite extends Fs2Suite {
 
     channel
       .flatMap { ch =>
-        ch.send(0).both(ch.sendAndClose(1)).parProduct(ch.stream.compile.toList)
+        ch.send(0).both(ch.closeWithElement(1)).parProduct(ch.stream.compile.toList)
       }
       .map {
         case obtained @ ((Right(()), Right(())), List(0, 1)) =>
@@ -304,25 +302,25 @@ class ChannelSuite extends Fs2Suite {
       .replicateA_(if (isJVM) 1000 else 1)
   }
 
-  test("racing send and sendAndClose should work in bounded(1) case") {
+  test("racing send and closeWithElement should work in bounded(1) case") {
     val channel = Channel.bounded[IO, Int](1)
 
     racingSendOperations(channel)
   }
 
-  test("racing send and sendAndClose should work in bounded(2) case") {
+  test("racing send and closeWithElement should work in bounded(2) case") {
     val channel = Channel.bounded[IO, Int](2)
 
     racingSendOperations(channel)
   }
 
-  test("racing send and sendAndClose should work in unbounded case") {
+  test("racing send and closeWithElement should work in unbounded case") {
     val channel = Channel.unbounded[IO, Int]
 
     racingSendOperations(channel)
   }
 
-  test("racing send and sendAndClose should work in synchronous case") {
+  test("racing send and closeWithElement should work in synchronous case") {
     val channel = Channel.synchronous[IO, Int]
 
     racingSendOperations(channel)
