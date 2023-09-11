@@ -20,20 +20,17 @@
  */
 
 package fs2
-package io
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Sync
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import org.typelevel.scalaccompat.annotation._
 
 import java.io.{InputStream, OutputStream}
 
 /** Provides various ways to work with streams that perform IO.
   */
-@nowarn213("msg=package object inheritance is deprecated")
-object `package` extends ioplatform {
+package object io extends ioplatform {
   type IOException = java.io.IOException
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
