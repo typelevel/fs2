@@ -110,8 +110,7 @@ sealed trait Channel[F[_], A] {
     */
   def close: F[Either[Channel.Closed, Unit]]
 
-  /** Sends an element through this channel, and closes it right after.
-    * This operation is atomic so it is guaranteed that this will be the last element sent to the channel.
+  /** Gracefully closes this channel with a final element. This method will never block.
     *
     * No-op if the channel is closed, see [[close]] for further info.
     */
@@ -176,7 +175,7 @@ object Channel {
                       State(values, size, None, (a, producer) :: producers, close),
                       signalClosure.whenA(close) *>
                         notifyStream(waiting).as(rightUnit) <*
-                        waitOnBound(producer, poll).whenA(!close)
+                        waitOnBound(producer, poll).unlessA(close)
                     )
               }
             }
