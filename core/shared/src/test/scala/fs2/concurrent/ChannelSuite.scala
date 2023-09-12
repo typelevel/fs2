@@ -251,4 +251,76 @@ class ChannelSuite extends Fs2Suite {
 
     TestControl.executeEmbed(test)
   }
+
+  def checkIfCloseWithElementClosing(channel: IO[Channel[IO, Int]]) =
+    channel.flatMap { ch =>
+      ch.closeWithElement(0) *> ch.isClosed.assert
+    }
+
+  test("closeWithElement closes right after sending the last element in bounded(1) case") {
+    val channel = Channel.bounded[IO, Int](1)
+
+    checkIfCloseWithElementClosing(channel)
+  }
+
+  test("closeWithElement closes right after sending the last element in bounded(2) case") {
+    val channel = Channel.bounded[IO, Int](2)
+
+    checkIfCloseWithElementClosing(channel)
+  }
+
+  test("closeWithElement closes right after sending the last element in unbounded case") {
+    val channel = Channel.unbounded[IO, Int]
+
+    checkIfCloseWithElementClosing(channel)
+  }
+
+  test("closeWithElement closes right after sending the last element in synchronous case") {
+    val channel = Channel.synchronous[IO, Int]
+
+    checkIfCloseWithElementClosing(channel)
+  }
+
+  def racingSendOperations(channel: IO[Channel[IO, Int]]) = {
+    val expectedFirstCase = ((Right(()), Right(())), List(0, 1))
+    val expectedSecondCase = ((Left(Channel.Closed), Right(())), List(1))
+
+    channel
+      .flatMap { ch =>
+        ch.send(0).both(ch.closeWithElement(1)).parProduct(ch.stream.compile.toList)
+      }
+      .map {
+        case obtained @ ((Right(()), Right(())), List(0, 1)) =>
+          assertEquals(obtained, expectedFirstCase)
+        case obtained @ ((Left(Channel.Closed), Right(())), List(1)) =>
+          assertEquals(obtained, expectedSecondCase)
+        case e => fail(s"An unknown test result: $e")
+      }
+      .replicateA_(if (isJVM) 1000 else 1)
+  }
+
+  test("racing send and closeWithElement should work in bounded(1) case") {
+    val channel = Channel.bounded[IO, Int](1)
+
+    racingSendOperations(channel)
+  }
+
+  test("racing send and closeWithElement should work in bounded(2) case") {
+    val channel = Channel.bounded[IO, Int](2)
+
+    racingSendOperations(channel)
+  }
+
+  test("racing send and closeWithElement should work in unbounded case") {
+    val channel = Channel.unbounded[IO, Int]
+
+    racingSendOperations(channel)
+  }
+
+  test("racing send and closeWithElement should work in synchronous case") {
+    val channel = Channel.synchronous[IO, Int]
+
+    racingSendOperations(channel)
+  }
+
 }
