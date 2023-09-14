@@ -2252,8 +2252,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           semaphore.release *>
             semaphore.available.flatMap {
               case `concurrency` =>
-                F.unit.map(_ => println("DEBUG: inside releaseAndCheckCompletion"))
-                channel.close.void *> end.complete(()).void
+                F.unit.map(_ => println("DEBUG: inside releaseAndCheckCompletion")) *>
+                  channel.close.void *> end.complete(()).void
               case _ => F.unit
             }
 
