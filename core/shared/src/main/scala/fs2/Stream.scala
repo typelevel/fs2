@@ -2253,7 +2253,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             semaphore.available.flatMap {
               case `concurrency` =>
                 println("DEBUG: inside releaseAndCheckCompletion")
-                channel.close.void // *> end.complete(()).void
+                channel.close.void *> end.complete(()).void
               case _ => F.unit
             }
 
@@ -2294,7 +2294,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           .concurrently(background)
           .onFinalize {
             println("DEBUG: Inside the foreground's onFinalize");
-            stop.complete(()) *> end.complete(()) *> end.get
+            stop.complete(()) *> end.get
           }
       }
 
