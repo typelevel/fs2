@@ -2252,7 +2252,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           semaphore.release *>
             semaphore.available.flatMap {
               case `concurrency` =>
-                println("DEBUG: inside releaseAndCheckCompletion")
+                F.unit.map(_ => println("DEBUG: inside releaseAndCheckCompletion"))
                 channel.close.void *> end.complete(()).void
               case _ => F.unit
             }
@@ -2262,12 +2262,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             poll(semaphore.acquire) <*
               Deferred[F2, Unit].flatMap { pushed =>
                 val init = initFork(pushed.complete(()).void)
-                println("DEBUG: Inside forkOnElem")
-                poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
-                  println("DEBUG: Inside forkOnElem and inside onCancel")
-                  val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
-                  F.start(stop.get.race(action) *> releaseAndCheckCompletion)
-                }
+                F.unit.map(_ => println("DEBUG: Inside forkOnElem")) *>
+                  poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
+                    val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
+                    F.unit.map(_ => println("DEBUG: Inside forkOnElem and inside onCancel")) *>
+                      F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                  }
               }
           }
 
@@ -2277,24 +2277,24 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               .foreach(forkOnElem)
               .onFinalizeCase {
                 case ExitCase.Succeeded =>
-                  println("DEBUG: inside background SUCCESS case")
-                  releaseAndCheckCompletion
+                  F.unit.map(_ => println("DEBUG: inside background SUCCESS case")) *>
+                    releaseAndCheckCompletion
                 case _ =>
-                  println("DEBUG: inside background OTHER case")
-                  stop.complete(()) *> releaseAndCheckCompletion
+                  F.unit.map(_ => println("DEBUG: inside background OTHER case")) *>
+                    stop.complete(()) *> releaseAndCheckCompletion
               }
 
         val foreground = channel.stream
           .evalTap { x =>
-            println("DEBUG: Inside foreground evalTap")
-            x
+            F.unit.map(_ => println("DEBUG: Inside foreground evalTap")) *>
+              x
           }
           .evalMap(_.rethrow)
         foreground
           .concurrently(background)
           .onFinalize {
-            println("DEBUG: Inside the foreground's onFinalize");
-            stop.complete(()) *> end.get
+            F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+              stop.complete(()) *> end.get
           }
       }
 
@@ -3861,17 +3861,18 @@ object Stream extends StreamLowPriority {
   def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     r match {
       case Resource.Allocate(resource) =>
-        println("DEBUG: inside resourceWeak Allocate case")
-        Stream
-          .bracketFullWeak(resource) { case ((_, release), exit) =>
-            println("DEBUG: inside resourceWeak Allocate case CALLING release")
-            release(exit)
-          }
-          .mapNoScope(_._1)
+        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Allocate case"))) *>
+          Stream
+            .bracketFullWeak(resource) { case ((_, release), exit) =>
+              F.unit.map(_ =>
+                println("DEBUG: inside resourceWeak Allocate case CALLING release")
+              ) *>
+                release(exit)
+            }
+            .mapNoScope(_._1)
       case Resource.Bind(source, f) =>
         resourceWeak(source).flatMap(o => resourceWeak(f(o)))
-      case Resource.Eval(fo) =>
-        Stream.eval(fo)
+      case Resource.Eval(fo) => Stream.eval(fo)
       case Resource.Pure(o) =>
         Stream.emit(o)
     }
