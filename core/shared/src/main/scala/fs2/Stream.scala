@@ -2251,8 +2251,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         val releaseAndCheckCompletion =
           semaphore.release *>
             semaphore.available.flatMap {
-              case `concurrency` => channel.close *> end.complete(()).void
-              case _             => F.unit
+              case `concurrency` =>
+                println("DEBUG: inside releaseAndCheckCompletion")
+                channel.close.void // *> end.complete(()).void
+              case _ => F.unit
             }
 
         def forkOnElem(el: O): F2[Unit] =
@@ -2260,7 +2262,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             poll(semaphore.acquire) <*
               Deferred[F2, Unit].flatMap { pushed =>
                 val init = initFork(pushed.complete(()).void)
+                println("DEBUG: Inside forkOnElem")
                 poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
+                  println("DEBUG: Inside forkOnElem and inside onCancel")
                   val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                   F.start(stop.get.race(action) *> releaseAndCheckCompletion)
                 }
@@ -2272,12 +2276,26 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             interruptWhen(stop.get.map(_.asRight[Throwable]))
               .foreach(forkOnElem)
               .onFinalizeCase {
-                case ExitCase.Succeeded => releaseAndCheckCompletion
-                case _                  => stop.complete(()) *> releaseAndCheckCompletion
+                case ExitCase.Succeeded =>
+                  println("DEBUG: inside background SUCCESS case")
+                  releaseAndCheckCompletion
+                case _ =>
+                  println("DEBUG: inside background OTHER case")
+                  stop.complete(()) *> releaseAndCheckCompletion
               }
 
-        val foreground = channel.stream.evalMap(_.rethrow)
-        foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
+        val foreground = channel.stream
+          .evalTap { x =>
+            println("DEBUG: Inside foreground evalTap")
+            x
+          }
+          .evalMap(_.rethrow)
+        foreground
+          .concurrently(background)
+          .onFinalize {
+            println("DEBUG: Inside the foreground's onFinalize");
+            stop.complete(()) *> end.complete(()) *> end.get
+          }
       }
 
     Stream.force(action)
@@ -3843,15 +3861,19 @@ object Stream extends StreamLowPriority {
   def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     r match {
       case Resource.Allocate(resource) =>
+        println("DEBUG: inside resourceWeak Allocate case")
         Stream
           .bracketFullWeak(resource) { case ((_, release), exit) =>
+            println("DEBUG: inside resourceWeak Allocate case CALLING release")
             release(exit)
           }
           .mapNoScope(_._1)
       case Resource.Bind(source, f) =>
         resourceWeak(source).flatMap(o => resourceWeak(f(o)))
-      case Resource.Eval(fo) => Stream.eval(fo)
-      case Resource.Pure(o)  => Stream.emit(o)
+      case Resource.Eval(fo) =>
+        Stream.eval(fo)
+      case Resource.Pure(o) =>
+        Stream.emit(o)
     }
 
   /** Same as [[resourceWeak]], but expressed as a FunctionK. */

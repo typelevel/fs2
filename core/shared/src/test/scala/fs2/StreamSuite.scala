@@ -1042,4 +1042,13 @@ class StreamSuite extends Fs2Suite {
     }
   }
 
+  test("parEvalMap works correctly") {
+    Stream
+      .resource(Resource.make(IO.println("acquire"))(_ => IO.println("release")))
+      // .parEvalMap(2)(_ => IO.sleep(1.second) >> IO.println("use"))
+      .parEvalMap(2)(_ => IO.println("use"))
+      .compile
+      .drain
+  }
+
 }
