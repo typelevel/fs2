@@ -8,10 +8,10 @@ ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.11"
+val Scala213 = "2.13.12"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.0")
+ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.1")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -219,6 +219,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // Private internal method: #3274
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.Chunk.platformIterable"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.concurrent.Channel.closeWithElement"
   )
 )
 
@@ -306,7 +309,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.20" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.21" % Optional,
       "com.google.jimfs" % "jimfs" % "1.3.0" % Test
     )
   )
@@ -412,7 +415,7 @@ lazy val reactiveStreams = project
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.4",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % "test",
-      "org.scalatestplus" %% "testng-7-5" % "3.2.16.0" % "test"
+      "org.scalatestplus" %% "testng-7-5" % "3.2.17.0" % "test"
     ),
     tlJdkRelease := Some(8),
     Test / fork := true // Otherwise SubscriberStabilitySpec fails
