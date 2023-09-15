@@ -545,18 +545,26 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       interrupt <- F.deferred[Unit]
       backResult <- F.deferred[Either[Throwable, Unit]]
     } yield {
-      def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt)
+      def watch[A](str: Stream[F2, A]) = Stream.eval(
+        F.unit.map(_ => println("DEBUG: Inside 'concurrently' watch"))
+      ) *> str.interruptWhen(interrupt.get.attempt)
 
       val compileBack: F2[Unit] = watch(that).compile.drain.guaranteeCase {
         // Pass the result of backstream completion in the backResult deferred.
         // IF result of back-stream was failed, interrupt fore. Otherwise, let it be
         case Outcome.Errored(t) => backResult.complete(Left(t)) >> interrupt.complete(()).void
-        case _                  => backResult.complete(Right(())).void
+        case _ =>
+          backResult.complete(Right(())).void *> F.unit.map(_ =>
+            println("DEBUG: Inside 'concurrently' compileBack SUCCESS case")
+          )
       }.voidError
 
       // stop background process but await for it to finalise with a result
       // We use F.fromEither to bring errors from the back into the fore
-      val stopBack: F2[Unit] = interrupt.complete(()) >> backResult.get.flatMap(F.fromEither)
+      val stopBack: F2[Unit] =
+        interrupt.complete(()) >> backResult.get.flatMap(F.fromEither) *> F.unit.map(_ =>
+          println("DEBUG: Inside 'concurrently' stopBack")
+        )
 
       (Stream.bracket(compileBack.start)(_ => stopBack), watch(this))
     }
@@ -2253,7 +2261,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             semaphore.available.flatMap {
               case `concurrency` =>
                 F.unit.map(_ => println("DEBUG: inside releaseAndCheckCompletion")) *>
-                  channel.close.void *> end.complete(()).void
+                  channel.close *> end.complete(()).void
               case _ => F.unit
             }
 
@@ -2266,7 +2274,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                   poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
                     val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                     F.unit.map(_ => println("DEBUG: Inside forkOnElem and inside onCancel")) *>
-                      F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                      // F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                      F.start(
+                        stop.get.race(action) *> F.unit.map(_ =>
+                          println("DEBUG: Inside forkOnElem and inside onCancel after action")
+                        ) *> releaseAndCheckCompletion
+                      )
                   }
               }
           }
@@ -2290,12 +2303,78 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               x
           }
           .evalMap(_.rethrow)
+
+        /*
         foreground
           .concurrently(background)
           .onFinalize {
             F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
               stop.complete(()) *> end.get
           }
+         */
+
+        /*
+        val z = for {
+          _ <- Stream.resource(background.compile.resource.drain)
+          forg <- Stream.resource(
+            foreground
+              .onFinalize {
+                F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+                  stop.complete(()) *> end.get
+              }
+              .compile
+              .resource
+              .lastOrError
+          )
+        } yield forg
+         */
+        /*
+        val z = for {
+          forg <- Stream.resource(
+            foreground
+              .onFinalize {
+                F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+                  stop.complete(()) *> end.get
+              }
+              .compile
+              .resource
+              .lastOrError
+          )
+          _ <- Stream.resource(background.compile.resource.drain)
+        } yield forg
+         */
+
+        /*
+        val e = Stream
+          .resource(background.compile.resource.drain)
+          .flatMap { _ =>
+            val x = Stream.eval(
+              foreground
+                .onFinalize {
+                  F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+                    stop.complete(()) *> end.get
+                }
+            )
+            x
+          }
+         */
+
+        // This one runs but still closes somehow the resource :(
+        val z = for {
+          _ <- Resource.eval(background.compile.drain)
+          forg <- Resource.eval {
+            foreground
+              .onFinalize {
+                F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+                  stop.complete(()) *> end.get
+              }
+              .compile
+              .lastOrError
+          }
+        } yield forg
+
+        Stream.resource(z)
+
       }
 
     Stream.force(action)
@@ -3871,10 +3950,14 @@ object Stream extends StreamLowPriority {
             }
             .mapNoScope(_._1)
       case Resource.Bind(source, f) =>
-        resourceWeak(source).flatMap(o => resourceWeak(f(o)))
-      case Resource.Eval(fo) => Stream.eval(fo)
+        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Bind case"))) *>
+          resourceWeak(source).flatMap(o => resourceWeak(f(o)))
+      case Resource.Eval(fo) =>
+        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Eval case"))) *>
+          Stream.eval(fo)
       case Resource.Pure(o) =>
-        Stream.emit(o)
+        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Pure case"))) *>
+          Stream.emit(o)
     }
 
   /** Same as [[resourceWeak]], but expressed as a FunctionK. */
