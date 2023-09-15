@@ -2360,8 +2360,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
          */
 
         // This one runs but still closes somehow the resource :(
+        /*
         val z = for {
-          _ <- Resource.eval(background.compile.drain)
+          b <- Resource.eval(background.compile.drain)
           forg <- Resource.eval {
             foreground
               .onFinalize {
@@ -2372,8 +2373,22 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               .lastOrError
           }
         } yield forg
+         */
 
-        Stream.resource(z)
+        // This one runs as well but still closes somehow the resource :(
+        val y = Resource.eval(background.compile.drain).background.use { _ =>
+          Resource.eval {
+            foreground
+              .onFinalize {
+                F.unit.map(_ => println("DEBUG: Inside the foreground's onFinalize")) *>
+                  stop.complete(()) *> end.get
+              }
+              .compile
+              .lastOrError
+          }
+        }
+
+        Stream.resource(y)
 
       }
 
