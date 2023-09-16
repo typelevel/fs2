@@ -35,9 +35,10 @@ ThisBuild / githubWorkflowAddedJobs +=
     sbtStepPreamble = Nil,
     javas = List(githubWorkflowJavaVersions.value.head),
     oses = List("macos-latest"),
+    matrixAdds = Map("project" -> List("ioJS", "ioJVM", "ioNative")),
     steps = githubWorkflowJobSetup.value.toList ++ List(
-      WorkflowStep.Run(List("brew install s2n")),
-      WorkflowStep.Sbt(List("ioJVM/test", "ioJS/test", "ioNative/test"))
+      WorkflowStep.Run(List("brew install s2n"), cond = Some("matrix.project == 'ioNative'")),
+      WorkflowStep.Sbt(List("${{ matrix.project }}/test"))
     )
   )
 

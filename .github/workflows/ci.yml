@@ -284,6 +284,7 @@ jobs:
       matrix:
         os: [macos-latest]
         java: [temurin@17]
+        project: [ioJS, ioJVM, ioNative]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout current branch (full)
@@ -304,9 +305,10 @@ jobs:
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
 
-      - run: brew install s2n
+      - if: matrix.project == 'ioNative'
+        run: brew install s2n
 
-      - run: sbt ioJVM/test ioJS/test ioNative/test
+      - run: sbt '${{ matrix.project }}/test'
 
   site:
     name: Generate Site
