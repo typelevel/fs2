@@ -2853,7 +2853,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Alias for [[filter]]
     * Implemented to enable filtering in for comprehensions
     */
-  def withFilter(f: O => Boolean) = this.filter(f)
+  def withFilter(f: O => Boolean): Stream[F, O] = this.filter(f)
 
   private type ZipWithLeft[G[_], I, O2] = (Chunk[I], Stream[G, I]) => Pull[G, O2, Unit]
 
