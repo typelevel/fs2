@@ -545,9 +545,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       interrupt <- F.deferred[Unit]
       backResult <- F.deferred[Either[Throwable, Unit]]
     } yield {
-      def watch[A](str: Stream[F2, A]) = Stream.eval(
-        F.unit.map(_ => println("DEBUG: Inside 'concurrently' watch"))
-      ) *> str.interruptWhen(interrupt.get.attempt)
+      def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt) <* Stream.eval(
+        F.unit.map(_ => println("DEBUG: Inside 'concurrently' watch AFTER interruptWhen"))
+      )
 
       val compileBack: F2[Unit] = watch(that).compile.drain.guaranteeCase {
         // Pass the result of backstream completion in the backResult deferred.
@@ -2277,9 +2277,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                       // F.start(stop.get.race(action) *> releaseAndCheckCompletion)
                       F.start(
                         stop.get.race(action) *> F.unit.map(_ =>
-                          println("DEBUG: Inside forkOnElem and inside onCancel after action")
+                          println(
+                            "DEBUG: Inside forkOnElem and inside F.start after action invocation"
+                          )
                         ) *> releaseAndCheckCompletion
-                      )
+                      ) *> F.unit.map(_ => println("DEBUG: F.start invoked"))
                   }
               }
           }
@@ -2303,6 +2305,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               x
           }
           .evalMap(_.rethrow)
+
+        foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
 
         /*
         foreground
@@ -2373,7 +2377,6 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               .lastOrError
           }
         } yield forg
-         */
 
         // This one runs as well but still closes somehow the resource :(
         val y = Resource.eval(background.compile.drain).background.use { _ =>
@@ -2389,6 +2392,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         }
 
         Stream.resource(y)
+         */
 
       }
 
@@ -3955,24 +3959,18 @@ object Stream extends StreamLowPriority {
   def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
     r match {
       case Resource.Allocate(resource) =>
-        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Allocate case"))) *>
-          Stream
-            .bracketFullWeak(resource) { case ((_, release), exit) =>
-              F.unit.map(_ =>
-                println("DEBUG: inside resourceWeak Allocate case CALLING release")
-              ) *>
-                release(exit)
-            }
-            .mapNoScope(_._1)
+        Stream
+          .bracketFullWeak(resource) { case ((_, release), exit) =>
+            F.unit.map(_ => println("DEBUG: inside resourceWeak Allocate case CALLING release")) *>
+              release(exit)
+          }
+          .mapNoScope(_._1)
       case Resource.Bind(source, f) =>
-        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Bind case"))) *>
-          resourceWeak(source).flatMap(o => resourceWeak(f(o)))
+        resourceWeak(source).flatMap(o => resourceWeak(f(o)))
       case Resource.Eval(fo) =>
-        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Eval case"))) *>
-          Stream.eval(fo)
+        Stream.eval(fo)
       case Resource.Pure(o) =>
-        Stream.eval(F.unit.map(_ => println("DEBUG: inside resourceWeak Pure case"))) *>
-          Stream.emit(o)
+        Stream.emit(o)
     }
 
   /** Same as [[resourceWeak]], but expressed as a FunctionK. */
