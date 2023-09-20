@@ -2275,6 +2275,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                     val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
                     F.unit.map(_ => println("DEBUG: Inside forkOnElem and inside onCancel")) *>
                       // F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                      stop.get.race(action) *> F.unit.map(_ => println("DEBUG: Inside forkOnElem and after action invocation")) *> releaseAndCheckCompletion
+                      /*
                       F.start(
                         stop.get.race(action) *> F.unit.map(_ =>
                           println(
@@ -2282,6 +2284,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                           )
                         ) *> releaseAndCheckCompletion
                       ) *> F.unit.map(_ => println("DEBUG: F.start invoked"))
+                      */
                   }
               }
           }

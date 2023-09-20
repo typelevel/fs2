@@ -1064,6 +1064,7 @@ class StreamSuite extends Fs2Suite {
       .drain
      */
 
+    /*
     Stream
       .resource(
         Resource.make(IO.println("Creating Resource") *> IO.ref(true))(r =>
@@ -1071,11 +1072,19 @@ class StreamSuite extends Fs2Suite {
         )
       )
       .parEvalMap(2) { ref =>
+        ref.get.flatMap(x => IO.println(s"before sleep: ${x}")) >>
         IO.sleep(1 second) >>
           ref.get.flatMap(x => IO.println(s"after sleep: ${x}"))
       }
       .compile
       .drain
+     */
+    Stream
+      .resource(Resource.make(IO.println("acquire"))(_ => IO.println("release")))
+      .parEvalMap(2)(_ => IO.sleep(1.second) >> IO.println("use"))
+      .compile
+      .drain
+
   }
 
 }
