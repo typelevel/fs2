@@ -1079,9 +1079,17 @@ class StreamSuite extends Fs2Suite {
       .compile
       .drain
      */
+    /*
     Stream
       .resource(Resource.make(IO.println("acquire"))(_ => IO.println("release")))
       .parEvalMap(2)(_ => IO.sleep(1.second) >> IO.println("use"))
+      .compile
+      .drain
+      */
+
+    Stream.range(0, 60)
+      .covary[IO]
+      .parEvalMap(60)(_ => IO.sleep(1.second))
       .compile
       .drain
 
