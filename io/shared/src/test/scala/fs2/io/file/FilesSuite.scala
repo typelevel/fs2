@@ -374,7 +374,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .use { tempDir =>
           val files = Files[IO]
           files
-            .tempFile(Some(tempDir), "", "", None)
+            .tempFile(Some(tempDir), "tmp", "", None)
             .use { file =>
               // files.exists(tempDir / file.fileName)
               IO.pure(file.startsWith(tempDir))
@@ -395,6 +395,16 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
           )
         }
         .assertEquals(true)
+    }
+
+    test("filename should begin with prefix and end with suffix") {
+      Files[IO].tempFile(None, "prefix", "suffix", None).use { path =>
+        IO {
+          val fn = path.fileName.toString
+          assert(clue(fn).startsWith("prefix"))
+          assert(clue(fn).endsWith("suffix"))
+        }
+      }
     }
   }
 

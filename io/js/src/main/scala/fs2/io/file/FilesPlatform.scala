@@ -123,8 +123,8 @@ private[fs2] trait FilesCompanionPlatform {
         permissions: Option[Permissions]
     ): F[Path] =
       for {
-        dir <- createTempDirectory(dir, prefix, permissions)
-        path = dir / Option(suffix).filter(_.nonEmpty).getOrElse(".tmp")
+        dir <- createTempDirectory(dir, "", permissions)
+        path = dir / (prefix + suffix)
         _ <- open(path, Flags.Write).use_
         _ <- permissions
           .collect { case posix @ PosixPermissions(_) =>
