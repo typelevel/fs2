@@ -22,7 +22,6 @@
 package fs2.io
 
 import fs2.io.file.FileSystemException
-import fs2.io.internal.facade.AggregateError
 import fs2.io.net.SocketException
 import fs2.io.net.SocketTimeoutException
 import fs2.io.net.UnknownHostException
@@ -37,7 +36,7 @@ private class JavaScriptIOException(message: String, cause: js.JavaScriptExcepti
 
 object IOException {
   private[io] def unapply(cause: js.JavaScriptException): Option[IOException] = cause match {
-    case js.JavaScriptException(aggregate: AggregateError) =>
+    case js.JavaScriptException(aggregate: js.AggregateError) =>
       // just use the first one. catching aggregated / CompositeFailures is impractical
       unapply(js.JavaScriptException(aggregate.errors(0)))
     case InterruptedIOException(ex) => Some(ex)
