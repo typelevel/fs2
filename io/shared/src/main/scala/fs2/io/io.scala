@@ -82,14 +82,13 @@ package object io extends ioplatform {
       read: (InputStream, Array[Byte], Int) => F[Int]
   )(implicit
       F: Sync[F]
-  ): F[Option[Chunk[Byte]]] =
-    read(is, buf, offset).flatMap { numBytes =>
-      if (numBytes < 0) {
-        if (offset == 0) F.pure(None)
-        else F.pure(Some(Chunk.array(buf, 0, offset)))
-      } else {
-        if (offset + numBytes == buf.size) F.pure(Some(Chunk.array(buf)))
-        else readBytesFromInputStream(is, buf, offset + numBytes)(read)
+  ): F[Option[(Chunk[Byte], Option[(Array[Byte], Int)])]] =
+    read(is, buf, offset).map { numBytes =>
+      if (numBytes < 0) None
+      else if (numBytes == 0) Some(Chunk.empty -> Some(buf -> offset))
+      else {
+        if (offset + numBytes == buf.size) Some(Chunk.array(buf, offset, numBytes) -> None)
+        else Some(Chunk.array(buf, offset, numBytes) -> Some(buf -> (offset + numBytes)))
       }
     }
 
@@ -98,12 +97,10 @@ package object io extends ioplatform {
       buf: F[Array[Byte]],
       closeAfterUse: Boolean
   )(read: (InputStream, Array[Byte], Int) => F[Int])(implicit F: Sync[F]): Stream[F, Byte] = {
-    def useIs(is: InputStream) =
-      Stream
-        .eval(buf.flatMap(b => readBytesFromInputStream(is, b, 0)(read)))
-        .repeat
-        .unNoneTerminate
-        .flatMap(c => Stream.chunk(c))
+    def useIs(is: InputStream) = Stream.unfoldChunkEval(Option.empty[(Array[Byte], Int)]) {
+      case None              => buf.flatMap(b => readBytesFromInputStream(is, b, 0)(read))
+      case Some((b, offset)) => readBytesFromInputStream(is, b, offset)(read)
+    }
 
     if (closeAfterUse)
       Stream.bracket(fis)(is => Sync[F].blocking(is.close())).flatMap(useIs)
