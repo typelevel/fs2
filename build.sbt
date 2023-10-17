@@ -233,6 +233,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.concurrent.Channel.closeWithElement"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.file.Files.openSeekableByteChannel"
   )
 )
 
