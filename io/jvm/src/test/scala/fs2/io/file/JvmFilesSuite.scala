@@ -62,4 +62,23 @@ class JvmFilesSuite extends Fs2Suite with BaseFileSuite {
     }
   }
 
+  test("read from SeekableByteChannel") {
+    Stream
+      .resource(
+        tempFile
+          .evalMap(modify)
+          .flatMap(path =>
+            Files[IO].openSeekableByteChannel(
+              IO.blocking(JFiles.newByteChannel(path.toNioPath, Flag.Read.option)),
+              new UnsupportedOperationException()
+            )
+          )
+          .map(new ReadCursor[IO](_, 0))
+      )
+      .flatMap(_.readAll(4096).void.stream)
+      .compile
+      .toList
+      .assertEquals(List[Byte](0, 1, 2, 3))
+  }
+
 }

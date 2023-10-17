@@ -26,7 +26,7 @@ package file
 import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
-import java.nio.channels.FileChannel
+import java.nio.channels.{FileChannel, SeekableByteChannel}
 import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{
   BasicFileAttributeView,
@@ -46,6 +46,12 @@ private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Fi
 
   /** Creates a `FileHandle` for the supplied NIO `FileChannel`. JVM only. */
   def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]]
+
+  /** Creates a `FileHandle` for the supplied NIO `SeekableByteChannel`. Because a `SeekableByteChannel` doesn't provide all the functionalities required by `FileHandle` some features like locking will be unavailable. JVM only. */
+  def openSeekableByteChannel(
+      channel: F[SeekableByteChannel],
+      unsupportedOperationException: => Throwable
+  ): Resource[F, FileHandle[F]]
 
   /** Gets the contents of the specified directory whose paths match the supplied glob pattern.
     *
@@ -314,10 +320,24 @@ private[file] trait FilesCompanionPlatform {
     def open(path: Path, flags: Flags): Resource[F, FileHandle[F]] =
       openFileChannel(
         Sync[F].blocking(FileChannel.open(path.toNioPath, flags.value.map(_.option): _*))
-      )
+      ).recoverWith { case unsupportedOperationException: UnsupportedOperationException =>
+        // not all file systems support file channels
+        openSeekableByteChannel(
+          Sync[F].blocking(JFiles.newByteChannel(path.toNioPath, flags.value.map(_.option): _*)),
+          unsupportedOperationException
+        )
+      }
 
     def openFileChannel(channel: F[FileChannel]): Resource[F, FileHandle[F]] =
       Resource.make(channel)(ch => Sync[F].blocking(ch.close())).map(ch => FileHandle.make(ch))
+
+    def openSeekableByteChannel(
+        channel: F[SeekableByteChannel],
+        unsupportedOperationException: => Throwable
+    ): Resource[F, FileHandle[F]] =
+      Resource
+        .make(channel)(ch => Sync[F].blocking(ch.close()))
+        .map(ch => FileHandle.makeFromSeekableByteChannel(ch, unsupportedOperationException))
 
     def realPath(path: Path): F[Path] =
       Sync[F].blocking(Path.fromNioPath(path.toNioPath.toRealPath()))
