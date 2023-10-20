@@ -85,11 +85,8 @@ package object io extends ioplatform {
   ): F[Option[(Chunk[Byte], Option[(Array[Byte], Int)])]] =
     read(is, buf, offset).map { numBytes =>
       if (numBytes < 0) None
-      else if (numBytes == 0) Some(Chunk.empty -> Some(buf -> offset))
-      else {
-        if (offset + numBytes == buf.size) Some(Chunk.array(buf, offset, numBytes) -> None)
-        else Some(Chunk.array(buf, offset, numBytes) -> Some(buf -> (offset + numBytes)))
-      }
+      else if (offset + numBytes == buf.size) Some(Chunk.array(buf, offset, numBytes) -> None)
+      else Some(Chunk.array(buf, offset, numBytes) -> Some(buf -> (offset + numBytes)))
     }
 
   private[fs2] def readInputStreamGeneric[F[_]](
