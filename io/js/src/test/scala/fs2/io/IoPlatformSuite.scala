@@ -114,4 +114,16 @@ class IoPlatformSuite extends Fs2Suite {
       .timeoutTo(100.millis, IO.unit)
   }
 
+  test("Destroying Node.js stream without error does not raise an exception") {
+    Stream
+      .never[IO]
+      .through {
+        toDuplexAndRead[IO] { duplex =>
+          IO(duplex.destroy())
+        }
+      }
+      .compile
+      .drain
+  }
+
 }
