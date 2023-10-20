@@ -109,30 +109,30 @@ private[fs2] trait ioplatform {
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
     * that ends whenever the resulting stream terminates.
     */
-  def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
-    in =>
-      Stream
-        .resource(mkDuplex(in))
-        .flatMap { case (duplex, out) =>
-          Stream
-            .emit(duplex)
-            .merge(out.drain)
-            .concurrently(
-              Stream.eval(
-                F.async_[Unit](cb =>
-                  duplex.end { e =>
-                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                  }
-                )
-              )
-            )
-        }
-        .adaptError { case IOException(ex) => ex }
+  def toReadable[F[_]: Async]: Pipe[F, Byte, Readable] =
+    in => Stream.resource(toReadableResource(in))
 
   /** Like [[toReadable]] but returns a `Resource` rather than a single element stream.
     */
-  def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
-    s.through(toReadable).compile.resource.lastOrError
+  def toReadableResource[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
+    mkDuplex(s)
+      .flatMap { case (duplex, out) =>
+        out
+          .concurrently(
+            Stream.eval(
+              F.async_[Unit](cb =>
+                duplex.end { e =>
+                  cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                }
+              )
+            )
+          )
+          .compile
+          .drain
+          .background
+          .as(duplex)
+      }
+      .adaptError { case IOException(ex) => ex }
 
   /** Writes all bytes to the specified `Writable`.
     */
