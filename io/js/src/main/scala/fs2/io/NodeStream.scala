@@ -72,4 +72,5 @@ trait Duplex extends Readable with Writable {
   protected[io] override def destroy(): this.type = js.native
 }
 
+@deprecated("No longer raised", "3.9.3")
 final class StreamDestroyedException private[io] () extends IOException

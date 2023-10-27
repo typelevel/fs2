@@ -109,30 +109,30 @@ private[fs2] trait ioplatform {
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
     * that ends whenever the resulting stream terminates.
     */
-  def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
-    in =>
-      Stream
-        .resource(mkDuplex(in))
-        .flatMap { case (duplex, out) =>
-          Stream
-            .emit(duplex)
-            .merge(out.drain)
-            .concurrently(
-              Stream.eval(
-                F.async_[Unit](cb =>
-                  duplex.end { e =>
-                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                  }
-                )
-              )
-            )
-        }
-        .adaptError { case IOException(ex) => ex }
+  def toReadable[F[_]: Async]: Pipe[F, Byte, Readable] =
+    in => Stream.resource(toReadableResource(in))
 
   /** Like [[toReadable]] but returns a `Resource` rather than a single element stream.
     */
-  def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
-    s.through(toReadable).compile.resource.lastOrError
+  def toReadableResource[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
+    mkDuplex(s)
+      .flatMap { case (duplex, out) =>
+        out
+          .concurrently(
+            Stream.eval(
+              F.async_[Unit](cb =>
+                duplex.end { e =>
+                  cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                }
+              )
+            )
+          )
+          .compile
+          .drain
+          .background
+          .as(duplex)
+      }
+      .adaptError { case IOException(ex) => ex }
 
   /** Writes all bytes to the specified `Writable`.
     */
@@ -206,7 +206,7 @@ private[fs2] trait ioplatform {
       errorDispatcher <- Dispatcher.sequential[F]
       readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
       writeChannel <- Channel.synchronous[F, Chunk[Byte]].toResource
-      error <- F.deferred[Throwable].toResource
+      interrupt <- F.deferred[Either[Throwable, Unit]].toResource
       duplex <- Resource.make {
         F.delay {
           new facade.stream.Duplex(
@@ -236,10 +236,9 @@ private[fs2] trait ioplatform {
 
               var destroy = { (_, err, cb) =>
                 errorDispatcher.unsafeRunAndForget {
-                  error
+                  interrupt
                     .complete(
-                      Option(err)
-                        .fold[Exception](new StreamDestroyedException)(js.JavaScriptException(_))
+                      Option(err).map(js.JavaScriptException(_)).toLeft(())
                     ) *> F.delay(cb(null))
                 }
               }
@@ -254,10 +253,9 @@ private[fs2] trait ioplatform {
       }
       drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
       out = writeChannel.stream.unchunks
-        .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
     } yield (
       duplex,
-      drainIn.merge(out).adaptError { case IOException(ex) => ex }
+      drainIn.merge(out).interruptWhen(interrupt).adaptError { case IOException(ex) => ex }
     )
 
   /** Stream of bytes read asynchronously from standard input. */
