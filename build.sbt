@@ -261,7 +261,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.37",
+      "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.10.0",
       "org.typelevel" %%% "cats-effect" % "3.5.2",
       "org.typelevel" %%% "cats-effect-laws" % "3.5.2" % Test,
