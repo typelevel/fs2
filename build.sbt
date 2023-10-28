@@ -236,6 +236,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
     "fs2.io.file.Files.openSeekableByteChannel"
+  ),
+  // package-private method: #3318
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.package.readInputStreamGeneric"
   )
 )
 
