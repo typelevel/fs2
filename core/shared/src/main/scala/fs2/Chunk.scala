@@ -1085,7 +1085,7 @@ object Chunk
     def toByteVector() = bv
 
     override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-      Chunk.ByteBuffer(bv.toByteBufferUnsafe).toArraySlice
+      Chunk.ByteBuffer.view(bv.toByteBufferUnsafe).toArraySlice
 
     override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer =
       bv.toByteBuffer
