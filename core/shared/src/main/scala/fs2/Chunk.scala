@@ -1085,9 +1085,7 @@ object Chunk
     def toByteVector() = bv
 
     override def toArraySlice[O2 >: Byte](implicit ct: ClassTag[O2]): Chunk.ArraySlice[O2] =
-      if (ct.runtimeClass == classOf[Byte])
-        Chunk.ArraySlice[Byte](bv.toArrayUnsafe, 0, size).asInstanceOf[Chunk.ArraySlice[O2]]
-      else super.toArraySlice
+      Chunk.ByteBuffer.view(bv.toByteBufferUnsafe).toArraySlice
 
     override def toByteBuffer[B >: Byte](implicit ev: B =:= Byte): JByteBuffer =
       bv.toByteBuffer
