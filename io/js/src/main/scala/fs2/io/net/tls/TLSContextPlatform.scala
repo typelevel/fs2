@@ -76,19 +76,16 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                           options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.socket = sock
-                        val tlsSock = facade.tls.connect(options)
-                        tlsSock.once(
-                          "secureConnect",
-                          () => seqDispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
-                        )
-                        tlsSock.once[js.Error](
-                          "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              handshake.complete(Left(new js.JavaScriptException(e)))
-                            )
-                        )
-                        tlsSock
+                        for {
+                          tlsSock <- Resource.eval(F.delay(facade.tls.connect(options)))
+                          _ <- tlsSock.registerOneTimeListener0[F]("secureConnect", seqDispatcher)(
+                            handshake.complete(Either.unit).void
+                          )
+                          _ <- tlsSock.registerOneTimeListener[F, js.Error]("error", seqDispatcher)(
+                            e => handshake.complete(Left(new js.JavaScriptException(e))).void
+                          )
+                        } yield tlsSock
+
                       }
                     )
                     .evalTap(_ => handshake.get.rethrow)
@@ -105,10 +102,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                           options.rejectUnauthorized = false
                         options.enableTrace = logger != TLSLogger.Disabled
                         options.isServer = true
-                        val tlsSock = new facade.tls.TLSSocket(sock, options)
-                        tlsSock.once(
-                          "secure",
-                          { () =>
+                        for {
+                          tlsSock <- Resource.eval(F.delay(new facade.tls.TLSSocket(sock, options)))
+                          _ <- tlsSock.registerOneTimeListener0[F]("secure", seqDispatcher) {
                             val requestCert = options.requestCert.getOrElse(false)
                             val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
                             val result =
@@ -117,17 +113,12 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                                   .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
                                   .toLeft(())
                               else Either.unit
-                            seqDispatcher.unsafeRunAndForget(verifyError.complete(result))
+                            verifyError.complete(result).void
                           }
-                        )
-                        tlsSock.once[js.Error](
-                          "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              verifyError.complete(Left(new js.JavaScriptException(e)))
-                            )
-                        )
-                        tlsSock
+                          _ <- tlsSock.registerOneTimeListener[F, js.Error]("error", seqDispatcher)(
+                            e => verifyError.complete(Left(new js.JavaScriptException(e))).void
+                          )
+                        } yield tlsSock
                       }
                     )
                     .evalTap(_ => verifyError.get.rethrow)

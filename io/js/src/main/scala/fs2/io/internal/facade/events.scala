@@ -80,6 +80,26 @@ private[io] object EventEmitter {
       })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
       .void
 
+    def registerOneTimeListener0[F[_]](eventName: String, dispatcher: Dispatcher[F])(
+        listener: => F[Unit]
+    )(implicit F: Sync[F]): Resource[F, Unit] = Resource
+      .make(F.delay {
+        val fn: js.Function0[Unit] = () => dispatcher.unsafeRunAndForget(listener)
+        eventTarget.once(eventName, fn)
+        fn
+      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
+      .void
+
+    def registerOneTimeListener[F[_], E](eventName: String, dispatcher: Dispatcher[F])(
+        listener: E => F[Unit]
+    )(implicit F: Sync[F]): Resource[F, Unit] = Resource
+      .make(F.delay {
+        val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
+        eventTarget.once(eventName, fn)
+        fn
+      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
+      .void
+
     def registerOneTimeListener[F[_], E](eventName: String)(
         listener: E => Unit
     )(implicit F: Sync[F]): F[Option[F[Unit]]] = F.delay {
