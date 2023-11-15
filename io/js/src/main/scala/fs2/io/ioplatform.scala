@@ -59,22 +59,38 @@ private[fs2] trait ioplatform {
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
   )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
+    suspendResourceReadableAndRead(destroyIfNotEnded, destroyIfCanceled)(
+      Resource.eval(F.delay(thunk))
+    )
+
+  /** Suspends the creation of a `Readable` and a `Stream` that reads all bytes from that `Readable`.
+    *
+    * Accepts a Resource to allow finalizers to be run for the acquired Readable.
+    * Be aware that the readable may have been destroyed before the finalizers for the resource are run.
+    * N.B. This has different semantics to running the resource prior to passing it here
+    * as it will be run on a different executor (see implementation note)
+    */
+  def suspendResourceReadableAndRead[F[_], R <: Readable](
+      destroyIfNotEnded: Boolean = true,
+      destroyIfCanceled: Boolean = true
+  )(thunk: Resource[F, R])(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
     (for {
       dispatcher <- Dispatcher.sequential[F]
       channel <- Channel.unbounded[F, Unit].toResource
       error <- F.deferred[Throwable].toResource
       readableResource = for {
-        readable <- Resource.makeCase(F.delay(thunk)) {
-          case (readable, Resource.ExitCase.Succeeded) =>
+        readable <- thunk
+        _ <- Resource.makeCase(F.unit) {
+          case (_, Resource.ExitCase.Succeeded) =>
             F.delay {
               if (!readable.readableEnded & destroyIfNotEnded)
                 readable.destroy()
             }
-          case (readable, Resource.ExitCase.Errored(_)) =>
+          case (_, Resource.ExitCase.Errored(_)) =>
             // tempting, but don't propagate the error!
             // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
             F.delay(readable.destroy())
-          case (readable, Resource.ExitCase.Canceled) =>
+          case (_, Resource.ExitCase.Canceled) =>
             if (destroyIfCanceled)
               F.delay(readable.destroy())
             else

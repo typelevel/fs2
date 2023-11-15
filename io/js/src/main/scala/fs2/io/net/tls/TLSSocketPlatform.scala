@@ -44,11 +44,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       duplexOut <- mkDuplex(socket.reads)
       (duplex, out) = duplexOut
       _ <- out.through(socket.writes).compile.drain.background
-      upgraded <- upgrade(duplex)
-      tlsSockReadable <- suspendReadableAndRead(
+      tlsSockReadable <- suspendResourceReadableAndRead(
         destroyIfNotEnded = false,
         destroyIfCanceled = false
-      )(upgraded)
+      )(upgrade(duplex))
       (tlsSock, readable) = tlsSockReadable
       readStream <- SuspendedStream(readable)
     } yield new AsyncTLSSocket(
