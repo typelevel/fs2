@@ -80,17 +80,17 @@ private[fs2] trait ioplatform {
       error <- F.deferred[Throwable].toResource
       readableResource = for {
         readable <- thunk
-        _ <- Resource.makeCase(F.unit) {
-          case (_, Resource.ExitCase.Succeeded) =>
+        _ <- Resource.onFinalizeCase[F] {
+          case Resource.ExitCase.Succeeded =>
             F.delay {
               if (!readable.readableEnded & destroyIfNotEnded)
                 readable.destroy()
             }
-          case (_, Resource.ExitCase.Errored(_)) =>
+          case Resource.ExitCase.Errored(_) =>
             // tempting, but don't propagate the error!
             // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
             F.delay(readable.destroy())
-          case (_, Resource.ExitCase.Canceled) =>
+          case Resource.ExitCase.Canceled =>
             if (destroyIfCanceled)
               F.delay(readable.destroy())
             else
