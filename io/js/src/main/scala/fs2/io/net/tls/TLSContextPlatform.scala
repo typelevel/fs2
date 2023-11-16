@@ -62,79 +62,75 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] = (Dispatcher.sequential[F], Dispatcher.parallel[F])
-            .flatMapN { (seqDispatcher, parDispatcher) =>
-              if (clientMode) {
-                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
-                  TLSSocket
-                    .forAsync(
-                      socket,
-                      sock => {
-                        val options = params.toTLSConnectOptions(parDispatcher)
-                        options.secureContext = context
-                        if (insecure)
-                          options.rejectUnauthorized = false
-                        options.enableTrace = logger != TLSLogger.Disabled
-                        options.socket = sock
-                        val tlsSock = facade.tls.connect(options)
-                        tlsSock.once(
-                          "secureConnect",
-                          () => seqDispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
-                        )
-                        tlsSock.once[js.Error](
-                          "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              handshake.complete(Left(new js.JavaScriptException(e)))
+          ): Resource[F, TLSSocket[F]] =
+            (Dispatcher.sequential[F], Dispatcher.parallel[F], facade.events.EventEmitter.openScope)
+              .flatMapN { (seqDispatcher, parDispatcher, scope) =>
+                if (clientMode) {
+                  Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
+                    TLSSocket
+                      .forAsync(
+                        socket,
+                        sock => {
+                          val options = params.toTLSConnectOptions(parDispatcher)
+                          options.secureContext = context
+                          if (insecure)
+                            options.rejectUnauthorized = false
+                          options.enableTrace = logger != TLSLogger.Disabled
+                          options.socket = sock
+                          val tlsSock = facade.tls.connect(options)
+                          tlsSock
+                            .unsafeRegisterOneTimeListener0("secureConnect", seqDispatcher, scope)(
+                              () => handshake.complete(Either.unit).void
                             )
-                        )
-                        tlsSock
-                      }
-                    )
-                    .evalTap(_ => handshake.get.rethrow)
-                }
-              } else {
-                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
-                  TLSSocket
-                    .forAsync(
-                      socket,
-                      sock => {
-                        val options = params.toTLSSocketOptions(parDispatcher)
-                        options.secureContext = context
-                        if (insecure)
-                          options.rejectUnauthorized = false
-                        options.enableTrace = logger != TLSLogger.Disabled
-                        options.isServer = true
-                        val tlsSock = new facade.tls.TLSSocket(sock, options)
-                        tlsSock.once(
-                          "secure",
-                          { () =>
-                            val requestCert = options.requestCert.getOrElse(false)
-                            val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
-                            val result =
-                              if (requestCert && rejectUnauthorized)
-                                Option(tlsSock.ssl.verifyError())
-                                  .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
-                                  .toLeft(())
-                              else Either.unit
-                            seqDispatcher.unsafeRunAndForget(verifyError.complete(result))
+                          tlsSock.unsafeRegisterOneTimeListener[F, js.Error](
+                            "error",
+                            seqDispatcher,
+                            scope
+                          )(e => handshake.complete(Left(new js.JavaScriptException(e))).void)
+                          tlsSock
+                        }
+                      )
+                      .evalTap(_ => handshake.get.rethrow)
+                  }
+                } else {
+                  Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
+                    TLSSocket
+                      .forAsync(
+                        socket,
+                        sock => {
+                          val options = params.toTLSSocketOptions(parDispatcher)
+                          options.secureContext = context
+                          if (insecure)
+                            options.rejectUnauthorized = false
+                          options.enableTrace = logger != TLSLogger.Disabled
+                          options.isServer = true
+                          val tlsSock = new facade.tls.TLSSocket(sock, options)
+                          tlsSock.unsafeRegisterOneTimeListener0("secure", seqDispatcher, scope) {
+                            () =>
+                              val requestCert = options.requestCert.getOrElse(false)
+                              val rejectUnauthorized = options.rejectUnauthorized.getOrElse(true)
+                              val result =
+                                if (requestCert && rejectUnauthorized)
+                                  // side-effect must run in the callback
+                                  Option(tlsSock.ssl.verifyError())
+                                    .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
+                                    .toLeft(())
+                                else Either.unit
+                              verifyError.complete(result).void
                           }
-                        )
-                        tlsSock.once[js.Error](
-                          "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              verifyError.complete(Left(new js.JavaScriptException(e)))
-                            )
-                        )
-                        tlsSock
-                      }
-                    )
-                    .evalTap(_ => verifyError.get.rethrow)
+                          tlsSock.unsafeRegisterOneTimeListener[F, js.Error](
+                            "error",
+                            seqDispatcher,
+                            scope
+                          )(e => verifyError.complete(Left(new js.JavaScriptException(e))).void)
+                          tlsSock
+                        }
+                      )
+                      .evalTap(_ => verifyError.get.rethrow)
+                  }
                 }
               }
-            }
-            .adaptError { case IOException(ex) => ex }
+              .adaptError { case IOException(ex) => ex }
         }
 
       def fromSecureContext(context: SecureContext): TLSContext[F] =

@@ -31,7 +31,6 @@ import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.concurrent.Channel
-import fs2.io.internal.MicrotaskExecutor
 import fs2.io.internal.facade
 
 import java.nio.charset.Charset
@@ -63,37 +62,42 @@ private[fs2] trait ioplatform {
       dispatcher <- Dispatcher.sequential[F]
       channel <- Channel.unbounded[F, Unit].toResource
       error <- F.deferred[Throwable].toResource
-      readableResource = for {
-        readable <- Resource.makeCase(F.delay(thunk)) {
-          case (readable, Resource.ExitCase.Succeeded) =>
-            F.delay {
-              if (!readable.readableEnded & destroyIfNotEnded)
-                readable.destroy()
-            }
-          case (readable, Resource.ExitCase.Errored(_)) =>
-            // tempting, but don't propagate the error!
-            // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+      scope <- facade.events.EventEmitter.openScope
+      readable <- Resource.makeCase {
+        F.delay {
+          val readable = thunk
+
+          readable.unsafeRegisterListener[F, Any]("readable", dispatcher, scope) { _ =>
+            channel.send(()).void
+          }
+          readable.unsafeRegisterListener[F, Any]("end", dispatcher, scope) { _ =>
+            channel.close.void
+          }
+          readable.unsafeRegisterListener[F, Any]("close", dispatcher, scope) { _ =>
+            channel.close.void
+          }
+          readable.unsafeRegisterListener[F, js.Error]("error", dispatcher, scope) { e =>
+            error.complete(js.JavaScriptException(e)).void
+          }
+
+          readable
+        }
+      } {
+        case (readable, Resource.ExitCase.Succeeded) =>
+          F.delay {
+            if (!readable.readableEnded & destroyIfNotEnded)
+              readable.destroy()
+          }
+        case (readable, Resource.ExitCase.Errored(_)) =>
+          // tempting, but don't propagate the error!
+          // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+          F.delay(readable.destroy())
+        case (readable, Resource.ExitCase.Canceled) =>
+          if (destroyIfCanceled)
             F.delay(readable.destroy())
-          case (readable, Resource.ExitCase.Canceled) =>
-            if (destroyIfCanceled)
-              F.delay(readable.destroy())
-            else
-              F.unit
-        }
-        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => channel.send(()).void)
-        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, js.Error]("error", dispatcher) { e =>
-          error.complete(js.JavaScriptException(e)).void
-        }
-      } yield readable
-      // Implementation note: why run on the MicrotaskExecutor?
-      // In many cases creating a `Readable` starts async side-effects (e.g. negotiating TLS handshake or opening a file handle).
-      // Furthermore, these side-effects will invoke the listeners we register to the `Readable`.
-      // Therefore, it is critical that the listeners are registered to the `Readable` _before_ these async side-effects occur:
-      // in other words, before we next yield (cede) to the event loop. Because an arbitrary effect `F` (particularly `IO`) may cede at any time,
-      // our only recourse is to run the entire creation/listener registration process on the microtask executor.
-      readable <- readableResource.evalOn(MicrotaskExecutor)
+          else
+            F.unit
+      }
       stream =
         (channel.stream
           .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>

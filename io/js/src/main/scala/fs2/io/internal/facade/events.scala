@@ -58,6 +58,21 @@ private[io] trait EventEmitter extends js.Object {
 }
 
 private[io] object EventEmitter {
+  final class Scope private[EventEmitter] {
+    private[EventEmitter] val cleanup = new js.Array[js.Function0[Unit]]
+  }
+
+  def openScope[F[_]](implicit F: Sync[F]): Resource[F, Scope] =
+    Resource.make(F.delay(new Scope)) { scope =>
+      F.delay {
+        scope.cleanup.foreach { task =>
+          try
+            task()
+          catch { case _: Throwable => () }
+        }
+      }
+    }
+
   implicit class ops(val eventTarget: EventEmitter) extends AnyVal {
 
     def registerListener[F[_], E](eventName: String, dispatcher: Dispatcher[F])(
@@ -86,6 +101,41 @@ private[io] object EventEmitter {
       val fn: js.Function1[E, Unit] = listener(_)
       eventTarget.once(eventName, fn)
       Some(F.delay(eventTarget.removeListener(eventName, fn)))
+    }
+
+    def unsafeRegisterListener[F[_], E](eventName: String, dispatcher: Dispatcher[F], scope: Scope)(
+        listener: E => F[Unit]
+    ): Unit = {
+      val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
+      eventTarget.on(eventName, fn)
+      scope.cleanup.push(() => eventTarget.removeListener(eventName, fn))
+      ()
+    }
+
+    def unsafeRegisterOneTimeListener0[F[_], E](
+        eventName: String,
+        dispatcher: Dispatcher[F],
+        scope: Scope
+    )(
+        listener: () => F[Unit]
+    ): Unit = {
+      val fn: js.Function0[Unit] = () => dispatcher.unsafeRunAndForget(listener())
+      eventTarget.once(eventName, fn)
+      scope.cleanup.push(() => eventTarget.removeListener(eventName, fn))
+      ()
+    }
+
+    def unsafeRegisterOneTimeListener[F[_], E](
+        eventName: String,
+        dispatcher: Dispatcher[F],
+        scope: Scope
+    )(
+        listener: E => F[Unit]
+    ): Unit = {
+      val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
+      eventTarget.once(eventName, fn)
+      scope.cleanup.push(() => eventTarget.removeListener(eventName, fn))
+      ()
     }
   }
 }
