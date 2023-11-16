@@ -189,7 +189,7 @@ package object io extends ioplatform {
           writeChunks(writeCursor, stream).void.stream
             .map(e => (e.offset, true))
             .append(Stream.emit((0L, false)))
-            .scan1 { case ((lastOffset, _), (offset, hasNext)) =>
+            .scan1[(Long, Boolean)] { case ((lastOffset, _), (offset, hasNext)) =>
               (Math.max(lastOffset, offset), hasNext)
             }
             .hold1
