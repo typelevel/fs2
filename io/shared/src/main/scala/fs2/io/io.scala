@@ -187,13 +187,10 @@ package object io extends ioplatform {
         file <- Stream.resource(fileResource)
         offsets <- Stream.resource(Files[F].writeCursor(file, Flags.Write)).flatMap { writeCursor =>
           writeChunks(writeCursor, stream).void.stream
-            .map(_.offset)
-            .noneTerminate
-            .zipWithPrevious
-            .map[(Long, Boolean)] {
-              case (_, Some(offset))          => (offset, true)
-              case (Some(Some(offset)), None) => (offset, false)
-              case _                          => (0L, false)
+            .map(e => (e.offset, true))
+            .append(Stream.emit((0L, false)))
+            .scan1 { case ((lastOffset, _), (offset, hasNext)) =>
+              (Math.max(lastOffset, offset), hasNext)
             }
             .hold1
             .map(_.discrete.takeThrough(_._2).map(_._1))
