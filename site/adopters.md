@@ -11,6 +11,7 @@ Here's a (non-exhaustive) list of companies that use FS2 in production. Don't se
 * [Formedix](https://www.formedix.com/)
 * [HiFi](https://hi.fi/)
 * [Hireproof](https://hireproof.io/)
+* [Input Objects](https://inputobjects.eu)
 * [ITV](https://itv.com/)
 * [Jack Henry](https://www.jackhenry.com)
 * [Kaluza](https://www.kaluza.com)
