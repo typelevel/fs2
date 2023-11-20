@@ -89,7 +89,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                             )
                         )
                         tlsSock
-                      }
+                      },
+                      clientMode = clientMode
                     )
                     .evalTap(_ => handshake.get.rethrow)
                 }
@@ -128,7 +129,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                             )
                         )
                         tlsSock
-                      }
+                      },
+                      clientMode = clientMode
                     )
                     .evalTap(_ => verifyError.get.rethrow)
                 }
