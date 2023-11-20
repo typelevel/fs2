@@ -38,6 +38,18 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
+      upgrade: fs2.io.Duplex => facade.tls.TLSSocket
+  )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
+    forAsyncInternal(socket, upgrade, clientMode = false)
+
+  private[tls] def forAsyncClient[F[_]](
+      socket: Socket[F],
+      upgrade: fs2.io.Duplex => facade.tls.TLSSocket
+  )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
+    forAsyncInternal(socket, upgrade, clientMode = true)
+
+  private[this] def forAsyncInternal[F[_]](
+      socket: Socket[F],
       upgrade: fs2.io.Duplex => facade.tls.TLSSocket,
       clientMode: Boolean
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
