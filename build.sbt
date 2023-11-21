@@ -347,6 +347,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .dependsOn(core % "compile->compile;test->test")
   .jsSettings(
     mimaBinaryIssueFilters ++= Seq(
+      ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.tls.TLSSocket.forAsync"),
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdinUtf8"),
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdoutLines"),
       ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.package.stdout"),

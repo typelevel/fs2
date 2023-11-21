@@ -67,8 +67,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               if (clientMode) {
                 Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
                   TLSSocket
-                    .forAsyncClient(
+                    .forAsync(
                       socket,
+                      clientMode,
                       sock => {
                         val options = params.toTLSConnectOptions(parDispatcher)
                         options.secureContext = context
@@ -98,6 +99,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   TLSSocket
                     .forAsync(
                       socket,
+                      clientMode,
                       sock => {
                         val options = params.toTLSSocketOptions(parDispatcher)
                         options.secureContext = context
