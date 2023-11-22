@@ -41,7 +41,7 @@ import scala.util.control.NoStackTrace
   */
 private[flow] final class StreamPublisher[F[_], A] private (
     stream: Stream[F, A],
-    startDispatcher: Dispatcher[F]
+    runSubscription: F[Unit] => Unit
 )(implicit F: Async[F])
     extends Publisher[A] {
   override def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
@@ -50,7 +50,7 @@ private[flow] final class StreamPublisher[F[_], A] private (
       "The subscriber provided to subscribe must not be null"
     )
     try
-      startDispatcher.unsafeRunAndForget(
+      runSubscription(
         StreamSubscription.subscribe(stream, subscriber)
       )
     catch {
@@ -69,7 +69,7 @@ private[flow] object StreamPublisher {
       stream: Stream[F, A]
   )(implicit F: Async[F]): Resource[F, StreamPublisher[F, A]] =
     Dispatcher.parallel[F](await = false).map { startDispatcher =>
-      new StreamPublisher(stream, startDispatcher)
+      new StreamPublisher(stream, startDispatcher.unsafeRunAndForget)
     }
 
   private object CanceledStreamPublisherException
