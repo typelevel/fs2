@@ -41,12 +41,14 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-private[flow] final class StreamPublisher[F[_], A] private (
-    stream: Stream[F, A],
-    runSubscription: F[Unit] => Unit
-)(implicit F: Async[F])
-    extends Publisher[A] {
-  override def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+private[flow] sealed abstract class StreamPublisher[F[_], A] private (
+    stream: Stream[F, A]
+)(implicit
+    F: Async[F]
+) extends Publisher[A] {
+  protected def runSubscription(subscribe: F[Unit]): Unit
+
+  override final def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     requireNonNull(
       subscriber,
       "The subscriber provided to subscribe must not be null"
@@ -67,23 +69,40 @@ private[flow] final class StreamPublisher[F[_], A] private (
 }
 
 private[flow] object StreamPublisher {
+  private final class DispatcherStreamPublisher[F[_], A](
+      stream: Stream[F, A],
+      dispatcher: Dispatcher[F]
+  )(implicit
+      F: Async[F]
+  ) extends StreamPublisher[F, A](stream) {
+    override protected final def runSubscription(subscribe: F[Unit]): Unit =
+      dispatcher.unsafeRunAndForget(subscribe)
+  }
+
+  private final class IORuntimeStreamPublisher[A](
+      stream: Stream[IO, A]
+  )(implicit
+      runtime: IORuntime
+  ) extends StreamPublisher[IO, A](stream) {
+    override protected final def runSubscription(subscribe: IO[Unit]): Unit =
+      subscribe.unsafeRunAndForget()
+  }
+
   def apply[F[_], A](
       stream: Stream[F, A]
-  )(implicit F: Async[F]): Resource[F, StreamPublisher[F, A]] =
+  )(implicit
+      F: Async[F]
+  ): Resource[F, StreamPublisher[F, A]] =
     Dispatcher.parallel[F](await = false).map { startDispatcher =>
-      new StreamPublisher(
-        stream,
-        runSubscription = startDispatcher.unsafeRunAndForget
-      )
+      new DispatcherStreamPublisher(stream, startDispatcher)
     }
 
   def unsafe[A](
       stream: Stream[IO, A]
-  )(implicit runtime: IORuntime): StreamPublisher[IO, A] =
-    new StreamPublisher(
-      stream,
-      runSubscription = _.unsafeRunAndForget()
-    )
+  )(implicit
+      runtime: IORuntime
+  ): StreamPublisher[IO, A] =
+    new IORuntimeStreamPublisher(stream)
 
   private object CanceledStreamPublisherException
       extends IllegalStateException(
