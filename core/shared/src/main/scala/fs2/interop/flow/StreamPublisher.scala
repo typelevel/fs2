@@ -23,8 +23,10 @@ package fs2
 package interop
 package flow
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Dispatcher
+import cats.effect.unsafe.IORuntime
 
 import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
@@ -69,8 +71,19 @@ private[flow] object StreamPublisher {
       stream: Stream[F, A]
   )(implicit F: Async[F]): Resource[F, StreamPublisher[F, A]] =
     Dispatcher.parallel[F](await = false).map { startDispatcher =>
-      new StreamPublisher(stream, startDispatcher.unsafeRunAndForget)
+      new StreamPublisher(
+        stream,
+        runSubscription = startDispatcher.unsafeRunAndForget
+      )
     }
+
+  def unsafe[A](
+      stream: Stream[IO, A]
+  )(implicit runtime: IORuntime): StreamPublisher[IO, A] =
+    new StreamPublisher(
+      stream,
+      runSubscription = _.unsafeRunAndForget()
+    )
 
   private object CanceledStreamPublisherException
       extends IllegalStateException(
