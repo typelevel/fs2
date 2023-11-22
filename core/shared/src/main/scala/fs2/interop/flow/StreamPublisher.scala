@@ -30,6 +30,7 @@ import cats.effect.unsafe.IORuntime
 
 import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
+import java.util.concurrent.RejectedExecutionException
 import scala.util.control.NoStackTrace
 
 /** Implementation of a [[Publisher]].
@@ -58,7 +59,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
         StreamSubscription.subscribe(stream, subscriber)
       )
     catch {
-      case _: IllegalStateException =>
+      case _: IllegalStateException | _: RejectedExecutionException =>
         subscriber.onSubscribe(new Subscription {
           override def cancel(): Unit = ()
           override def request(x$1: Long): Unit = ()
