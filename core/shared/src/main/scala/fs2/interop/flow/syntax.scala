@@ -99,8 +99,6 @@ object syntax {
       *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
       *
       * @see [[toPublisher]] for a safe version that returns a [[Resource]].
-      *
-      * @param stream The [[Stream]] to transform.
       */
     def unsafeToPublisher()(implicit
         runtime: IORuntime
