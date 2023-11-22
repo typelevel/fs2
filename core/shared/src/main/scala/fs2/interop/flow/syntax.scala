@@ -23,7 +23,9 @@ package fs2
 package interop
 package flow
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
+import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber}
 
@@ -66,9 +68,10 @@ object syntax {
       * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
       * Thus, no more elements will be published.
       *
-      * @note This Publisher can be reused for multiple Subscribers,
-      *       each subscription will re-run the [[Stream]] from the beginning.
+      * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+      *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
       *
+      * @see [[unsafeToPublisher]] for an unsafe version that returns a plain [[Publisher]].
       * @see [[subscribe]] for a simpler version that only requires a [[Subscriber]].
       */
     def toPublisher(implicit F: Async[F]): Resource[F, Publisher[A]] =
@@ -84,6 +87,25 @@ object syntax {
       */
     def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
       flow.subscribeStream(stream, subscriber)
+  }
+
+  implicit final class StreamIOOps[A](private val stream: Stream[IO, A]) extends AnyVal {
+
+    /** Creates a [[Publisher]] from a [[Stream]].
+      *
+      * The stream is only ran when elements are requested.
+      *
+      * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+      *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
+      *
+      * @see [[toPublisher]] for a safe version that returns a [[Resource]].
+      *
+      * @param stream The [[Stream]] to transform.
+      */
+    def unsafeToPublisher()(implicit
+        runtime: IORuntime
+    ): Publisher[A] =
+      flow.unsafeToPublisher(stream)
   }
 
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
