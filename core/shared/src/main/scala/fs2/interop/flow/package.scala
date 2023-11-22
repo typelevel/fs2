@@ -22,7 +22,9 @@
 package fs2
 package interop
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
+import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
 
@@ -137,9 +139,10 @@ package object flow {
     * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
     * Thus, no more elements will be published.
     *
-    * @note This Publisher can be reused for multiple Subscribers,
-    *       each subscription will re-run the [[Stream]] from the beginning.
+    * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+    *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
     *
+    * @see [[unsafeToPublisher]] for an unsafe version that returns a plain [[Publisher]].
     * @see [[subscribeStream]] for a simpler version that only requires a [[Subscriber]].
     *
     * @param stream The [[Stream]] to transform.
@@ -150,6 +153,24 @@ package object flow {
       F: Async[F]
   ): Resource[F, Publisher[A]] =
     StreamPublisher(stream)
+
+  /** Creates a [[Publisher]] from a [[Stream]].
+    *
+    * The stream is only ran when elements are requested.
+    *
+    * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+    *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
+    *
+    * @see [[toPublisher]] for a safe version that returns a [[Resource]].
+    *
+    * @param stream The [[Stream]] to transform.
+    */
+  def unsafeToPublisher[A](
+      stream: Stream[IO, A]
+  )(implicit
+      runtime: IORuntime
+  ): Publisher[A] =
+    StreamPublisher.unsafe(stream)
 
   /** Allows subscribing a [[Subscriber]] to a [[Stream]].
     *
