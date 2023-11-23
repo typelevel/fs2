@@ -102,7 +102,7 @@ package object flow {
         subscriber.stream(subscribe(subscriber))
       }
 
-  /** Creates a [[Stream]] from an [[Publisher]].
+  /** Creates a [[Stream]] from a [[Publisher]].
     *
     * @example {{{
     * scala> import cats.effect.IO
@@ -118,7 +118,7 @@ package object flow {
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
     *
-    * @note The publisher will not receive a subscriber until the stream is run.
+    * @note The [[Publisher]] will not receive a [[Subscriber]] until the stream is run.
     *
     * @see the `toStream` extension method added to `Publisher`
     *

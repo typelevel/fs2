@@ -32,7 +32,7 @@ import java.util.concurrent.Flow.{Publisher, Subscriber}
 object syntax {
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
 
-    /** Creates a [[Stream]] from an [[Publisher]].
+    /** Creates a [[Stream]] from a [[Publisher]].
       *
       * @example {{{
       * scala> import cats.effect.IO
@@ -48,6 +48,8 @@ object syntax {
       *      | }
       * res0: Stream[IO, Int] = Stream(..)
       * }}}
+      *
+      * @note The [[Publisher]] will not receive a [[Subscriber]] until the stream is run.
       *
       * @param chunkSize setup the number of elements asked each time from the [[Publisher]].
       *                  A high number may be useful if the publisher is triggering from IO,
