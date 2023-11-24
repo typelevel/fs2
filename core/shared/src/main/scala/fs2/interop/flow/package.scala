@@ -33,13 +33,12 @@ import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
   * @example {{{
   * scala> import cats.effect.IO
   * scala> import fs2.Stream
-  * scala> import fs2.interop.flow.syntax._
   * scala> import java.util.concurrent.Flow.Publisher
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
   * scala> val publisher: Stream[IO, Publisher[Int]] = upstream.toPublisher
   * scala> val downstream: Stream[IO, Int] = publisher.flatMap { publisher =>
-  *      |   publisher.toStream[IO](chunkSize = 16)
+  *      |   Stream.fromPublisher[IO](publisher, chunkSize = 16)
   *      | }
   * scala>
   * scala> import cats.effect.unsafe.implicits.global
@@ -48,6 +47,7 @@ import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
   * }}}
   *
   * @see [[java.util.concurrent.Flow]]
+  * @deprecated All syntax has been moved directly onto [[Stream]].
   */
 package object flow {
 
