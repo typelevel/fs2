@@ -42,6 +42,20 @@ sealed trait BasicFileAttributes {
   def lastAccessTime: FiniteDuration
   def lastModifiedTime: FiniteDuration
   def size: Long
+
+  override def equals(that: Any): Boolean = that match {
+    case other: BasicFileAttributes =>
+      creationTime == other.creationTime &&
+      fileKey == other.fileKey &&
+      isDirectory == other.isDirectory &&
+      isOther == other.isOther &&
+      isRegularFile == other.isRegularFile &&
+      isSymbolicLink == other.isSymbolicLink &&
+      lastAccessTime == other.lastAccessTime &&
+      lastModifiedTime == other.lastModifiedTime &&
+      size == other.size
+    case _ => false
+  }
 }
 
 object BasicFileAttributes {
@@ -54,6 +68,11 @@ object BasicFileAttributes {
 // the owner/group operations JVM only.
 sealed trait PosixFileAttributes extends BasicFileAttributes {
   def permissions: PosixPermissions
+
+  final override def equals(that: Any): Boolean = that match {
+    case other: PosixFileAttributes => super.equals(other) && permissions == other.permissions
+    case _                          => false
+  }
 }
 
 object PosixFileAttributes {
