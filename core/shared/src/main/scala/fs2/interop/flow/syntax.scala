@@ -23,14 +23,16 @@ package fs2
 package interop
 package flow
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
+import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber}
 
 object syntax {
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
 
-    /** Creates a [[Stream]] from an [[Publisher]].
+    /** Creates a [[Stream]] from a [[Publisher]].
       *
       * @example {{{
       * scala> import cats.effect.IO
@@ -46,6 +48,8 @@ object syntax {
       *      | }
       * res0: Stream[IO, Int] = Stream(..)
       * }}}
+      *
+      * @note The [[Publisher]] will not receive a [[Subscriber]] until the stream is run.
       *
       * @param chunkSize setup the number of elements asked each time from the [[Publisher]].
       *                  A high number may be useful if the publisher is triggering from IO,
@@ -63,12 +67,15 @@ object syntax {
     /** Creates a [[Publisher]] from a [[Stream]].
       *
       * The stream is only ran when elements are requested.
-      * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
+      * Closing the [[Resource]] means not accepting new subscriptions,
+      * but waiting for all active ones to finish consuming.
+      * Canceling the [[Resource.use]] means gracefully shutting down all active subscriptions.
       * Thus, no more elements will be published.
       *
-      * @note This Publisher can be reused for multiple Subscribers,
-      *       each subscription will re-run the [[Stream]] from the beginning.
+      * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+      *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
       *
+      * @see [[unsafeToPublisher]] for an unsafe version that returns a plain [[Publisher]].
       * @see [[subscribe]] for a simpler version that only requires a [[Subscriber]].
       */
     def toPublisher(implicit F: Async[F]): Resource[F, Publisher[A]] =
@@ -84,6 +91,23 @@ object syntax {
       */
     def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
       flow.subscribeStream(stream, subscriber)
+  }
+
+  implicit final class StreamIOOps[A](private val stream: Stream[IO, A]) extends AnyVal {
+
+    /** Creates a [[Publisher]] from a [[Stream]].
+      *
+      * The stream is only ran when elements are requested.
+      *
+      * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+      *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
+      *
+      * @see [[toPublisher]] for a safe version that returns a [[Resource]].
+      */
+    def unsafeToPublisher()(implicit
+        runtime: IORuntime
+    ): Publisher[A] =
+      flow.unsafeToPublisher(stream)
   }
 
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
