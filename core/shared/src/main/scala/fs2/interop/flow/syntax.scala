@@ -23,9 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
-import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber}
 
@@ -58,6 +56,7 @@ object syntax {
       *                  The stream will not emit new element until,
       *                  either the `Chunk` is filled or the publisher finishes.
       */
+    @deprecated("Use Stream.fromPublisher", "3.9.4")
     def toStream[F[_]](chunkSize: Int)(implicit F: Async[F]): Stream[F, A] =
       flow.fromPublisher(publisher, chunkSize)
   }
@@ -78,6 +77,7 @@ object syntax {
       * @see [[unsafeToPublisher]] for an unsafe version that returns a plain [[Publisher]].
       * @see [[subscribe]] for a simpler version that only requires a [[Subscriber]].
       */
+    @deprecated("Use Stream#toPublisherResource", "3.9.4")
     def toPublisher(implicit F: Async[F]): Resource[F, Publisher[A]] =
       flow.toPublisher(stream)
 
@@ -89,25 +89,9 @@ object syntax {
       *
       * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
       */
+    @deprecated("Use Stream#subscribe", "3.9.4")
     def subscribe(subscriber: Subscriber[A])(implicit F: Async[F]): F[Unit] =
       flow.subscribeStream(stream, subscriber)
-  }
-
-  implicit final class StreamIOOps[A](private val stream: Stream[IO, A]) extends AnyVal {
-
-    /** Creates a [[Publisher]] from a [[Stream]].
-      *
-      * The stream is only ran when elements are requested.
-      *
-      * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
-      *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
-      *
-      * @see [[toPublisher]] for a safe version that returns a [[Resource]].
-      */
-    def unsafeToPublisher()(implicit
-        runtime: IORuntime
-    ): Publisher[A] =
-      flow.unsafeToPublisher(stream)
   }
 
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
