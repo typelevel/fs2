@@ -72,12 +72,12 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
 private[flow] object StreamPublisher {
   private final class DispatcherStreamPublisher[F[_], A](
       stream: Stream[F, A],
-      dispatcher: Dispatcher[F]
+      startDispatcher: Dispatcher[F]
   )(implicit
       F: Async[F]
   ) extends StreamPublisher[F, A](stream) {
     override protected final def runSubscription(subscribe: F[Unit]): Unit =
-      dispatcher.unsafeRunAndForget(subscribe)
+      startDispatcher.unsafeRunAndForget(subscribe)
   }
 
   private final class IORuntimeStreamPublisher[A](
@@ -94,7 +94,7 @@ private[flow] object StreamPublisher {
   )(implicit
       F: Async[F]
   ): Resource[F, StreamPublisher[F, A]] =
-    Dispatcher.parallel[F](await = false).map { startDispatcher =>
+    Dispatcher.parallel[F](await = true).map { startDispatcher =>
       new DispatcherStreamPublisher(stream, startDispatcher)
     }
 
