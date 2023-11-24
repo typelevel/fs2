@@ -3738,14 +3738,13 @@ object Stream extends StreamLowPriority {
     *
     * @example {{{
     * scala> import cats.effect.IO
-    * scala> import fs2.Stream
     * scala> import java.util.concurrent.Flow.Publisher
     * scala>
     * scala> def getThirdPartyPublisher(): Publisher[Int] = ???
     * scala>
     * scala> // Interop with the third party library.
     * scala> Stream.eval(IO.delay(getThirdPartyPublisher())).flatMap { publisher =>
-    *      |   fs2.interop.flow.fromPublisher[IO](publisher, chunkSize = 16)
+    *      |   Stream.fromPublisher[IO](publisher, chunkSize = 16)
     *      | }
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
