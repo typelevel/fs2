@@ -58,7 +58,9 @@ private[flow] final class StreamSubscription[F[_], A] private (
     sub.onComplete()
   }
 
-  val run: F[Unit] = {
+  // This is a def rather than a val, because it is only used once.
+  // And having fields increase the instantiation cost and delay garbage collection.
+  def run: F[Unit] = {
     val subscriptionPipe: Pipe[F, A, A] = in => {
       def go(s: Stream[F, A]): Pull[F, A, Unit] =
         Pull.eval(F.delay(requests.get())).flatMap { n =>
