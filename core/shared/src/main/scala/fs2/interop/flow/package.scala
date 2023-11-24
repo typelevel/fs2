@@ -31,14 +31,14 @@ import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
   *
   * @example {{{
-  * scala> import cats.effect.{IO, Resource}
+  * scala> import cats.effect.IO
   * scala> import fs2.Stream
   * scala> import fs2.interop.flow.syntax._
   * scala> import java.util.concurrent.Flow.Publisher
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: Resource[IO, Publisher[Int]] = upstream.toPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap { publisher =>
+  * scala> val publisher: Stream[IO, Publisher[Int]] = upstream.toPublisher
+  * scala> val downstream: Stream[IO, Int] = publisher.flatMap { publisher =>
   *      |   publisher.toStream[IO](chunkSize = 16)
   *      | }
   * scala>
