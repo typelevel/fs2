@@ -56,7 +56,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
     )
     try
       runSubscription(
-        StreamSubscription.subscribe(stream, subscriber)
+        StreamSubscription.subscribe(stream, subscriber).compile.drain
       )
     catch {
       case _: IllegalStateException | _: RejectedExecutionException =>

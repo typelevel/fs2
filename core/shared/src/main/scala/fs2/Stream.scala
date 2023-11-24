@@ -2753,13 +2753,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Subscribes the provided [[Subscriber]] to this stream.
     *
-    * The returned program will run until all the stream elements were consumed.
-    * Cancelling this program will gracefully shutdown the subscription.
+    * The returned stream will run until all the stream elements were consumed.
+    * Canceling this stream will gracefully shutdown the subscription.
     *
     * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
     */
-  def subscribe[F2[x] >: F[x]: Async, O2 >: O](subscriber: Subscriber[O2]): F2[Unit] =
-    interop.flow.subscribeStream[F2, O2](this, subscriber)
+  def subscribe[F2[x] >: F[x]: Async, O2 >: O](subscriber: Subscriber[O2]): Stream[F2, Nothing] =
+    interop.flow.subscribeAsStream[F2, O2](this, subscriber)
 
   /** Emits all elements of the input except the first one.
     *

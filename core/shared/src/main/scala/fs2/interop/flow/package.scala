@@ -189,6 +189,14 @@ package object flow {
   )(implicit
       F: Async[F]
   ): F[Unit] =
+    subscribeAsStream(stream, subscriber).compile.drain
+
+  private[fs2] def subscribeAsStream[F[_], A](
+      stream: Stream[F, A],
+      subscriber: Subscriber[A]
+  )(implicit
+      F: Async[F]
+  ): Stream[F, Nothing] =
     StreamSubscription.subscribe(stream, subscriber)
 
   /** A default value for the `chunkSize` argument,
