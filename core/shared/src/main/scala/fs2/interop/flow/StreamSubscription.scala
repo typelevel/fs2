@@ -63,7 +63,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
   def run: F[Unit] = {
     val subscriptionPipe: Pipe[F, A, A] = in => {
       def go(s: Stream[F, A]): Pull[F, A, Unit] =
-        Pull.eval(F.delay(requests.get())).flatMap { n =>
+        Pull.eval(F.delay(requests.getAndSet(0))).flatMap { n =>
           if (n == Long.MaxValue)
             // See: https://github.com/reactive-streams/reactive-streams-jvm#3.17
             s.pull.echo
@@ -86,19 +86,10 @@ private[flow] final class StreamSubscription[F[_], A] private (
               }
             }) >> go(s)
           else
-            // We first check there hasn't been concurrent requests.
-            Pull.eval(F.delay(requests.compareAndSet(n, 0))).flatMap {
-              case true =>
-                // If there were not,
-                // we take the requested elements from the stream until we exhaust it.
-                s.pull.take(n).flatMap {
-                  case None      => Pull.done
-                  case Some(rem) => go(rem)
-                }
-
-              case false =>
-                // If there were, we loop.
-                go(s)
+            // We take the requested elements from the stream until we exhaust it.
+            s.pull.take(n).flatMap {
+              case None      => Pull.done
+              case Some(rem) => go(rem)
             }
         }
 
