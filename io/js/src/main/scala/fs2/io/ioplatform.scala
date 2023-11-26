@@ -26,17 +26,15 @@ import cats.Show
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
-import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.concurrent.Channel
 import fs2.io.internal.facade
 
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import scala.annotation.nowarn
 import scala.scalajs.js
+import scala.scalajs.js.typedarray.Uint8Array
 
 private[fs2] trait ioplatform {
 
@@ -241,64 +239,155 @@ private[fs2] trait ioplatform {
 
   private[io] def mkDuplex[F[_]](
       in: Stream[F, Byte]
-  )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] =
-    for {
-      readDispatcher <- Dispatcher.sequential[F]
-      writeDispatcher <- Dispatcher.sequential[F]
-      errorDispatcher <- Dispatcher.sequential[F]
-      readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
-      writeChannel <- Channel.synchronous[F, Chunk[Byte]].toResource
-      interrupt <- F.deferred[Either[Throwable, Unit]].toResource
-      duplex <- Resource.make {
-        F.delay {
-          new facade.stream.Duplex(
-            new facade.stream.DuplexOptions {
+  )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] = {
 
-              var autoDestroy = false
+    type ReadCallback = Uint8Array => Unit
+    type ReadReadyCallback = Either[Throwable, ReadCallback] => Unit
 
-              var read = { readable =>
-                readDispatcher.unsafeRunAndForget(
-                  readQueue.take.flatMap { chunk =>
-                    F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
-                  }
-                )
-              }
+    type WriteCallback = Either[Throwable, Option[Chunk[Byte]]] => Unit
+    type WriteReadyCallback = WriteCallback => Unit
 
-              var write = { (_, chunk, _, cb) =>
-                writeDispatcher.unsafeRunAndForget(
-                  writeChannel.send(Chunk.uint8Array(chunk)) *> F.delay(cb(null))
-                )
-              }
+    final class Listener {
 
-              var `final` = { (_, cb) =>
-                writeDispatcher.unsafeRunAndForget(
-                  writeChannel.close *> F.delay(cb(null))
-                )
-              }
+      private[this] var readCallback: ReadCallback = null
+      private[this] var readReadyCallback: ReadReadyCallback = null
 
-              var destroy = { (_, err, cb) =>
-                errorDispatcher.unsafeRunAndForget {
-                  interrupt
-                    .complete(
-                      Option(err).map(js.JavaScriptException(_)).toLeft(())
-                    ) *> F.delay(cb(null))
-                }
-              }
-            }
-          )
+      private[this] var writeCallback: WriteCallback = null
+      private[this] var writeReadyCallback: WriteReadyCallback = null
+
+      private[this] var destroy: Either[Throwable, Unit] = null
+      private[this] var destroyCallback: Either[Throwable, Unit] => Unit = null
+
+      def handleRead(cb: ReadCallback): Unit =
+        if (readReadyCallback ne null) {
+          readReadyCallback(Right(cb))
+          readReadyCallback = null
+        } else {
+          readCallback = cb
         }
-      } { duplex =>
+
+      private[this] def readReady: F[ReadCallback] = F.async { cb =>
         F.delay {
-          if (!duplex.readableEnded | !duplex.writableEnded)
-            duplex.destroy()
+          if (readCallback ne null) {
+            cb(Right(readCallback))
+            readCallback = null
+            None
+          } else {
+            readReadyCallback = cb
+            Some(F.delay { readReadyCallback = null })
+          }
         }
       }
-      drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
-      out = writeChannel.stream.unchunks
-    } yield (
-      duplex,
-      drainIn.merge(out).interruptWhen(interrupt).adaptError { case IOException(ex) => ex }
-    )
+
+      def reads: Pipe[F, Byte, Nothing] = {
+        def go(in: Stream[F, Byte]): Pull[F, Nothing, Unit] =
+          Pull.eval(readReady).flatMap { cb =>
+            in.pull.uncons.flatMap {
+              case Some((head, tail)) =>
+                Pull.eval(F.delay(cb(head.toUint8Array))) >> go(tail)
+              case None => Pull.eval(F.delay(cb(null)))
+            }
+          }
+
+        go(_).stream
+      }
+
+      private[this] def onWrite: F[Option[Chunk[Byte]]] = F.async { cb =>
+        F.delay {
+          if (writeReadyCallback ne null) {
+            writeReadyCallback(cb)
+            writeReadyCallback = null
+            None
+          } else {
+            writeCallback = cb
+            Some(F.delay { writeCallback = null })
+          }
+        }
+      }
+
+      def writes: Stream[F, Byte] =
+        Stream.repeatEval(onWrite).unNoneTerminate.unchunks
+
+      def handleWrite(cb: WriteReadyCallback): Unit =
+        if (writeCallback ne null) {
+          cb(writeCallback)
+          writeCallback = null
+        } else {
+          writeReadyCallback = cb
+        }
+
+      def handleDestroy(e: js.Error): Unit = {
+        destroy = Option(e).map(js.JavaScriptException(_)).toLeft(())
+        if (destroyCallback ne null) {
+          destroyCallback(destroy)
+          destroyCallback = null
+        }
+      }
+
+      def onDestroy: F[Unit] = F.async { cb =>
+        F.delay {
+          if (destroy ne null) {
+            cb(destroy)
+            None
+          } else {
+            destroyCallback = cb
+            Some(F.delay { destroyCallback = null })
+          }
+        }
+      }
+    }
+
+    Resource.eval(F.delay(new Listener)).flatMap { listener =>
+      Resource
+        .make {
+          F.delay {
+            new facade.stream.Duplex(
+              new facade.stream.DuplexOptions {
+
+                var autoDestroy = false
+
+                var read = { readable =>
+                  listener.handleRead { c =>
+                    readable.push(c)
+                    ()
+                  }
+                }
+
+                var write = { (_, chunk, _, cb) =>
+                  listener.handleWrite { write =>
+                    write(Right(Some(Chunk.uint8Array(chunk))))
+                    cb(null)
+                  }
+                }
+
+                var `final` = { (_, cb) =>
+                  listener.handleWrite { write =>
+                    write(Right(None))
+                    cb(null)
+                  }
+                }
+
+                var destroy = { (_, err, cb) =>
+                  listener.handleDestroy(err)
+                  cb(null)
+                }
+              }
+            )
+          }
+        } { duplex =>
+          F.delay {
+            if (!duplex.readableEnded | !duplex.writableEnded)
+              duplex.destroy()
+          }
+        }
+        .tupleRight {
+          in.through(listener.reads)
+            .merge(listener.writes)
+            .interruptWhen(listener.onDestroy.attempt)
+            .adaptError { case IOException(ex) => ex }
+        }
+    }
+  }
 
   /** Stream of bytes read asynchronously from standard input. */
   def stdin[F[_]: Async]: Stream[F, Byte] = stdinAsync
