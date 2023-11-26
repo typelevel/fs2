@@ -224,8 +224,10 @@ private[fs2] trait ioplatform {
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the `Writable` as an fs2.Stream
     */
-  def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
-    Stream.empty.through(toDuplexAndRead(f))
+  def readWritable[F[_]](f: Writable => F[Unit])(implicit F: Async[F]): Stream[F, Byte] =
+    Stream.empty.through(toDuplexAndRead { duplex =>
+      F.delay(duplex.on("data", () => ())) *> f(duplex)
+    })
 
   /** Take a function that reads and writes from a `Duplex` effectfully,
     * and return a pipe which, when run, will perform that function,
