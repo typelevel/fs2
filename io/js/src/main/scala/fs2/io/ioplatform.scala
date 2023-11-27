@@ -61,22 +61,22 @@ private[fs2] trait ioplatform {
 
     final class Listener {
       private[this] var readableCounter = 0
-      private[this] var error: Either[Throwable, Option[Unit]] = null
+      private[this] var error: Either[Throwable, Boolean] = null
       private[this] var ended = false
-      private[this] var callback: Either[Throwable, Option[Unit]] => Unit = null
+      private[this] var callback: Either[Throwable, Boolean] => Unit = null
 
       def handleReadable(): Unit =
         if (callback eq null) {
           readableCounter += 1
         } else {
-          callback(Right(Some(())))
+          callback(Right(true))
           callback = null
         }
 
       def handleEnd(): Unit = {
         ended = true
         if (readableCounter == 0 && (callback ne null)) {
-          callback(Right(None))
+          callback(Right(false))
         }
       }
 
@@ -87,17 +87,17 @@ private[fs2] trait ioplatform {
         }
       }
 
-      private[this] def next: F[Option[Unit]] = F.async { cb =>
+      private[this] def next: F[Boolean] = F.async { cb =>
         F.delay {
           if (error ne null) {
             cb(error)
             None
           } else if (readableCounter > 0) {
-            cb(Right(Some(())))
+            cb(Right(true))
             readableCounter -= 1
             None
           } else if (ended) {
-            cb(Right(None))
+            cb(Right(false))
             None
           } else {
             callback = cb
@@ -106,8 +106,18 @@ private[fs2] trait ioplatform {
         }
       }
 
-      def readableEvents: Stream[F, Unit] =
-        Stream.repeatEval(next).unNoneTerminate
+      def readableEvents: Stream[F, Unit] = {
+        def go: Pull[F, Unit, Unit] =
+          Pull.eval(next).flatMap { continue =>
+            if (continue)
+              Pull.outUnit >> go
+            else
+              Pull.done
+          }
+
+        go.streamNoScope
+      }
+
     }
 
     Resource
