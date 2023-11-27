@@ -242,7 +242,8 @@ class TLSSocketSuite extends TLSSuite {
               clientSocket.reads.take(msg.size.toLong)
           }
 
-          client.concurrently(echoServer)
+          client.mask //
+            .concurrently(echoServer)
         }
         .compile
         .to(Chunk)

@@ -240,6 +240,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // package-private method: #3318
   ProblemFilters.exclude[IncompatibleMethTypeProblem](
     "fs2.io.package.readInputStreamGeneric"
+  ),
+  // sealed trait: #3349
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSParameters.withClientAuthType"
   )
 )
 
