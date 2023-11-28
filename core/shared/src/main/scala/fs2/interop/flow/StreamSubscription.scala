@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 
 /** Implementation of a [[Subscription]].
   *
-  * This is used by the [[StreamUnicastPublisher]] to send elements from a [[Stream]] to a downstream reactive-streams system.
+  * This is used by the [[StreamPublisher]] to send elements from a [[Stream]] to a downstream reactive-streams system.
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
@@ -58,11 +58,14 @@ private[flow] final class StreamSubscription[F[_], A] private (
     sub.onComplete()
   }
 
-  private[flow] def run: F[Unit] = {
+  // This is a def rather than a val, because it is only used once.
+  // And having fields increase the instantiation cost and delay garbage collection.
+  def run: F[Unit] = {
     val subscriptionPipe: Pipe[F, A, A] = in => {
       def go(s: Stream[F, A]): Pull[F, A, Unit] =
-        Pull.eval(F.delay(requests.get())).flatMap { n =>
+        Pull.eval(F.delay(requests.getAndSet(0))).flatMap { n =>
           if (n == Long.MaxValue)
+            // See: https://github.com/reactive-streams/reactive-streams-jvm#3.17
             s.pull.echo
           else if (n == 0)
             Pull.eval(F.asyncCheckAttempt[Unit] { cb =>
@@ -83,11 +86,11 @@ private[flow] final class StreamSubscription[F[_], A] private (
               }
             }) >> go(s)
           else
-            Pull.eval(F.delay(requests.getAndAdd(-n))) >>
-              s.pull.take(n).flatMap {
-                case None      => Pull.done
-                case Some(rem) => go(rem)
-              }
+            // We take the requested elements from the stream until we exhaust it.
+            s.pull.take(n).flatMap {
+              case None      => Pull.done
+              case Some(rem) => go(rem)
+            }
         }
 
       go(in).stream
@@ -133,14 +136,14 @@ private[flow] final class StreamSubscription[F[_], A] private (
   // then the request must be a NOOP.
   // See https://github.com/zainab-ali/fs2-reactive-streams/issues/29
   // and https://github.com/zainab-ali/fs2-reactive-streams/issues/46
-  override def cancel(): Unit = {
+  override final def cancel(): Unit = {
     val cancelCB = canceled.getAndSet(null)
     if (cancelCB ne null) {
       cancelCB.apply()
     }
   }
 
-  override def request(n: Long): Unit =
+  override final def request(n: Long): Unit =
     // First, confirm we are not yet cancelled.
     if (canceled.get() ne null) {
       // Second, ensure we were requested a positive number of elements.
