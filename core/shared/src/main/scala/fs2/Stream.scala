@@ -1052,8 +1052,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Alias for `evalMapChunk(o => f(o).as(o))`.
     */
-  def evalTapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O] =
-    evalMapChunk(o => f(o).as(o))
+  def evalTapChunk[F2[x] >: F[x]: Applicative, O2](f: O => F2[O2]): Stream[F2, O] = {
+    def tapOutChunk(o: Chunk[O]): Pull[F2, O, Unit] = Pull.eval(o.traverse_(f)) >> Pull.output(o)
+    underlying.unconsFlatMap(tapOutChunk).streamNoScope
+  }
 
   /** Emits `true` as soon as a matching element is received, else `false` if no input matches.
     * '''Pure''': this operation maps to `List.exists`
