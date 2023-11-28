@@ -62,10 +62,36 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               clientMode: Boolean,
               params: TLSParameters,
               logger: TLSLogger[F]
-          ): Resource[F, TLSSocket[F]] = (Dispatcher.sequential[F], Dispatcher.parallel[F])
-            .flatMapN { (seqDispatcher, parDispatcher) =>
-              if (clientMode) {
-                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { handshake =>
+          ): Resource[F, TLSSocket[F]] = {
+
+            final class Listener {
+              private[this] var value: Either[Throwable, Unit] = null
+              private[this] var callback: Either[Throwable, Unit] => Unit = null
+
+              def complete(value: Either[Throwable, Unit]): Unit =
+                if (callback ne null) {
+                  callback(value)
+                  callback = null
+                } else {
+                  this.value = value
+                }
+
+              def get: F[Unit] = F.async { cb =>
+                F.delay {
+                  if (value ne null) {
+                    cb(value)
+                    None
+                  } else {
+                    callback = cb
+                    Some(F.delay { callback = null })
+                  }
+                }
+              }
+            }
+
+            (Dispatcher.parallel[F], Resource.eval(F.delay(new Listener)))
+              .flatMapN { (parDispatcher, listener) =>
+                if (clientMode) {
                   TLSSocket
                     .forAsync(
                       socket,
@@ -80,22 +106,17 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                         val tlsSock = facade.tls.connect(options)
                         tlsSock.once(
                           "secureConnect",
-                          () => seqDispatcher.unsafeRunAndForget(handshake.complete(Either.unit))
+                          () => listener.complete(Either.unit)
                         )
                         tlsSock.once[js.Error](
                           "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              handshake.complete(Left(new js.JavaScriptException(e)))
-                            )
+                          e => listener.complete(Left(new js.JavaScriptException(e)))
                         )
                         tlsSock
                       }
                     )
-                    .evalTap(_ => handshake.get.rethrow)
-                }
-              } else {
-                Resource.eval(F.deferred[Either[Throwable, Unit]]).flatMap { verifyError =>
+                    .evalTap(_ => listener.get)
+                } else {
                   TLSSocket
                     .forAsync(
                       socket,
@@ -119,24 +140,21 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                                   .map(e => new JavaScriptSSLException(js.JavaScriptException(e)))
                                   .toLeft(())
                               else Either.unit
-                            seqDispatcher.unsafeRunAndForget(verifyError.complete(result))
+                            listener.complete(result)
                           }
                         )
                         tlsSock.once[js.Error](
                           "error",
-                          e =>
-                            seqDispatcher.unsafeRunAndForget(
-                              verifyError.complete(Left(new js.JavaScriptException(e)))
-                            )
+                          e => listener.complete(Left(new js.JavaScriptException(e)))
                         )
                         tlsSock
                       }
                     )
-                    .evalTap(_ => verifyError.get.rethrow)
+                    .evalTap(_ => listener.get)
                 }
               }
-            }
-            .adaptError { case IOException(ex) => ex }
+              .adaptError { case IOException(ex) => ex }
+          }
         }
 
       def fromSecureContext(context: SecureContext): TLSContext[F] =
