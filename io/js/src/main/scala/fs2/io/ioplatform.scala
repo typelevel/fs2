@@ -60,22 +60,23 @@ private[fs2] trait ioplatform {
   )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] = {
 
     final class Listener {
-      private[this] var readableCounter = 0
+      private[this] var readable = false
       private[this] var error: Either[Throwable, Boolean] = null
       private[this] var ended = false
       private[this] var callback: Either[Throwable, Boolean] => Unit = null
 
       def handleReadable(): Unit =
         if (callback eq null) {
-          readableCounter += 1
+          readable = true
         } else {
-          callback(Right(true))
+          val cb = callback
           callback = null
+          cb(Right(true))
         }
 
       def handleEnd(): Unit = {
         ended = true
-        if (readableCounter == 0 && (callback ne null)) {
+        if (!readable && (callback ne null)) {
           callback(Right(false))
         }
       }
@@ -92,9 +93,9 @@ private[fs2] trait ioplatform {
           if (error ne null) {
             cb(error)
             None
-          } else if (readableCounter > 0) {
+          } else if (readable) {
+            readable = false
             cb(Right(true))
-            readableCounter -= 1
             None
           } else if (ended) {
             cb(Right(false))
