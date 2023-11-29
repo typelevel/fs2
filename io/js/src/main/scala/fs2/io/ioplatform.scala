@@ -250,6 +250,10 @@ private[fs2] trait ioplatform {
     type WriteReadyCallback = WriteCallback => Unit
 
     final class Listener {
+      // implementation note:
+      // we always null the callback vars *before* invoking the callback
+      // this is b/c a new callback may be installed during the invocation of the current callback
+      // nulling *after* invoking the current callback would clobber this new value
 
       private[this] var readCallback: ReadCallback = null
       private[this] var readReadyCallback: ReadReadyCallback = null
@@ -260,22 +264,24 @@ private[fs2] trait ioplatform {
       private[this] var destroy: Either[Throwable, Unit] = null
       private[this] var destroyCallback: Either[Throwable, Unit] => Unit = null
 
-      def handleRead(cb: ReadCallback): Unit =
+      def handleRead(rcb: ReadCallback): Unit =
         if (readReadyCallback ne null) {
-          readReadyCallback(Right(cb))
+          val rrcb = readReadyCallback
           readReadyCallback = null
+          rrcb(Right(rcb))
         } else {
-          readCallback = cb
+          readCallback = rcb
         }
 
-      private[this] def readReady: F[ReadCallback] = F.async { cb =>
+      private[this] def readReady: F[ReadCallback] = F.async { rrcb =>
         F.delay {
           if (readCallback ne null) {
-            cb(Right(readCallback))
+            val rcb = readCallback
             readCallback = null
+            rrcb(Right(rcb))
             None
           } else {
-            readReadyCallback = cb
+            readReadyCallback = rrcb
             Some(F.delay { readReadyCallback = null })
           }
         }
@@ -297,8 +303,9 @@ private[fs2] trait ioplatform {
       private[this] def onWrite: F[Option[Chunk[Byte]]] = F.async { cb =>
         F.delay {
           if (writeReadyCallback ne null) {
-            writeReadyCallback(cb)
+            val wrcb = writeReadyCallback
             writeReadyCallback = null
+            wrcb(cb)
             None
           } else {
             writeCallback = cb
@@ -310,19 +317,21 @@ private[fs2] trait ioplatform {
       def writes: Stream[F, Byte] =
         Stream.repeatEval(onWrite).unNoneTerminate.unchunks
 
-      def handleWrite(cb: WriteReadyCallback): Unit =
+      def handleWrite(wrcb: WriteReadyCallback): Unit =
         if (writeCallback ne null) {
-          cb(writeCallback)
+          val wcb = writeCallback
           writeCallback = null
+          wrcb(wcb)
         } else {
-          writeReadyCallback = cb
+          writeReadyCallback = wrcb
         }
 
       def handleDestroy(e: js.Error): Unit = {
         destroy = Option(e).map(js.JavaScriptException(_)).toLeft(())
         if (destroyCallback ne null) {
-          destroyCallback(destroy)
+          val dcb = destroyCallback
           destroyCallback = null
+          dcb(destroy)
         }
       }
 

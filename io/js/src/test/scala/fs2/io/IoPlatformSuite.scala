@@ -126,4 +126,19 @@ class IoPlatformSuite extends Fs2Suite {
       .drain
   }
 
+  test("write in readWritable write callback does not hang") {
+    readWritable { writable =>
+      IO.async_[Unit] { cb =>
+        writable.write(
+          Chunk[Byte](0).toUint8Array,
+          _ => { // start the next write in the callback
+            writable.write(Chunk[Byte](1).toUint8Array, _ => cb(Right(())))
+            ()
+          }
+        )
+        ()
+      }
+    }.take(2).compile.toList.assertEquals(List[Byte](0, 1))
+  }
+
 }
