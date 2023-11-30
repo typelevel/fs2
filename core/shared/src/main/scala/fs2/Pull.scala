@@ -335,8 +335,8 @@ object Pull extends PullLowPriority {
         f: Chunk[O] => Pull[F2, O2, Unit]
     ): Pull[F2, O2, Unit] =
       uncons.flatMap {
-        case None           => Pull.done
-        case Some((hd, tl)) => f(hd) >> tl.unconsFlatMap(f)
+        case Some(x) => f(x._1) >> x._2.unconsFlatMap(f)
+        case _           => Pull.done
       }
 
     /* Pull transformation that takes the given stream (pull), unrolls it until it either:
@@ -346,7 +346,7 @@ object Pull extends PullLowPriority {
      */
     private[fs2] def uncons: Pull[F, Nothing, Option[(Chunk[O], Pull[F, O, Unit])]] =
       self match {
-        case Succeeded(_)    => Succeeded(None)
+        case _: Succeeded[_] => Succeeded(None)
         case Output(vals)    => Succeeded(Some(vals -> unit))
         case ff: Fail        => ff
         case it: Interrupted => it
