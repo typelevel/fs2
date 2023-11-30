@@ -44,6 +44,20 @@ class PathSuite extends Fs2IoSuite {
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
+    forAll((sepLength: Int) =>
+      if (sepLength >= 0 && sepLength <= 100)
+        assertEquals(
+          Path("/".repeat(sepLength)).toString,
+          "/"
+        )
+    )
+    forAll((sepLength: Int, path: Path) =>
+      if (sepLength >= 0 && sepLength <= 100)
+        assertEquals(
+          Path(path.toString + "/".repeat(sepLength)),
+          path
+        )
+    )
   }
 
   test("normalize") {

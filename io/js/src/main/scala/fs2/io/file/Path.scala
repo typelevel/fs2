@@ -26,6 +26,7 @@ package file
 import fs2.io.internal.facade
 
 import scala.annotation.tailrec
+import scala.collection.IndexedSeqView
 
 final case class Path private[file] (override val toString: String) extends PathApi {
 
@@ -98,9 +99,16 @@ final case class Path private[file] (override val toString: String) extends Path
 object Path extends PathCompanionApi {
   private[file] val sep = facade.path.sep
 
+  private[file] def dropTrailingSep(path: String): String = {
+    @tailrec
+    def drop(view: IndexedSeqView[Char]): IndexedSeqView[Char] =
+      if (view.endsWith(sep) && view.length > sep.length)
+        drop(view.dropRight(sep.length))
+      else view
+
+    drop(path.view).mkString
+  }
+
   def apply(path: String): Path =
-    if (path.endsWith(sep))
-      new Path(path.dropRight(sep.length))
-    else
-      new Path(path)
+    new Path(dropTrailingSep(path))
 }
