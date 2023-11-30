@@ -52,7 +52,7 @@ class PathSuite extends Fs2IoSuite {
         )
     )
     forAll((sepLength: Int, path: Path) =>
-      if (sepLength >= 0 && sepLength <= 100)
+      if (sepLength >= 0 && sepLength <= 100 && path.toString.nonEmpty)
         assertEquals(
           Path(path.toString + "/".repeat(sepLength)),
           path

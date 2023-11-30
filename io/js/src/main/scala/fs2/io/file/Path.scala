@@ -26,7 +26,6 @@ package file
 import fs2.io.internal.facade
 
 import scala.annotation.tailrec
-import scala.collection.IndexedSeqView
 
 final case class Path private[file] (override val toString: String) extends PathApi {
 
@@ -99,20 +98,16 @@ final case class Path private[file] (override val toString: String) extends Path
 object Path extends PathCompanionApi {
   private[file] val sep = facade.path.sep
 
-  private[file] def dropTrailingSep(path: String): String = {
-    /*
-     * NOTE: It seems like scala js does not rewrite this to a loop?
-     * Call stack limit is reached if there are too many separators.
-     */
-    @tailrec
-    def drop(view: IndexedSeqView[Char]): IndexedSeqView[Char] =
-      // Drop separator only if there is something else left
-      if (view.endsWith(sep) && view.length > sep.length)
-        drop(view.dropRight(sep.length))
-      else view
-
-    drop(path.view).mkString
-  }
+  /*
+   * NOTE: It seems like scala js does not rewrite this to a loop?
+   * Call stack limit is reached if there are too many separators.
+   */
+  @tailrec
+  private[file] def dropTrailingSep(path: String): String =
+    // Drop separator only if there is something else left
+    if (path.endsWith(sep) && path.length > sep.length)
+      dropTrailingSep(path.dropRight(sep.length))
+    else path
 
   /** This method drops trailing separators to match
     * `java.nio.file.Path.get` behaviour.
