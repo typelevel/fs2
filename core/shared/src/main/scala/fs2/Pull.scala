@@ -336,7 +336,7 @@ object Pull extends PullLowPriority {
     ): Pull[F2, O2, Unit] =
       uncons.flatMap {
         case Some(x) => f(x._1) >> x._2.unconsFlatMap(f)
-        case _           => Pull.done
+        case _       => Pull.done
       }
 
     /* Pull transformation that takes the given stream (pull), unrolls it until it either:
