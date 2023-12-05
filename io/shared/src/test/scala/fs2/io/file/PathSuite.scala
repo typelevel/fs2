@@ -29,7 +29,7 @@ import cats.kernel.laws.discipline.OrderTests
 import org.scalacheck.Arbitrary
 import org.scalacheck.Cogen
 import org.scalacheck.Gen
-import org.scalacheck.Prop.forAll
+import org.scalacheck.Prop.{forAll, propBoolean}
 
 class PathSuite extends Fs2IoSuite {
 
@@ -38,25 +38,30 @@ class PathSuite extends Fs2IoSuite {
     root <- Gen.oneOf("/", "")
   } yield names.foldLeft(Path(root))((p, n) => p / Path(n)))
 
+  val nonEmptyPath = arbitraryPath.arbitrary.filter(
+    _.toString.nonEmpty
+  )
+
   implicit val cogenPath: Cogen[Path] =
     Cogen.cogenList[String].contramap(_.names.map(_.toString).toList)
 
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
-    forAll((sepLength: Int) =>
-      if (sepLength >= 0 && sepLength <= 100)
-        assertEquals(
-          Path("/".repeat(sepLength)).toString,
-          "/"
-        )
+
+    val sepLengthGen = Gen.choose(0, 1024)
+
+    forAll(sepLengthGen)((sepLength: Int) =>
+      assertEquals(
+        Path("/".repeat(sepLength)).toString,
+        "/"
+      )
     )
-    forAll((sepLength: Int, path: Path) =>
-      if (sepLength >= 0 && sepLength <= 100 && path.toString.nonEmpty)
-        assertEquals(
-          Path(path.toString + "/".repeat(sepLength)),
-          path
-        )
+    forAll(sepLengthGen, nonEmptyPath)((sepLength: Int, path: Path) =>
+      assertEquals(
+        Path(path.toString + "/".repeat(sepLength)),
+        path
+      )
     )
   }
 
@@ -122,13 +127,11 @@ class PathSuite extends Fs2IoSuite {
   }
 
   test("startsWith/endsWith") {
-    forAll { (start: Path, end: Path) =>
-      if (start.toString.nonEmpty && end.toString.nonEmpty) {
-        val path = start.resolve(end)
-        // TODO
-        // assert(path.startsWith(start), s"$path doesn't start with $start")
-        assert(path.endsWith(end), s"$path doesn't end with $end")
-      }
+    forAll(nonEmptyPath, nonEmptyPath) { (start: Path, end: Path) =>
+      val path = start.resolve(end)
+      // TODO
+      // assert(path.startsWith(start), s"$path doesn't start with $start")
+      assert(path.endsWith(end), s"$path doesn't end with $end")
     }
   }
 
