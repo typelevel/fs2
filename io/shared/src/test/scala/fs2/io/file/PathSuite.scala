@@ -29,7 +29,7 @@ import cats.kernel.laws.discipline.OrderTests
 import org.scalacheck.Arbitrary
 import org.scalacheck.Cogen
 import org.scalacheck.Gen
-import org.scalacheck.Prop.{forAll, propBoolean}
+import org.scalacheck.Prop.forAll
 
 class PathSuite extends Fs2IoSuite {
 
