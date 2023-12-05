@@ -99,11 +99,9 @@ object Path extends PathCompanionApi {
   private[file] val sep = facade.path.sep
 
   def apply(path: String): Path = {
-
-    /** Parse and then reconstruct the path
-      * to drop all trailing separators
-      * to match `java.nio.file.Paths.get` behaviour.
-      */
+    // Parse and then reconstruct the path
+    // to drop all trailing separators
+    // to match `java.nio.file.Paths.get` behaviour.
     val parsed = facade.path.parse(path)
     val formatted = facade.path.format(parsed)
 
