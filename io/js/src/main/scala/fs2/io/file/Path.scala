@@ -98,21 +98,15 @@ final case class Path private[file] (override val toString: String) extends Path
 object Path extends PathCompanionApi {
   private[file] val sep = facade.path.sep
 
-  /*
-   * NOTE: It seems like scala js does not rewrite this to a loop?
-   * Call stack limit is reached if there are too many separators.
-   */
-  @tailrec
-  private[file] def dropTrailingSep(path: String): String =
-    // Drop separator only if there is something else left
-    if (path.endsWith(sep) && path.length > sep.length)
-      dropTrailingSep(path.dropRight(sep.length))
-    else path
+  def apply(path: String): Path = {
 
-  /** This method drops trailing separators to match
-    * `java.nio.file.Path.get` behaviour.
-    * But root ("/") is untouched.
-    */
-  def apply(path: String): Path =
-    new Path(dropTrailingSep(path))
+    /** Parse and then reconstruct the path
+      * to drop all trailing separators
+      * to match `java.nio.file.Paths.get` behaviour.
+      */
+    val parsed = facade.path.parse(path)
+    val formatted = facade.path.format(parsed)
+
+    new Path(formatted)
+  }
 }

@@ -73,4 +73,8 @@ private[io] object path {
     def name: String = js.native
     def ext: String = js.native
   }
+
+  @js.native
+  @JSImport("path", "format")
+  def format(pathObject: ParsedPath): String = js.native
 }
