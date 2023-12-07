@@ -169,6 +169,20 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
                          |bar
                          |""".stripMargin)
     }
+
+    test("writeUtf8Lines - empty stream") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream.empty
+            .covary[IO]
+            .through(Files[IO].writeUtf8Lines(path)) ++ Files[IO]
+            .readUtf8(path)
+        }
+        .compile
+        .foldMonoid
+        .assertEquals("")
+    }
   }
 
   group("tail") {
