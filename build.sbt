@@ -27,11 +27,22 @@ ThisBuild / githubWorkflowBuild ++= Seq(
   )
 )
 
-ThisBuild / githubWorkflowPublishPreamble +=
-  WorkflowStep.Use(
-    UseRef.Public("typelevel", "await-cirrus", "main"),
-    name = Some("Wait for Cirrus CI")
+ThisBuild / githubWorkflowAddedJobs +=
+  WorkflowJob(
+    "macos",
+    "Test I/O on macOS",
+    scalas = Nil,
+    sbtStepPreamble = Nil,
+    javas = List(githubWorkflowJavaVersions.value.head),
+    oses = List("macos-latest"),
+    matrixAdds = Map("project" -> List("ioJS", "ioJVM", "ioNative")),
+    steps = githubWorkflowJobSetup.value.toList ++ List(
+      WorkflowStep.Run(List("brew install s2n"), cond = Some("matrix.project == 'ioNative'")),
+      WorkflowStep.Sbt(List("${{ matrix.project }}/test"))
+    )
   )
+
+ThisBuild / githubWorkflowPublishNeeds += "macos"
 
 ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
