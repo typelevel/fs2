@@ -549,7 +549,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       backResult <- F.deferred[Either[Throwable, Unit]]
     } yield {
       def watch[A](str: Stream[F2, A]) = str.interruptWhen(interrupt.get.attempt) <* Stream.eval(
-        F.unit.map(_ => println("DEBUG: Inside 'concurrently' watch AFTER interruptWhen"))
+        F.unit.map(_ => println("DEBUG: Inside 'concurrently' watch is invoked"))
       )
 
       val compileBack: F2[Unit] = F.unit.map(_ =>
@@ -581,6 +581,17 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           println("DEBUG: Inside 'concurrently' AFTER stopBack completed")
         )
 
+      val tmp = Stream.resource(
+        Resource.make(compileBack.start)(_ =>
+          F.unit.map(_ =>
+            println("DEBUG: Inside 'concurrently' stopBack invoked (closing resource)")
+          ) *> stopBack
+        )
+      )
+
+      (tmp, watch(this))
+
+      /*
       (
         Stream.bracket(compileBack.start)(_ =>
           F.unit.map(_ =>
@@ -589,6 +600,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         ),
         watch(this)
       )
+       */
     }
 
     Stream.eval(fstream)
