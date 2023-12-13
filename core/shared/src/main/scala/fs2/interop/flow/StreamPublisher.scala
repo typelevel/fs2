@@ -29,7 +29,7 @@ import cats.effect.std.Dispatcher
 import cats.effect.unsafe.IORuntime
 
 import java.util.Objects.requireNonNull
-import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
+import java.util.concurrent.Flow.{Publisher, Subscriber}
 import java.util.concurrent.RejectedExecutionException
 import scala.util.control.NoStackTrace
 
@@ -54,16 +54,12 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
       subscriber,
       "The subscriber provided to subscribe must not be null"
     )
-    try {
-      val subscription = StreamSubscription(stream, subscriber)
-      subscriber.onSubscribe(subscription)
+    val subscription = StreamSubscription(stream, subscriber)
+    subscriber.onSubscribe(subscription)
+    try
       runSubscription(subscription.run)
-    } catch {
+    catch {
       case _: IllegalStateException | _: RejectedExecutionException =>
-        subscriber.onSubscribe(new Subscription {
-          override def cancel(): Unit = ()
-          override def request(x$1: Long): Unit = ()
-        })
         subscriber.onError(StreamPublisher.CanceledStreamPublisherException)
     }
   }
