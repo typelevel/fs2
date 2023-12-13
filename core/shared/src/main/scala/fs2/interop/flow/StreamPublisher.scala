@@ -47,18 +47,18 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
 )(implicit
     F: Async[F]
 ) extends Publisher[A] {
-  protected def runSubscription(subscribe: F[Unit]): Unit
+  protected def runSubscription(run: F[Unit]): Unit
 
   override final def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     requireNonNull(
       subscriber,
       "The subscriber provided to subscribe must not be null"
     )
-    try
-      runSubscription(
-        StreamSubscription.subscribe(stream, subscriber)
-      )
-    catch {
+    try {
+      val subscription = StreamSubscription(stream, subscriber)
+      subscriber.onSubscribe(subscription)
+      runSubscription(subscription.run)
+    } catch {
       case _: IllegalStateException | _: RejectedExecutionException =>
         subscriber.onSubscribe(new Subscription {
           override def cancel(): Unit = ()
@@ -72,12 +72,12 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
 private[flow] object StreamPublisher {
   private final class DispatcherStreamPublisher[F[_], A](
       stream: Stream[F, A],
-      startDispatcher: Dispatcher[F]
+      dispatcher: Dispatcher[F]
   )(implicit
       F: Async[F]
   ) extends StreamPublisher[F, A](stream) {
-    override protected final def runSubscription(subscribe: F[Unit]): Unit =
-      startDispatcher.unsafeRunAndForget(subscribe)
+    override protected final def runSubscription(run: F[Unit]): Unit =
+      dispatcher.unsafeRunAndForget(run)
   }
 
   private final class IORuntimeStreamPublisher[A](
@@ -85,8 +85,8 @@ private[flow] object StreamPublisher {
   )(implicit
       runtime: IORuntime
   ) extends StreamPublisher[IO, A](stream) {
-    override protected final def runSubscription(subscribe: IO[Unit]): Unit =
-      subscribe.unsafeRunAndForget()
+    override protected final def runSubscription(run: IO[Unit]): Unit =
+      run.unsafeRunAndForget()
   }
 
   def apply[F[_], A](
@@ -94,8 +94,8 @@ private[flow] object StreamPublisher {
   )(implicit
       F: Async[F]
   ): Resource[F, StreamPublisher[F, A]] =
-    Dispatcher.parallel[F](await = true).map { startDispatcher =>
-      new DispatcherStreamPublisher(stream, startDispatcher)
+    Dispatcher.parallel[F](await = true).map { dispatcher =>
+      new DispatcherStreamPublisher(stream, dispatcher)
     }
 
   def unsafe[A](
