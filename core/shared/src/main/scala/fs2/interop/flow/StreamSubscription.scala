@@ -173,10 +173,10 @@ private[flow] final class StreamSubscription[F[_], A] private (
 private[flow] object StreamSubscription {
   private final val Sentinel = () => ()
 
-  // SIDE-EFFECTING!
-  // We need this constructor to don't be wrapped on F,
-  // Because some consumers expect we call Subscriber.onSubscribe(StreamSubscription)
-  // Before returning from StreamPublisher.subscribe(Subscriber)
+  // UNSAFE + SIDE-EFFECTING!
+  // We cannot wrap this constructor in F[_].
+  // Some consumers expect we call Subscriber.onSubscribe(StreamSubscription)
+  //   before returning from StreamPublisher.subscribe(Subscriber).
   // See https://github.com/typelevel/fs2/issues/3359
   def apply[F[_], A](
       stream: Stream[F, A],
