@@ -61,6 +61,14 @@ class StreamParJoinSuite extends Fs2Suite {
     }
   }
 
+  test("merge consistency 2") {
+    forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>
+      val parJoined = List(s1.covary[IO], s2).parJoinUnbounded
+      val merged = s1.covary[IO].merge(s2)
+      parJoined.assertEmitsUnorderedSameAs(merged)
+    }
+  }
+
   test("resources acquired in outer stream are released after inner streams complete") {
     val bracketed =
       Stream.bracket(IO(new java.util.concurrent.atomic.AtomicBoolean(true)))(b => IO(b.set(false)))
@@ -141,19 +149,39 @@ class StreamParJoinSuite extends Fs2Suite {
     test("1") {
       Stream(full, hang).parJoin(10).take(1).assertEmits(List(42))
     }
+    test("1b") {
+      List(full, hang).parJoinUnbounded.take(1).assertEmits(List(42))
+    }
     test("2") {
       Stream(full, hang2).parJoin(10).take(1).assertEmits(List(42))
+    }
+    test("2b") {
+      List(full, hang2).parJoinUnbounded.take(1).assertEmits(List(42))
     }
     test("3") {
       Stream(full, hang3).parJoin(10).take(1).assertEmits(List(42))
     }
+    test("3b") {
+      List(full, hang3).parJoinUnbounded.take(1).assertEmits(List(42))
+    }
     test("4") {
       Stream(hang3, hang2, full).parJoin(10).take(1).assertEmits(List(42))
+    }
+    test("4b") {
+      List(hang3, hang2, full).parJoinUnbounded.take(1).assertEmits(List(42))
     }
   }
 
   test("outer failed") {
     Stream(
+      Stream.sleep_[IO](1.minute),
+      Stream.raiseError[IO](new Err)
+    ).parJoinUnbounded.compile.drain
+      .intercept[Err]
+  }
+
+  test("outer failed 2") {
+    List(
       Stream.sleep_[IO](1.minute),
       Stream.raiseError[IO](new Err)
     ).parJoinUnbounded.compile.drain
@@ -169,11 +197,19 @@ class StreamParJoinSuite extends Fs2Suite {
       .intercept[Err]
   }
 
+  test("propagate error from inner stream before ++ 2") {
+    val err = new Err
+
+    (List(Stream.raiseError[IO](err)).parJoinUnbounded ++ Stream.emit(1)).compile.drain
+      .intercept[Err]
+  }
+
   group("short-circuiting transformers") {
     test("do not block while evaluating a stream of streams in IO in parallel") {
       def f(n: Int): Stream[IO, String] = Stream(n).map(_.toString)
       val expected = Set("1", "2", "3")
       Stream(1, 2, 3).map(f).parJoinUnbounded.assertEmitsUnordered(expected)
+      List(1, 2, 3).map(f).parJoinUnbounded.assertEmitsUnordered(expected)
     }
 
     test(
@@ -183,6 +219,15 @@ class StreamParJoinSuite extends Fs2Suite {
 
       val expected = Set("1", "2", "3")
       Stream(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .map(_.toSet)
+        .value
+        .flatMap(actual => IO(assertEquals(actual, Right(expected))))
+
+      List(1, 2, 3)
         .map(f)
         .parJoinUnbounded
         .compile
@@ -210,6 +255,16 @@ class StreamParJoinSuite extends Fs2Suite {
         .flatMap { actual =>
           IO(assertEquals(actual, Left(TestException)))
         }
+
+//      List(1, 2, 3)
+//        .map(f)
+//        .parJoinUnbounded
+//        .compile
+//        .toList
+//        .value
+//        .flatMap { actual =>
+//          IO(assertEquals(actual, Left(TestException)))
+//        }
     }
 
     test(
@@ -268,6 +323,17 @@ class StreamParJoinSuite extends Fs2Suite {
         .flatMap { actual =>
           IO(assertEquals(actual, Some(Set("1", "2", "3"))))
         }
+
+      List(1, 2, 3)
+        .map(f)
+        .parJoinUnbounded
+        .compile
+        .toList
+        .map(_.toSet)
+        .value
+        .flatMap { actual =>
+          IO(assertEquals(actual, Some(Set("1", "2", "3"))))
+        }
     }
 
     test(
@@ -286,6 +352,16 @@ class StreamParJoinSuite extends Fs2Suite {
         .flatMap { actual =>
           IO(assertEquals(actual, None))
         }
+
+//      List(1, 2, 3)
+//        .map(f)
+//        .parJoinUnbounded
+//        .compile
+//        .toList
+//        .value
+//        .flatMap { actual =>
+//          IO(assertEquals(actual, None))
+//        }
     }
 
     test("do not block while evaluating an OptionT.none outer stream") {

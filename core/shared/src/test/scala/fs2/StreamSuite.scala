@@ -243,6 +243,20 @@ class StreamSuite extends Fs2Suite {
           )
       }
 
+      test("7b - parJoinUnbounded") {
+        List(
+          Stream.emit(1),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2)
+        ).parJoinUnbounded.attempt.compile.toVector
+          .map(it =>
+            assert(
+              it.collect { case Left(t) => t }
+                .exists(_.isInstanceOf[Err])
+            )
+          )
+      }
+
       test("8") {
         Counter[IO].flatMap { counter =>
           Pull
@@ -368,6 +382,22 @@ class StreamSuite extends Fs2Suite {
             case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
           }
       }
+
+      test("16b - parJoin CompositeFailure".flaky) {
+        List(
+          Stream.emit(1).covary[IO],
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2).covary[IO]
+        ).parJoinUnbounded.compile.toVector.attempt
+          .map {
+            case Left(err: CompositeFailure) =>
+              assert(err.all.toList.count(_.isInstanceOf[Err]) == 3)
+            case Left(err)    => fail("Expected Left[CompositeFailure]", err)
+            case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
+          }
+      }
     }
   }
 
@@ -404,6 +434,12 @@ class StreamSuite extends Fs2Suite {
     test("parJoin") {
       testCancelation {
         Stream(constantStream, constantStream).parJoin(2)
+      }
+    }
+
+    test("list parJoin") {
+      testCancelation {
+        List(constantStream, constantStream).parJoinUnbounded
       }
     }
 

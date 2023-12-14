@@ -4196,6 +4196,18 @@ object Stream extends StreamLowPriority {
     }
   }
 
+  /** Provides syntax for list of streams. */
+  implicit final class ListStreamOps[F[_], O](private val xs: List[Stream[F, O]]) extends AnyVal {
+
+    def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
+      Stream.eval(Channel.bounded[F, Chunk[O]](64)).flatMap { c =>
+        val producers = xs.parTraverse_(_.chunks.foreach(x => c.send(x).void).compile.drain)
+        c.stream
+          .concurrently(Stream.exec(producers *> c.close.void))
+          .unchunks
+      }
+  }
+
   /** Provides syntax for streams of streams. */
   implicit final class NestedStreamOps[F[_], O](private val outer: Stream[F, Stream[F, O]])
       extends AnyVal {
