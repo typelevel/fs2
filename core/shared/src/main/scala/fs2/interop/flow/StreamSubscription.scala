@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
   */
 private[flow] final class StreamSubscription[F[_], A] private (
     stream: Stream[F, A],
-    sub: Subscriber[A],
+    subscriber: Subscriber[A],
     requests: AtomicLong,
     resume: AtomicReference[() => Unit],
     canceled: AtomicReference[() => Unit]
@@ -50,12 +50,12 @@ private[flow] final class StreamSubscription[F[_], A] private (
   // Ensure we are on a terminal state; i.e. call `cancel`, before signaling the subscriber.
   private def onError(ex: Throwable): Unit = {
     cancel()
-    sub.onError(ex)
+    subscriber.onError(ex)
   }
 
   private def onComplete(): Unit = {
     cancel()
-    sub.onComplete()
+    subscriber.onComplete()
   }
 
   // This is a def rather than a val, because it is only used once.
@@ -100,7 +100,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
       stream
         .through(subscriptionPipe)
         .chunks
-        .foreach(chunk => F.delay(chunk.foreach(sub.onNext)))
+        .foreach(chunk => F.delay(chunk.foreach(subscriber.onNext)))
         .compile
         .drain
 
@@ -173,28 +173,37 @@ private[flow] final class StreamSubscription[F[_], A] private (
 private[flow] object StreamSubscription {
   private final val Sentinel = () => ()
 
-  // Mostly for testing purposes.
-  def apply[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
+  // UNSAFE + SIDE-EFFECTING!
+  // We cannot wrap this constructor in F[_].
+  // Some consumers expect we call Subscriber.onSubscribe(StreamSubscription)
+  //   before returning from StreamPublisher.subscribe(Subscriber).
+  // See https://github.com/typelevel/fs2/issues/3359
+  def apply[F[_], A](
+      stream: Stream[F, A],
+      subscriber: Subscriber[A]
+  )(implicit
       F: Async[F]
-  ): F[StreamSubscription[F, A]] =
-    F.delay {
-      val requests = new AtomicLong(0L)
-      val resume = new AtomicReference(Sentinel)
-      val canceled = new AtomicReference(Sentinel)
+  ): StreamSubscription[F, A] = {
+    val requests = new AtomicLong(0L)
+    val resume = new AtomicReference(Sentinel)
+    val canceled = new AtomicReference(Sentinel)
 
-      new StreamSubscription(
-        stream,
-        subscriber,
-        requests,
-        resume,
-        canceled
-      )
-    }
+    new StreamSubscription(
+      stream,
+      subscriber,
+      requests,
+      resume,
+      canceled
+    )
+  }
 
-  def subscribe[F[_], A](stream: Stream[F, A], subscriber: Subscriber[A])(implicit
+  def subscribe[F[_], A](
+      stream: Stream[F, A],
+      subscriber: Subscriber[A]
+  )(implicit
       F: Async[F]
   ): F[Unit] =
-    apply(stream, subscriber).flatMap { subscription =>
+    F.delay(apply(stream, subscriber)).flatMap { subscription =>
       F.delay(subscriber.onSubscribe(subscription)) >>
         subscription.run
     }
