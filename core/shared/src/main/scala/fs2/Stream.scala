@@ -4200,7 +4200,7 @@ object Stream extends StreamLowPriority {
   implicit final class ListStreamOps[F[_], O](private val xs: List[Stream[F, O]]) extends AnyVal {
 
     def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
-      if (xs.size == 1) xs.head
+      if (xs.size <= 1) xs.headOption.getOrElse(Stream.empty)
       else {
         Stream.eval((Channel.bounded[F, Chunk[O]](64), F.deferred[Unit]).tupled).flatMap {
           case (c, stopPublishers) =>
