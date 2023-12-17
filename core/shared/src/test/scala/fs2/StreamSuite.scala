@@ -814,15 +814,12 @@ class StreamSuite extends Fs2Suite {
         SignallingRef[IO, Boolean](false).flatMap { signal =>
           Counter[IO].flatMap { counter =>
             val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
-            s.map(_ =>
+            (Stream.exec(sleepAndSet.start.void) :: s.map(_ =>
               Stream
                 .bracket(counter.increment)(_ => counter.decrement)
                 .evalMap(_ => IO.never)
                 .interruptWhen(signal.discrete)
-            ).prepended(Stream.exec(sleepAndSet.start.void))
-              .parJoinUnbounded
-              .compile
-              .drain >> counter.get.assertEquals(0L)
+            )).parJoinUnbounded.compile.drain >> counter.get.assertEquals(0L)
           }
         }
       }
@@ -858,18 +855,14 @@ class StreamSuite extends Fs2Suite {
       SignallingRef[IO, Boolean](false).flatMap { signal =>
         Counter[IO].flatMap { counter =>
           val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
-          List(Stream(1))
+          (Stream.exec(sleepAndSet.start.void) :: List(Stream(1))
             .map { inner =>
               Stream
                 .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
                 .flatMap(_ => inner)
                 .evalMap(_ => IO.never)
                 .interruptWhen(signal.discrete)
-            }
-            .prepended(Stream.exec(sleepAndSet.start.void))
-            .parJoinUnbounded
-            .compile
-            .drain >> counter.get.assertEquals(0L)
+            }).parJoinUnbounded.compile.drain >> counter.get.assertEquals(0L)
         }
       }
     }
