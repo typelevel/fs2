@@ -4199,6 +4199,21 @@ object Stream extends StreamLowPriority {
   /** Provides syntax for list of streams. */
   implicit final class ListStreamOps[F[_], O](private val xs: List[Stream[F, O]]) extends AnyVal {
 
+    /** Nondeterministically merges a (static) list of streams in to a single output stream.
+      *
+      * When any of the merged streams fail, then the output stream and all other inner
+      * streams are interrupted, resulting in a stream that fails with the error of the
+      * stream that caused initial failure.
+      *
+      * Finalizers on each stream are run at the end of the stream,
+      * concurrently with other stream computations.
+      *
+      * Finalizers on the output stream are run after the output stream has finished
+      * (i.e., all open inner streams have finished).
+      *
+      * See [[NestedStreamOps.parJoinUnbounded]] for a strictly more powerful (albeit slower) variant
+      * capable of merging a stream of streams.
+      */
     def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
       if (xs.size <= 1) xs.headOption.getOrElse(Stream.empty)
       else {
