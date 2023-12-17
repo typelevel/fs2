@@ -254,17 +254,16 @@ class StreamParJoinSuite extends Fs2Suite {
         .value
         .flatMap { actual =>
           IO(assertEquals(actual, Left(TestException)))
-        }
-
-//      List(1, 2, 3)
-//        .map(f)
-//        .parJoinUnbounded
-//        .compile
-//        .toList
-//        .value
-//        .flatMap { actual =>
-//          IO(assertEquals(actual, Left(TestException)))
-//        }
+        } >>
+        List(1, 2, 3)
+          .map(f)
+          .parJoinUnbounded
+          .compile
+          .toList
+          .value
+          .flatMap { actual =>
+            IO(assertEquals(actual, Left(TestException)))
+          }
     }
 
     test(
@@ -322,18 +321,17 @@ class StreamParJoinSuite extends Fs2Suite {
         .value
         .flatMap { actual =>
           IO(assertEquals(actual, Some(Set("1", "2", "3"))))
-        }
-
-      List(1, 2, 3)
-        .map(f)
-        .parJoinUnbounded
-        .compile
-        .toList
-        .map(_.toSet)
-        .value
-        .flatMap { actual =>
-          IO(assertEquals(actual, Some(Set("1", "2", "3"))))
-        }
+        } >>
+        List(1, 2, 3)
+          .map(f)
+          .parJoinUnbounded
+          .compile
+          .toList
+          .map(_.toSet)
+          .value
+          .flatMap { actual =>
+            IO(assertEquals(actual, Some(Set("1", "2", "3"))))
+          }
     }
 
     test(
@@ -351,17 +349,16 @@ class StreamParJoinSuite extends Fs2Suite {
         .value
         .flatMap { actual =>
           IO(assertEquals(actual, None))
-        }
-
-//      List(1, 2, 3)
-//        .map(f)
-//        .parJoinUnbounded
-//        .compile
-//        .toList
-//        .value
-//        .flatMap { actual =>
-//          IO(assertEquals(actual, None))
-//        }
+        } >>
+        List(1, 2, 3)
+          .map(f)
+          .parJoinUnbounded
+          .compile
+          .toList
+          .value
+          .flatMap { actual =>
+            IO(assertEquals(actual, None))
+          }
     }
 
     test("do not block while evaluating an OptionT.none outer stream") {
