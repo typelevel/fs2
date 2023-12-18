@@ -4215,7 +4215,7 @@ object Stream extends StreamLowPriority {
       * capable of merging a stream of streams.
       */
     def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
-      if (xs.size <= 1) xs.headOption.getOrElse(Stream.empty)
+      if (xs.sizeIs <= 1) xs.headOption.getOrElse(Stream.empty)
       else {
         Stream.eval((Channel.bounded[F, Chunk[O]](64), F.deferred[Unit]).tupled).flatMap {
           case (c, stopPublishers) =>
