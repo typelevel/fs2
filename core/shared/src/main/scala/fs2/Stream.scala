@@ -4214,11 +4214,9 @@ object Stream extends StreamLowPriority {
       * See [[NestedStreamOps.parJoinUnbounded]] for a strictly more powerful (albeit slower) variant
       * capable of merging a stream of streams.
       */
-    def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] = xs match {
-      case Nil         => Stream.empty
-      case head :: Nil => head
-      case _ =>
-        Stream.eval(Channel.bounded[F, Chunk[O]](64)).flatMap { c =>
+    def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
+      if (xs.nonEmpty && xs.tail.nonEmpty) {
+        Stream.eval(Channel.synchronous[F, Chunk[O]]).flatMap { c =>
           val outcomes = xs
             .parTraverse_(_.chunks.foreach(x => c.send(x).void).compile.drain)
             .guarantee(c.close.void)
@@ -4226,7 +4224,7 @@ object Stream extends StreamLowPriority {
           Stream
             .bracket(F.start(outcomes))(f => f.cancel >> f.joinWithUnit) >> c.stream.unchunks
         }
-    }
+      } else xs.headOption.getOrElse(Stream.empty)
   }
 
   /** Provides syntax for streams of streams. */

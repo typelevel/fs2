@@ -300,5 +300,14 @@ class StreamParJoinSuite extends Fs2Suite {
         .value
         .flatMap(actual => IO(assertEquals(actual, None)))
     }
+
+    test("pull only one element from inner streams") {
+      IO.ref(0).flatMap { ref =>
+        Stream(
+          Stream.repeatEval(ref.getAndUpdate(_ + 1).void),
+          Stream.empty
+        ).parJoinUnbounded.take(1).compile.drain >> ref.get.assertEquals(2)
+      }
+    }
   }
 }
