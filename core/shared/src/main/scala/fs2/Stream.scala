@@ -4217,16 +4217,13 @@ object Stream extends StreamLowPriority {
     def parJoinUnbounded(implicit F: Concurrent[F]): Stream[F, O] =
       if (xs.sizeIs <= 1) xs.headOption.getOrElse(Stream.empty)
       else {
-        Stream.eval((Channel.bounded[F, Chunk[O]](64), F.deferred[Unit]).tupled).flatMap {
-          case (c, stopPublishers) =>
-            val outcomes = xs
-              .parTraverse_(_.chunks.foreach(x => c.send(x).void).compile.drain)
-              .guarantee(c.close.void)
+        Stream.eval(Channel.bounded[F, Chunk[O]](64)).flatMap { c =>
+          val outcomes = xs
+            .parTraverse_(_.chunks.foreach(x => c.send(x).void).compile.drain)
+            .guarantee(c.close.void)
 
-            Stream
-              .bracket(F.start(outcomes.race(stopPublishers.get).void))(fiber =>
-                stopPublishers.complete(()) >> fiber.joinWithUnit
-              ) >> c.stream.unchunks
+          Stream
+            .bracket(F.start(outcomes))(f => f.cancel >> f.joinWithUnit) >> c.stream.unchunks
         }
       }
   }
