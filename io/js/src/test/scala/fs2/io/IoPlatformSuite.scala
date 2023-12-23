@@ -141,4 +141,12 @@ class IoPlatformSuite extends Fs2Suite {
     }.take(2).compile.toList.assertEquals(List[Byte](0, 1))
   }
 
+  test("toReadable does not start input stream eagerly") {
+    IO.ref(true).flatMap { notStarted =>
+      toReadableResource(Stream.exec(notStarted.set(false))).surround {
+        IO.sleep(100.millis) *> notStarted.get.assert
+      }
+    }
+  }
+
 }
