@@ -87,7 +87,8 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
     val b = makeArrayBuilder[Any]
     b.sizeHint(size)
-    foreach(o => if (pf.isDefinedAt(o)) b += pf(o))
+    val f = pf.runWith(b += _)
+    foreach { o => f(o); () }
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 

@@ -46,4 +46,14 @@ class ChunkBenchmark {
     ints.filter(_ % 3 == 0)
     ()
   }
+
+  private object OddStringExtractor {
+    def unapply(i: Int): Option[String] = if (i % 2 != 0) Some(i.toString) else None
+  }
+
+  @Benchmark
+  def collect(): Unit = {
+    ints.collect { case OddStringExtractor(s) => s }
+    ()
+  }
 }
