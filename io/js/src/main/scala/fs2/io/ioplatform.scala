@@ -57,7 +57,36 @@ private[fs2] trait ioplatform {
   def suspendReadableAndRead[F[_], R <: Readable](
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
-  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] = {
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
+    Resource
+      .makeCase {
+        F.delay {
+          val readable = thunk
+          (readable, unsafeReadReadable(readable))
+        }
+      } {
+        case ((readable, _), Resource.ExitCase.Succeeded) =>
+          F.delay {
+            if (!readable.readableEnded & destroyIfNotEnded)
+              readable.destroy()
+          }
+        case ((readable, _), Resource.ExitCase.Errored(_)) =>
+          // tempting, but don't propagate the error!
+          // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+          F.delay(readable.destroy())
+        case ((readable, _), Resource.ExitCase.Canceled) =>
+          if (destroyIfCanceled)
+            F.delay(readable.destroy())
+          else
+            F.unit
+      }
+      .adaptError { case IOException(ex) => ex }
+
+  /** Unsafely creates a `Stream` that reads all bytes from a `Readable`.
+    */
+  private[io] def unsafeReadReadable[F[_]](
+      readable: Readable
+  )(implicit F: Async[F]): Stream[F, Byte] = {
 
     final class Listener {
       private[this] var readable = false
@@ -118,45 +147,17 @@ private[fs2] trait ioplatform {
 
         go.streamNoScope
       }
-
     }
 
-    Resource
-      .eval(F.delay(new Listener))
-      .flatMap { listener =>
-        Resource
-          .makeCase {
-            F.delay {
-              val readable = thunk
-              readable.on("readable", () => listener.handleReadable())
-              readable.once("error", listener.handleError(_))
-              readable.once("end", () => listener.handleEnd())
-              readable
-            }
-          } {
-            case (readable, Resource.ExitCase.Succeeded) =>
-              F.delay {
-                if (!readable.readableEnded & destroyIfNotEnded)
-                  readable.destroy()
-              }
-            case (readable, Resource.ExitCase.Errored(_)) =>
-              // tempting, but don't propagate the error!
-              // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
-              F.delay(readable.destroy())
-            case (readable, Resource.ExitCase.Canceled) =>
-              if (destroyIfCanceled)
-                F.delay(readable.destroy())
-              else
-                F.unit
-          }
-          .fproduct { readable =>
-            listener.readableEvents.adaptError { case IOException(ex) => ex } >>
-              Stream.evalUnChunk(
-                F.delay(Option(readable.read()).fold(Chunk.empty[Byte])(Chunk.uint8Array(_)))
-              )
-          }
-      }
-      .adaptError { case IOException(ex) => ex }
+    val listener = new Listener
+    readable.on("readable", () => listener.handleReadable())
+    readable.once("error", listener.handleError(_))
+    readable.once("end", () => listener.handleEnd())
+
+    listener.readableEvents.adaptError { case IOException(ex) => ex } >>
+      Stream.evalUnChunk(
+        F.delay(Option(readable.read()).fold(Chunk.empty[Byte])(Chunk.uint8Array(_)))
+      )
   }
 
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
