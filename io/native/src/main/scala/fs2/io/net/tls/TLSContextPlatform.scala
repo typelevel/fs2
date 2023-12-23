@@ -63,7 +63,11 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               logger: TLSLogger[F]
           ): Resource[F, TLSSocket[F]] = {
             val _ = logger
-            S2nConnection(socket, clientMode, cfg, params).flatMap(TLSSocket(socket, _))
+            val newParams =
+              if (clientMode) // cooperate with mTLS if the server requests it
+                params.withClientAuthType(params.clientAuthType.orElse(Some(CertAuthType.Optional)))
+              else params
+            S2nConnection(socket, clientMode, cfg, newParams).flatMap(TLSSocket(socket, _))
           }
         }
     }
