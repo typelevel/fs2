@@ -28,7 +28,7 @@ private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
 
   def asSeqPlatform: Option[IndexedSeq[O]] =
     this match {
-      case arraySlice: Chunk.ArraySlice[_] =>
+      case arraySlice: Chunk.ArraySlice[?] =>
         Some(
           ArraySeq
             .unsafeWrapArray(arraySlice.values)

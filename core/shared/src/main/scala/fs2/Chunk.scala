@@ -355,7 +355,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * of `++`.
     */
   def toIndexedChunk: Chunk[O] = this match {
-    case _: Chunk.Queue[_] =>
+    case _: Chunk.Queue[?] =>
       val b = makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
@@ -522,7 +522,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   override def equals(a: Any): Boolean =
     a match {
-      case c: Chunk[_] =>
+      case c: Chunk[?] =>
         size == c.size && iterator.sameElements(c.iterator: Iterator[Any])
       case _ => false
     }
@@ -537,7 +537,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def asSeq: IndexedSeq[O] =
     asSeqPlatform.getOrElse(this match {
-      case indexedSeqChunk: Chunk.IndexedSeqChunk[_] =>
+      case indexedSeqChunk: Chunk.IndexedSeqChunk[?] =>
         indexedSeqChunk.s match {
           case indexedSeq: IndexedSeq[O] =>
             indexedSeq
@@ -1579,10 +1579,10 @@ private[fs2] final class ChunkAsSeq[+O](
 
   override def equals(that: Any): Boolean =
     that match {
-      case thatChunkWrapper: ChunkAsSeq[_] =>
+      case thatChunkWrapper: ChunkAsSeq[?] =>
         chunk == thatChunkWrapper.chunk
 
-      case seq: GSeq[_] =>
+      case seq: GSeq[?] =>
         chunk.iterator.sameElements(seq.iterator): @nowarn213("msg=a type was inferred to be `Any`")
 
       case _ =>

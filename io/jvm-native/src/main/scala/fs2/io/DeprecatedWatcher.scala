@@ -94,9 +94,9 @@ object Watcher {
     case object Deleted extends EventType
     case object Modified extends EventType
     case object Overflow extends EventType
-    final case class NonStandard(kind: WatchEvent.Kind[_]) extends EventType
+    final case class NonStandard(kind: WatchEvent.Kind[?]) extends EventType
 
-    def toWatchEventKind(et: EventType): WatchEvent.Kind[_] =
+    def toWatchEventKind(et: EventType): WatchEvent.Kind[?] =
       et match {
         case EventType.Created           => StandardWatchEventKinds.ENTRY_CREATE
         case EventType.Modified          => StandardWatchEventKinds.ENTRY_MODIFY
@@ -113,14 +113,14 @@ object Watcher {
     final case class Deleted(path: Path, count: Int) extends Event
     final case class Modified(path: Path, count: Int) extends Event
     final case class Overflow(count: Int) extends Event
-    final case class NonStandard(event: WatchEvent[_], registeredDirectory: Path) extends Event
+    final case class NonStandard(event: WatchEvent[?], registeredDirectory: Path) extends Event
 
     /** Converts a NIO `WatchEvent` to an FS2 `Watcher.Event`.
       *
       * @param e event to convert
       * @param registeredDirectory path of the directory for which the event's path is relative
       */
-    def fromWatchEvent(e: WatchEvent[_], registeredDirectory: Path): Event =
+    def fromWatchEvent(e: WatchEvent[?], registeredDirectory: Path): Event =
       e match {
         case e: WatchEvent[Path] @unchecked if e.kind == StandardWatchEventKinds.ENTRY_CREATE =>
           Event.Created(registeredDirectory.resolve(e.context), e.count)

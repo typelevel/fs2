@@ -54,25 +54,25 @@ class ChunkSuite extends Fs2Suite {
     }
 
     test("Chunk.apply is optimized") {
-      assert(Chunk(1).isInstanceOf[Chunk.Singleton[_]])
-      assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk(1).isInstanceOf[Chunk.Singleton[?]])
+      assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[?]])
       // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
       // ends up falling through to the Chunk.indexedSeq constructor
       if (isJVM) {
-        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.ArraySlice[_]])
-        assert(Chunk("Hello", "world").isInstanceOf[Chunk.ArraySlice[_]])
+        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.ArraySlice[?]])
+        assert(Chunk("Hello", "world").isInstanceOf[Chunk.ArraySlice[?]])
       }
     }
 
     test("Chunk.from is optimized") {
-      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[_]])
-      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[?]])
+      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[?]])
     }
 
     test("Array casts in Chunk.from are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.from(as)
-      assert(c.isInstanceOf[Chunk.ArraySlice[_]])
+      assert(c.isInstanceOf[Chunk.ArraySlice[?]])
     }
 
     test("Chunk.asSeq roundtrip") {
@@ -85,7 +85,7 @@ class ChunkSuite extends Fs2Suite {
         assertEquals(result, c)
 
         // Check unwrap.
-        if (seq.isInstanceOf[ChunkAsSeq[_]]) {
+        if (seq.isInstanceOf[ChunkAsSeq[?]]) {
           assert(result eq c)
         }
       } && forAll { (e: Either[Seq[Int], Vector[Int]]) =>
@@ -98,7 +98,7 @@ class ChunkSuite extends Fs2Suite {
         assertEquals(result, seq)
 
         // Check unwrap.
-        if (seq.isInstanceOf[Vector[_]] && chunk.size >= 2) {
+        if (seq.isInstanceOf[Vector[?]] && chunk.size >= 2) {
           assert(result eq seq)
         }
       }

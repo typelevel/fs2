@@ -73,14 +73,14 @@ object Mpeg extends IOApp.Simple {
 
     val filePath = Path("path/to/file")
 
-    def countElements(decoder: StreamDecoder[_]): IO[Long] =
+    def countElements(decoder: StreamDecoder[?]): IO[Long] =
       Files[IO]
         .readAll(filePath)
         .through(decoder.toPipeByte)
         .compile
         .count
 
-    def run(label: String, decoder: StreamDecoder[_]): IO[Unit] =
+    def run(label: String, decoder: StreamDecoder[?]): IO[Unit] =
       time(countElements(decoder)).flatMap { case (elapsed, cnt) =>
         IO.println(s"$label stream packet count: $cnt (took $elapsed)")
       }
