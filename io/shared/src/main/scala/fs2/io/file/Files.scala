@@ -443,7 +443,14 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * using the specified flags to open the file.
     */
   def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
-    in.flatMap(s => Stream[F, String](s, lineSeparator)).through(writeUtf8(path, flags))
+    in.pull.uncons
+      .flatMap {
+        case Some(_) =>
+          in.intersperse(lineSeparator).append(Stream[F, String](lineSeparator)).underlying
+        case None => Pull.done
+      }
+      .stream
+      .through(writeUtf8(path, flags))
 }
 
 private[fs2] trait FilesLowPriority { this: Files.type =>

@@ -233,6 +233,17 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.concurrent.Channel.closeWithElement"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.file.Files.openSeekableByteChannel"
+  ),
+  // package-private method: #3318
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.package.readInputStreamGeneric"
+  ),
+  // sealed trait: #3349
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSParameters.withClientAuthType"
   )
 )
 
@@ -258,14 +269,14 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.37",
+      "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.10.0",
       "org.typelevel" %%% "cats-effect" % "3.6-e9aeb8c",
       "org.typelevel" %%% "cats-effect-laws" % "3.6-e9aeb8c" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.6-e9aeb8c" % Test,
       "org.typelevel" %%% "cats-laws" % "2.10.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
     ),
     tlJdkRelease := None,
@@ -302,7 +313,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M3" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
@@ -314,7 +325,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.3.0",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.4.0",
     tlJdkRelease := None
   )
   .jvmSettings(

@@ -31,6 +31,7 @@ import scodec.bits.ByteVector
 
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
+import java.util.concurrent.atomic.AtomicInteger
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
@@ -106,6 +107,36 @@ class ChunkSuite extends Fs2Suite {
     test("Chunk.javaList unwraps asJava") {
       forAll { (c: Chunk[Int]) =>
         assert(Chunk.javaList(c.asJava) eq c)
+      }
+    }
+
+    test("Chunk.collect behaves as filter + map") {
+      forAll { (c: Chunk[Int]) =>
+        val extractor = new OddStringExtractor
+        val pf: PartialFunction[Int, String] = { case extractor(s) => s }
+
+        val result = c.collect(pf)
+
+        assertEquals(result, c.filter(pf.isDefinedAt).map(pf))
+      }
+    }
+
+    test("Chunk.collect evaluates pattern matchers once per item") {
+      forAll { (c: Chunk[Int]) =>
+        val extractor = new OddStringExtractor
+
+        val _ = c.collect { case extractor(s) => s }
+
+        assertEquals(extractor.callCounter.get(), c.size)
+      }
+    }
+
+    class OddStringExtractor {
+      val callCounter: AtomicInteger = new AtomicInteger(0)
+
+      def unapply(i: Int): Option[String] = {
+        callCounter.incrementAndGet()
+        if (i % 2 != 0) Some(i.toString) else None
       }
     }
   }

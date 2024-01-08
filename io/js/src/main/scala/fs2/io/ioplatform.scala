@@ -31,7 +31,6 @@ import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import fs2.concurrent.Channel
-import fs2.io.internal.MicrotaskExecutor
 import fs2.io.internal.facade
 
 import java.nio.charset.Charset
@@ -58,81 +57,135 @@ private[fs2] trait ioplatform {
   def suspendReadableAndRead[F[_], R <: Readable](
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
-  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
-    (for {
-      dispatcher <- Dispatcher.sequential[F]
-      channel <- Channel.unbounded[F, Unit].toResource
-      error <- F.deferred[Throwable].toResource
-      readableResource = for {
-        readable <- Resource.makeCase(F.delay(thunk)) {
-          case (readable, Resource.ExitCase.Succeeded) =>
-            F.delay {
-              if (!readable.readableEnded & destroyIfNotEnded)
-                readable.destroy()
-            }
-          case (readable, Resource.ExitCase.Errored(_)) =>
-            // tempting, but don't propagate the error!
-            // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
-            F.delay(readable.destroy())
-          case (readable, Resource.ExitCase.Canceled) =>
-            if (destroyIfCanceled)
-              F.delay(readable.destroy())
+  )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] = {
+
+    final class Listener {
+      private[this] var readable = false
+      private[this] var error: Either[Throwable, Boolean] = null
+      private[this] var ended = false
+      private[this] var callback: Either[Throwable, Boolean] => Unit = null
+
+      def handleReadable(): Unit =
+        if (callback eq null) {
+          readable = true
+        } else {
+          val cb = callback
+          callback = null
+          cb(Right(true))
+        }
+
+      def handleEnd(): Unit = {
+        ended = true
+        if (!readable && (callback ne null)) {
+          callback(Right(false))
+        }
+      }
+
+      def handleError(e: js.Error): Unit = {
+        error = Left(js.JavaScriptException(e))
+        if (callback ne null) {
+          callback(error)
+        }
+      }
+
+      private[this] def next: F[Boolean] = F.async { cb =>
+        F.delay {
+          if (error ne null) {
+            cb(error)
+            None
+          } else if (readable) {
+            readable = false
+            cb(Right(true))
+            None
+          } else if (ended) {
+            cb(Right(false))
+            None
+          } else {
+            callback = cb
+            Some(F.delay { callback = null })
+          }
+        }
+      }
+
+      def readableEvents: Stream[F, Unit] = {
+        def go: Pull[F, Unit, Unit] =
+          Pull.eval(next).flatMap { continue =>
+            if (continue)
+              Pull.outUnit >> go
             else
-              F.unit
-        }
-        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => channel.send(()).void)
-        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, js.Error]("error", dispatcher) { e =>
-          error.complete(js.JavaScriptException(e)).void
-        }
-      } yield readable
-      // Implementation note: why run on the MicrotaskExecutor?
-      // In many cases creating a `Readable` starts async side-effects (e.g. negotiating TLS handshake or opening a file handle).
-      // Furthermore, these side-effects will invoke the listeners we register to the `Readable`.
-      // Therefore, it is critical that the listeners are registered to the `Readable` _before_ these async side-effects occur:
-      // in other words, before we next yield (cede) to the event loop. Because an arbitrary effect `F` (particularly `IO`) may cede at any time,
-      // our only recourse is to run the entire creation/listener registration process on the microtask executor.
-      readable <- readableResource.evalOn(MicrotaskExecutor)
-      stream =
-        (channel.stream
-          .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
-          Stream
-            .evalUnChunk(
-              F.delay(
-                Option(readable.read())
-                  .fold(Chunk.empty[Byte])(Chunk.uint8Array)
+              Pull.done
+          }
+
+        go.streamNoScope
+      }
+
+    }
+
+    Resource
+      .eval(F.delay(new Listener))
+      .flatMap { listener =>
+        Resource
+          .makeCase {
+            F.delay {
+              val readable = thunk
+              readable.on("readable", () => listener.handleReadable())
+              readable.once("error", listener.handleError(_))
+              readable.once("end", () => listener.handleEnd())
+              readable
+            }
+          } {
+            case (readable, Resource.ExitCase.Succeeded) =>
+              F.delay {
+                if (!readable.readableEnded & destroyIfNotEnded)
+                  readable.destroy()
+              }
+            case (readable, Resource.ExitCase.Errored(_)) =>
+              // tempting, but don't propagate the error!
+              // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+              F.delay(readable.destroy())
+            case (readable, Resource.ExitCase.Canceled) =>
+              if (destroyIfCanceled)
+                F.delay(readable.destroy())
+              else
+                F.unit
+          }
+          .fproduct { readable =>
+            listener.readableEvents.adaptError { case IOException(ex) => ex } >>
+              Stream.evalUnChunk(
+                F.delay(Option(readable.read()).fold(Chunk.empty[Byte])(Chunk.uint8Array(_)))
               )
-            )).adaptError { case IOException(ex) => ex }
-    } yield (readable, stream)).adaptError { case IOException(ex) => ex }
+          }
+      }
+      .adaptError { case IOException(ex) => ex }
+  }
 
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
     * that ends whenever the resulting stream terminates.
     */
-  def toReadable[F[_]](implicit F: Async[F]): Pipe[F, Byte, Readable] =
-    in =>
-      Stream
-        .resource(mkDuplex(in))
-        .flatMap { case (duplex, out) =>
-          Stream
-            .emit(duplex)
-            .merge(out.drain)
-            .concurrently(
-              Stream.eval(
-                F.async_[Unit](cb =>
-                  duplex.end { e =>
-                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
-                  }
-                )
-              )
-            )
-        }
-        .adaptError { case IOException(ex) => ex }
+  def toReadable[F[_]: Async]: Pipe[F, Byte, Readable] =
+    in => Stream.resource(toReadableResource(in))
 
   /** Like [[toReadable]] but returns a `Resource` rather than a single element stream.
     */
-  def toReadableResource[F[_]: Async](s: Stream[F, Byte]): Resource[F, Readable] =
-    s.through(toReadable).compile.resource.lastOrError
+  def toReadableResource[F[_]](s: Stream[F, Byte])(implicit F: Async[F]): Resource[F, Readable] =
+    mkDuplex(s)
+      .flatMap { case (duplex, out) =>
+        out
+          .concurrently(
+            Stream.eval(
+              F.async_[Unit](cb =>
+                duplex.end { e =>
+                  cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                }
+              )
+            )
+          )
+          .compile
+          .drain
+          .background
+          .as(duplex)
+      }
+      .adaptError { case IOException(ex) => ex }
 
   /** Writes all bytes to the specified `Writable`.
     */
@@ -206,7 +259,7 @@ private[fs2] trait ioplatform {
       errorDispatcher <- Dispatcher.sequential[F]
       readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
       writeChannel <- Channel.synchronous[F, Chunk[Byte]].toResource
-      error <- F.deferred[Throwable].toResource
+      interrupt <- F.deferred[Either[Throwable, Unit]].toResource
       duplex <- Resource.make {
         F.delay {
           new facade.stream.Duplex(
@@ -236,10 +289,9 @@ private[fs2] trait ioplatform {
 
               var destroy = { (_, err, cb) =>
                 errorDispatcher.unsafeRunAndForget {
-                  error
+                  interrupt
                     .complete(
-                      Option(err)
-                        .fold[Exception](new StreamDestroyedException)(js.JavaScriptException(_))
+                      Option(err).map(js.JavaScriptException(_)).toLeft(())
                     ) *> F.delay(cb(null))
                 }
               }
@@ -254,10 +306,9 @@ private[fs2] trait ioplatform {
       }
       drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
       out = writeChannel.stream.unchunks
-        .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit])))
     } yield (
       duplex,
-      drainIn.merge(out).adaptError { case IOException(ex) => ex }
+      drainIn.merge(out).interruptWhen(interrupt).adaptError { case IOException(ex) => ex }
     )
 
   /** Stream of bytes read asynchronously from standard input. */

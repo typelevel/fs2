@@ -33,18 +33,53 @@ import org.scalacheck.Prop.forAll
 
 class PathSuite extends Fs2Suite {
 
+  override def scalaCheckTestParameters =
+    super.scalaCheckTestParameters
+      /* Increase number of succesful test because
+         inherited value is too small and tests
+         here are not so heavy */
+      .withMinSuccessfulTests(100)
+
   implicit val arbitraryPath: Arbitrary[Path] = Arbitrary(for {
     names <- Gen.listOf(Gen.alphaNumStr)
     root <- Gen.oneOf("/", "")
   } yield names.foldLeft(Path(root))((p, n) => p / Path(n)))
 
+  val nonEmptyPath = arbitraryPath.arbitrary.filter(
+    _.toString.nonEmpty
+  )
+
   implicit val cogenPath: Cogen[Path] =
     Cogen.cogenList[String].contramap(_.names.map(_.toString).toList)
+
+  /* ScalaCheck goes from smaller to bigger sizes.
+     So this generator is sized to make sure small values
+     like 0 and 1 are probably tested. */
+  val sepLengthGen = Gen.sized(size => Gen.choose(0, size))
 
   test("construction") {
     assertEquals(Path("foo/bar"), Path("foo") / "bar")
     assertEquals(Path("/foo/bar"), Path("/foo") / "bar")
   }
+
+  property("construction handles path of just separators") {
+    val nonEmptySepLength = sepLengthGen.filter(_ > 0)
+    forAll(nonEmptySepLength) { (sepLength: Int) =>
+      assertEquals(
+        Path("/".repeat(sepLength)).toString,
+        "/"
+      )
+    }
+  }
+
+  property("construction handles separators at the end")(
+    forAll(sepLengthGen, nonEmptyPath) { (sepLength: Int, path: Path) =>
+      assertEquals(
+        Path(path.toString + "/".repeat(sepLength)),
+        path
+      )
+    }
+  )
 
   test("normalize") {
     assertEquals(Path("foo/bar/baz").normalize, Path("foo/bar/baz"))
@@ -107,14 +142,12 @@ class PathSuite extends Fs2Suite {
     assert(!Path("foo").endsWith(".xml"))
   }
 
-  test("startsWith/endsWith") {
-    forAll { (start: Path, end: Path) =>
-      if (start.toString.nonEmpty && end.toString.nonEmpty) {
-        val path = start.resolve(end)
-        // TODO
-        // assert(path.startsWith(start), s"$path doesn't start with $start")
-        assert(path.endsWith(end), s"$path doesn't end with $end")
-      }
+  property("startsWith/endsWith") {
+    forAll(nonEmptyPath, nonEmptyPath) { (start: Path, end: Path) =>
+      val path = start.resolve(end)
+      // TODO
+      // assert(path.startsWith(start), s"$path doesn't start with $start")
+      assert(path.endsWith(end), s"$path doesn't end with $end")
     }
   }
 

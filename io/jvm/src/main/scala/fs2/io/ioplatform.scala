@@ -46,10 +46,10 @@ private[fs2] trait ioplatform extends iojvmnative {
       F.pure(System.in),
       F.delay(new Array[Byte](bufSize)),
       false
-    ) { (is, buf) =>
+    ) { (is, buf, off) =>
       F.async[Int] { cb =>
         F.delay {
-          val task: Runnable = () => cb(Right(is.read(buf)))
+          val task: Runnable = () => cb(Right(is.read(buf, off, buf.length - off)))
           stdinExecutor.submit(task)
         }.map { fut =>
           Some(F.delay {

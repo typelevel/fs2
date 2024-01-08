@@ -40,6 +40,42 @@ class IoPlatformSuite extends Fs2Suite {
   // This suite runs for a long time, this avoids timeouts in CI.
   override def munitIOTimeout: Duration = 2.minutes
 
+  group("readInputStream") {
+    test("reuses internal buffer on smaller chunks") {
+      forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
+        val chunkSize = (chunkSize0 % 20).abs + 1
+        fs2.Stream
+          .chunk(Chunk.array(bytes))
+          .chunkN(chunkSize / 3 + 1)
+          .unchunks
+          .covary[IO]
+          // we know that '.toInputStream' reads by chunk
+          .through(fs2.io.toInputStream)
+          .flatMap(is => io.readInputStream(IO(is), chunkSize))
+          .chunks
+          .zipWithPrevious
+          .assertForall {
+            case (None, _)                        => true // skip first element
+            case (_, _: Chunk.Singleton[_])       => true // skip singleton bytes
+            case (Some(_: Chunk.Singleton[_]), _) => true // skip singleton bytes
+            case (Some(Chunk.ArraySlice(bs1, o1, l1)), Chunk.ArraySlice(bs2, o2, _)) =>
+              {
+                // if first slice buffer is not 'full'
+                (bs1.length != (o1 + l1)) &&
+                // we expect that next slice will wrap same buffer
+                ((bs2 eq bs1) && (o2 == o1 + l1))
+              } || {
+                // if first slice buffer is 'full'
+                (bs2.length == (o1 + l1)) &&
+                // we expect new buffer allocated for next slice
+                ((bs2 ne bs1) && (o2 == 0))
+              }
+            case _ => false // unexpected chunk subtype
+          }
+      }
+    }
+  }
+
   group("readOutputStream") {
     test("writes data and terminates when `f` returns") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>

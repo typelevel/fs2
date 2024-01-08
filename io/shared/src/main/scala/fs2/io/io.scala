@@ -45,7 +45,7 @@ package object io extends ioplatform {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       closeAfterUse
-    )((is, buf) => F.blocking(is.read(buf)))
+    )((is, buf, off) => F.blocking(is.read(buf, off, buf.length - off)))
 
   private[io] def readInputStreamCancelable[F[_]](
       fis: F[InputStream],
@@ -57,7 +57,7 @@ package object io extends ioplatform {
       fis,
       F.delay(new Array[Byte](chunkSize)),
       closeAfterUse
-    )((is, buf) => F.blocking(is.read(buf)).cancelable(cancel))
+    )((is, buf, off) => F.blocking(is.read(buf, off, buf.length - off)).cancelable(cancel))
 
   /** Reads all bytes from the specified `InputStream` with a buffer size of `chunkSize`.
     * Set `closeAfterUse` to false if the `InputStream` should not be closed after use.
@@ -76,31 +76,28 @@ package object io extends ioplatform {
       fis,
       F.pure(new Array[Byte](chunkSize)),
       closeAfterUse
-    )((is, buf) => F.blocking(is.read(buf)))
+    )((is, buf, off) => F.blocking(is.read(buf, off, buf.length - off)))
 
-  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte])(
-      read: (InputStream, Array[Byte]) => F[Int]
+  private def readBytesFromInputStream[F[_]](is: InputStream, buf: Array[Byte], offset: Int)(
+      read: (InputStream, Array[Byte], Int) => F[Int]
   )(implicit
       F: Sync[F]
-  ): F[Option[Chunk[Byte]]] =
-    read(is, buf).map { numBytes =>
+  ): F[Option[(Chunk[Byte], Option[(Array[Byte], Int)])]] =
+    read(is, buf, offset).map { numBytes =>
       if (numBytes < 0) None
-      else if (numBytes == 0) Some(Chunk.empty)
-      else if (numBytes < buf.size) Some(Chunk.array(buf, 0, numBytes))
-      else Some(Chunk.array(buf))
+      else if (offset + numBytes == buf.size) Some(Chunk.array(buf, offset, numBytes) -> None)
+      else Some(Chunk.array(buf, offset, numBytes) -> Some(buf -> (offset + numBytes)))
     }
 
   private[fs2] def readInputStreamGeneric[F[_]](
       fis: F[InputStream],
       buf: F[Array[Byte]],
       closeAfterUse: Boolean
-  )(read: (InputStream, Array[Byte]) => F[Int])(implicit F: Sync[F]): Stream[F, Byte] = {
-    def useIs(is: InputStream) =
-      Stream
-        .eval(buf.flatMap(b => readBytesFromInputStream(is, b)(read)))
-        .repeat
-        .unNoneTerminate
-        .flatMap(c => Stream.chunk(c))
+  )(read: (InputStream, Array[Byte], Int) => F[Int])(implicit F: Sync[F]): Stream[F, Byte] = {
+    def useIs(is: InputStream) = Stream.unfoldChunkEval(Option.empty[(Array[Byte], Int)]) {
+      case None              => buf.flatMap(b => readBytesFromInputStream(is, b, 0)(read))
+      case Some((b, offset)) => readBytesFromInputStream(is, b, offset)(read)
+    }
 
     if (closeAfterUse)
       Stream.bracket(fis)(is => Sync[F].blocking(is.close())).flatMap(useIs)

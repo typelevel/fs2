@@ -23,11 +23,14 @@ package fs2
 package interop
 package flow
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Dispatcher
+import cats.effect.unsafe.IORuntime
 
 import java.util.Objects.requireNonNull
-import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
+import java.util.concurrent.Flow.{Publisher, Subscriber}
+import java.util.concurrent.RejectedExecutionException
 import scala.util.control.NoStackTrace
 
 /** Implementation of a [[Publisher]].
@@ -39,38 +42,64 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-private[flow] final class StreamPublisher[F[_], A] private (
-    stream: Stream[F, A],
-    startDispatcher: Dispatcher[F]
-)(implicit F: Async[F])
-    extends Publisher[A] {
-  override def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+private[flow] sealed abstract class StreamPublisher[F[_], A] private (
+    stream: Stream[F, A]
+)(implicit
+    F: Async[F]
+) extends Publisher[A] {
+  protected def runSubscription(run: F[Unit]): Unit
+
+  override final def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
     requireNonNull(
       subscriber,
       "The subscriber provided to subscribe must not be null"
     )
+    val subscription = StreamSubscription(stream, subscriber)
+    subscriber.onSubscribe(subscription)
     try
-      startDispatcher.unsafeRunAndForget(
-        StreamSubscription.subscribe(stream, subscriber)
-      )
+      runSubscription(subscription.run)
     catch {
-      case _: IllegalStateException =>
-        subscriber.onSubscribe(new Subscription {
-          override def cancel(): Unit = ()
-          override def request(x$1: Long): Unit = ()
-        })
+      case _: IllegalStateException | _: RejectedExecutionException =>
         subscriber.onError(StreamPublisher.CanceledStreamPublisherException)
     }
   }
 }
 
 private[flow] object StreamPublisher {
+  private final class DispatcherStreamPublisher[F[_], A](
+      stream: Stream[F, A],
+      dispatcher: Dispatcher[F]
+  )(implicit
+      F: Async[F]
+  ) extends StreamPublisher[F, A](stream) {
+    override protected final def runSubscription(run: F[Unit]): Unit =
+      dispatcher.unsafeRunAndForget(run)
+  }
+
+  private final class IORuntimeStreamPublisher[A](
+      stream: Stream[IO, A]
+  )(implicit
+      runtime: IORuntime
+  ) extends StreamPublisher[IO, A](stream) {
+    override protected final def runSubscription(run: IO[Unit]): Unit =
+      run.unsafeRunAndForget()
+  }
+
   def apply[F[_], A](
       stream: Stream[F, A]
-  )(implicit F: Async[F]): Resource[F, StreamPublisher[F, A]] =
-    Dispatcher.parallel[F](await = false).map { startDispatcher =>
-      new StreamPublisher(stream, startDispatcher)
+  )(implicit
+      F: Async[F]
+  ): Resource[F, StreamPublisher[F, A]] =
+    Dispatcher.parallel[F](await = true).map { dispatcher =>
+      new DispatcherStreamPublisher(stream, dispatcher)
     }
+
+  def unsafe[A](
+      stream: Stream[IO, A]
+  )(implicit
+      runtime: IORuntime
+  ): StreamPublisher[IO, A] =
+    new IORuntimeStreamPublisher(stream)
 
   private object CanceledStreamPublisherException
       extends IllegalStateException(

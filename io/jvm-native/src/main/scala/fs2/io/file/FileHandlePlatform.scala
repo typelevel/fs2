@@ -24,7 +24,7 @@ package io
 package file
 
 import java.nio.ByteBuffer
-import java.nio.channels.{FileChannel, FileLock}
+import java.nio.channels.{FileChannel, FileLock, SeekableByteChannel}
 import java.nio.file.{OpenOption, Path => JPath}
 
 import cats.effect.kernel.{Async, Resource, Sync}
@@ -118,5 +118,60 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.blocking(chan.write(bytes.toByteBuffer, offset))
+    }
+
+  /** Creates a `FileHandle[F]` from a `java.nio.channels.SeekableByteChannel`. Because a `SeekableByteChannel` doesn't provide all the functionalities required by `FileHandle` some features like locking will be unavailable. */
+  private[file] def makeFromSeekableByteChannel[F[_]](
+      chan: SeekableByteChannel,
+      unsupportedOperationException: => Throwable
+  )(implicit F: Sync[F]): FileHandle[F] =
+    new FileHandle[F] {
+      type Lock = Unit
+
+      override def force(metaData: Boolean): F[Unit] =
+        F.raiseError(unsupportedOperationException)
+
+      override def lock: F[Lock] =
+        F.raiseError(unsupportedOperationException)
+
+      override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
+        F.raiseError(unsupportedOperationException)
+
+      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
+        F.blocking {
+          val buf = ByteBuffer.allocate(numBytes)
+          val len = chan.synchronized {
+            // don't set position on sequential operations because not all file systems support setting the position
+            if (chan.position() != offset) { chan.position(offset); () }
+            chan.read(buf)
+          }
+          if (len < 0) None
+          else if (len == 0) Some(Chunk.empty)
+          else Some(Chunk.array(buf.array, 0, len))
+        }
+
+      override def size: F[Long] =
+        F.blocking(chan.size)
+
+      override def truncate(size: Long): F[Unit] =
+        F.blocking { chan.truncate(size); () }
+
+      override def tryLock: F[Option[Lock]] =
+        F.raiseError(unsupportedOperationException)
+
+      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
+        F.raiseError(unsupportedOperationException)
+
+      override def unlock(f: Lock): F[Unit] =
+        F.unit
+
+      override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
+        F.blocking {
+          chan.synchronized {
+            // don't set position on sequential operations because not all file systems support setting the position
+            if (chan.position() != offset) { chan.position(offset); () }
+            chan.write(bytes.toByteBuffer)
+          }
+        }
     }
 }
