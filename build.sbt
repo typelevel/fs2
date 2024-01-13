@@ -259,7 +259,7 @@ lazy val root = tlCrossRootProject
     benchmark
   )
 
-lazy val commonNativeSettings = Seq[Setting[_]](
+lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
   Test / nativeBrewFormulas += "openssl"
 )

@@ -49,7 +49,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
 ) extends Publisher[A] {
   protected def runSubscription(run: F[Unit]): Unit
 
-  override final def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+  override final def subscribe(subscriber: Subscriber[? >: A]): Unit = {
     requireNonNull(
       subscriber,
       "The subscriber provided to subscribe must not be null"

@@ -180,7 +180,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
     new Bind[F2, O2, R, S](this) {
       def cont(r: Terminal[R]): Pull[F2, O2, S] =
         r match {
-          case _: Succeeded[_] => post
+          case _: Succeeded[?] => post
           case r: Interrupted  => r
           case r: Fail         => r
         }
@@ -327,7 +327,7 @@ object Pull extends PullLowPriority {
     ): Pull[F2, O2, Unit] =
       self match {
         case a: AlgEffect[F, Unit] => a
-        case r: Terminal[_]        => r
+        case r: Terminal[?]        => r
         case _                     => FlatMapOutput(self, f)
       }
 
@@ -419,7 +419,7 @@ object Pull extends PullLowPriority {
   private[fs2] def acquireCancelable[F[_], R](
       resource: Poll[F] => F[R],
       release: (R, ExitCase) => F[Unit]
-  )(implicit F: MonadCancel[F, _]): Pull[F, Nothing, R] =
+  )(implicit F: MonadCancel[F, ?]): Pull[F, Nothing, R] =
     Acquire(F.uncancelable(resource), release, cancelable = true)
 
   /** Like [[eval]] but if the effectful value fails, the exception is returned
@@ -744,7 +744,7 @@ object Pull extends PullLowPriority {
     py match {
       case ty: Terminal[X] =>
         del match {
-          case cici: BindBind[F, O, _, X] =>
+          case cici: BindBind[F, O, ?, X] =>
             bindBindAux(cici.bb.cont(ty), cici.del)
           case _ => del.cont(ty)
         }
@@ -892,7 +892,7 @@ object Pull extends PullLowPriority {
           b.step match {
             case c: Bind[G, X, z, Y] =>
               viewL(new BindBind[G, X, z, Y](c.step, c.delegate, b.delegate))
-            case e: Action[G, X, _] =>
+            case e: Action[G, X, ?] =>
               contP = b.delegate
               e
             case r: Terminal[Y] => viewL(b.cont(r))
@@ -915,7 +915,7 @@ object Pull extends PullLowPriority {
           // all other actions, roll the interruption forwards
           getCont()(interruption)
         case interrupted: Interrupted => interrupted // impossible
-        case _: Succeeded[_]          => interruption
+        case _: Succeeded[?]          => interruption
         case failed: Fail =>
           val errs = interruption.deferredError.toList :+ failed.error
           Fail(CompositeFailure.fromList(errs).getOrElse(failed.error))
@@ -1036,7 +1036,7 @@ object Pull extends PullLowPriority {
       class FlatMapR[Y](view: Cont[Unit, G, X], fun: Y => Pull[G, X, Unit])
           extends Run[G, Y, F[End]] {
         private[this] def unconsed(chunk: Chunk[Y], tail: Pull[G, Y, Unit]): Pull[G, X, Unit] =
-          if (chunk.size == 1 && tail.isInstanceOf[Succeeded[_]])
+          if (chunk.size == 1 && tail.isInstanceOf[Succeeded[?]])
             // nb: If tl is Pure, there's no need to propagate flatMap through the tail. Hence, we
             // check if hd has only a single element, and if so, process it directly instead of folding.
             // This allows recursive infinite streams of the form `def s: Stream[Pure,O] = Stream(o).flatMap { _ => s }`
@@ -1226,18 +1226,18 @@ object Pull extends PullLowPriority {
       }
 
       (viewL(stream): @unchecked) match { // unchecked b/c scala 3 erroneously reports exhaustiveness warning
-        case tst: Translate[h, G, _] @unchecked => // y = Unit
+        case tst: Translate[h, G, ?] @unchecked => // y = Unit
           val translateRunner: Run[h, X, F[End]] = new TranslateRunner(tst.fk, getCont())
           val composed: h ~> F = translation.compose(tst.fk)
           go(scope, extendedTopLevelScope, composed, translateRunner, tst.stream)
 
-        case output: Output[_] =>
+        case output: Output[?] =>
           val view = getCont()
           interruptGuard(scope, view)(
             runner.out(output.values, scope, view(unit))
           )
 
-        case fmout: FlatMapOutput[G, z, _] => // y = Unit
+        case fmout: FlatMapOutput[G, z, ?] => // y = Unit
           val fmrunr = new FlatMapR(getCont(), fmout.fun)
           F.unit >> go(scope, extendedTopLevelScope, translation, fmrunr, fmout.stream)
 
@@ -1256,17 +1256,17 @@ object Pull extends PullLowPriority {
             .flatMap(go(_, extendedTopLevelScope, translation, runr, s.stream).attempt)
             .flatMap(_.fold(goErr(_, v), _.apply(new StepLegRunR(v))))
 
-        case _: GetScope[_] =>
+        case _: GetScope[?] =>
           go(scope, extendedTopLevelScope, translation, runner, getCont()(Succeeded(scope)))
         case eval: Eval[G, r]       => goEval[r](eval, getCont())
-        case acquire: Acquire[G, _] => goAcquire(acquire, getCont())
-        case inScope: InScope[G, _] =>
+        case acquire: Acquire[G, ?] => goAcquire(acquire, getCont())
+        case inScope: InScope[G, ?] =>
           goInScope(inScope.stream, inScope.useInterruption, getCont())
         case int: InterruptWhen[G] =>
           goInterruptWhen(translation(int.haltOnSignal), getCont())
         case close: CloseScope => goCloseScope(close, getCont())
 
-        case _: Succeeded[_]  => runner.done(scope)
+        case _: Succeeded[?]  => runner.done(scope)
         case failed: Fail     => runner.fail(failed.error)
         case int: Interrupted => runner.interrupted(int)
       }
@@ -1291,7 +1291,7 @@ object Pull extends PullLowPriority {
         } catch {
           case NonFatal(e) =>
             viewL(tail) match {
-              case _: Action[F, O, _] =>
+              case _: Action[F, O, ?] =>
                 go(scope, None, initFk, self, getCont()(Fail(e)))
               case Succeeded(_)        => F.raiseError(e)
               case Fail(e2)            => F.raiseError(CompositeFailure(e2, e))
@@ -1315,10 +1315,10 @@ object Pull extends PullLowPriority {
       fK: F ~> G
   ): Pull[G, O, Unit] =
     stream match {
-      case t: Translate[_, f, _] =>
+      case t: Translate[?, f, ?] =>
         translate(t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
-      case o: Output[_]   => o
-      case r: Terminal[_] => r
+      case o: Output[?]   => o
+      case r: Terminal[?] => r
       case _              => Translate(stream, fK)
     }
 

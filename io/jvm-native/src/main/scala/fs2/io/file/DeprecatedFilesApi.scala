@@ -50,13 +50,13 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   /** Creates a new directory at the given path.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
-  def createDirectory(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
+  def createDirectory(path: JPath, flags: Seq[FileAttribute[?]] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.createDirectory(path, flags: _*))
 
   /** Creates a new directory at the given path and creates all nonexistent parent directories beforehand.
     */
   @deprecated("Use overload which uses fs2.io.file.Path", "3.1.0")
-  def createDirectories(path: JPath, flags: Seq[FileAttribute[_]] = Seq.empty): F[JPath] =
+  def createDirectories(path: JPath, flags: Seq[FileAttribute[?]] = Seq.empty): F[JPath] =
     Sync[F].blocking(JFiles.createDirectories(path, flags: _*))
 
   /** Deletes a file.
@@ -262,7 +262,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
       dir: Option[JPath] = None,
       prefix: String = "",
       suffix: String = ".tmp",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Resource[F, JPath] =
     Resource.make {
       dir match {
@@ -285,7 +285,7 @@ private[file] trait DeprecatedFilesApi[F[_]] { self: Files[F] =>
   def tempDirectory(
       dir: Option[JPath] = None,
       prefix: String = "",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Resource[F, JPath] =
     Resource.make {
       dir match {

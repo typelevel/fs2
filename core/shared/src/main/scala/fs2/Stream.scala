@@ -3208,7 +3208,7 @@ object Stream extends StreamLowPriority {
   def bracketFull[F[_], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
-      F: MonadCancel[F, _]
+      F: MonadCancel[F, ?]
   ): Stream[F, R] =
     bracketFullWeak(acquire)(release).scope
 
@@ -3218,7 +3218,7 @@ object Stream extends StreamLowPriority {
   def bracketFullWeak[F[_], R](
       acquire: Poll[F] => F[R]
   )(release: (R, Resource.ExitCase) => F[Unit])(implicit
-      F: MonadCancel[F, _]
+      F: MonadCancel[F, ?]
   ): Stream[F, R] =
     Pull.acquireCancelable[F, R](acquire, release).flatMap(Pull.output1).streamNoScope
 
@@ -3826,11 +3826,11 @@ object Stream extends StreamLowPriority {
   def repeatEval[F[_], O](fo: F[O]): Stream[F, O] = eval(fo).repeat
 
   /** Converts the supplied resource into a singleton stream. */
-  def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
+  def resource[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, ?]): Stream[F, O] =
     resourceWeak(r).scope
 
   /** Same as [[resource]], but expressed as a FunctionK. */
-  def resourceK[F[_]](implicit F: MonadCancel[F, _]): Resource[F, *] ~> Stream[F, *] =
+  def resourceK[F[_]](implicit F: MonadCancel[F, ?]): Resource[F, *] ~> Stream[F, *] =
     new (Resource[F, *] ~> Stream[F, *]) {
       override def apply[A](fa: Resource[F, A]): Stream[F, A] = resource[F, A](fa)
     }
@@ -3840,7 +3840,7 @@ object Stream extends StreamLowPriority {
     *
     * Scopes can be manually introduced via [[Stream#scope]] if desired.
     */
-  def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, _]): Stream[F, O] =
+  def resourceWeak[F[_], O](r: Resource[F, O])(implicit F: MonadCancel[F, ?]): Stream[F, O] =
     r match {
       case Resource.Allocate(resource) =>
         Stream
@@ -3855,7 +3855,7 @@ object Stream extends StreamLowPriority {
     }
 
   /** Same as [[resourceWeak]], but expressed as a FunctionK. */
-  def resourceWeakK[F[_]](implicit F: MonadCancel[F, _]): Resource[F, *] ~> Stream[F, *] =
+  def resourceWeakK[F[_]](implicit F: MonadCancel[F, ?]): Resource[F, *] ~> Stream[F, *] =
     new (Resource[F, *] ~> Stream[F, *]) {
       override def apply[A](fa: Resource[F, A]): Stream[F, A] = resourceWeak[F, A](fa)
     }

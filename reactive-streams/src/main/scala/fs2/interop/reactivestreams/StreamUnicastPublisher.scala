@@ -53,7 +53,7 @@ final class StreamUnicastPublisher[F[_]: Async, A](
   ) =
     this(stream, startDispatcher)
 
-  def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+  def subscribe(subscriber: Subscriber[? >: A]): Unit = {
     nonNull(subscriber)
     try
       startDispatcher.unsafeRunAndForget(
