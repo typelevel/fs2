@@ -45,13 +45,13 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F])
       extends Socket[F] {
     private[this] final val defaultReadSize = 8192
-    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocateDirect(defaultReadSize)
+    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocate(defaultReadSize)
 
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
       readMutex.lock.surround {
         F.delay {
           if (readBuffer.capacity() < size)
-            readBuffer = ByteBuffer.allocateDirect(size)
+            readBuffer = ByteBuffer.allocate(size)
           else
             (readBuffer: Buffer).limit(size)
           f(readBuffer)
