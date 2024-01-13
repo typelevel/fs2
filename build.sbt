@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.9"
+ThisBuild / tlBaseVersion := "3.10"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -271,9 +271,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.10.0",
-      "org.typelevel" %%% "cats-effect" % "3.5.2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.5.2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.5.2" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.6-c7ca678",
+      "org.typelevel" %%% "cats-effect-laws" % "3.6-c7ca678" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.6-c7ca678" % Test,
       "org.typelevel" %%% "cats-laws" % "2.10.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test,
@@ -342,9 +342,6 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeEnablePlugins(ScalaNativeBrewedConfigPlugin)
   .nativeSettings(commonNativeSettings)
   .nativeSettings(
-    libraryDependencies ++= Seq(
-      "com.armanbilge" %%% "epollcat" % "0.1.6" % Test
-    ),
     Test / nativeBrewFormulas += "s2n",
     Test / envVars ++= Map("S2N_DONT_MLOCK" -> "1")
   )
