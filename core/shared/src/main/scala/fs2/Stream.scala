@@ -760,6 +760,24 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def delayBy[F2[x] >: F[x]: Temporal](d: FiniteDuration): Stream[F2, O] =
     Stream.sleep_[F2](d) ++ this
 
+  /** Ensure that the stream always emits elements by defining a maxIdle duration.
+    * In other words, the stream will emit an element when it hasn't emitted any since the maximum time specified.
+    */
+  def keepAlive[F2[x] >: F[x]: Temporal, O2 >: O](
+      maxIdle: FiniteDuration,
+      heartbeat: O2
+  ): Stream[F2, O2] =
+    covaryAll[F2, O2].pull.timed { timedPull =>
+      def go(timedPull: Pull.Timed[F2, O2]): Pull[F2, O2, Unit] =
+        timedPull.timeout(maxIdle) >> timedPull.uncons.flatMap {
+          case Some((Right(chunks), next)) => Pull.output(chunks) >> go(next)
+          case Some((Left(_), chunks))     => Pull.output1(heartbeat) >> go(chunks)
+          case None                        => Pull.done
+        }
+
+      go(timedPull)
+    }.stream
+
   /** Skips the first element that matches the predicate.
     *
     * @example {{{
@@ -3851,8 +3869,8 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
-    import Numeric.Implicits._
-    import Ordering.Implicits._
+    import Numeric.Implicits.*
+    import Ordering.Implicits.*
     val zero = implicitly[Numeric[O]].zero
     def go(o: O): Stream[F, O] =
       if (
