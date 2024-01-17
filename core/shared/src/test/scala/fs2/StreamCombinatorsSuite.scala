@@ -203,12 +203,12 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("keepAlive") {
-    val delay = 200.milliseconds
-    val sleep = delay + (delay / 2)
+    val maxIdle = 200.milliseconds
+    val sleep = 250.milliseconds
     TestControl.executeEmbed {
       (Stream(1, 2) ++ Stream.sleep[IO](sleep) ++ Stream(3, 4) ++ Stream
         .sleep[IO](sleep * 2) ++ Stream(5))
-        .keepAlive(delay, 0)
+        .keepAlive(maxIdle, 0)
         .assertEmits(List(1, 2, 0, 3, 4, 0, 0, 5))
     }
   }
