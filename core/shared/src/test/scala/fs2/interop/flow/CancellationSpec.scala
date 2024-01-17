@@ -54,7 +54,7 @@ class CancellationSpec extends Fs2Suite {
         val subscriber = new DummySubscriber(flag, program)
         IO(StreamSubscription(s, subscriber)).flatMap { subscription =>
           (
-            subscription.run,
+            subscription.run.compile.drain,
             IO(subscriber.onSubscribe(subscription))
           ).parTupled
         } >>

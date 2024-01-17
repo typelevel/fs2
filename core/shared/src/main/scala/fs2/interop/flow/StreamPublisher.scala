@@ -57,7 +57,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
     val subscription = StreamSubscription(stream, subscriber)
     subscriber.onSubscribe(subscription)
     try
-      runSubscription(subscription.run)
+      runSubscription(subscription.run.compile.drain)
     catch {
       case _: IllegalStateException | _: RejectedExecutionException =>
         subscriber.onError(StreamPublisher.CanceledStreamPublisherException)
