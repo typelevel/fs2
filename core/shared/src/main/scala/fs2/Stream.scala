@@ -3869,8 +3869,8 @@ object Stream extends StreamLowPriority {
     * }}}
     */
   def range[F[x] >: Pure[x], O: Numeric](start: O, stopExclusive: O, step: O): Stream[F, O] = {
-    import Numeric.Implicits.*
-    import Ordering.Implicits.*
+    import Numeric.Implicits._
+    import Ordering.Implicits._
     val zero = implicitly[Numeric[O]].zero
     def go(o: O): Stream[F, O] =
       if (
