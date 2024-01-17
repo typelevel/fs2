@@ -240,6 +240,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // package-private method: #3318
   ProblemFilters.exclude[IncompatibleMethTypeProblem](
     "fs2.io.package.readInputStreamGeneric"
+  ),
+  // sealed trait: #3349
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.tls.TLSParameters.withClientAuthType"
   )
 )
 
@@ -255,7 +259,7 @@ lazy val root = tlCrossRootProject
     benchmark
   )
 
-lazy val commonNativeSettings = Seq[Setting[_]](
+lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
   Test / nativeBrewFormulas += "openssl"
 )
@@ -267,9 +271,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.10.0",
-      "org.typelevel" %%% "cats-effect" % "3.5.2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.5.2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.5.2" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.5.3",
+      "org.typelevel" %%% "cats-effect-laws" % "3.5.3" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.5.3" % Test,
       "org.typelevel" %%% "cats-laws" % "2.10.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test,
