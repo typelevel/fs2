@@ -771,7 +771,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       def go(timedPull: Pull.Timed[F2, O2]): Pull[F2, O2, Unit] =
         timedPull.timeout(maxIdle) >> timedPull.uncons.flatMap {
           case Some((Right(chunks), next)) => Pull.output(chunks) >> go(next)
-          case Some((_, chunks))           => Pull.output1(heartbeat()) >> go(chunks)
+          case Some((_, next))             => Pull.output1(heartbeat()) >> go(next)
           case None                        => Pull.done
         }
 
