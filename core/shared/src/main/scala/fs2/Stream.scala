@@ -765,13 +765,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def keepAlive[F2[x] >: F[x]: Temporal, O2 >: O](
       maxIdle: FiniteDuration,
-      heartbeat: () => O2
+      heartbeat: F2[O2]
   ): Stream[F2, O2] =
     covaryAll[F2, O2].pull.timed { timedPull =>
       def go(timedPull: Pull.Timed[F2, O2]): Pull[F2, O2, Unit] =
-        timedPull.timeout(maxIdle) >> timedPull.uncons.flatMap {
+        timedPull.timeout(maxIdle) >> timedPull.uncons >> {
           case Some((Right(chunks), next)) => Pull.output(chunks) >> go(next)
-          case Some((_, next))             => Pull.output1(heartbeat()) >> go(next)
+          case Some((_, next))             => Pull.eval(heartbeat) >>= Pull.output1 >> go(next)
           case None                        => Pull.done
         }
 
