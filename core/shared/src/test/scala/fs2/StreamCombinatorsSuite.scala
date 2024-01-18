@@ -207,12 +207,9 @@ class StreamCombinatorsSuite extends Fs2Suite {
       Stream.sleep[IO](pauseDuration).drain
 
     val irregularStream: Stream[IO, Int] =
-      Stream(1, 2) ++
-        pause(250.milliseconds) ++
-        Stream(3, 4) ++
-        pause(500.millis) ++
-        Stream(5)
-        ++ pause(50.millis) ++
+      Stream(1, 2) ++ pause(250.milliseconds) ++
+        Stream(3, 4) ++ pause(500.millis) ++
+        Stream(5) ++ pause(50.millis) ++
         Stream(6)
 
     TestControl.executeEmbed {
