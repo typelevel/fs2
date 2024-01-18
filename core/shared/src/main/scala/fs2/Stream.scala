@@ -1208,7 +1208,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * See `parJoin` and `parJoinUnbounded` for concurrent flattening of 'n' streams.
     */
   def flatten[F2[x] >: F[x], O2](implicit ev: O <:< Stream[F2, O2]): Stream[F2, O2] =
-    flatMap(i => ev(i))
+    flatMap(ev)
 
   /** Folds all inputs using an initial value `z` and supplied binary operator,
     * and emits a single element stream.
