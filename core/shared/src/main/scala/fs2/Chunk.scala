@@ -92,6 +92,22 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
+  /** More efficient version of `takeWhile(pf.isDefinedAt).map(pf)`. */
+  def collectWhile[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
+    val b = makeArrayBuilder[Any]
+    b.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      import fs2.Chunk.NotApplied
+      pf.applyOrElse(apply(i), NotApplied) match {
+        case NotApplied => return Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+        case o2         => b += o2
+      }
+      i += 1
+    }
+    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+  }
+
   /** Returns true if the Chunk contains the given element. */
   def contains[O2 >: O](elem: O2)(implicit ev: Eq[O2]): Boolean =
     iterator.exists(o => ev.eqv(o, elem))
@@ -563,6 +579,9 @@ object Chunk
     extends CollectorK[Chunk]
     with ChunkCompanionPlatform
     with ChunkCompanionRuntimePlatform {
+
+  // A special value that is used to indicate that whether a PartialFunction is applied
+  private final val NotApplied: Any => Any = _ => Chunk.NotApplied
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
   private final class EmptyChunk extends Chunk[Nothing] {

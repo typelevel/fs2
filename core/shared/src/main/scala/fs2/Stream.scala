@@ -499,7 +499,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def collectWhile[O2](pf: PartialFunction[O, O2]): Stream[F, O2] =
-    takeWhile(pf.isDefinedAt).map(pf)
+    mapChunks(_.collectWhile(pf))
 
   /** Gets a projection of this stream that allows converting it to an `F[..]` in a number of ways.
     *
