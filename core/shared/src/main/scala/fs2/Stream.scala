@@ -760,6 +760,24 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def delayBy[F2[x] >: F[x]: Temporal](d: FiniteDuration): Stream[F2, O] =
     Stream.sleep_[F2](d) ++ this
 
+  /** Ensure that the stream always emits elements by defining a maxIdle duration.
+    * In other words, the stream will emit an element when it hasn't emitted any since the maximum time specified.
+    */
+  def keepAlive[F2[x] >: F[x]: Temporal, O2 >: O](
+      maxIdle: FiniteDuration,
+      heartbeat: F2[O2]
+  ): Stream[F2, O2] =
+    covaryAll[F2, O2].pull.timed { timedPull =>
+      def go(timedPull: Pull.Timed[F2, O2]): Pull[F2, O2, Unit] =
+        timedPull.timeout(maxIdle) >> timedPull.uncons.flatMap {
+          case Some((Right(chunks), next)) => Pull.output(chunks) >> go(next)
+          case Some((_, next))             => Pull.eval(heartbeat).flatMap(Pull.output1) >> go(next)
+          case None                        => Pull.done
+        }
+
+      go(timedPull)
+    }.stream
+
   /** Skips the first element that matches the predicate.
     *
     * @example {{{

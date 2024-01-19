@@ -202,6 +202,23 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  test("keepAlive") {
+    def pause(pauseDuration: FiniteDuration): Stream[IO, Nothing] =
+      Stream.sleep[IO](pauseDuration).drain
+
+    val irregularStream: Stream[IO, Int] =
+      Stream(1, 2) ++ pause(250.milliseconds) ++
+        Stream(3, 4) ++ pause(500.millis) ++
+        Stream(5) ++ pause(50.millis) ++
+        Stream(6)
+
+    TestControl.executeEmbed {
+      irregularStream
+        .keepAlive(maxIdle = 200.milliseconds, heartbeat = 0.pure[IO])
+        .assertEmits(List(1, 2, 0, 3, 4, 0, 0, 5, 6))
+    }
+  }
+
   property("delete") {
     forAll { (s: Stream[Pure, Int], idx0: Int) =>
       val v = s.toVector
