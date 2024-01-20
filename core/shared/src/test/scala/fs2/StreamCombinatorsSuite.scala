@@ -65,6 +65,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
 
+    test("list liveness") {
+      val s = Stream
+        .awakeEvery[IO](1.milli)
+        .evalMap(_ => IO.async_[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
+        .take(200)
+      List(s, s, s, s, s).parJoinUnbounded.compile.drain
+    }
+
     test("short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
       TestControl.executeEmbed(input.metered(1.nanos).assertEmitsSameAs(input))
