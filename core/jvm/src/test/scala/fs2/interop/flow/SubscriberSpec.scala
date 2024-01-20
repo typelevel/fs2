@@ -93,7 +93,7 @@ final class SubscriberBlackboxSpec
   override def createFlowSubscriber(): StreamSubscriber[IO, Int] =
     StreamSubscriber[IO, Int](chunkSize = 1).unsafeRunSync()
 
-  override def triggerFlowRequest(subscriber: Subscriber[_ >: Int]): Unit =
+  override def triggerFlowRequest(subscriber: Subscriber[? >: Int]): Unit =
     subscriber
       .asInstanceOf[StreamSubscriber[IO, Int]]
       .stream(IO.unit)

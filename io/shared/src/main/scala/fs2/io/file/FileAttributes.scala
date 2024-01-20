@@ -42,6 +42,38 @@ sealed trait BasicFileAttributes {
   def lastAccessTime: FiniteDuration
   def lastModifiedTime: FiniteDuration
   def size: Long
+
+  override def equals(that: Any): Boolean = that match {
+    case other: BasicFileAttributes =>
+      creationTime == other.creationTime &&
+      fileKey == other.fileKey &&
+      isDirectory == other.isDirectory &&
+      isOther == other.isOther &&
+      isRegularFile == other.isRegularFile &&
+      isSymbolicLink == other.isSymbolicLink &&
+      lastAccessTime == other.lastAccessTime &&
+      lastModifiedTime == other.lastModifiedTime &&
+      size == other.size
+    case _ => false
+  }
+
+  override def hashCode: Int = {
+    import util.hashing.MurmurHash3.{stringHash, mix, finalizeHash}
+    val h = stringHash("FileAttributes")
+    mix(h, creationTime.##)
+    mix(h, fileKey.##)
+    mix(h, isDirectory.##)
+    mix(h, isOther.##)
+    mix(h, isRegularFile.##)
+    mix(h, isSymbolicLink.##)
+    mix(h, lastAccessTime.##)
+    mix(h, lastModifiedTime.##)
+    mix(h, size.##)
+    finalizeHash(h, 9)
+  }
+
+  override def toString: String =
+    s"BasicFileAttributes($creationTime, $fileKey, $isDirectory, $isOther, $isRegularFile, $isSymbolicLink, $lastAccessTime, $lastModifiedTime, $size)"
 }
 
 object BasicFileAttributes {
@@ -54,6 +86,22 @@ object BasicFileAttributes {
 // the owner/group operations JVM only.
 sealed trait PosixFileAttributes extends BasicFileAttributes {
   def permissions: PosixPermissions
+
+  final override def equals(that: Any): Boolean = that match {
+    case other: PosixFileAttributes => super.equals(other) && permissions == other.permissions
+    case _                          => false
+  }
+
+  final override def hashCode: Int = {
+    import util.hashing.MurmurHash3.{stringHash, mix, finalizeHash}
+    val h = stringHash("PosixFileAttributes")
+    mix(h, super.hashCode)
+    mix(h, permissions.##)
+    finalizeHash(h, 2)
+  }
+
+  final override def toString: String =
+    s"PosixFileAttributes($creationTime, $fileKey, $isDirectory, $isOther, $isRegularFile, $isSymbolicLink, $lastAccessTime, $lastModifiedTime, $size, $permissions)"
 }
 
 object PosixFileAttributes {

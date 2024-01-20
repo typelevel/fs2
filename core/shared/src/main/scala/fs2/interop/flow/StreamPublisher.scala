@@ -49,7 +49,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
 ) extends Publisher[A] {
   protected def runSubscription(run: F[Unit]): Unit
 
-  override final def subscribe(subscriber: Subscriber[_ >: A]): Unit = {
+  override final def subscribe(subscriber: Subscriber[? >: A]): Unit = {
     requireNonNull(
       subscriber,
       "The subscriber provided to subscribe must not be null"
@@ -57,7 +57,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
     val subscription = StreamSubscription(stream, subscriber)
     subscriber.onSubscribe(subscription)
     try
-      runSubscription(subscription.run)
+      runSubscription(subscription.run.compile.drain)
     catch {
       case _: IllegalStateException | _: RejectedExecutionException =>
         subscriber.onError(StreamPublisher.CanceledStreamPublisherException)

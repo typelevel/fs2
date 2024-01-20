@@ -26,8 +26,6 @@ package process
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Async
 import cats.syntax.all._
-import fs2.io.internal.MicrotaskExecutor
-import fs2.io.internal.SuspendedStream
 import fs2.io.internal.facade
 
 import scala.scalajs.js
@@ -36,27 +34,50 @@ import scala.scalajs.js.JSConverters._
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
-      Resource
-        .make {
-          F.async_[facade.child_process.ChildProcess] { cb =>
-            val subprocess = facade.child_process.spawn(
-              process.command,
-              process.args.toJSArray,
-              new facade.child_process.SpawnOptions {
-                cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-                env =
-                  if (process.inheritEnv)
-                    (facade.process.env ++ process.extraEnv).toJSDictionary
-                  else
-                    process.extraEnv.toJSDictionary
-              }
-            )
+      Resource {
+        F.async_[(Process[F], F[Unit])] { cb =>
+          val childProcess = facade.child_process.spawn(
+            process.command,
+            process.args.toJSArray,
+            new facade.child_process.SpawnOptions {
+              cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+              env =
+                if (process.inheritEnv)
+                  (facade.process.env ++ process.extraEnv).toJSDictionary
+                else
+                  process.extraEnv.toJSDictionary
+            }
+          )
 
-            subprocess.once("spawn", () => cb(Right(subprocess)))
-            subprocess.once[js.Error]("error", e => cb(Left(js.JavaScriptException(e))))
+          val fs2Process = new UnsealedProcess[F] {
+
+            def isAlive: F[Boolean] = F.delay {
+              (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
+            }
+
+            def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
+              F.delay {
+                (childProcess.exitCode: Any) match {
+                  case i: Int => Right(i)
+                  case _ =>
+                    val f: js.Function1[Any, Unit] = {
+                      case i: Int => cb(Right(i))
+                      case _      => // do nothing
+                    }
+                    childProcess.once("exit", f)
+                    Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                }
+              }
+            }
+
+            def stdin = writeWritable(F.delay(childProcess.stdin))
+
+            def stdout = unsafeReadReadable(childProcess.stdout)
+
+            def stderr = unsafeReadReadable(childProcess.stderr)
           }
-        } { childProcess =>
-          F.asyncCheckAttempt[Unit] { cb =>
+
+          val finalize = F.asyncCheckAttempt[Unit] { cb =>
             F.delay {
               if ((childProcess.exitCode ne null) || (childProcess.signalCode ne null)) {
                 Either.unit
@@ -67,48 +88,10 @@ private[process] trait ProcessesCompanionPlatform {
               }
             }
           }
+
+          childProcess.once("spawn", () => cb(Right(fs2Process -> finalize)))
+          childProcess.once[js.Error]("error", e => cb(Left(js.JavaScriptException(e))))
         }
-        .flatMap { childProcess =>
-          def suspend(readable: => fs2.io.Readable) =
-            SuspendedStream(
-              Stream.resource(fs2.io.suspendReadableAndRead()(readable)).flatMap(_._2)
-            )
-
-          (suspend(childProcess.stdout), suspend(childProcess.stderr)).mapN {
-            (suspendedOut, suspendedErr) =>
-              new UnsealedProcess[F] {
-
-                def isAlive: F[Boolean] = F.delay {
-                  (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
-                }
-
-                def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
-                  F.delay {
-                    (childProcess.exitCode: Any) match {
-                      case i: Int => Right(i)
-                      case _ =>
-                        val f: js.Function1[Any, Unit] = {
-                          case i: Int => cb(Right(i))
-                          case _      => // do nothing
-                        }
-                        childProcess.once("exit", f)
-                        Left(Some(F.delay(childProcess.removeListener("exit", f))))
-                    }
-                  }
-                }
-
-                def stdin: Pipe[F, Byte, Nothing] =
-                  fs2.io.writeWritable(F.delay(childProcess.stdin))
-
-                def stdout: Stream[F, Byte] = suspendedOut.stream
-
-                def stderr: Stream[F, Byte] = suspendedErr.stream
-
-              }
-
-          }
-        }
-        .evalOn(MicrotaskExecutor) // guarantee that callbacks are setup before yielding to I/O
-
+      }
   }
 }

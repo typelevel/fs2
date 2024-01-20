@@ -223,7 +223,7 @@ package object file {
       dir: JPath,
       prefix: String = "",
       suffix: String = ".tmp",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Stream[F, JPath] =
     Stream.resource(Files.forAsync[F].tempFile(Some(dir), prefix, suffix, attributes))
 
@@ -236,7 +236,7 @@ package object file {
       dir: JPath,
       prefix: String = "",
       suffix: String = ".tmp",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Resource[F, JPath] =
     Files.forAsync[F].tempFile(Some(dir), prefix, suffix, attributes)
 
@@ -248,7 +248,7 @@ package object file {
   def tempDirectoryStream[F[_]: Async](
       dir: JPath,
       prefix: String = "",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Stream[F, JPath] =
     Stream.resource(Files.forAsync[F].tempDirectory(Some(dir), prefix, attributes))
 
@@ -260,7 +260,7 @@ package object file {
   def tempDirectoryResource[F[_]: Async](
       dir: JPath,
       prefix: String = "",
-      attributes: Seq[FileAttribute[_]] = Seq.empty
+      attributes: Seq[FileAttribute[?]] = Seq.empty
   ): Resource[F, JPath] =
     Files.forAsync[F].tempDirectory(Some(dir), prefix, attributes)
 
@@ -269,7 +269,7 @@ package object file {
   @deprecated("Use Files[F].createDirectory", "3.0.0")
   def createDirectory[F[_]: Async](
       path: JPath,
-      flags: Seq[FileAttribute[_]] = Seq.empty
+      flags: Seq[FileAttribute[?]] = Seq.empty
   ): F[JPath] =
     Files.forAsync[F].createDirectory(path, flags)
 
@@ -278,7 +278,7 @@ package object file {
   @deprecated("Use Files[F].createDirectories", "3.0.0")
   def createDirectories[F[_]: Async](
       path: JPath,
-      flags: Seq[FileAttribute[_]] = Seq.empty
+      flags: Seq[FileAttribute[?]] = Seq.empty
   ): F[JPath] =
     Files.forAsync[F].createDirectories(path, flags)
 

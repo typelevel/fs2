@@ -36,7 +36,7 @@ class SubscriberStabilitySpec extends Fs2Suite {
   test("StreamSubscriber has no race condition") {
     val publisher = new Publisher[ByteBuffer] {
 
-      class SubscriptionImpl(val s: Subscriber[_ >: ByteBuffer]) extends Subscription {
+      class SubscriptionImpl(val s: Subscriber[? >: ByteBuffer]) extends Subscription {
         override def request(n: Long): Unit = {
           s.onNext(ByteBuffer.wrap(new Array[Byte](1)))
           s.onComplete()
@@ -45,7 +45,7 @@ class SubscriberStabilitySpec extends Fs2Suite {
         override def cancel(): Unit = {}
       }
 
-      override def subscribe(s: Subscriber[_ >: ByteBuffer]): Unit =
+      override def subscribe(s: Subscriber[? >: ByteBuffer]): Unit =
         s.onSubscribe(new SubscriptionImpl(s))
     }
 

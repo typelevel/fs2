@@ -28,7 +28,7 @@ package psi
 
 case class TableBuildingError(tableId: Int, message: String) extends MpegError
 
-class TableBuilder private (cases: Map[Int, List[TableSupport[_]]]) {
+class TableBuilder private (cases: Map[Int, List[TableSupport[?]]]) {
 
   def supporting[T <: Table](implicit ts: TableSupport[T]): TableBuilder = {
     val newCases = ts :: cases.getOrElse(ts.tableId, Nil)
@@ -39,7 +39,7 @@ class TableBuilder private (cases: Map[Int, List[TableSupport[_]]]) {
     cases.get(gs.tableId) match {
       case None | Some(Nil) => Left(TableBuildingError(gs.tableId, "Unknown table id"))
       case Some(list) =>
-        list.dropRight(1).foldRight[Either[String, _]](list.last.toTable(gs)) { (next, res) =>
+        list.dropRight(1).foldRight[Either[String, ?]](list.last.toTable(gs)) { (next, res) =>
           res.fold(_ => next.toTable(gs), Right(_))
         } match {
           case Right(table) => Right(table.asInstanceOf[Table])

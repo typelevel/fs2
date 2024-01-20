@@ -65,6 +65,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
 
+    test("list liveness") {
+      val s = Stream
+        .awakeEvery[IO](1.milli)
+        .evalMap(_ => IO.async_[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
+        .take(200)
+      List(s, s, s, s, s).parJoinUnbounded.compile.drain
+    }
+
     test("short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
       TestControl.executeEmbed(input.metered(1.nanos).assertEmitsSameAs(input))
@@ -199,6 +207,23 @@ class StreamCombinatorsSuite extends Fs2Suite {
         .sleep[IO](delay / 2) ++ Stream(6))
         .debounce(delay)
         .assertEmits(List(3, 6))
+    }
+  }
+
+  test("keepAlive") {
+    def pause(pauseDuration: FiniteDuration): Stream[IO, Nothing] =
+      Stream.sleep[IO](pauseDuration).drain
+
+    val irregularStream: Stream[IO, Int] =
+      Stream(1, 2) ++ pause(250.milliseconds) ++
+        Stream(3, 4) ++ pause(500.millis) ++
+        Stream(5) ++ pause(50.millis) ++
+        Stream(6)
+
+    TestControl.executeEmbed {
+      irregularStream
+        .keepAlive(maxIdle = 200.milliseconds, heartbeat = 0.pure[IO])
+        .assertEmits(List(1, 2, 0, 3, 4, 0, 0, 5, 6))
     }
   }
 
