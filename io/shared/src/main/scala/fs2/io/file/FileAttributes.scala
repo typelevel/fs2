@@ -56,6 +56,24 @@ sealed trait BasicFileAttributes {
       size == other.size
     case _ => false
   }
+
+  override def hashCode: Int = {
+    import util.hashing.MurmurHash3.{stringHash, mix, finalizeHash}
+    val h = stringHash("FileAttributes")
+    mix(h, creationTime.##)
+    mix(h, fileKey.##)
+    mix(h, isDirectory.##)
+    mix(h, isOther.##)
+    mix(h, isRegularFile.##)
+    mix(h, isSymbolicLink.##)
+    mix(h, lastAccessTime.##)
+    mix(h, lastModifiedTime.##)
+    mix(h, size.##)
+    finalizeHash(h, 9)
+  }
+
+  override def toString: String =
+    s"BasicFileAttributes($creationTime, $fileKey, $isDirectory, $isOther, $isRegularFile, $isSymbolicLink, $lastAccessTime, $lastModifiedTime, $size)"
 }
 
 object BasicFileAttributes {
@@ -73,6 +91,17 @@ sealed trait PosixFileAttributes extends BasicFileAttributes {
     case other: PosixFileAttributes => super.equals(other) && permissions == other.permissions
     case _                          => false
   }
+
+  final override def hashCode: Int = {
+    import util.hashing.MurmurHash3.{stringHash, mix, finalizeHash}
+    val h = stringHash("PosixFileAttributes")
+    mix(h, super.hashCode)
+    mix(h, permissions.##)
+    finalizeHash(h, 2)
+  }
+
+  final override def toString: String =
+    s"PosixFileAttributes($creationTime, $fileKey, $isDirectory, $isOther, $isRegularFile, $isSymbolicLink, $lastAccessTime, $lastModifiedTime, $size, $permissions)"
 }
 
 object PosixFileAttributes {
