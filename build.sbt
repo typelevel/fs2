@@ -244,6 +244,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // sealed trait: #3349
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.tls.TLSParameters.withClientAuthType"
+  ),
+  // equals/hashCode/toString on file attributes: #3345
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super=uals"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super#Code"
   )
 )
 

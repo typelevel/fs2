@@ -421,6 +421,7 @@ private[file] trait FilesCompanionPlatform {
       with PosixFileAttributes.UnsealedPosixFileAttributes {
     def owner: Principal = attr.owner
     def group: Principal = attr.group
-    def permissions: PosixPermissions = PosixPermissions.fromString(attr.permissions.toString).get
+    def permissions: PosixPermissions =
+      PosixPermissions.fromString(PosixFilePermissions.toString(attr.permissions)).get
   }
 }

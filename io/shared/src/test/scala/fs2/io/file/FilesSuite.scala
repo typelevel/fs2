@@ -856,4 +856,21 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     }
   }
 
+  group("attributes") {
+
+    test("basic attributes are consistent for the same file") {
+      tempFile.use { p =>
+        val attr = Files[IO].getBasicFileAttributes(p)
+        (attr, attr).mapN(assertEquals(_, _))
+      }
+    }
+
+    test("posix attributes are consistent for the same file") {
+      tempFile.use { p =>
+        val attr = Files[IO].getPosixFileAttributes(p)
+        (attr, attr).mapN(assertEquals(_, _))
+      }
+    }
+  }
+
 }
