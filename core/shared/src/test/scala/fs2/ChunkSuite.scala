@@ -31,6 +31,7 @@ import scodec.bits.ByteVector
 
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
+import java.util.concurrent.atomic.AtomicInteger
 import scala.reflect.ClassTag
 
 class ChunkSuite extends Fs2Suite {
@@ -53,25 +54,25 @@ class ChunkSuite extends Fs2Suite {
     }
 
     test("Chunk.apply is optimized") {
-      assert(Chunk(1).isInstanceOf[Chunk.Singleton[_]])
-      assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk(1).isInstanceOf[Chunk.Singleton[?]])
+      assert(Chunk("Hello").isInstanceOf[Chunk.Singleton[?]])
       // Varargs on Scala.js use a scala.scalajs.js.WrappedArray, which
       // ends up falling through to the Chunk.indexedSeq constructor
       if (isJVM) {
-        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.ArraySlice[_]])
-        assert(Chunk("Hello", "world").isInstanceOf[Chunk.ArraySlice[_]])
+        assert(Chunk(1, 2, 3).isInstanceOf[Chunk.ArraySlice[?]])
+        assert(Chunk("Hello", "world").isInstanceOf[Chunk.ArraySlice[?]])
       }
     }
 
     test("Chunk.from is optimized") {
-      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[_]])
-      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[_]])
+      assert(Chunk.from(List(1)).isInstanceOf[Chunk.Singleton[?]])
+      assert(Chunk.from(Vector(1)).isInstanceOf[Chunk.Singleton[?]])
     }
 
     test("Array casts in Chunk.from are safe") {
       val as = collection.mutable.ArraySeq[Int](0, 1, 2)
       val c = Chunk.from(as)
-      assert(c.isInstanceOf[Chunk.ArraySlice[_]])
+      assert(c.isInstanceOf[Chunk.ArraySlice[?]])
     }
 
     test("Chunk.asSeq roundtrip") {
@@ -84,7 +85,7 @@ class ChunkSuite extends Fs2Suite {
         assertEquals(result, c)
 
         // Check unwrap.
-        if (seq.isInstanceOf[ChunkAsSeq[_]]) {
+        if (seq.isInstanceOf[ChunkAsSeq[?]]) {
           assert(result eq c)
         }
       } && forAll { (e: Either[Seq[Int], Vector[Int]]) =>
@@ -97,7 +98,7 @@ class ChunkSuite extends Fs2Suite {
         assertEquals(result, seq)
 
         // Check unwrap.
-        if (seq.isInstanceOf[Vector[_]] && chunk.size >= 2) {
+        if (seq.isInstanceOf[Vector[?]] && chunk.size >= 2) {
           assert(result eq seq)
         }
       }
@@ -106,6 +107,36 @@ class ChunkSuite extends Fs2Suite {
     test("Chunk.javaList unwraps asJava") {
       forAll { (c: Chunk[Int]) =>
         assert(Chunk.javaList(c.asJava) eq c)
+      }
+    }
+
+    test("Chunk.collect behaves as filter + map") {
+      forAll { (c: Chunk[Int]) =>
+        val extractor = new OddStringExtractor
+        val pf: PartialFunction[Int, String] = { case extractor(s) => s }
+
+        val result = c.collect(pf)
+
+        assertEquals(result, c.filter(pf.isDefinedAt).map(pf))
+      }
+    }
+
+    test("Chunk.collect evaluates pattern matchers once per item") {
+      forAll { (c: Chunk[Int]) =>
+        val extractor = new OddStringExtractor
+
+        val _ = c.collect { case extractor(s) => s }
+
+        assertEquals(extractor.callCounter.get(), c.size)
+      }
+    }
+
+    class OddStringExtractor {
+      val callCounter: AtomicInteger = new AtomicInteger(0)
+
+      def unapply(i: Int): Option[String] = {
+        callCounter.incrementAndGet()
+        if (i % 2 != 0) Some(i.toString) else None
       }
     }
   }

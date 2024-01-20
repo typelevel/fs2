@@ -26,18 +26,15 @@ import cats.Show
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
-import cats.effect.std.Dispatcher
-import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import fs2.concurrent.Channel
-import fs2.io.internal.MicrotaskExecutor
 import fs2.io.internal.facade
 
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import scala.annotation.nowarn
 import scala.scalajs.js
+import scala.scalajs.js.typedarray.Uint8Array
 
 private[fs2] trait ioplatform {
 
@@ -59,52 +56,107 @@ private[fs2] trait ioplatform {
       destroyIfNotEnded: Boolean = true,
       destroyIfCanceled: Boolean = true
   )(thunk: => R)(implicit F: Async[F]): Resource[F, (R, Stream[F, Byte])] =
-    (for {
-      dispatcher <- Dispatcher.sequential[F]
-      channel <- Channel.unbounded[F, Unit].toResource
-      error <- F.deferred[Throwable].toResource
-      readableResource = for {
-        readable <- Resource.makeCase(F.delay(thunk)) {
-          case (readable, Resource.ExitCase.Succeeded) =>
-            F.delay {
-              if (!readable.readableEnded & destroyIfNotEnded)
-                readable.destroy()
-            }
-          case (readable, Resource.ExitCase.Errored(_)) =>
-            // tempting, but don't propagate the error!
-            // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+    Resource
+      .makeCase {
+        F.delay {
+          val readable = thunk
+          (readable, unsafeReadReadable(readable))
+        }
+      } {
+        case ((readable, _), Resource.ExitCase.Succeeded) =>
+          F.delay {
+            if (!readable.readableEnded & destroyIfNotEnded)
+              readable.destroy()
+          }
+        case ((readable, _), Resource.ExitCase.Errored(_)) =>
+          // tempting, but don't propagate the error!
+          // that would trigger a unhandled Node.js error that circumvents FS2/CE error channels
+          F.delay(readable.destroy())
+        case ((readable, _), Resource.ExitCase.Canceled) =>
+          if (destroyIfCanceled)
             F.delay(readable.destroy())
-          case (readable, Resource.ExitCase.Canceled) =>
-            if (destroyIfCanceled)
-              F.delay(readable.destroy())
+          else
+            F.unit
+      }
+      .adaptError { case IOException(ex) => ex }
+
+  /** Unsafely creates a `Stream` that reads all bytes from a `Readable`.
+    */
+  private[io] def unsafeReadReadable[F[_]](
+      readable: Readable
+  )(implicit F: Async[F]): Stream[F, Byte] = {
+
+    final class Listener {
+      private[this] var readable = false
+      private[this] var error: Either[Throwable, Boolean] = null
+      private[this] var ended = false
+      private[this] var callback: Either[Throwable, Boolean] => Unit = null
+
+      def handleReadable(): Unit =
+        if (callback eq null) {
+          readable = true
+        } else {
+          val cb = callback
+          callback = null
+          cb(Right(true))
+        }
+
+      def handleEnd(): Unit = {
+        ended = true
+        if (!readable && (callback ne null)) {
+          callback(Right(false))
+        }
+      }
+
+      def handleError(e: js.Error): Unit = {
+        error = Left(js.JavaScriptException(e))
+        if (callback ne null) {
+          callback(error)
+        }
+      }
+
+      private[this] def next: F[Boolean] = F.async { cb =>
+        F.delay {
+          if (error ne null) {
+            cb(error)
+            None
+          } else if (readable) {
+            readable = false
+            cb(Right(true))
+            None
+          } else if (ended) {
+            cb(Right(false))
+            None
+          } else {
+            callback = cb
+            Some(F.delay { callback = null })
+          }
+        }
+      }
+
+      def readableEvents: Stream[F, Unit] = {
+        def go: Pull[F, Unit, Unit] =
+          Pull.eval(next).flatMap { continue =>
+            if (continue)
+              Pull.outUnit >> go
             else
-              F.unit
-        }
-        _ <- readable.registerListener[F, Any]("readable", dispatcher)(_ => channel.send(()).void)
-        _ <- readable.registerListener[F, Any]("end", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, Any]("close", dispatcher)(_ => channel.close.void)
-        _ <- readable.registerListener[F, js.Error]("error", dispatcher) { e =>
-          error.complete(js.JavaScriptException(e)).void
-        }
-      } yield readable
-      // Implementation note: why run on the MicrotaskExecutor?
-      // In many cases creating a `Readable` starts async side-effects (e.g. negotiating TLS handshake or opening a file handle).
-      // Furthermore, these side-effects will invoke the listeners we register to the `Readable`.
-      // Therefore, it is critical that the listeners are registered to the `Readable` _before_ these async side-effects occur:
-      // in other words, before we next yield (cede) to the event loop. Because an arbitrary effect `F` (particularly `IO`) may cede at any time,
-      // our only recourse is to run the entire creation/listener registration process on the microtask executor.
-      readable <- readableResource.evalOn(MicrotaskExecutor)
-      stream =
-        (channel.stream
-          .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Unit]))) >>
-          Stream
-            .evalUnChunk(
-              F.delay(
-                Option(readable.read())
-                  .fold(Chunk.empty[Byte])(Chunk.uint8Array)
-              )
-            )).adaptError { case IOException(ex) => ex }
-    } yield (readable, stream)).adaptError { case IOException(ex) => ex }
+              Pull.done
+          }
+
+        go.streamNoScope
+      }
+    }
+
+    val listener = new Listener
+    readable.on("readable", () => listener.handleReadable())
+    readable.once("error", listener.handleError(_))
+    readable.once("end", () => listener.handleEnd())
+
+    listener.readableEvents.adaptError { case IOException(ex) => ex } >>
+      Stream.evalUnChunk(
+        F.delay(Option(readable.read()).fold(Chunk.empty[Byte])(Chunk.uint8Array(_)))
+      )
+  }
 
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
     * that ends whenever the resulting stream terminates.
@@ -184,8 +236,10 @@ private[fs2] trait ioplatform {
     * and return a stream which, when run, will perform that function and emit
     * the bytes recorded in the `Writable` as an fs2.Stream
     */
-  def readWritable[F[_]: Async](f: Writable => F[Unit]): Stream[F, Byte] =
-    Stream.empty.through(toDuplexAndRead(f))
+  def readWritable[F[_]](f: Writable => F[Unit])(implicit F: Async[F]): Stream[F, Byte] =
+    Stream.empty.through(toDuplexAndRead { duplex =>
+      F.delay(duplex.on("data", () => ())) *> f(duplex)
+    })
 
   /** Take a function that reads and writes from a `Duplex` effectfully,
     * and return a pipe which, when run, will perform that function,
@@ -199,64 +253,164 @@ private[fs2] trait ioplatform {
 
   private[io] def mkDuplex[F[_]](
       in: Stream[F, Byte]
-  )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] =
-    for {
-      readDispatcher <- Dispatcher.sequential[F]
-      writeDispatcher <- Dispatcher.sequential[F]
-      errorDispatcher <- Dispatcher.sequential[F]
-      readQueue <- Queue.bounded[F, Option[Chunk[Byte]]](1).toResource
-      writeChannel <- Channel.synchronous[F, Chunk[Byte]].toResource
-      interrupt <- F.deferred[Either[Throwable, Unit]].toResource
-      duplex <- Resource.make {
-        F.delay {
-          new facade.stream.Duplex(
-            new facade.stream.DuplexOptions {
+  )(implicit F: Async[F]): Resource[F, (Duplex, Stream[F, Byte])] = {
 
-              var autoDestroy = false
+    type ReadCallback = Uint8Array => Unit
+    type ReadReadyCallback = Either[Throwable, ReadCallback] => Unit
 
-              var read = { readable =>
-                readDispatcher.unsafeRunAndForget(
-                  readQueue.take.flatMap { chunk =>
-                    F.delay(readable.push(chunk.map(_.toUint8Array).orNull)).void
-                  }
-                )
-              }
+    type WriteCallback = Either[Throwable, Option[Chunk[Byte]]] => Unit
+    type WriteReadyCallback = WriteCallback => Unit
 
-              var write = { (_, chunk, _, cb) =>
-                writeDispatcher.unsafeRunAndForget(
-                  writeChannel.send(Chunk.uint8Array(chunk)) *> F.delay(cb(null))
-                )
-              }
+    final class Listener {
+      // implementation note:
+      // we always null the callback vars *before* invoking the callback
+      // this is b/c a new callback may be installed during the invocation of the current callback
+      // nulling *after* invoking the current callback would clobber this new value
 
-              var `final` = { (_, cb) =>
-                writeDispatcher.unsafeRunAndForget(
-                  writeChannel.close *> F.delay(cb(null))
-                )
-              }
+      private[this] var readCallback: ReadCallback = null
+      private[this] var readReadyCallback: ReadReadyCallback = null
 
-              var destroy = { (_, err, cb) =>
-                errorDispatcher.unsafeRunAndForget {
-                  interrupt
-                    .complete(
-                      Option(err).map(js.JavaScriptException(_)).toLeft(())
-                    ) *> F.delay(cb(null))
-                }
-              }
-            }
-          )
+      private[this] var writeCallback: WriteCallback = null
+      private[this] var writeReadyCallback: WriteReadyCallback = null
+
+      private[this] var destroy: Either[Throwable, Unit] = null
+      private[this] var destroyCallback: Either[Throwable, Unit] => Unit = null
+
+      def handleRead(rcb: ReadCallback): Unit =
+        if (readReadyCallback ne null) {
+          val rrcb = readReadyCallback
+          readReadyCallback = null
+          rrcb(Right(rcb))
+        } else {
+          readCallback = rcb
         }
-      } { duplex =>
+
+      private[this] def readReady: F[ReadCallback] = F.async { rrcb =>
         F.delay {
-          if (!duplex.readableEnded | !duplex.writableEnded)
-            duplex.destroy()
+          if (readCallback ne null) {
+            val rcb = readCallback
+            readCallback = null
+            rrcb(Right(rcb))
+            None
+          } else {
+            readReadyCallback = rrcb
+            Some(F.delay { readReadyCallback = null })
+          }
         }
       }
-      drainIn = in.enqueueNoneTerminatedChunks(readQueue).drain
-      out = writeChannel.stream.unchunks
-    } yield (
-      duplex,
-      drainIn.merge(out).interruptWhen(interrupt).adaptError { case IOException(ex) => ex }
-    )
+
+      def reads: Pipe[F, Byte, Nothing] = {
+        def go(in: Stream[F, Byte]): Pull[F, Nothing, Unit] =
+          Pull.eval(readReady).flatMap { cb =>
+            in.pull.uncons.flatMap {
+              case Some((head, tail)) =>
+                Pull.eval(F.delay(cb(head.toUint8Array))) >> go(tail)
+              case None => Pull.eval(F.delay(cb(null)))
+            }
+          }
+
+        go(_).stream
+      }
+
+      private[this] def onWrite: F[Option[Chunk[Byte]]] = F.async { cb =>
+        F.delay {
+          if (writeReadyCallback ne null) {
+            val wrcb = writeReadyCallback
+            writeReadyCallback = null
+            wrcb(cb)
+            None
+          } else {
+            writeCallback = cb
+            Some(F.delay { writeCallback = null })
+          }
+        }
+      }
+
+      def writes: Stream[F, Byte] =
+        Stream.repeatEval(onWrite).unNoneTerminate.unchunks
+
+      def handleWrite(wrcb: WriteReadyCallback): Unit =
+        if (writeCallback ne null) {
+          val wcb = writeCallback
+          writeCallback = null
+          wrcb(wcb)
+        } else {
+          writeReadyCallback = wrcb
+        }
+
+      def handleDestroy(e: js.Error): Unit = {
+        destroy = Option(e).map(js.JavaScriptException(_)).toLeft(())
+        if (destroyCallback ne null) {
+          val dcb = destroyCallback
+          destroyCallback = null
+          dcb(destroy)
+        }
+      }
+
+      def onDestroy: F[Unit] = F.async { cb =>
+        F.delay {
+          if (destroy ne null) {
+            cb(destroy)
+            None
+          } else {
+            destroyCallback = cb
+            Some(F.delay { destroyCallback = null })
+          }
+        }
+      }
+    }
+
+    Resource.eval(F.delay(new Listener)).flatMap { listener =>
+      Resource
+        .make {
+          F.delay {
+            new facade.stream.Duplex(
+              new facade.stream.DuplexOptions {
+
+                var autoDestroy = false
+
+                var read = { readable =>
+                  listener.handleRead { c =>
+                    readable.push(c)
+                    ()
+                  }
+                }
+
+                var write = { (_, chunk, _, cb) =>
+                  listener.handleWrite { write =>
+                    write(Right(Some(Chunk.uint8Array(chunk))))
+                    cb(null)
+                  }
+                }
+
+                var `final` = { (_, cb) =>
+                  listener.handleWrite { write =>
+                    write(Right(None))
+                    cb(null)
+                  }
+                }
+
+                var destroy = { (_, err, cb) =>
+                  listener.handleDestroy(err)
+                  cb(null)
+                }
+              }
+            )
+          }
+        } { duplex =>
+          F.delay {
+            if (!duplex.readableEnded | !duplex.writableEnded)
+              duplex.destroy()
+          }
+        }
+        .tupleRight {
+          in.through(listener.reads)
+            .merge(listener.writes)
+            .interruptWhen(listener.onDestroy.attempt)
+            .adaptError { case IOException(ex) => ex }
+        }
+    }
+  }
 
   /** Stream of bytes read asynchronously from standard input. */
   def stdin[F[_]: Async]: Stream[F, Byte] = stdinAsync

@@ -39,4 +39,12 @@ class ConcurrentBenchmark {
       .map(i => Stream.eval(IO.pure(i)))
     each.parJoin(concurrent).compile.last.unsafeRunSync().get
   }
+
+  @Benchmark
+  def listParJoinUnbounded(): Int = {
+    val each = List
+      .range(0, 1000)
+      .map(i => Stream.eval(IO.pure(i)))
+    each.parJoinUnbounded.compile.last.unsafeRunSync().get
+  }
 }

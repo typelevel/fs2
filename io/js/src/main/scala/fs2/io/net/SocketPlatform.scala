@@ -103,7 +103,7 @@ private[net] trait SocketCompanionPlatform {
       Stream.chunk(bytes).through(writes).compile.drain
 
     override def writes: Pipe[F, Byte, Nothing] =
-      writeWritable(sock.asInstanceOf[Writable].pure, endAfterUse = false)
+      writeWritable(F.pure(sock), endAfterUse = false)
   }
 
 }

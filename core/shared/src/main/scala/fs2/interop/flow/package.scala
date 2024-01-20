@@ -22,22 +22,23 @@
 package fs2
 package interop
 
+import cats.effect.IO
 import cats.effect.kernel.{Async, Resource}
+import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
 
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
   *
   * @example {{{
-  * scala> import cats.effect.{IO, Resource}
+  * scala> import cats.effect.IO
   * scala> import fs2.Stream
-  * scala> import fs2.interop.flow.syntax._
   * scala> import java.util.concurrent.Flow.Publisher
   * scala>
   * scala> val upstream: Stream[IO, Int] = Stream(1, 2, 3).covary[IO]
-  * scala> val publisher: Resource[IO, Publisher[Int]] = upstream.toPublisher
-  * scala> val downstream: Stream[IO, Int] = Stream.resource(publisher).flatMap { publisher =>
-  *      |   publisher.toStream[IO](chunkSize = 16)
+  * scala> val publisher: Stream[IO, Publisher[Int]] = upstream.toPublisher
+  * scala> val downstream: Stream[IO, Int] = publisher.flatMap { publisher =>
+  *      |   Stream.fromPublisher[IO](publisher, chunkSize = 16)
   *      | }
   * scala>
   * scala> import cats.effect.unsafe.implicits.global
@@ -46,6 +47,7 @@ import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
   * }}}
   *
   * @see [[java.util.concurrent.Flow]]
+  * @deprecated All syntax has been moved directly onto [[Stream]].
   */
 package object flow {
 
@@ -100,7 +102,7 @@ package object flow {
         subscriber.stream(subscribe(subscriber))
       }
 
-  /** Creates a [[Stream]] from an [[Publisher]].
+  /** Creates a [[Stream]] from a [[Publisher]].
     *
     * @example {{{
     * scala> import cats.effect.IO
@@ -116,7 +118,7 @@ package object flow {
     * res0: Stream[IO, Int] = Stream(..)
     * }}}
     *
-    * @note The publisher will not receive a subscriber until the stream is run.
+    * @note The [[Publisher]] will not receive a [[Subscriber]] until the stream is run.
     *
     * @see the `toStream` extension method added to `Publisher`
     *
@@ -134,12 +136,15 @@ package object flow {
   /** Creates a [[Publisher]] from a [[Stream]].
     *
     * The stream is only ran when elements are requested.
-    * Closing the [[Resource]] means gracefully shutting down all active subscriptions.
+    * Closing the [[Resource]] means not accepting new subscriptions,
+    * but waiting for all active ones to finish consuming.
+    * Canceling the [[Resource.use]] means gracefully shutting down all active subscriptions.
     * Thus, no more elements will be published.
     *
-    * @note This Publisher can be reused for multiple Subscribers,
-    *       each subscription will re-run the [[Stream]] from the beginning.
+    * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+    *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
     *
+    * @see [[unsafeToPublisher]] for an unsafe version that returns a plain [[Publisher]].
     * @see [[subscribeStream]] for a simpler version that only requires a [[Subscriber]].
     *
     * @param stream The [[Stream]] to transform.
@@ -150,6 +155,24 @@ package object flow {
       F: Async[F]
   ): Resource[F, Publisher[A]] =
     StreamPublisher(stream)
+
+  /** Creates a [[Publisher]] from a [[Stream]].
+    *
+    * The stream is only ran when elements are requested.
+    *
+    * @note This [[Publisher]] can be reused for multiple [[Subscribers]],
+    *       each [[Subscription]] will re-run the [[Stream]] from the beginning.
+    *
+    * @see [[toPublisher]] for a safe version that returns a [[Resource]].
+    *
+    * @param stream The [[Stream]] to transform.
+    */
+  def unsafeToPublisher[A](
+      stream: Stream[IO, A]
+  )(implicit
+      runtime: IORuntime
+  ): Publisher[A] =
+    StreamPublisher.unsafe(stream)
 
   /** Allows subscribing a [[Subscriber]] to a [[Stream]].
     *
@@ -166,6 +189,14 @@ package object flow {
   )(implicit
       F: Async[F]
   ): F[Unit] =
+    subscribeAsStream(stream, subscriber).compile.drain
+
+  private[fs2] def subscribeAsStream[F[_], A](
+      stream: Stream[F, A],
+      subscriber: Subscriber[A]
+  )(implicit
+      F: Async[F]
+  ): Stream[F, Nothing] =
     StreamSubscription.subscribe(stream, subscriber)
 
   /** A default value for the `chunkSize` argument,

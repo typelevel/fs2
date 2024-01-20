@@ -46,6 +46,8 @@ sealed trait TLSParameters {
   val verifyHostCallback: Option[String => SyncIO[Boolean]]
   val clientAuthType: Option[CertAuthType]
 
+  private[tls] def withClientAuthType(clientAuthType: Option[CertAuthType]): TLSParameters
+
   private[tls] def configure[F[_]](
       conn: Ptr[s2n_connection]
   )(implicit F: Sync[F]): Resource[F, Unit] =
@@ -123,6 +125,9 @@ object TLSParameters {
       serverName: Option[String],
       verifyHostCallback: Option[String => SyncIO[Boolean]],
       clientAuthType: Option[CertAuthType]
-  ) extends TLSParameters
+  ) extends TLSParameters {
+    def withClientAuthType(clientAuthType: Option[CertAuthType]) =
+      copy(clientAuthType = clientAuthType)
+  }
 
 }

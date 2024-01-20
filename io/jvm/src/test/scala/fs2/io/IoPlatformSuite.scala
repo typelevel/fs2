@@ -56,8 +56,8 @@ class IoPlatformSuite extends Fs2Suite {
           .zipWithPrevious
           .assertForall {
             case (None, _)                        => true // skip first element
-            case (_, _: Chunk.Singleton[_])       => true // skip singleton bytes
-            case (Some(_: Chunk.Singleton[_]), _) => true // skip singleton bytes
+            case (_, _: Chunk.Singleton[?])       => true // skip singleton bytes
+            case (Some(_: Chunk.Singleton[?]), _) => true // skip singleton bytes
             case (Some(Chunk.ArraySlice(bs1, o1, l1)), Chunk.ArraySlice(bs2, o2, _)) =>
               {
                 // if first slice buffer is not 'full'

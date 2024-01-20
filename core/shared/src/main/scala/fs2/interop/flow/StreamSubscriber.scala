@@ -50,35 +50,35 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   // Subscriber API.
 
   /** Receives a subscription from the upstream reactive-streams system. */
-  override def onSubscribe(subscription: Subscription): Unit = {
+  override final def onSubscribe(subscription: Subscription): Unit = {
     requireNonNull(
       subscription,
       "The subscription provided to onSubscribe must not be null"
     )
-    nextState(Subscribe(subscription))
+    nextState(input = Subscribe(subscription))
   }
 
   /** Receives the next record from the upstream reactive-streams system. */
-  override def onNext(a: A): Unit = {
+  override final def onNext(a: A): Unit = {
     requireNonNull(
       a,
       "The element provided to onNext must not be null"
     )
-    nextState(Next(a))
+    nextState(input = Next(a))
   }
 
   /** Called by the upstream reactive-streams system when it fails. */
-  override def onError(ex: Throwable): Unit = {
+  override final def onError(ex: Throwable): Unit = {
     requireNonNull(
       ex,
       "The throwable provided to onError must not be null"
     )
-    nextState(Error(ex))
+    nextState(input = Error(ex))
   }
 
   /** Called by the upstream reactive-streams system when it has finished sending records. */
-  override def onComplete(): Unit =
-    nextState(Complete(canceled = false))
+  override final def onComplete(): Unit =
+    nextState(input = Complete(canceled = false))
 
   // Interop API.
 
@@ -86,13 +86,13 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   private[flow] def stream(subscribe: F[Unit]): Stream[F, A] = {
     // Called when downstream has finished consuming records.
     val finalize =
-      F.delay(nextState(Complete(canceled = true)))
+      F.delay(nextState(input = Complete(canceled = true)))
 
     // Producer for downstream.
     val dequeue1 =
       F.async[Option[Chunk[Any]]] { cb =>
         F.delay {
-          nextState(Dequeue(cb))
+          nextState(input = Dequeue(cb))
 
           Some(finalize)
         }
@@ -112,8 +112,8 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   private def run(block: => Unit): () => Unit = () => block
 
   /** Runs a single step of the state machine. */
-  private def step(in: Input): State => (State, () => Unit) =
-    in match {
+  private def step(input: Input): State => (State, () => Unit) =
+    input match {
       case Subscribe(s) => {
         case Uninitialized(None) =>
           Idle(s) -> noop
@@ -263,9 +263,9 @@ private[flow] final class StreamSubscriber[F[_], A] private (
     * + `Error` & `Dequeue`: No matter the order in which they are processed, we will complete the callback with the error.
     * + cancellation & any other thing: Worst case, we will lose some data that we not longer care about; and eventually reach `Terminal`.
     */
-  private def nextState(in: Input): Unit = {
+  private def nextState(input: Input): Unit = {
     val (_, effect) = currentState.updateAndGet { case (state, _) =>
-      step(in)(state)
+      step(input)(state)
     }
     // Only run the effect after the state update took place.
     effect()
