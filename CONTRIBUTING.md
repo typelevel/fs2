@@ -18,7 +18,7 @@ If at any point you run into problems, you can always ask a question on [the fs2
 
 ## How to submit a change
 
-If you see something worth adding, make the relevant changes in a fork of the source code and [submit a pull request to the project](fs2-pulls). If you don't know what you could help with, take a look at [the issues marked as "help wanted"][low-hanging-fruit] or ask on [Discord][fs2-dev].
+If you see something worth adding, make the relevant changes in a fork of the source code and [submit a pull request to the project][fs2-pulls]. If you don't know what you could help with, take a look at [the issues marked as "help wanted"][low-hanging-fruit] or ask on [Discord][fs2-dev].
 
 We follow similar rules to [the cats-effect project's](https://github.com/typelevel/cats-effect#development).
 Most importantly, any contributions are expected to be made in the form of [GitHub pull requests to the FS2 repository][fs2-pulls].
