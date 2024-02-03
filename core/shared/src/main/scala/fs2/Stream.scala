@@ -970,7 +970,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * scala> Stream(1, 2, 3, 4).ensure[Fallible](new RuntimeException)(_ != 3).toList
     * res0: Either[Throwable,List[Int]] = Left(java.lang.RuntimeException)
     * scala> Stream(1, 2, 3, 4).ensure[Fallible](new RuntimeException)(_ != 5).toList
-    * res0: Either[Throwable,List[Int]] = Right(List(1,2,3, 4))
+    * res0: Either[Throwable,List[Int]] = Right(List(1, 2, 3, 4))
     * scala> Stream(1, 2, 3, 4).ensure[Fallible](new RuntimeException)(_ != 3).attempt.toList
     * res0: Either[Throwable,List[Either[Throwable, Int]]] = Right(List(Right(1), Right(2), Left(java.lang.RuntimeException)))
     * }}}
