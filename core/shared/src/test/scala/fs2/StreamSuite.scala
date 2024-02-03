@@ -140,6 +140,26 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
+    group("ensure") {
+      property("preserves chunks") {
+        forAll { (s: Stream[Pure, Int]) =>
+          val s1 = s.covary[Fallible].chunks
+          val s2 = s.covary[Fallible].ensure(new Err)(_ => true).chunks
+          assertEquals(s1.toList, s2.toList)
+        }
+      }
+      test("fails when predicate fails") {
+        val err = new Err
+        val s = Stream(1, 2, 3).ensure[Fallible](err)(_ != 2).attempt
+        assertEquals(s.toList, Right(List(Right(1), Left(err))))
+      }
+      test("succeeds when predicate succeeds") {
+        val err = new Err
+        val s = Stream(1, 2, 3).ensure[Fallible](err)(_ != 10)
+        assertEquals(s.toList, s.covary[Fallible].toList)
+      }
+    }
+
     test("eval") {
       Stream.eval(SyncIO(23)).compile.lastOrError.assertEquals(23)
     }
