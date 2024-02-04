@@ -23,7 +23,4 @@ package fs2
 package io
 package file
 
-private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] =>
-}
-
-
+private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] => }
