@@ -1,4 +1,3 @@
-
 /*
  * Copyright (c) 2013 Functional Streams for Scala
  *
@@ -33,7 +32,7 @@ class WalkBenchmark extends Fs2IoSuite {
   private var target: Path = _
 
   override def beforeAll() = {
-		super.beforeAll()
+    super.beforeAll()
     val file = File.createTempFile("fs2-benchmarks-", "-walk")
     file.delete()
     file.mkdir()
@@ -42,21 +41,20 @@ class WalkBenchmark extends Fs2IoSuite {
     val MaxDepth = 7
     val Names = 'A'.to('E').toList.map(_.toString)
 
-    def loop(cwd: File, depth: Int): Unit = {
+    def loop(cwd: File, depth: Int): Unit =
       if (depth < MaxDepth) {
-        Names foreach { name =>
+        Names.foreach { name =>
           val sub = new File(cwd, name)
           sub.mkdir()
           loop(sub, depth + 1)
         }
       } else if (depth == MaxDepth) {
-        Names foreach { name =>
+        Names.foreach { name =>
           val sub = new File(cwd, name)
           sub.createNewFile()
           loop(sub, depth + 1)
         }
       }
-    }
 
     loop(file, 0)
   }
@@ -67,17 +65,21 @@ class WalkBenchmark extends Fs2IoSuite {
     (System.nanoTime() - start).nanos
   }
 
-
-	test("Files.walk has similar performance to java.nio.file.Files.walk") {
-    val fs2Time = time(Files[IO]
-      .walk(target)
-      .compile
-      .count
-      .unsafeRunSync())
+  test("Files.walk has similar performance to java.nio.file.Files.walk") {
+    val fs2Time = time(
+      Files[IO]
+        .walk(target)
+        .compile
+        .count
+        .unsafeRunSync()
+    )
     val nioTime = time(java.nio.file.Files.walk(target.toNioPath).count())
     val epsilon = nioTime.toNanos * 1.5
     println(s"fs2 took: ${fs2Time.toMillis} ms")
     println(s"nio took: ${nioTime.toMillis} ms")
-    assert((fs2Time - nioTime).toNanos.abs < epsilon, s"fs2 time: $fs2Time, nio time: $nioTime, diff: ${fs2Time - nioTime}") 
+    assert(
+      (fs2Time - nioTime).toNanos.abs < epsilon,
+      s"fs2 time: $fs2Time, nio time: $nioTime, diff: ${fs2Time - nioTime}"
+    )
   }
 }
