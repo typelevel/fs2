@@ -24,7 +24,6 @@ package io
 package file
 
 import cats.effect.kernel.{Async, Resource, Sync}
-import cats.effect.std.Dispatcher
 import cats.syntax.all._
 
 import java.nio.channels.{FileChannel, SeekableByteChannel}
@@ -41,7 +40,6 @@ import java.util.stream.{Stream => JStream}
 
 import scala.concurrent.duration._
 
-import fs2.concurrent.Channel
 import fs2.io.CollectionCompat._
 
 private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Files[F] =>
@@ -93,7 +91,8 @@ private[file] trait FilesCompanionPlatform {
   private case class NioFileKey(value: AnyRef) extends FileKey
 
   private final class AsyncFiles[F[_]](protected implicit val F: Async[F])
-      extends Files.UnsealedFiles[F] {
+      extends Files.UnsealedFiles[F]
+      with AsyncFilesPlatform[F] {
 
     def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       Sync[F].blocking {
@@ -390,54 +389,6 @@ private[file] trait FilesCompanionPlatform {
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
-
-    override def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
-      Stream.resource(Dispatcher.sequential[F]).flatMap { dispatcher =>
-        Stream.eval(Channel.bounded[F, Chunk[Path]](10)).flatMap { channel =>
-          val doWalk = Sync[F].interruptibleMany {
-            val bldr = Vector.newBuilder[Path]
-            val limit = 4096
-            var size = 0
-            bldr.sizeHint(limit)
-            JFiles.walkFileTree(
-              start.toNioPath,
-              if (followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
-              maxDepth,
-              new SimpleFileVisitor[JPath] {
-                private def enqueue(path: JPath): FileVisitResult = {
-                  bldr += Path.fromNioPath(path)
-                  size += 1
-                  if (size >= limit) {
-                    val result = dispatcher.unsafeRunSync(channel.send(Chunk.from(bldr.result())))
-                    bldr.clear()
-                    size = 0
-                    if (result.isRight) FileVisitResult.CONTINUE else FileVisitResult.TERMINATE
-                  } else FileVisitResult.CONTINUE
-                }
-
-                override def visitFile(file: JPath, attrs: JBasicFileAttributes): FileVisitResult =
-                  enqueue(file)
-
-                override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
-                  FileVisitResult.CONTINUE
-
-                override def preVisitDirectory(dir: JPath, attrs: JBasicFileAttributes)
-                    : FileVisitResult =
-                  enqueue(dir)
-
-                override def postVisitDirectory(dir: JPath, t: IOException): FileVisitResult =
-                  FileVisitResult.CONTINUE
-              }
-            )
-
-            dispatcher.unsafeRunSync(
-              if (size > 0) channel.closeWithElement(Chunk.from(bldr.result()))
-              else channel.close
-            )
-          }
-          channel.stream.unchunks.concurrently(Stream.eval(doWalk))
-        }
-      }
 
     def createWatcher: Resource[F, Watcher[F]] = Watcher.default(this, F)
 

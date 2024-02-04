@@ -379,7 +379,20 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Creates a stream of paths contained in a given file tree down to a given depth.
     */
-  def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path]
+  def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
+    walk(start, maxDepth, followLinks, 4096)
+
+  /** Creates a stream of paths contained in a given file tree down to a given depth.
+    * The `chunkSize` parameter specifies the maximumn number of elements in a chunk emitted
+    * from the returned stream. Further, allows implementations to optimize traversal.
+    * A chunk size of `Int.MaxValue` allows implementations to eagerly collect all paths
+    * in the file tree and emit a single chunk.
+    */
+  def walk(start: Path, maxDepth: Int, followLinks: Boolean, chunkSize: Int): Stream[F, Path]
+
+  /** Eagerly walks the given file tree. Alias for `walk(start, Int.MaxValue, false, Int.MaxValue)`. */
+  def walkEager(start: Path): Stream[F, Path] =
+    walk(start, Int.MaxValue, false, Int.MaxValue)
 
   /** Writes all data to the file at the specified path.
     *
@@ -505,7 +518,7 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
         case _: NoSuchFileException => ()
       })
 
-    def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+    def walk(start: Path, maxDepth: Int, followLinks: Boolean, chunkSize: Int): Stream[F, Path] = {
 
       def go(start: Path, maxDepth: Int, ancestry: List[Either[Path, FileKey]]): Stream[F, Path] =
         Stream.emit(start) ++ {
@@ -541,6 +554,8 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
         }
 
       Stream.eval(getBasicFileAttributes(start, followLinks)) >> go(start, maxDepth, Nil)
+        .chunkN(chunkSize)
+        .flatMap(Stream.chunk)
     }
 
     def writeAll(

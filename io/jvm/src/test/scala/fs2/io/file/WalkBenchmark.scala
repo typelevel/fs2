@@ -38,7 +38,7 @@ class WalkBenchmark extends Fs2IoSuite {
     file.mkdir()
     target = Path(file.toString)
 
-    val MaxDepth = 7
+    val MaxDepth = 6
     val Names = 'A'.to('E').toList.map(_.toString)
 
     def loop(cwd: File, depth: Int): Unit =
@@ -73,9 +73,17 @@ class WalkBenchmark extends Fs2IoSuite {
         .count
         .unsafeRunSync()
     )
+    val fs2EagerTime = time(
+      Files[IO]
+        .walkEager(target)
+        .compile
+        .count
+        .unsafeRunSync()
+    )
     val nioTime = time(java.nio.file.Files.walk(target.toNioPath).count())
     val epsilon = nioTime.toNanos * 1.5
     println(s"fs2 took: ${fs2Time.toMillis} ms")
+    println(s"fs2 eager took: ${fs2EagerTime.toMillis} ms")
     println(s"nio took: ${nioTime.toMillis} ms")
     assert(
       (fs2Time - nioTime).toNanos.abs < epsilon,
