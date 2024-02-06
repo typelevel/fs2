@@ -87,6 +87,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A] private (
         case Outcome.Canceled()  => cancelMe
       }
       .void
+      .voidError // errors handled above and passed to subscriber
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
