@@ -92,7 +92,8 @@ private[file] trait FilesCompanionPlatform {
   private case class NioFileKey(value: AnyRef) extends FileKey
 
   private final class AsyncFiles[F[_]](protected implicit val F: Async[F])
-      extends Files.UnsealedFiles[F] {
+      extends Files.UnsealedFiles[F]
+      with AsyncFilesPlatform[F] {
 
     def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       Sync[F].blocking {
@@ -390,16 +391,7 @@ private[file] trait FilesCompanionPlatform {
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    override def walk(
-        start: Path,
-        maxDepth: Int,
-        followLinks: Boolean,
-        chunkSize: Int
-    ): Stream[F, Path] =
-      if (chunkSize == Int.MaxValue) walkEager(start, maxDepth, followLinks)
-      else walkJustInTime(start, maxDepth, followLinks, chunkSize)
-
-    private def walkEager(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+    protected def walkEager(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
       val doWalk = Sync[F].interruptibleMany {
         val bldr = Vector.newBuilder[Path]
         JFiles.walkFileTree(
@@ -443,7 +435,7 @@ private[file] trait FilesCompanionPlatform {
         ancestry: List[Either[Path, NioFileKey]]
     )
 
-    private def walkJustInTime(
+    protected def walkJustInTime(
         start: Path,
         maxDepth: Int,
         followLinks: Boolean,
