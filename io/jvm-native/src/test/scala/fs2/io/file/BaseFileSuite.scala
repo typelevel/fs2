@@ -30,6 +30,7 @@ import java.nio.file.{Files => JFiles, Path => JPath, _}
 import java.nio.file.attribute.{BasicFileAttributes => JBasicFileAttributes}
 
 import scala.concurrent.duration._
+import scala.util.control.NonFatal
 
 trait BaseFileSuite extends Fs2Suite {
 
@@ -77,11 +78,15 @@ trait BaseFileSuite extends Fs2Suite {
         dir.toNioPath,
         new SimpleFileVisitor[JPath] {
           override def visitFile(path: JPath, attrs: JBasicFileAttributes) = {
-            JFiles.delete(path)
+            try JFiles.deleteIfExists(path)
+            catch { case NonFatal(_) => () }
             FileVisitResult.CONTINUE
           }
+          override def visitFileFailed(path: JPath, e: IOException) =
+            FileVisitResult.CONTINUE
           override def postVisitDirectory(path: JPath, e: IOException) = {
-            JFiles.delete(path)
+            try JFiles.deleteIfExists(path)
+            catch { case NonFatal(_) => () }
             FileVisitResult.CONTINUE
           }
         }
