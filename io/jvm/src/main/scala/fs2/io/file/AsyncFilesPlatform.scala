@@ -50,7 +50,7 @@ private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] =>
       chunkSize: Int
   ): Stream[F, Path] =
     Stream.resource(Dispatcher.sequential[F]).flatMap { dispatcher =>
-      Stream.eval(Channel.bounded[F, Chunk[Path]](2)).flatMap { channel =>
+      Stream.eval(Channel.synchronous[F, Chunk[Path]]).flatMap { channel =>
         val doWalk = Sync[F].interruptibleMany {
           val bldr = Vector.newBuilder[Path]
           var size = 0
