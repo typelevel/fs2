@@ -27,7 +27,7 @@ import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import java.nio.channels.{FileChannel, SeekableByteChannel}
-import java.nio.file.{Files => JFiles, Path => JPath, _}
+import java.nio.file.{Files => JFiles, Path => JPath, FileSystemLoopException => _, _}
 import java.nio.file.attribute.{
   BasicFileAttributeView,
   BasicFileAttributes => JBasicFileAttributes,
@@ -416,7 +416,10 @@ private[file] trait FilesCompanionPlatform {
               enqueue(file)
 
             override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
-              FileVisitResult.CONTINUE
+              t match {
+                case _: FileSystemLoopException => throw t
+                case _                          => FileVisitResult.CONTINUE
+              }
 
             override def preVisitDirectory(
                 dir: JPath,
@@ -464,16 +467,18 @@ private[file] trait FilesCompanionPlatform {
                   try {
                     val targetAttr =
                       JFiles.readAttributes(entry.path.toNioPath, classOf[JBasicFileAttributes])
-                    val fileKey = Option(targetAttr.fileKey)
+                    val fileKey = Option(targetAttr.fileKey).map(NioFileKey(_))
                     val isCycle = entry.ancestry.exists {
-                      case Right(ancestorKey) => fileKey.contains(ancestorKey)
+                      case Right(ancestorKey) =>
+                        fileKey.contains(ancestorKey)
                       case Left(ancestorPath) =>
                         JFiles.isSameFile(entry.path.toNioPath, ancestorPath.toNioPath)
                     }
                     if (isCycle) throw new FileSystemLoopException(entry.path.toString)
                     else entry.path
                   } catch {
-                    case NonFatal(_) => null
+                    case t: FileSystemLoopException => throw t
+                    case NonFatal(_)                => null
                   }
                 } else null
               if (dir ne null) {
@@ -519,7 +524,7 @@ private[file] trait FilesCompanionPlatform {
           WalkEntry(
             start,
             JFiles.readAttributes(start.toNioPath, classOf[JBasicFileAttributes]),
-            1,
+            0,
             Nil
           )
         })
