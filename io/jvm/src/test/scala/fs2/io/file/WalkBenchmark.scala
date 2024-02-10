@@ -29,6 +29,8 @@ import scala.concurrent.duration.*
 
 class WalkBenchmark extends Fs2IoSuite {
 
+  override def munitIOTimeout = 5.minutes
+
   private var target: Path = _
 
   override def beforeAll() = {
@@ -38,7 +40,7 @@ class WalkBenchmark extends Fs2IoSuite {
     file.mkdir()
     target = Path(file.toString)
 
-    val MaxDepth = 6
+    val MaxDepth = 7
     val Names = 'A'.to('E').toList.map(_.toString)
 
     def loop(cwd: File, depth: Int): Unit =
