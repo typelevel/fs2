@@ -391,13 +391,13 @@ private[file] trait FilesCompanionPlatform {
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    protected def walkEager(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+    protected def walkEager(start: Path, options: WalkOptions): Stream[F, Path] = {
       val doWalk = Sync[F].interruptibleMany {
         val bldr = Vector.newBuilder[Path]
         JFiles.walkFileTree(
           start.toNioPath,
-          if (followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
-          maxDepth,
+          if (options.followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
+          options.maxDepth,
           new SimpleFileVisitor[JPath] {
             private def enqueue(path: JPath): FileVisitResult = {
               bldr += Path.fromNioPath(path)
@@ -409,8 +409,9 @@ private[file] trait FilesCompanionPlatform {
 
             override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
               t match {
-                case _: FileSystemLoopException => throw t
-                case _                          => FileVisitResult.CONTINUE
+                case _: FileSystemLoopException =>
+                  if (options.allowCycles) enqueue(file) else throw t
+                case _ => FileVisitResult.CONTINUE
               }
 
             override def preVisitDirectory(
@@ -437,9 +438,7 @@ private[file] trait FilesCompanionPlatform {
 
     protected def walkJustInTime(
         start: Path,
-        maxDepth: Int,
-        followLinks: Boolean,
-        chunkSize: Int
+        options: WalkOptions
     ): Stream[F, Path] = {
       import scala.collection.immutable.Queue
 
@@ -448,14 +447,14 @@ private[file] trait FilesCompanionPlatform {
           var acc = Vector.empty[Path]
           var toWalk = toWalk0
 
-          while (acc.size < chunkSize && toWalk.nonEmpty) {
+          while (acc.size < options.chunkSize && toWalk.nonEmpty) {
             val entry = toWalk.head
             toWalk = toWalk.drop(1)
             acc = acc :+ entry.path
-            if (entry.depth < maxDepth) {
+            if (entry.depth < options.maxDepth) {
               val dir =
                 if (entry.attr.isDirectory) entry.path
-                else if (followLinks && entry.attr.isSymbolicLink) {
+                else if (options.followLinks && entry.attr.isSymbolicLink) {
                   try {
                     val targetAttr =
                       JFiles.readAttributes(entry.path.toNioPath, classOf[JBasicFileAttributes])
@@ -466,7 +465,9 @@ private[file] trait FilesCompanionPlatform {
                       case Left(ancestorPath) =>
                         JFiles.isSameFile(entry.path.toNioPath, ancestorPath.toNioPath)
                     }
-                    if (isCycle) throw new FileSystemLoopException(entry.path.toString)
+                    if (isCycle)
+                      if (options.allowCycles) null
+                      else throw new FileSystemLoopException(entry.path.toString)
                     else entry.path
                   } catch {
                     case t: FileSystemLoopException => throw t

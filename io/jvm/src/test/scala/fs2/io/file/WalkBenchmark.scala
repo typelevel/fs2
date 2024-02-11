@@ -77,7 +77,7 @@ class WalkBenchmark extends Fs2IoSuite {
     )
     val fs2EagerTime = time(
       Files[IO]
-        .walkEager(target)
+        .walk(target, WalkOptions.Eager)
         .compile
         .count
         .unsafeRunSync()

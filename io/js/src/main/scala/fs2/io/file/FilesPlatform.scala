@@ -175,7 +175,7 @@ private[fs2] trait FilesCompanionPlatform {
           )
         ).adaptError { case IOException(ex) => ex }
       else
-        walk(path, Int.MaxValue, true).evalTap(deleteIfExists).compile.drain
+        walk(path, WalkOptions.Default.withFollowLinks(true)).evalTap(deleteIfExists).compile.drain
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] =
       (if (followLinks)

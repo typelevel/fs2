@@ -27,19 +27,15 @@ private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] =>
 
   override def walk(
       start: Path,
-      maxDepth: Int,
-      followLinks: Boolean,
-      chunkSize: Int
+      options: WalkOptions
   ): Stream[F, Path] =
-    if (chunkSize == Int.MaxValue) walkEager(start, maxDepth, followLinks)
-    else walkJustInTime(start, maxDepth, followLinks, chunkSize)
+    if (options.chunkSize == Int.MaxValue) walkEager(start, options)
+    else walkJustInTime(start, options)
 
-  protected def walkEager(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path]
+  protected def walkEager(start: Path, options: WalkOptions): Stream[F, Path]
 
   protected def walkJustInTime(
       start: Path,
-      maxDepth: Int,
-      followLinks: Boolean,
-      chunkSize: Int
+      options: WalkOptions
   ): Stream[F, Path]
 }

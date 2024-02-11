@@ -594,7 +594,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("maxDepth = 0") {
       Stream
         .resource(tempFilesHierarchy)
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = 0, followLinks = false))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(0)))
         .compile
         .count
         .assertEquals(1L) // the root
@@ -603,7 +603,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("maxDepth = 1") {
       Stream
         .resource(tempFilesHierarchy)
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = 1, followLinks = false))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(1)))
         .compile
         .count
         .assertEquals(6L) // the root + 5 children
@@ -612,9 +612,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("maxDepth = 1 / eager") {
       Stream
         .resource(tempFilesHierarchy)
-        .flatMap(topDir =>
-          Files[IO].walk(topDir, maxDepth = 1, followLinks = false, chunkSize = Int.MaxValue)
-        )
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Eager.withMaxDepth(1)))
         .compile
         .count
         .assertEquals(6L) // the root + 5 children
@@ -623,7 +621,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
     test("maxDepth = 2") {
       Stream
         .resource(tempFilesHierarchy)
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = 2, followLinks = false))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(2)))
         .compile
         .count
         .assertEquals(31L) // the root + 5 children + 5 files per child directory
@@ -635,7 +633,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .evalMap { case (topDir, secondDir) =>
           Files[IO].createSymbolicLink(topDir / "link", secondDir).as(topDir)
         }
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = Int.MaxValue, followLinks = true))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true)))
         .compile
         .count
         .assertEquals(31L * 2)
@@ -647,7 +645,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .evalMap { case (topDir, secondDir) =>
           Files[IO].createSymbolicLink(topDir / "link", secondDir).as(topDir)
         }
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = Int.MaxValue, followLinks = false))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default))
         .compile
         .count
         .assertEquals(32L)
@@ -659,7 +657,7 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .evalTap { topDir =>
           Files[IO].createSymbolicLink(topDir / "link", topDir)
         }
-        .flatMap(topDir => Files[IO].walk(topDir, maxDepth = Int.MaxValue, followLinks = true))
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true)))
         .compile
         .count
         .intercept[FileSystemLoopException]
@@ -673,11 +671,40 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         }
         .flatMap(topDir =>
           Files[IO]
-            .walk(topDir, maxDepth = Int.MaxValue, followLinks = true, chunkSize = Int.MaxValue)
+            .walk(topDir, WalkOptions.Eager.withFollowLinks(true))
         )
         .compile
         .count
         .intercept[FileSystemLoopException]
+    }
+
+    test("followLinks with cycle / cycles allowed") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir =>
+          Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true).withAllowCycles(true))
+        )
+        .compile
+        .count
+        .assertEquals(32L)
+    }
+
+    test("followLinks with cycle / eager / cycles allowed") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir =>
+          Files[IO]
+            .walk(topDir, WalkOptions.Eager.withFollowLinks(true).withAllowCycles(true))
+        )
+        .compile
+        .count
+        .assertEquals(32L)
     }
   }
 
