@@ -392,7 +392,7 @@ private[file] trait FilesCompanionPlatform {
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
     protected def walkEager(start: Path, options: WalkOptions): Stream[F, Path] = {
-      val doWalk = Sync[F].interruptibleMany {
+      val doWalk = Sync[F].interruptible {
         val bldr = Vector.newBuilder[Path]
         JFiles.walkFileTree(
           start.toNioPath,
@@ -405,7 +405,7 @@ private[file] trait FilesCompanionPlatform {
             }
 
             override def visitFile(file: JPath, attrs: JBasicFileAttributes): FileVisitResult =
-              enqueue(file)
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(file)
 
             override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
               t match {
@@ -418,10 +418,10 @@ private[file] trait FilesCompanionPlatform {
                 dir: JPath,
                 attrs: JBasicFileAttributes
             ): FileVisitResult =
-              enqueue(dir)
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(dir)
 
             override def postVisitDirectory(dir: JPath, t: IOException): FileVisitResult =
-              FileVisitResult.CONTINUE
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else FileVisitResult.CONTINUE
           }
         )
         Chunk.from(bldr.result())
@@ -443,11 +443,11 @@ private[file] trait FilesCompanionPlatform {
       import scala.collection.immutable.Queue
 
       def loop(toWalk0: Queue[WalkEntry]): Stream[F, Path] = {
-        val partialWalk = Sync[F].interruptibleMany {
+        val partialWalk = Sync[F].interruptible {
           var acc = Vector.empty[Path]
           var toWalk = toWalk0
 
-          while (acc.size < options.chunkSize && toWalk.nonEmpty) {
+          while (acc.size < options.chunkSize && toWalk.nonEmpty && !Thread.interrupted()) {
             val entry = toWalk.head
             toWalk = toWalk.drop(1)
             acc = acc :+ entry.path
@@ -513,7 +513,7 @@ private[file] trait FilesCompanionPlatform {
       }
 
       Stream
-        .eval(Sync[F].interruptibleMany {
+        .eval(Sync[F].interruptible {
           WalkEntry(
             start,
             JFiles.readAttributes(start.toNioPath, classOf[JBasicFileAttributes]),

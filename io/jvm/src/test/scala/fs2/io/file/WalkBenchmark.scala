@@ -92,4 +92,28 @@ class WalkBenchmark extends Fs2IoSuite {
       s"fs2 time: $fs2Time, nio time: $nioTime, diff: ${fs2Time - nioTime}"
     )
   }
+
+  test("walk is interruptible") {
+    val elapsed = time(
+      Files[IO]
+        .walk(target)
+        .interruptAfter(1.second)
+        .compile
+        .count
+        .unsafeRunSync()
+    )
+    assert(elapsed < 1250.milliseconds)
+  }
+
+  test("walk eager is interruptible") {
+    val elapsed = time(
+      Files[IO]
+        .walk(target, WalkOptions.Eager)
+        .interruptAfter(1.second)
+        .compile
+        .count
+        .unsafeRunSync()
+    )
+    assert(elapsed < 1250.milliseconds)
+  }
 }
