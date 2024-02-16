@@ -27,20 +27,21 @@ import cats.effect.kernel.{Async, Resource, Sync}
 import cats.syntax.all._
 
 import java.nio.channels.{FileChannel, SeekableByteChannel}
-import java.nio.file.{Files => JFiles, Path => JPath, _}
+import java.nio.file.{Files => JFiles, Path => JPath, FileSystemLoopException => _, _}
 import java.nio.file.attribute.{
   BasicFileAttributeView,
   BasicFileAttributes => JBasicFileAttributes,
   PosixFileAttributes => JPosixFileAttributes,
-  PosixFilePermissions
+  PosixFilePermissions,
+  FileTime
 }
 import java.security.Principal
 import java.util.stream.{Stream => JStream}
 
 import scala.concurrent.duration._
+import scala.util.control.NonFatal
 
 import fs2.io.CollectionCompat._
-import java.nio.file.attribute.FileTime
 
 private[file] trait FilesPlatform[F[_]] extends DeprecatedFilesApi[F] { self: Files[F] =>
 
@@ -91,7 +92,8 @@ private[file] trait FilesCompanionPlatform {
   private case class NioFileKey(value: AnyRef) extends FileKey
 
   private final class AsyncFiles[F[_]](protected implicit val F: Async[F])
-      extends Files.UnsealedFiles[F] {
+      extends Files.UnsealedFiles[F]
+      with AsyncFilesPlatform[F] {
 
     def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       Sync[F].blocking {
@@ -388,6 +390,140 @@ private[file] trait FilesCompanionPlatform {
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
+
+    protected def walkEager(start: Path, options: WalkOptions): Stream[F, Path] = {
+      val doWalk = Sync[F].interruptible {
+        val bldr = Vector.newBuilder[Path]
+        JFiles.walkFileTree(
+          start.toNioPath,
+          if (options.followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
+          options.maxDepth,
+          new SimpleFileVisitor[JPath] {
+            private def enqueue(path: JPath): FileVisitResult = {
+              bldr += Path.fromNioPath(path)
+              FileVisitResult.CONTINUE
+            }
+
+            override def visitFile(file: JPath, attrs: JBasicFileAttributes): FileVisitResult =
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(file)
+
+            override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
+              t match {
+                case _: FileSystemLoopException =>
+                  if (options.allowCycles) enqueue(file) else throw t
+                case _ => FileVisitResult.CONTINUE
+              }
+
+            override def preVisitDirectory(
+                dir: JPath,
+                attrs: JBasicFileAttributes
+            ): FileVisitResult =
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(dir)
+
+            override def postVisitDirectory(dir: JPath, t: IOException): FileVisitResult =
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else FileVisitResult.CONTINUE
+          }
+        )
+        Chunk.from(bldr.result())
+      }
+      Stream.eval(doWalk).flatMap(Stream.chunk)
+    }
+
+    private case class WalkEntry(
+        path: Path,
+        attr: JBasicFileAttributes,
+        depth: Int,
+        ancestry: List[Either[Path, NioFileKey]]
+    )
+
+    protected def walkJustInTime(
+        start: Path,
+        options: WalkOptions
+    ): Stream[F, Path] = {
+      import scala.collection.immutable.Queue
+
+      def loop(toWalk0: Queue[WalkEntry]): Stream[F, Path] = {
+        val partialWalk = Sync[F].interruptible {
+          var acc = Vector.empty[Path]
+          var toWalk = toWalk0
+
+          while (acc.size < options.chunkSize && toWalk.nonEmpty && !Thread.interrupted()) {
+            val entry = toWalk.head
+            toWalk = toWalk.drop(1)
+            acc = acc :+ entry.path
+            if (entry.depth < options.maxDepth) {
+              val dir =
+                if (entry.attr.isDirectory) entry.path
+                else if (options.followLinks && entry.attr.isSymbolicLink) {
+                  try {
+                    val targetAttr =
+                      JFiles.readAttributes(entry.path.toNioPath, classOf[JBasicFileAttributes])
+                    val fileKey = Option(targetAttr.fileKey).map(NioFileKey(_))
+                    val isCycle = entry.ancestry.exists {
+                      case Right(ancestorKey) =>
+                        fileKey.contains(ancestorKey)
+                      case Left(ancestorPath) =>
+                        JFiles.isSameFile(entry.path.toNioPath, ancestorPath.toNioPath)
+                    }
+                    if (isCycle)
+                      if (options.allowCycles) null
+                      else throw new FileSystemLoopException(entry.path.toString)
+                    else entry.path
+                  } catch {
+                    case t: FileSystemLoopException => throw t
+                    case NonFatal(_)                => null
+                  }
+                } else null
+              if (dir ne null) {
+                try {
+                  val listing = JFiles.list(dir.toNioPath)
+                  try {
+                    val descendants = listing.iterator.asScala.flatMap { p =>
+                      try
+                        Some(
+                          WalkEntry(
+                            Path.fromNioPath(p),
+                            JFiles.readAttributes(
+                              p,
+                              classOf[JBasicFileAttributes],
+                              LinkOption.NOFOLLOW_LINKS
+                            ),
+                            entry.depth + 1,
+                            Option(entry.attr.fileKey)
+                              .map(NioFileKey(_))
+                              .toRight(entry.path) :: entry.ancestry
+                          )
+                        )
+                      catch {
+                        case NonFatal(_) => None
+                      }
+                    }
+                    toWalk = Queue.empty ++ descendants ++ toWalk
+                  } finally listing.close()
+                } catch {
+                  case NonFatal(_) => ()
+                }
+              }
+            }
+          }
+
+          Stream.chunk(Chunk.from(acc)) ++ (if (toWalk.isEmpty) Stream.empty else loop(toWalk))
+        }
+        Stream.eval(partialWalk).flatten
+      }
+
+      Stream
+        .eval(Sync[F].interruptible {
+          WalkEntry(
+            start,
+            JFiles.readAttributes(start.toNioPath, classOf[JBasicFileAttributes]),
+            0,
+            Nil
+          )
+        })
+        .mask
+        .flatMap(w => loop(Queue(w)))
+    }
 
     def createWatcher: Resource[F, Watcher[F]] = Watcher.default(this, F)
 

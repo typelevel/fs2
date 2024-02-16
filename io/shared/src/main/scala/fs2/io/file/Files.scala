@@ -375,11 +375,23 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
 
   /** Creates a stream of paths contained in a given file tree. Depth is unlimited. */
   def walk(start: Path): Stream[F, Path] =
-    walk(start, Int.MaxValue, false)
+    walk(start, WalkOptions.Default)
+
+  /** Creates a stream of paths contained in a given file tree.
+    *
+    * The `options` parameter allows for customizing the walk behavior. The `WalkOptions`
+    * type provides both `WalkOptions.Default` and `WalkOptions.Eager` as starting points,
+    * and further customizations can be specified via methods on the returned options value.
+    * For example, to eagerly walk a directory while following symbolic links, emitting all
+    * paths as a single chunk, use `walk(start, WalkOptions.Eager.withFollowLinks(true))`.
+    */
+  def walk(start: Path, options: WalkOptions): Stream[F, Path]
 
   /** Creates a stream of paths contained in a given file tree down to a given depth.
     */
-  def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path]
+  @deprecated("Use walk(start, WalkOptions.Default.withMaxDepth(..).withFollowLinks(..))", "3.10")
+  def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
+    walk(start, WalkOptions.Default)
 
   /** Writes all data to the file at the specified path.
     *
@@ -505,7 +517,7 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
         case _: NoSuchFileException => ()
       })
 
-    def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] = {
+    def walk(start: Path, options: WalkOptions): Stream[F, Path] = {
 
       def go(start: Path, maxDepth: Int, ancestry: List[Either[Path, FileKey]]): Stream[F, Path] =
         Stream.emit(start) ++ {
@@ -516,7 +528,7 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
                 list(start).mask.flatMap { path =>
                   go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
                 }
-              else if (attr.isSymbolicLink && followLinks)
+              else if (attr.isSymbolicLink && options.followLinks)
                 Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap {
                   attr =>
                     val fileKey = attr.fileKey
@@ -530,6 +542,8 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
                         list(start).mask.flatMap { path =>
                           go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
                         }
+                      else if (options.allowCycles)
+                        Stream.empty
                       else
                         Stream.raiseError(new FileSystemLoopException(start.toString))
                     }
@@ -540,7 +554,13 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
             }
         }
 
-      Stream.eval(getBasicFileAttributes(start, followLinks)) >> go(start, maxDepth, Nil)
+      Stream.eval(getBasicFileAttributes(start, options.followLinks)) >> go(
+        start,
+        options.maxDepth,
+        Nil
+      )
+        .chunkN(options.chunkSize)
+        .flatMap(Stream.chunk)
     }
 
     def writeAll(

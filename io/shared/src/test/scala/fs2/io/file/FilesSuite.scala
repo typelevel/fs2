@@ -568,10 +568,9 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
       Stream
         .resource(tempFilesHierarchy)
         .flatMap(topDir => Files[IO].walk(topDir))
-        .map(_ => 1)
         .compile
-        .foldMonoid
-        .assertEquals(31) // the root + 5 children + 5 files per child directory
+        .count
+        .assertEquals(31L) // the root + 5 children + 5 files per child directory
     }
 
     test("can delete files in a nested tree") {
@@ -590,6 +589,122 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals(25)
+    }
+
+    test("maxDepth = 0") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(0)))
+        .compile
+        .count
+        .assertEquals(1L) // the root
+    }
+
+    test("maxDepth = 1") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(1)))
+        .compile
+        .count
+        .assertEquals(6L) // the root + 5 children
+    }
+
+    test("maxDepth = 1 / eager") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Eager.withMaxDepth(1)))
+        .compile
+        .count
+        .assertEquals(6L) // the root + 5 children
+    }
+
+    test("maxDepth = 2") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withMaxDepth(2)))
+        .compile
+        .count
+        .assertEquals(31L) // the root + 5 children + 5 files per child directory
+    }
+
+    test("followLinks = true") {
+      Stream
+        .resource((tempFilesHierarchy, tempFilesHierarchy).tupled)
+        .evalMap { case (topDir, secondDir) =>
+          Files[IO].createSymbolicLink(topDir / "link", secondDir).as(topDir)
+        }
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true)))
+        .compile
+        .count
+        .assertEquals(31L * 2)
+    }
+
+    test("followLinks = false") {
+      Stream
+        .resource((tempFilesHierarchy, tempFilesHierarchy).tupled)
+        .evalMap { case (topDir, secondDir) =>
+          Files[IO].createSymbolicLink(topDir / "link", secondDir).as(topDir)
+        }
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default))
+        .compile
+        .count
+        .assertEquals(32L)
+    }
+
+    test("followLinks with cycle") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir => Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true)))
+        .compile
+        .count
+        .intercept[FileSystemLoopException]
+    }
+
+    test("followLinks with cycle / eager") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir =>
+          Files[IO]
+            .walk(topDir, WalkOptions.Eager.withFollowLinks(true))
+        )
+        .compile
+        .count
+        .intercept[FileSystemLoopException]
+    }
+
+    test("followLinks with cycle / cycles allowed") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir =>
+          Files[IO].walk(topDir, WalkOptions.Default.withFollowLinks(true).withAllowCycles(true))
+        )
+        .compile
+        .count
+        .assertEquals(32L)
+    }
+
+    test("followLinks with cycle / eager / cycles allowed") {
+      Stream
+        .resource(tempFilesHierarchy)
+        .evalTap { topDir =>
+          Files[IO].createSymbolicLink(topDir / "link", topDir)
+        }
+        .flatMap(topDir =>
+          Files[IO]
+            .walk(topDir, WalkOptions.Eager.withFollowLinks(true).withAllowCycles(true))
+        )
+        .compile
+        .count
+        .assertEquals(32L)
     }
   }
 
