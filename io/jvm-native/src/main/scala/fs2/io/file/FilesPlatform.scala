@@ -391,26 +391,35 @@ private[file] trait FilesCompanionPlatform {
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    protected def walkEager(start: Path, options: WalkOptions): Stream[F, Path] = {
+    protected def walkEager(start: Path, options: WalkOptions): Stream[F, PathInfo] = {
       val doWalk = Sync[F].interruptible {
-        val bldr = Vector.newBuilder[Path]
+        val bldr = Vector.newBuilder[PathInfo]
         JFiles.walkFileTree(
           start.toNioPath,
           if (options.followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
           options.maxDepth,
           new SimpleFileVisitor[JPath] {
-            private def enqueue(path: JPath): FileVisitResult = {
-              bldr += Path.fromNioPath(path)
+            private def enqueue(path: JPath, attrs: JBasicFileAttributes): FileVisitResult = {
+              bldr += PathInfo(Path.fromNioPath(path), new DelegatingBasicFileAttributes(attrs))
               FileVisitResult.CONTINUE
             }
 
             override def visitFile(file: JPath, attrs: JBasicFileAttributes): FileVisitResult =
-              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(file)
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(file, attrs)
 
             override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
               t match {
                 case _: FileSystemLoopException =>
-                  if (options.allowCycles) enqueue(file) else throw t
+                  if (options.allowCycles)
+                    enqueue(
+                      file,
+                      JFiles.readAttributes(
+                        file,
+                        classOf[JBasicFileAttributes],
+                        LinkOption.NOFOLLOW_LINKS
+                      )
+                    )
+                  else throw t
                 case _ => FileVisitResult.CONTINUE
               }
 
@@ -418,7 +427,7 @@ private[file] trait FilesCompanionPlatform {
                 dir: JPath,
                 attrs: JBasicFileAttributes
             ): FileVisitResult =
-              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(dir)
+              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(dir, attrs)
 
             override def postVisitDirectory(dir: JPath, t: IOException): FileVisitResult =
               if (Thread.interrupted()) FileVisitResult.TERMINATE else FileVisitResult.CONTINUE
@@ -439,18 +448,18 @@ private[file] trait FilesCompanionPlatform {
     protected def walkJustInTime(
         start: Path,
         options: WalkOptions
-    ): Stream[F, Path] = {
+    ): Stream[F, PathInfo] = {
       import scala.collection.immutable.Queue
 
-      def loop(toWalk0: Queue[WalkEntry]): Stream[F, Path] = {
+      def loop(toWalk0: Queue[WalkEntry]): Stream[F, PathInfo] = {
         val partialWalk = Sync[F].interruptible {
-          var acc = Vector.empty[Path]
+          var acc = Vector.empty[PathInfo]
           var toWalk = toWalk0
 
           while (acc.size < options.chunkSize && toWalk.nonEmpty && !Thread.interrupted()) {
             val entry = toWalk.head
             toWalk = toWalk.drop(1)
-            acc = acc :+ entry.path
+            acc = acc :+ PathInfo(entry.path, new DelegatingBasicFileAttributes(entry.attr))
             if (entry.depth < options.maxDepth) {
               val dir =
                 if (entry.attr.isDirectory) entry.path
