@@ -3605,7 +3605,7 @@ object Stream extends StreamLowPriority {
 
       def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
         F.suspend(hint) {
-          for (_ <- 1 to chunkSize if i.hasNext) yield i.next()
+          i.take(chunkSize).toVector
         }.map { s =>
           if (s.isEmpty) None else Some((Chunk.from(s), i))
         }
