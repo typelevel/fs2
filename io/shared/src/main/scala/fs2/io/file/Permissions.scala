@@ -55,6 +55,12 @@ import PosixPermission._
   */
 final class PosixPermissions private (val value: Int) extends Permissions {
 
+  def add(p: PosixPermission): PosixPermissions =
+    new PosixPermissions(value | p.value)
+
+  def remove(p: PosixPermission): PosixPermissions =
+    new PosixPermissions(value ^ p.value)
+
   override def equals(that: Any): Boolean = that match {
     case other: PosixPermissions => value == other.value
     case _                       => false
