@@ -568,6 +568,56 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream)
   }
 
+  def conflate[F2[x] >: F[x], O2 >: O](implicit
+      F: Concurrent[F2],
+      O: Semigroup[O2]
+  ): Stream[F2, O2] =
+    conflateWithSeed[F2, O2](identity)((s, o) => O.combine(s, o))
+
+  def conflateWithSeed[F2[x] >: F[x], S](
+      seed: O => S
+  )(aggregate: (S, O) => S)(implicit F: Concurrent[F2]): Stream[F2, S] = {
+
+    sealed trait State
+    case object Closed extends State
+    case object Quiet extends State
+    case class Accumulating(value: S) extends State
+    case class Awaiting(waiter: Deferred[F2, S]) extends State
+
+    Stream.eval(F.ref(Quiet: State)).flatMap { ref =>
+      val producer = foreach { o =>
+        ref.flatModify {
+          case Closed =>
+            (Closed, F.unit)
+          case Quiet =>
+            (Accumulating(seed(o)), F.unit)
+          case Accumulating(acc) =>
+            (Accumulating(aggregate(acc, o)), F.unit)
+          case Awaiting(waiter) =>
+            (Quiet, waiter.complete(seed(o)).void)
+        }
+      }
+
+      def consumerLoop: Pull[F2, S, Unit] =
+        Pull.eval {
+          F.deferred[S].flatMap { waiter =>
+            ref.modify {
+              case Closed =>
+                (Closed, Pull.done)
+              case Quiet =>
+                (Awaiting(waiter), Pull.eval(waiter.get).flatMap(Pull.output1) >> consumerLoop)
+              case Accumulating(s) =>
+                (Quiet, Pull.output1(s) >> consumerLoop)
+              case Awaiting(_) =>
+                sys.error("Impossible")
+            }
+          }
+        }.flatten
+
+      consumerLoop.stream.concurrently(producer)
+    }
+  }
+
   /** Prepends a chunk onto the front of this stream.
     *
     * @example {{{
