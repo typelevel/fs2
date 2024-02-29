@@ -571,20 +571,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def conflateChunks[F2[x] >: F[x]: Concurrent](chunkLimit: Int): Stream[F2, Chunk[O]] =
     Stream.eval(Channel.bounded[F2, Chunk[O]](chunkLimit)).flatMap { chan =>
       val producer = chunks.through(chan.sendAll)
-      val consumer = chan.stream.underlying.unconsFlatMap(chunks => Pull.output1(chunks.iterator.reduce(_ ++ _))).stream
+      val consumer = chan.stream.chunks.map(_.combineAll)
       consumer.concurrently(producer)
     }
 
-  def conflate[F2[x] >: F[x]: Concurrent, O2](chunkLimit: Int, zero: O2)(f: (O2, O) => O2): Stream[F2, O2] =
+  def conflate[F2[x] >: F[x]: Concurrent, O2](chunkLimit: Int, zero: O2)(
+      f: (O2, O) => O2
+  ): Stream[F2, O2] =
     conflateChunks[F2](chunkLimit).map(_.foldLeft(zero)(f))
 
-  def conflate1[F2[x] >: F[x]: Concurrent, O2 >: O](chunkLimit: Int)(f: (O2, O2) => O2): Stream[F2, O2] =
+  def conflate1[F2[x] >: F[x]: Concurrent, O2 >: O](chunkLimit: Int)(
+      f: (O2, O2) => O2
+  ): Stream[F2, O2] =
     conflateChunks[F2](chunkLimit).map(c => c.drop(1).foldLeft(c(0): O2)((x, y) => f(x, y)))
 
-  def conflateSemigroup[F2[x] >: F[x]: Concurrent, O2 >: O: Semigroup](chunkLimit: Int): Stream[F2, O2] =
+  def conflateSemigroup[F2[x] >: F[x]: Concurrent, O2 >: O: Semigroup](
+      chunkLimit: Int
+  ): Stream[F2, O2] =
     conflate1[F2, O2](chunkLimit)(Semigroup[O2].combine)
 
-  def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](chunkLimit: Int)(f: O => O2): Stream[F2, O2] =
+  def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](chunkLimit: Int)(
+      f: O => O2
+  ): Stream[F2, O2] =
     map(f).conflateSemigroup[F2, O2](chunkLimit)
 
   /** Prepends a chunk onto the front of this stream.
@@ -2419,7 +2427,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
         chunks.through(chan.sendAll)
       }
     }
-    
+
   /** Prints each element of this stream to standard out, converting each element to a `String` via `Show`. */
   def printlns[F2[x] >: F[x], O2 >: O](implicit
       F: Console[F2],
