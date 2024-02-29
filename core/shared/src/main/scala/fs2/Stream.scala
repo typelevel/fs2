@@ -568,55 +568,24 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream)
   }
 
-  def conflate[F2[x] >: F[x], O2 >: O](implicit
-      F: Concurrent[F2],
-      O: Semigroup[O2]
-  ): Stream[F2, O2] =
-    conflateWithSeed[F2, O2](identity)((s, o) => O.combine(s, o))
-
-  def conflateWithSeed[F2[x] >: F[x], S](
-      seed: O => S
-  )(aggregate: (S, O) => S)(implicit F: Concurrent[F2]): Stream[F2, S] = {
-
-    sealed trait State
-    case object Closed extends State
-    case object Quiet extends State
-    case class Accumulating(value: S) extends State
-    case class Awaiting(waiter: Deferred[F2, S]) extends State
-
-    Stream.eval(F.ref(Quiet: State)).flatMap { ref =>
-      val producer = foreach { o =>
-        ref.flatModify {
-          case Closed =>
-            (Closed, F.unit)
-          case Quiet =>
-            (Accumulating(seed(o)), F.unit)
-          case Accumulating(acc) =>
-            (Accumulating(aggregate(acc, o)), F.unit)
-          case Awaiting(waiter) =>
-            (Quiet, waiter.complete(seed(o)).void)
-        }
-      }
-
-      def consumerLoop: Pull[F2, S, Unit] =
-        Pull.eval {
-          F.deferred[S].flatMap { waiter =>
-            ref.modify {
-              case Closed =>
-                (Closed, Pull.done)
-              case Quiet =>
-                (Awaiting(waiter), Pull.eval(waiter.get).flatMap(Pull.output1) >> consumerLoop)
-              case Accumulating(s) =>
-                (Quiet, Pull.output1(s) >> consumerLoop)
-              case Awaiting(_) =>
-                sys.error("Impossible")
-            }
-          }
-        }.flatten
-
-      consumerLoop.stream.concurrently(producer)
+  def conflateChunks[F2[x] >: F[x]: Concurrent](chunkLimit: Int): Stream[F2, Chunk[O]] =
+    Stream.eval(Channel.bounded[F2, Chunk[O]](chunkLimit)).flatMap { chan =>
+      val producer = chunks.through(chan.sendAll)
+      val consumer = chan.stream.underlying.unconsFlatMap(chunks => Pull.output1(chunks.iterator.reduce(_ ++ _))).stream
+      consumer.concurrently(producer)
     }
-  }
+
+  def conflate[F2[x] >: F[x]: Concurrent, O2](chunkLimit: Int, zero: O2)(f: (O2, O) => O2): Stream[F2, O2] =
+    conflateChunks[F2](chunkLimit).map(_.foldLeft(zero)(f))
+
+  def conflate1[F2[x] >: F[x]: Concurrent, O2 >: O](chunkLimit: Int)(f: (O2, O2) => O2): Stream[F2, O2] =
+    conflateChunks[F2](chunkLimit).map(c => c.drop(1).foldLeft(c(0): O2)((x, y) => f(x, y)))
+
+  def conflateSemigroup[F2[x] >: F[x]: Concurrent, O2 >: O: Semigroup](chunkLimit: Int): Stream[F2, O2] =
+    conflate1[F2, O2](chunkLimit)(Semigroup[O2].combine)
+
+  def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](chunkLimit: Int)(f: O => O2): Stream[F2, O2] =
+    map(f).conflateSemigroup[F2, O2](chunkLimit)
 
   /** Prepends a chunk onto the front of this stream.
     *
@@ -2448,10 +2417,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
       chan.stream.unchunks.concurrently {
         chunks.through(chan.sendAll)
-
       }
     }
-
+    
   /** Prints each element of this stream to standard out, converting each element to a `String` via `Show`. */
   def printlns[F2[x] >: F[x], O2 >: O](implicit
       F: Console[F2],

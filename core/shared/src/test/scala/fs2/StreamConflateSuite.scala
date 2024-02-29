@@ -28,14 +28,13 @@ import scala.concurrent.duration._
 
 class StreamConflateSuite extends Fs2Suite {
 
-  test("conflate") {
+  test("conflateMap") {
     TestControl.executeEmbed(
       Stream
         .iterate(0)(_ + 1)
         .covary[IO]
         .metered(10.millis)
-        .map(List(_))
-        .conflate
+        .conflateMap(100)(List(_))
         .metered(101.millis)
         .take(5)
         .compile
