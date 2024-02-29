@@ -568,6 +568,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.eval(fstream)
   }
 
+  /** Pulls up to the specified number of chunks from the source stream while concurrently allowing
+    * downstream to process emitted chunks. Unlike `prefetchN`, all accumulated chunks are emitted
+    * as a single chunk upon downstream pulling.
+    *
+    * The `chunkLimit` parameter controls backpressure on the source stream.
+    */
   def conflateChunks[F2[x] >: F[x]: Concurrent](chunkLimit: Int): Stream[F2, Chunk[O]] =
     Stream.eval(Channel.bounded[F2, Chunk[O]](chunkLimit)).flatMap { chan =>
       val producer = chunks.through(chan.sendAll)
@@ -575,25 +581,36 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       consumer.concurrently(producer)
     }
 
+  /** Like `conflateChunks` but uses the supplied `zero` and `f` values to combine the elements of
+    * each output chunk in to a single value.
+    */
   def conflate[F2[x] >: F[x]: Concurrent, O2](chunkLimit: Int, zero: O2)(
       f: (O2, O) => O2
   ): Stream[F2, O2] =
     conflateChunks[F2](chunkLimit).map(_.foldLeft(zero)(f))
 
+  /** Like `conflate` but combines elements of the output chunk with the supplied function.
+    */
   def conflate1[F2[x] >: F[x]: Concurrent, O2 >: O](chunkLimit: Int)(
       f: (O2, O2) => O2
   ): Stream[F2, O2] =
     conflateChunks[F2](chunkLimit).map(c => c.drop(1).foldLeft(c(0): O2)((x, y) => f(x, y)))
 
+  /** Like `conflate1` but combines elements using the semigroup of the output type.
+    */
   def conflateSemigroup[F2[x] >: F[x]: Concurrent, O2 >: O: Semigroup](
       chunkLimit: Int
   ): Stream[F2, O2] =
     conflate1[F2, O2](chunkLimit)(Semigroup[O2].combine)
 
-  def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](chunkLimit: Int)(
-      f: O => O2
-  ): Stream[F2, O2] =
-    map(f).conflateSemigroup[F2, O2](chunkLimit)
+  /** Conflates elements and then maps the supplied function over the output chunk and combines the results using a semigroup.
+    */
+  def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](
+      chunkLimit: Int
+  )(f: O => O2): Stream[F2, O2] =
+    conflateChunks[F2](chunkLimit).map(c =>
+      c.drop(1).foldLeft(f(c(0)))((x, y) => Semigroup[O2].combine(x, f(y)))
+    )
 
   /** Prepends a chunk onto the front of this stream.
     *
