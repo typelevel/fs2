@@ -11,7 +11,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.12"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.1")
+ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.3")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
