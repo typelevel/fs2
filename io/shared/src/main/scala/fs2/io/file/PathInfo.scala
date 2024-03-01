@@ -19,23 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io
-package file
+package fs2.io.file
 
-private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] =>
-
-  override def walkWithAttributes(
-      start: Path,
-      options: WalkOptions
-  ): Stream[F, PathInfo] =
-    if (options.chunkSize == Int.MaxValue) walkEager(start, options)
-    else walkJustInTime(start, options)
-
-  protected def walkEager(start: Path, options: WalkOptions): Stream[F, PathInfo]
-
-  protected def walkJustInTime(
-      start: Path,
-      options: WalkOptions
-  ): Stream[F, PathInfo]
-}
+/** Provides a `Path` and its associated `BasicFileAttributes`. */
+case class PathInfo(path: Path, attributes: BasicFileAttributes)
