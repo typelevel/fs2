@@ -92,8 +92,7 @@ private[file] trait FilesCompanionPlatform {
   private case class NioFileKey(value: AnyRef) extends FileKey
 
   private final class AsyncFiles[F[_]](protected implicit val F: Async[F])
-      extends Files.UnsealedFiles[F]
-      with AsyncFilesPlatform[F] {
+      extends Files.UnsealedFiles[F] {
 
     def copy(source: Path, target: Path, flags: CopyFlags): F[Unit] =
       Sync[F].blocking {
@@ -391,53 +390,6 @@ private[file] trait FilesCompanionPlatform {
         .resource(Resource.fromAutoCloseable(javaCollection))
         .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
 
-    protected def walkEager(start: Path, options: WalkOptions): Stream[F, PathInfo] = {
-      val doWalk = Sync[F].interruptible {
-        val bldr = Vector.newBuilder[PathInfo]
-        JFiles.walkFileTree(
-          start.toNioPath,
-          if (options.followLinks) Set(FileVisitOption.FOLLOW_LINKS).asJava else Set.empty.asJava,
-          options.maxDepth,
-          new SimpleFileVisitor[JPath] {
-            private def enqueue(path: JPath, attrs: JBasicFileAttributes): FileVisitResult = {
-              bldr += PathInfo(Path.fromNioPath(path), new DelegatingBasicFileAttributes(attrs))
-              FileVisitResult.CONTINUE
-            }
-
-            override def visitFile(file: JPath, attrs: JBasicFileAttributes): FileVisitResult =
-              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(file, attrs)
-
-            override def visitFileFailed(file: JPath, t: IOException): FileVisitResult =
-              t match {
-                case _: FileSystemLoopException =>
-                  if (options.allowCycles)
-                    enqueue(
-                      file,
-                      JFiles.readAttributes(
-                        file,
-                        classOf[JBasicFileAttributes],
-                        LinkOption.NOFOLLOW_LINKS
-                      )
-                    )
-                  else throw t
-                case _ => FileVisitResult.CONTINUE
-              }
-
-            override def preVisitDirectory(
-                dir: JPath,
-                attrs: JBasicFileAttributes
-            ): FileVisitResult =
-              if (Thread.interrupted()) FileVisitResult.TERMINATE else enqueue(dir, attrs)
-
-            override def postVisitDirectory(dir: JPath, t: IOException): FileVisitResult =
-              if (Thread.interrupted()) FileVisitResult.TERMINATE else FileVisitResult.CONTINUE
-          }
-        )
-        Chunk.from(bldr.result())
-      }
-      Stream.eval(doWalk).flatMap(Stream.chunk)
-    }
-
     private case class WalkEntry(
         path: Path,
         attr: JBasicFileAttributes,
@@ -445,7 +397,7 @@ private[file] trait FilesCompanionPlatform {
         ancestry: List[Either[Path, NioFileKey]]
     )
 
-    protected def walkJustInTime(
+    override def walkWithAttributes(
         start: Path,
         options: WalkOptions
     ): Stream[F, PathInfo] = {
