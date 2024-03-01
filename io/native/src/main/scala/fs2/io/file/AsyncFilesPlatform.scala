@@ -24,15 +24,15 @@ package io
 package file
 
 private[file] trait AsyncFilesPlatform[F[_]] { self: Files.UnsealedFiles[F] =>
-  override def walk(
+  override def walkWithAttributes(
       start: Path,
       options: WalkOptions
-  ): Stream[F, Path] =
+  ): Stream[F, PathInfo] =
     // Disable eager walks until https://github.com/scala-native/scala-native/issues/3744
     walkJustInTime(start, options)
 
   protected def walkJustInTime(
       start: Path,
       options: WalkOptions
-  ): Stream[F, Path]
+  ): Stream[F, PathInfo]
 }

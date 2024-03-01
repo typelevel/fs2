@@ -385,13 +385,21 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     * For example, to eagerly walk a directory while following symbolic links, emitting all
     * paths as a single chunk, use `walk(start, WalkOptions.Eager.withFollowLinks(true))`.
     */
-  def walk(start: Path, options: WalkOptions): Stream[F, Path]
+  def walk(start: Path, options: WalkOptions): Stream[F, Path] =
+    walkWithAttributes(start, options).map(_.path)
 
   /** Creates a stream of paths contained in a given file tree down to a given depth.
     */
   @deprecated("Use walk(start, WalkOptions.Default.withMaxDepth(..).withFollowLinks(..))", "3.10")
   def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
     walk(start, WalkOptions.Default)
+
+  /** Like `walk` but returns a `PathInfo`, which provides both the `Path` and `BasicFileAttributes`. */
+  def walkWithAttributes(start: Path): Stream[F, PathInfo] =
+    walkWithAttributes(start, WalkOptions.Default)
+
+  /** Like `walk` but returns a `PathInfo`, which provides both the `Path` and `BasicFileAttributes`. */
+  def walkWithAttributes(start: Path, options: WalkOptions): Stream[F, PathInfo]
 
   /** Writes all data to the file at the specified path.
     *
@@ -517,44 +525,46 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
         case _: NoSuchFileException => ()
       })
 
-    def walk(start: Path, options: WalkOptions): Stream[F, Path] = {
+    def walkWithAttributes(start: Path, options: WalkOptions): Stream[F, PathInfo] = {
 
-      def go(start: Path, maxDepth: Int, ancestry: List[Either[Path, FileKey]]): Stream[F, Path] =
-        Stream.emit(start) ++ {
-          if (maxDepth == 0) Stream.empty
-          else
-            Stream.eval(getBasicFileAttributes(start, followLinks = false)).mask.flatMap { attr =>
-              if (attr.isDirectory)
-                list(start).mask.flatMap { path =>
-                  go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+      def go(
+          start: Path,
+          maxDepth: Int,
+          ancestry: List[Either[Path, FileKey]]
+      ): Stream[F, PathInfo] =
+        Stream.eval(getBasicFileAttributes(start, followLinks = false)).mask.flatMap { attr =>
+          Stream.emit(PathInfo(start, attr)) ++ {
+            if (maxDepth == 0) Stream.empty
+            else if (attr.isDirectory)
+              list(start).mask.flatMap { path =>
+                go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+              }
+            else if (attr.isSymbolicLink && options.followLinks)
+              Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap { attr =>
+                val fileKey = attr.fileKey
+                val isCycle = Traverse[List].existsM(ancestry) {
+                  case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                  case Left(ancestorPath) => isSameFile(start, ancestorPath)
                 }
-              else if (attr.isSymbolicLink && options.followLinks)
-                Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap {
-                  attr =>
-                    val fileKey = attr.fileKey
-                    val isCycle = Traverse[List].existsM(ancestry) {
-                      case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
-                      case Left(ancestorPath) => isSameFile(start, ancestorPath)
-                    }
 
-                    Stream.eval(isCycle).flatMap { isCycle =>
-                      if (!isCycle)
-                        list(start).mask.flatMap { path =>
-                          go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
-                        }
-                      else if (options.allowCycles)
-                        Stream.empty
-                      else
-                        Stream.raiseError(new FileSystemLoopException(start.toString))
+                Stream.eval(isCycle).flatMap { isCycle =>
+                  if (!isCycle)
+                    list(start).mask.flatMap { path =>
+                      go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
                     }
-
+                  else if (options.allowCycles)
+                    Stream.empty
+                  else
+                    Stream.raiseError(new FileSystemLoopException(start.toString))
                 }
-              else
-                Stream.empty
-            }
+
+              }
+            else
+              Stream.empty
+          }
         }
 
-      Stream.eval(getBasicFileAttributes(start, options.followLinks)) >> go(
+      go(
         start,
         options.maxDepth,
         Nil
