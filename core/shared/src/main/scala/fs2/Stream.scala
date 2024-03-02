@@ -594,7 +594,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def conflate1[F2[x] >: F[x]: Concurrent, O2 >: O](chunkLimit: Int)(
       f: (O2, O2) => O2
   ): Stream[F2, O2] =
-    conflateChunks[F2](chunkLimit).map(c => c.drop(1).foldLeft(c(0): O2)((x, y) => f(x, y)))
+    conflateChunks[F2](chunkLimit).map(_.iterator.reduce(f))
 
   /** Like `conflate1` but combines elements using the semigroup of the output type.
     */
@@ -608,9 +608,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def conflateMap[F2[x] >: F[x]: Concurrent, O2: Semigroup](
       chunkLimit: Int
   )(f: O => O2): Stream[F2, O2] =
-    conflateChunks[F2](chunkLimit).map(c =>
-      c.drop(1).foldLeft(f(c(0)))((x, y) => Semigroup[O2].combine(x, f(y)))
-    )
+    conflateChunks[F2](chunkLimit).map(_.iterator.map(f).reduce(Semigroup[O2].combine))
 
   /** Prepends a chunk onto the front of this stream.
     *
