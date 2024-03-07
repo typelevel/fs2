@@ -11,7 +11,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.12"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.1")
+ThisBuild / crossScalaVersions := Seq("2.12.19", Scala213, "3.3.3")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -278,9 +278,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.10.0",
-      "org.typelevel" %%% "cats-effect" % "3.5.3",
-      "org.typelevel" %%% "cats-effect-laws" % "3.5.3" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.5.3" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.5.4",
+      "org.typelevel" %%% "cats-effect-laws" % "3.5.4" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.5.4" % Test,
       "org.typelevel" %%% "cats-laws" % "2.10.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test,
