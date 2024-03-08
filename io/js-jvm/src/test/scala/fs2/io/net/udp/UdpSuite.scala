@@ -34,7 +34,7 @@ import scala.concurrent.duration._
 class UdpSuite extends Fs2Suite with UdpSuitePlatform {
   def sendAndReceive(socket: DatagramSocket[IO], toSend: Datagram): IO[Datagram] =
     socket
-      .write(toSend) >> socket.read.timeoutTo(100.millis, IO.defer(sendAndReceive(socket, toSend)))
+      .write(toSend) >> socket.read.timeoutTo(1.second, IO.defer(sendAndReceive(socket, toSend)))
 
   group("udp") {
     test("echo one") {
