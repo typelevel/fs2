@@ -251,6 +251,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super#Code"
+  ),
+  // private classes
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.SocketCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform#AsyncSocket.this"
   )
 )
 
