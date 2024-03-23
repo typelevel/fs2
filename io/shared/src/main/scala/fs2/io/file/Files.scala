@@ -391,7 +391,7 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
     */
   @deprecated("Use walk(start, WalkOptions.Default.withMaxDepth(..).withFollowLinks(..))", "3.10")
   def walk(start: Path, maxDepth: Int, followLinks: Boolean): Stream[F, Path] =
-    walk(start, WalkOptions.Default)
+    walk(start, WalkOptions.Default.withMaxDepth(maxDepth).withFollowLinks(followLinks))
 
   /** Like `walk` but returns a `PathInfo`, which provides both the `Path` and `BasicFileAttributes`. */
   def walkWithAttributes(start: Path): Stream[F, PathInfo] =
