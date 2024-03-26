@@ -109,6 +109,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
             // if we were externally canceled, this is handled below
             F.unit
         }
+        .mask
 
     val cancellation = F.asyncCheckAttempt[Unit] { cb =>
       F.delay {

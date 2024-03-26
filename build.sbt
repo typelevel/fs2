@@ -251,6 +251,22 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super#Code"
+  ),
+  // Privates: #3387
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next$"
+  ),
+  ProblemFilters.exclude[MissingFieldProblem](
+    "fs2.interop.flow.StreamSubscriber#Input.Next"
+  ),
+  ProblemFilters.exclude[Problem](
+    "fs2.interop.flow.StreamSubscriber#State#WaitingOnUpstream.*"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem](
+    "fs2.interop.flow.StreamSubscriber$State$WaitingOnUpstream$"
   )
 )
 
