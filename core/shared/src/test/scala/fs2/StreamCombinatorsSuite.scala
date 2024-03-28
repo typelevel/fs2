@@ -704,16 +704,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromIterator") {
-    forAllF { (x: List[Int], cs: Int) =>
+    // Note: important to use Vector here and not List in order to prevent https://github.com/typelevel/fs2/issues/3415
+    forAllF { (x: Vector[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromIterator[IO](x.iterator, chunkSize).assertEmits(x)
+      Stream.fromIterator[IO](x.iterator, chunkSize).assertEmits(x.toList)
     }
   }
 
   test("fromBlockingIterator") {
-    forAllF { (x: List[Int], cs: Int) =>
+    // Note: important to use Vector here and not List in order to prevent https://github.com/typelevel/fs2/issues/3415
+    forAllF { (x: Vector[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).assertEmits(x)
+      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).assertEmits(x.toList)
     }
   }
 
