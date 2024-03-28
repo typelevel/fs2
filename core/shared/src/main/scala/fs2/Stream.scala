@@ -3646,9 +3646,13 @@ object Stream extends StreamLowPriority {
 
       def getNextChunk(i: Iterator[A]): F[Option[(Chunk[A], Iterator[A])]] =
         F.suspend(hint) {
-          i.take(chunkSize).toVector
-        }.map { s =>
-          if (s.isEmpty) None else Some((Chunk.from(s), i))
+          val bldr = Vector.newBuilder[A]
+          var cnt = 0
+          while (cnt < chunkSize && i.hasNext) {
+            bldr += i.next()
+            cnt += 1
+          }
+          if (cnt == 0) None else Some((Chunk.from(bldr.result()), i))
         }
 
       Stream.unfoldChunkEval(iterator)(getNextChunk)
