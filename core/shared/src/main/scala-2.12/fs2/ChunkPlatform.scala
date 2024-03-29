@@ -31,7 +31,7 @@ import scala.reflect.ClassTag
 private[fs2] trait ChunkPlatform[+O] {
   self: Chunk[O] =>
 
-  def asSeqPlatform: Option[IndexedSeq[O]] =
+  private[fs2] def asSeqPlatform: Option[IndexedSeq[O]] =
     None
 }
 

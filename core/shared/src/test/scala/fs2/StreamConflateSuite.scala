@@ -21,32 +21,27 @@
 
 package fs2
 
-import scala.collection.immutable.ArraySeq
+import cats.effect.IO
+import cats.effect.testkit.TestControl
 
-private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
-  self: Chunk[O] =>
+import scala.concurrent.duration._
 
-  private[fs2] def asSeqPlatform: Option[IndexedSeq[O]] =
-    this match {
-      case arraySlice: Chunk.ArraySlice[?] =>
-        Some(
-          ArraySeq
-            .unsafeWrapArray(arraySlice.values)
-            .slice(
-              from = arraySlice.offset,
-              until = arraySlice.offset + arraySlice.length
-            )
+class StreamConflateSuite extends Fs2Suite {
+
+  test("conflateMap") {
+    TestControl.executeEmbed(
+      Stream
+        .iterate(0)(_ + 1)
+        .covary[IO]
+        .metered(10.millis)
+        .conflateMap(100)(List(_))
+        .metered(101.millis)
+        .take(5)
+        .compile
+        .toList
+        .assertEquals(
+          List(0) :: (1 until 10).toList :: 10.until(40).toList.grouped(10).toList
         )
-
-      case _ =>
-        None
-    }
-}
-
-private[fs2] trait ChunkAsSeqPlatform[+O] extends ChunkAsSeq213And3Compat[O] {
-  self: ChunkAsSeq[O] =>
-}
-
-private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat {
-  self: Chunk.type =>
+    )
+  }
 }

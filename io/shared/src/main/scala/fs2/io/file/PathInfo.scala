@@ -19,34 +19,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
+package fs2.io.file
 
-import scala.collection.immutable.ArraySeq
-
-private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
-  self: Chunk[O] =>
-
-  private[fs2] def asSeqPlatform: Option[IndexedSeq[O]] =
-    this match {
-      case arraySlice: Chunk.ArraySlice[?] =>
-        Some(
-          ArraySeq
-            .unsafeWrapArray(arraySlice.values)
-            .slice(
-              from = arraySlice.offset,
-              until = arraySlice.offset + arraySlice.length
-            )
-        )
-
-      case _ =>
-        None
-    }
-}
-
-private[fs2] trait ChunkAsSeqPlatform[+O] extends ChunkAsSeq213And3Compat[O] {
-  self: ChunkAsSeq[O] =>
-}
-
-private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat {
-  self: Chunk.type =>
-}
+/** Provides a `Path` and its associated `BasicFileAttributes`. */
+case class PathInfo(path: Path, attributes: BasicFileAttributes)
