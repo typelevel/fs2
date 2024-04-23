@@ -144,13 +144,7 @@ object StreamSubscriber {
     case object DownstreamCancellation extends State
     case class UpstreamError(err: Throwable) extends State
 
-    def reportFailure(e: Throwable): Unit =
-      Thread.getDefaultUncaughtExceptionHandler match {
-        case null => e.printStackTrace()
-        case h    => h.uncaughtException(Thread.currentThread(), e)
-      }
-
-    def step(in: Input): State => (State, () => Unit) =
+    def step(in: Input)(reportFailure: Throwable => Unit): State => (State, () => Unit) =
       in match {
         case OnSubscribe(s) => {
           case RequestBeforeSubscription(req) =>
@@ -206,24 +200,25 @@ object StreamSubscriber {
         }
       }
 
-    F.delay(new AtomicReference[(State, () => Unit)]((Uninitialized, () => ()))).map { ref =>
-      new FSM[F, A] {
-        def nextState(in: Input): Unit = {
-          val (_, effect) = ref.updateAndGet { case (state, _) =>
-            step(in)(state)
-          }
-          effect()
+    for {
+      ref <- F.delay(new AtomicReference[(State, () => Unit)]((Uninitialized, () => ())))
+      executionContext <- F.executionContext
+    } yield new FSM[F, A] {
+      def nextState(in: Input): Unit = {
+        val (_, effect) = ref.updateAndGet { case (state, _) =>
+          step(in)(executionContext.reportFailure)(state)
         }
-        def onSubscribe(s: Subscription): Unit = nextState(OnSubscribe(s))
-        def onNext(a: A): Unit = nextState(OnNext(a))
-        def onError(t: Throwable): Unit = nextState(OnError(t))
-        def onComplete(): Unit = nextState(OnComplete)
-        def onFinalize: F[Unit] = F.delay(nextState(OnFinalize))
-        def dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
-          F.async_[Either[Throwable, Option[Chunk[A]]]] { cb =>
-            nextState(OnDequeue(out => cb(Right(out))))
-          }
+        effect()
       }
+      def onSubscribe(s: Subscription): Unit = nextState(OnSubscribe(s))
+      def onNext(a: A): Unit = nextState(OnNext(a))
+      def onError(t: Throwable): Unit = nextState(OnError(t))
+      def onComplete(): Unit = nextState(OnComplete)
+      def onFinalize: F[Unit] = F.delay(nextState(OnFinalize))
+      def dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
+        F.async_[Either[Throwable, Option[Chunk[A]]]] { cb =>
+          nextState(OnDequeue(out => cb(Right(out))))
+        }
     }
   }
 }
