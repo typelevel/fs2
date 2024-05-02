@@ -8,7 +8,7 @@ ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.12"
+val Scala213 = "2.13.14"
 
 ThisBuild / scalaVersion := Scala213
 ThisBuild / crossScalaVersions := Seq("2.12.19", Scala213, "3.3.3")
