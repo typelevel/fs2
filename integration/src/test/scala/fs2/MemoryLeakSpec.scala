@@ -29,7 +29,6 @@ import java.nio.file.{Files, Path}
 import cats.~>
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.syntax.all._
 import org.typelevel.scalaccompat.annotation._
 
 import munit.{FunSuite, TestOptions}

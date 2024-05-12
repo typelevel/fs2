@@ -1511,8 +1511,8 @@ object Chunk
                 case Right(b) =>
                   buf += b
                   go()
-                case Left(a) =>
-                  state = (f(a).iterator) :: h :: tail
+                case Left(a2) =>
+                  state = (f(a2).iterator) :: h :: tail
                   go()
               }
           }

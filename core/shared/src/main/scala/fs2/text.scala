@@ -22,7 +22,6 @@
 package fs2
 
 import cats.ApplicativeThrow
-import cats.syntax.foldable._
 import java.nio.{Buffer, ByteBuffer, CharBuffer}
 import java.nio.charset.{
   CharacterCodingException,
