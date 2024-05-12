@@ -287,6 +287,8 @@ jobs:
         project: [ioJS, ioJVM, ioNative]
     runs-on: ${{ matrix.os }}
     steps:
+      - run: brew install sbt
+
       - name: Checkout current branch (full)
         uses: actions/checkout@v4
         with:
