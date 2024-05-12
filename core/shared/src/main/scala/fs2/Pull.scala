@@ -375,7 +375,6 @@ object Pull extends PullLowPriority {
     * The `F` type must be explicitly provided (e.g., via `raiseError[IO]`
     * or `raiseError[Fallible]`).
     */
-  @nowarn("msg=never used")
   def raiseError[F[_]: RaiseThrowable](err: Throwable): Pull[F, Nothing, Nothing] = Fail(err)
 
   /** Creates a pull that evaluates the supplied effect `fr`, emits no
@@ -1192,8 +1191,8 @@ object Pull extends PullLowPriority {
               else
                 // interrupts scope was already interrupted, resume operation
                 err1 match {
-                  case None      => unit
-                  case Some(err) => Fail(err)
+                  case None     => unit
+                  case Some(e2) => Fail(e2)
                 }
           }
 

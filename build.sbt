@@ -8,7 +8,7 @@ ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.12"
+val Scala213 = "2.13.14"
 
 ThisBuild / scalaVersion := Scala213
 ThisBuild / crossScalaVersions := Seq("2.12.19", Scala213, "3.3.3")
@@ -36,7 +36,9 @@ ThisBuild / githubWorkflowAddedJobs +=
     javas = List(githubWorkflowJavaVersions.value.head),
     oses = List("macos-latest"),
     matrixAdds = Map("project" -> List("ioJS", "ioJVM", "ioNative")),
-    steps = githubWorkflowJobSetup.value.toList ++ List(
+    steps = List(
+      WorkflowStep.Run(List("brew install sbt"))
+    ) ++ githubWorkflowJobSetup.value.toList ++ List(
       WorkflowStep.Run(List("brew install s2n"), cond = Some("matrix.project == 'ioNative'")),
       WorkflowStep.Sbt(List("${{ matrix.project }}/test"))
     )
