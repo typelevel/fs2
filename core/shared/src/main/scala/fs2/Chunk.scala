@@ -507,6 +507,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       F.map(loop(0, size).value)(Chunk.chain)
     }
 
+  /** Alias for [[filter]].
+    *
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(p: O => Boolean): Chunk[O] = filter(p)
+
   /** Zips this chunk the the supplied chunk, returning a chunk of tuples.
     */
   def zip[O2](that: Chunk[O2]): Chunk[(O, O2)] = zipWith(that)(Tuple2.apply)

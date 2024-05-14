@@ -163,6 +163,9 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
       }
     )
 
+  def filter(p: A => Boolean): StreamDecoder[A] =
+    flatMap(a => if (p(a)) StreamDecoder.emit(a) else StreamDecoder.empty)
+
   def handleErrorWith[A2 >: A](f: Throwable => StreamDecoder[A2]): StreamDecoder[A2] =
     new StreamDecoder[A2](
       self.step match {
@@ -224,6 +227,12 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
           )
       }
     }
+
+  /** Alias for [[filter]].
+    *
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(p: A => Boolean): StreamDecoder[A] = filter(p)
 }
 
 object StreamDecoder {

@@ -96,6 +96,14 @@ class StreamCodecSuite extends Fs2Suite {
     }
   }
 
+  test("filter") {
+    val bits = StreamEncoder.many(int32).encodeAllValid(Vector(1, 2, 3, 4))
+    val decoder = StreamDecoder.tryMany(int32)
+    val filteredDecoder = for (n <- decoder if n % 2 != 0) yield n
+    assertEquals(filteredDecoder.decode[Fallible](Stream(bits)).toList, Right(List(1, 3)))
+  }
+
+
   def genChunkSize = Gen.choose(1L, 128L)
   def genSmallListOfString = Gen.choose(0, 10).flatMap(n => Gen.listOfN(n, Gen.alphaStr))
 

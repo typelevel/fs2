@@ -3010,7 +3010,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def unchunks[O2](implicit ev: O <:< Chunk[O2]): Stream[F, O2] =
     underlying.flatMapOutput(Pull.output(_)).streamNoScope
 
-  /** Alias for [[filter]]
+  /** Alias for [[filter]].
+    *
     * Implemented to enable filtering in for comprehensions
     */
   def withFilter(f: O => Boolean): Stream[F, O] = this.filter(f)
