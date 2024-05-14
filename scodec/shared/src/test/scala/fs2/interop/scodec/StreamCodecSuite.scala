@@ -103,7 +103,6 @@ class StreamCodecSuite extends Fs2Suite {
     assertEquals(filteredDecoder.decode[Fallible](Stream(bits)).toList, Right(List(1, 3)))
   }
 
-
   def genChunkSize = Gen.choose(1L, 128L)
   def genSmallListOfString = Gen.choose(0, 10).flatMap(n => Gen.listOfN(n, Gen.alphaStr))
 
