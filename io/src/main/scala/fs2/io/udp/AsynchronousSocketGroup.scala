@@ -92,7 +92,7 @@ private[udp] object AsynchronousSocketGroup {
         def apply(duration: FiniteDuration)(onTimeout: => Unit): Timeout =
           new Timeout(System.currentTimeMillis + duration.toMillis, () => onTimeout)
         implicit val ordTimeout: Ordering[Timeout] =
-          Ordering.by[Timeout, Long](_.expiry)
+          Ordering.by[Timeout, Long](_.expiry).reverse
       }
 
       private class Attachment(
