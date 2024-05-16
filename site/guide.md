@@ -439,6 +439,66 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 
 The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
 
+The `parEvalMap` function allows you to evaluate effects in parallel and emit the results in order on up to `maxConcurrent` fibers at the same time, similar to the `parTraverseN` method that you would normally use in standard library collections:
+
+``` scala mdoc
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+
+// This will evaluate 5 effects in parallel
+Stream(1, 2, 3, 4, 5).parEvalMap(5)(n => IO.pure(n * 2)).compile.toVector.unsafeRunSync()
+```
+
+However, its use with pure operations is rare; it is more common with functions or combinators that can have side effects:
+
+```scala mdoc
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import fs2.io.file.{Path, Files}
+
+val paths = List(
+  Path("file1.txt"),
+  Path("file2.txt"),
+  Path("file3.txt"),
+).map(Path("path/to/files/") / _)
+
+def loadFile(path: Path): IO[String] = 
+  Files[IO].readUtf8(path).compile.string
+
+Stream.emits(paths)
+  .parEvalMap[IO, String](3)(loadFile(_))   // Loads files into memory
+  .reduce(_ + _)                            // Combines the content of the files into single one
+  .through(Files[IO].writeUtf8(Path("path/to/output.txt")))
+  .compile
+  .drain
+  .unsafeRunSync()
+```
+
+Although most of the time the order of the stream is not important. This may be the case for a number of reasons, such as if the resulting emitted values are not important, if the function you are passing may take significantly different amounts of time depending on the input provided, etcetera. For these cases there is a `parEvalMapUnordered` method. For example, if you just want to log the effects as soon as they're complete:
+
+``` scala mdoc
+import cats.effect.IO
+import cats.effect.std.Random
+import cats.effect.unsafe.implicits.global
+import scala.concurrent.duration._
+
+def slowFibo(n: Int): Int = 
+  if n <= 0 then n
+  else if n == 1 then 1
+  else slowFibo(n - 1) + slowFibo(n - 2)
+
+Stream.eval(Random.scalaUtilRandom[IO]).flatMap { rnd =>
+  Stream.repeatEval[IO, Int](rnd.nextIntBounded(40))
+    .parEvalMapUnordered(2)(n => IO.println(s"Emitted value for $n with result: ${slowFibo(n)}"))
+}
+.interruptAfter(3.seconds)
+.compile
+.drain
+.unsafeRunSync()
+```
+
+Note that if you want unbounded concurrency, there are also `parEvalMapUnbounded` and `parEvalMapUnorderedUnbounded` versions of these methods which do not take a `maxConcurrent` argument.
+
 The function `parJoin` runs multiple streams concurrently. The signature is:
 
 ```scala
@@ -475,7 +535,6 @@ import fs2.Stream
 import cats.effect.{Deferred, IO}
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
-
 ```
 
 The example looks like this:
