@@ -551,7 +551,7 @@ Stream.eval(Random.scalaUtilRandom[IO]).flatMap { rnd =>
 
 Note that if you want unbounded concurrency, there are also `parEvalMapUnbounded` and `parEvalMapUnorderedUnbounded` versions of these methods which do not take a `maxConcurrent` argument.
 
-The function `parJoin` runs multiple streams concurrently. The signature is:
+The function `parJoin` runs multiple streams concurrently, it is very useful when running multiple streams as independent processes instead of making them dependent on each other. The signature is:
 
 ```scala
 // note Concurrent[F] bound
@@ -559,7 +559,40 @@ import cats.effect.Concurrent
 def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
 ```
 
-It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.
+It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. Similar to `parEvalMap`, there is a `parJoinUnbounded` if you need ubounded concurrency.
+
+Using the same producer and consumer from the `concurrently` example:
+
+```scala mdoc
+import cats.effect.IO
+import cats.effect.std.{Queue, Random}
+import cats.effect.unsafe.implicits.global
+import scala.concurrent.duration.*
+
+/* Scala 3.x only */
+
+def producer(queue: Queue[IO, Option[Int]])(using rnd: Random[IO]): Stream[IO, Option[Int]] = 
+  Stream
+    .repeatEval(rnd.betweenInt(100,800))
+    .evalTap(n => IO.println(s"Produced: $n"))
+    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if t >= 750 then None else Some(t)))
+    .evalTap(queue.offer)
+    .interruptAfter(10.seconds) // Note that with parJoin, the producer will keep producing values 
+                                // even after the consumer has halted
+
+def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] = 
+  Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
+
+
+val parJoinDemo = 
+  for 
+    queue <- Stream.eval(Queue.bounded[IO, Option[Int]](20))
+    given Random[IO] <- Stream.eval(Random.scalaUtilRandom[IO])
+    _ <- Stream(producer(queue), consumer(queue)).parJoin(2)
+  yield ()
+
+parJoinDemo.compile.drain.unsafeRunSync()
+```
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
