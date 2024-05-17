@@ -471,10 +471,8 @@ def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO
     .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if (t >= 750) None else Some(t)))
     .evalTap(queue.offer)
 
-
 def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] = 
   Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
-
 
 val concurrentlyDemo = 
   Stream.eval(Queue.bounded[IO, Option[Int]](20)).flatMap { queue =>
@@ -534,7 +532,7 @@ import cats.effect.std.Random
 import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 
-def slowFibo(n: Int): Int = 
+def slowFibo(n: Int): Int = // Just to simulate an expensive computation
   if n <= 0 then n
   else if n == 1 then 1
   else slowFibo(n - 1) + slowFibo(n - 2)
@@ -559,39 +557,25 @@ import cats.effect.Concurrent
 def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
 ```
 
-It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. Similar to `parEvalMap`, there is a `parJoinUnbounded` if you need ubounded concurrency.
+It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. Like `parEvalMapUnbounded`, there is a `parJoinUnbounded` method if you need ubounded concurrency.
 
-Using the same producer and consumer from the `concurrently` example:
+An example running three different processes at the same time using `parJoin`:
 
 ```scala mdoc
-import cats.effect.IO
-import cats.effect.std.{Queue, Random}
-import cats.effect.unsafe.implicits.global
-import scala.concurrent.duration._
+val processA = Stream.awakeEvery[IO](1.second).map(_ => 1).evalTap(x => IO.println(s"Process A: $x"))
 
-def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO, Option[Int]] = 
-  Stream
-    .repeatEval(Random[IO].betweenInt(100,800))
-    .evalTap(n => IO.println(s"Produced: $n"))
-    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if (t >= 750) None else Some(t)))
-    .evalTap(queue.offer)
-    .interruptAfter(10.seconds) // Note that with parJoin, the producer will keep producing values 
-                                // even after the consumer has halted
+val processB = Stream.iterate[IO, Int](0)(_ + 1).metered(400.milliseconds).evalTap(x => IO.println(s"Process B: $x"))
 
-def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] = 
-  Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
+val processC = Stream(1, 2, 3, 4, 5)
+  .flatMap(t => Stream.sleep[IO]((t * 200).milliseconds) >> Stream.emit(t))
+  .repeat
+  .evalTap(x => IO.println(s"Process C: $x"))
 
-
-val concurrentlyDemo = 
-  Stream.eval(Queue.bounded[IO, Option[Int]](20)).flatMap { queue =>
-    Stream.eval(Random.scalaUtilRandom[IO]).flatMap { implicit rnd =>
-
-      Stream(producer(queue), consumer(queue)).parJoin(2)
-
-    }
-  }
-
-parJoinDemo.compile.drain.unsafeRunSync()
+Stream(processA, processB, processC).parJoin(3)
+  .interruptAfter(5.seconds)
+  .compile
+  .drain
+  .unsafeRunSync()
 ```
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
