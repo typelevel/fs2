@@ -509,10 +509,10 @@ import cats.effect.unsafe.implicits.global
 import fs2.io.file.{Path, Files}
 
 val paths = List(
-  Path("file1.txt"),
-  Path("file2.txt"),
-  Path("file3.txt"),
-).map(Path("path/to/files/") / _)
+  Path("sample_file_part1.txt"),
+  Path("sample_file_part2.txt"),
+  Path("sample_file_part3.txt"),
+).map(Path("testdata") / _)
 
 def loadFile(path: Path): IO[String] = 
   Files[IO].readUtf8(path).compile.string
@@ -520,7 +520,7 @@ def loadFile(path: Path): IO[String] =
 Stream.emits(paths)
   .parEvalMap[IO, String](3)(loadFile(_))   // Loads files into memory
   .reduce(_ + _)                            // Combines the content of the files into single one in order
-  .through(Files[IO].writeUtf8(Path("path/to/output.txt")))
+  .through(Files[IO].writeUtf8(Path("testdata/sample_file_output.txt")))
   .compile
   .drain
   .unsafeRunSync()
