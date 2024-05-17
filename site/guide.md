@@ -437,7 +437,59 @@ import cats.effect.unsafe.implicits.global
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
-The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
+The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), and others.
+
+Depending on how you want to halt the resulting stream, you can use either of the tree variants of the `merge` method: `mergeHaltR`, `mergeHaltL`, and `mergeHaltBoth`. The resulting stream will terminate whenever the right stream halts, the left stream halts, or the stream on either side halts, respectively:
+
+```scala 
+val finite = Stream('a', 'b', 'c', 'd', 'e').covary[IO]
+val infinite = Stream.iterate(0)(_ + 1).covary[IO]
+
+// Left --------- Right
+finite.mergeHaltL(infinite)     // Terminates
+infinite.mergeHaltL(finite)     // Doesn't terminate
+
+finite.mergeHaltR(infinite)     // Doesn't terminate
+infinite.mergeHaltR(finite)     // Terminates
+
+finite.mergeHaltBoth(infinite)  // Terminates
+infinite.mergeHaltBoth(finite)  // Also terminates
+```
+
+Since it is quite common to terminate one stream as soon as the other is finished (as in a producer-consumer environment), there are optimisations over the `merge` variants. `concurrently` is one of them, as it will terminate the resulting stream when the stream on the left halts. The stream on the right will also terminate at that point, discarding its values in the meantime (similar to `finite.mergeHaltL(infinite.drain)`):
+
+```scala mdoc
+import cats.effect.IO
+import cats.effect.std.{Queue, Random}
+import cats.effect.unsafe.implicits.global
+import scala.concurrent.duration.*
+
+/* Scala 3.x only */
+
+def producer(queue: Queue[IO, Option[Int]])(using rnd: Random[IO]): Stream[IO, Option[Int]] = 
+  Stream
+    .repeatEval(rnd.betweenInt(100,800))
+    .evalTap(n => IO.println(s"Produced: $n"))
+    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if t >= 750 then None else Some(t)))
+    .evalTap(queue.offer)
+
+
+def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] = 
+  Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
+
+
+val concurrentlyDemo = 
+  for 
+    queue <- Stream.eval(Queue.bounded[IO, Option[Int]](10))
+    given Random[IO] <- Stream.eval(Random.scalaUtilRandom[IO])
+    _ <- consumer(queue).concurrently(producer(queue))
+  yield ()
+
+concurrentlyDemo.compile.drain.unsafeRunSync()
+```
+
+In the example above, the `consumer` stream will terminate if an element produced by the `producer` takes more than 750 milliseconds.
+
 
 The `parEvalMap` function allows you to evaluate effects in parallel and emit the results in order on up to `maxConcurrent` fibers at the same time, similar to the `parTraverseN` method that you would normally use in standard library collections:
 
@@ -467,7 +519,7 @@ def loadFile(path: Path): IO[String] =
 
 Stream.emits(paths)
   .parEvalMap[IO, String](3)(loadFile(_))   // Loads files into memory
-  .reduce(_ + _)                            // Combines the content of the files into single one
+  .reduce(_ + _)                            // Combines the content of the files into single one in order
   .through(Files[IO].writeUtf8(Path("path/to/output.txt")))
   .compile
   .drain
