@@ -462,15 +462,13 @@ Since it is quite common to terminate one stream as soon as the other is finishe
 import cats.effect.IO
 import cats.effect.std.{Queue, Random}
 import cats.effect.unsafe.implicits.global
-import scala.concurrent.duration.*
+import scala.concurrent.duration._
 
-/* Scala 3.x only */
-
-def producer(queue: Queue[IO, Option[Int]])(using rnd: Random[IO]): Stream[IO, Option[Int]] = 
+def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO, Option[Int]] = 
   Stream
-    .repeatEval(rnd.betweenInt(100,800))
+    .repeatEval(Random[IO].betweenInt(100,800))
     .evalTap(n => IO.println(s"Produced: $n"))
-    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if t >= 750 then None else Some(t)))
+    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if (t >= 750) None else Some(t)))
     .evalTap(queue.offer)
 
 
@@ -479,11 +477,13 @@ def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] =
 
 
 val concurrentlyDemo = 
-  for 
-    queue <- Stream.eval(Queue.bounded[IO, Option[Int]](10))
-    given Random[IO] <- Stream.eval(Random.scalaUtilRandom[IO])
-    _ <- consumer(queue).concurrently(producer(queue))
-  yield ()
+  Stream.eval(Queue.bounded[IO, Option[Int]](20)).flatMap { queue =>
+    Stream.eval(Random.scalaUtilRandom[IO]).flatMap { implicit rnd =>
+
+      consumer(queue).concurrently(producer(queue))
+
+    }
+  }
 
 concurrentlyDemo.compile.drain.unsafeRunSync()
 ```
@@ -567,15 +567,13 @@ Using the same producer and consumer from the `concurrently` example:
 import cats.effect.IO
 import cats.effect.std.{Queue, Random}
 import cats.effect.unsafe.implicits.global
-import scala.concurrent.duration.*
+import scala.concurrent.duration._
 
-/* Scala 3.x only */
-
-def producer(queue: Queue[IO, Option[Int]])(using rnd: Random[IO]): Stream[IO, Option[Int]] = 
+def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO, Option[Int]] = 
   Stream
-    .repeatEval(rnd.betweenInt(100,800))
+    .repeatEval(Random[IO].betweenInt(100,800))
     .evalTap(n => IO.println(s"Produced: $n"))
-    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if t >= 750 then None else Some(t)))
+    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if (t >= 750) None else Some(t)))
     .evalTap(queue.offer)
     .interruptAfter(10.seconds) // Note that with parJoin, the producer will keep producing values 
                                 // even after the consumer has halted
@@ -584,12 +582,14 @@ def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] =
   Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
 
 
-val parJoinDemo = 
-  for 
-    queue <- Stream.eval(Queue.bounded[IO, Option[Int]](20))
-    given Random[IO] <- Stream.eval(Random.scalaUtilRandom[IO])
-    _ <- Stream(producer(queue), consumer(queue)).parJoin(2)
-  yield ()
+val concurrentlyDemo = 
+  Stream.eval(Queue.bounded[IO, Option[Int]](20)).flatMap { queue =>
+    Stream.eval(Random.scalaUtilRandom[IO]).flatMap { implicit rnd =>
+
+      Stream(producer(queue), consumer(queue)).parJoin(2)
+
+    }
+  }
 
 parJoinDemo.compile.drain.unsafeRunSync()
 ```
