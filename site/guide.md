@@ -456,7 +456,7 @@ finite.mergeHaltBoth(infinite)  // Terminates
 infinite.mergeHaltBoth(finite)  // Also terminates
 ```
 
-Since it is quite common to terminate one stream as soon as the other is finished (as in a producer-consumer environment), there are optimisations over the `merge` variants. `concurrently` is one of them, as it will terminate the resulting stream when the stream on the left halts. The stream on the right will also terminate at that point, discarding its values in the meantime (similar to `finite.mergeHaltL(infinite.drain)`):
+Since it is quite common to terminate one stream as soon as the other is finished (as in a producer-consumer environment), there are optimizations over the `merge` variants. `concurrently` is one of them, as it will terminate the resulting stream when the stream on the left halts. The stream on the right will also terminate at that point, discarding its values in the meantime (similar to `finite.mergeHaltL(infinite.drain)`):
 
 ```scala mdoc
 import cats.effect.IO
