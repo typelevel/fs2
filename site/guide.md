@@ -459,9 +459,7 @@ infinite.mergeHaltBoth(finite)  // Also terminates
 Since it is quite common to terminate one stream as soon as the other is finished (as in a producer-consumer environment), there are optimizations over the `merge` variants. `concurrently` is one of them, as it will terminate the resulting stream when the stream on the left halts. The stream on the right will also terminate at that point, discarding its values in the meantime (similar to `finite.mergeHaltL(infinite.drain)`):
 
 ```scala mdoc
-import cats.effect.IO
 import cats.effect.std.{Queue, Random}
-import cats.effect.unsafe.implicits.global
 import scala.concurrent.duration._
 
 def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO, Option[Int]] = 
@@ -492,9 +490,6 @@ In the example above, the `consumer` stream will terminate if an element produce
 The `parEvalMap` function allows you to evaluate effects in parallel and emit the results in order on up to `maxConcurrent` fibers at the same time, similar to the `parTraverseN` method that you would normally use in standard library collections:
 
 ``` scala mdoc
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
-
 // This will evaluate 5 effects in parallel
 Stream(1, 2, 3, 4, 5).parEvalMap(5)(n => IO.pure(n * 2)).compile.toVector.unsafeRunSync()
 ```
@@ -502,8 +497,6 @@ Stream(1, 2, 3, 4, 5).parEvalMap(5)(n => IO.pure(n * 2)).compile.toVector.unsafe
 However, its use with pure operations is rare; it is more common with functions or combinators that can have side effects:
 
 ```scala mdoc
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
 import fs2.io.file.{Path, Files}
 
 val paths = List(
@@ -527,11 +520,6 @@ Stream.emits(paths)
 Although most of the time the order of the stream is not important. This may be the case for a number of reasons, such as if the resulting emitted values are not important, if the function you are passing may take significantly different amounts of time depending on the input provided, etcetera. For these cases there is a `parEvalMapUnordered` method. For example, if you just want to log the effects as soon as they're complete:
 
 ``` scala mdoc
-import cats.effect.IO
-import cats.effect.std.Random
-import cats.effect.unsafe.implicits.global
-import scala.concurrent.duration._
-
 def slowFibo(n: Int): Int = // Just to simulate an expensive computation
   if n <= 0 then n
   else if n == 1 then 1
