@@ -439,7 +439,7 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 
 The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), and others.
 
-Depending on how you want to halt the resulting stream, you can use either of the tree variants of the `merge` method: `mergeHaltR`, `mergeHaltL`, and `mergeHaltBoth`. The resulting stream will terminate whenever the right stream halts, the left stream halts, or the stream on either side halts, respectively:
+Depending on how you want to halt the resulting stream, you can use either of the three variants of the `merge` method: `mergeHaltR`, `mergeHaltL`, and `mergeHaltBoth`. The resulting stream will terminate whenever the right stream halts, the left stream halts, or the stream on either side halts, respectively:
 
 ```scala 
 val finite = Stream('a', 'b', 'c', 'd', 'e').covary[IO]
