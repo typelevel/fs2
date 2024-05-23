@@ -498,20 +498,26 @@ However, its use with pure operations is rare; it is more common with functions 
 
 ```scala mdoc
 import fs2.io.file.{Path, Files}
+import fs2.io.readInputStream
 
-val paths = List(
-  Path("sample_file_part1.txt"),
-  Path("sample_file_part2.txt"),
-  Path("sample_file_part3.txt"),
-).map(Path("testdata") / _)
+import java.net.{URI, URL}
+import java.io.InputStream
 
-def loadFile(path: Path): IO[String] = 
-  Files[IO].readUtf8(path).compile.string
+def getConnectionStream(url: URL): IO[InputStream] = IO(url.openConnection().getInputStream())
 
-Stream.emits(paths)
-  .parEvalMap[IO, String](3)(loadFile(_))   // Loads files into memory
-  .reduce(_ + _)                            // Combines the content of the files into single one in order
-  .through(Files[IO].writeUtf8(Path("testdata/sample_file_output.txt")))
+// The Adventures of Tom Sawyer by Mark Twain 
+val bookParts = Stream(
+  "7193/pg7193.txt", // Part 1
+  "7194/pg7194.txt", // Part 2
+  "7195/pg7195.txt", // Part 3
+  "7196/pg7196.txt"  // Part 4
+).map( part => new URI(s"https://www.gutenberg.org/cache/epub/$part").toURL() )
+
+bookParts
+  .covary[IO]
+  .parEvalMap(4)(url => IO.println(s"Getting connection from $url") >> getConnectionStream(url))
+  .flatMap(inps => readInputStream[IO](IO(inps), 4096))
+  .through(Files[IO].writeAll(Path("testdata/tom_sawyer.txt")))
   .compile
   .drain
   .unsafeRunSync()
