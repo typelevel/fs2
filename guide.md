@@ -533,9 +533,115 @@ Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.u
 // res46: Vector[Int] = Vector(1, 2, 3, 4)
 ```
 
-The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), `mergeHaltBoth` (halts if either branch halts), and others.
+The `merge` function supports concurrency. FS2 has a number of other useful concurrency functions like `concurrently` (runs another stream concurrently and discards its output), `interruptWhen` (halts if the left branch produces `true`), `either` (like `merge` but returns an `Either`), and others.
 
-The function `parJoin` runs multiple streams concurrently. The signature is:
+Depending on how you want to halt the resulting stream, you can use either of the three variants of the `merge` method: `mergeHaltR`, `mergeHaltL`, and `mergeHaltBoth`. The resulting stream will terminate whenever the right stream halts, the left stream halts, or the stream on either side halts, respectively:
+
+```scala 
+val finite = Stream('a', 'b', 'c', 'd', 'e').covary[IO]
+val infinite = Stream.iterate(0)(_ + 1).covary[IO]
+
+// Left --------- Right
+finite.mergeHaltL(infinite)     // Terminates
+infinite.mergeHaltL(finite)     // Doesn't terminate
+
+finite.mergeHaltR(infinite)     // Doesn't terminate
+infinite.mergeHaltR(finite)     // Terminates
+
+finite.mergeHaltBoth(infinite)  // Terminates
+infinite.mergeHaltBoth(finite)  // Also terminates
+```
+
+Since it is quite common to terminate one stream as soon as the other is finished (as in a producer-consumer environment), there are optimizations over the `merge` variants. `concurrently` is one of them, as it will terminate the resulting stream when the stream on the left halts. The stream on the right will also terminate at that point, discarding its values in the meantime (similar to `finite.mergeHaltL(infinite.drain)`):
+
+```scala
+import cats.effect.std.{Queue, Random}
+import scala.concurrent.duration._
+
+def producer(queue: Queue[IO, Option[Int]])(implicit rnd: Random[IO]): Stream[IO, Option[Int]] = 
+  Stream
+    .repeatEval(Random[IO].betweenInt(100,800))
+    .evalTap(n => IO.println(s"Produced: $n"))
+    .flatMap(t => Stream.sleep[IO](t.milliseconds) >> Stream.emit(if (t >= 750) None else Some(t)))
+    .evalTap(queue.offer)
+
+def consumer(queue: Queue[IO, Option[Int]]): Stream[IO, Unit] = 
+  Stream.fromQueueNoneTerminated(queue, 10).evalMap(n => IO.println(s"Consumed: $n"))
+
+val concurrentlyDemo = 
+  Stream.eval(Queue.bounded[IO, Option[Int]](20)).flatMap { queue =>
+    Stream.eval(Random.scalaUtilRandom[IO]).flatMap { implicit rnd =>
+
+      consumer(queue).concurrently(producer(queue))
+
+    }
+  }
+// concurrentlyDemo: Stream[[x]IO[x], Unit] = Stream(..)
+
+concurrentlyDemo.compile.drain.unsafeRunSync()
+```
+
+In the example above, the `consumer` stream will terminate if an element produced by the `producer` takes more than 750 milliseconds.
+
+
+The `parEvalMap` function allows you to evaluate effects in parallel and emit the results in order on up to `maxConcurrent` fibers at the same time, similar to the `parTraverseN` method that you would normally use in standard library collections:
+
+``` scala mdoc
+// This will evaluate 5 effects in parallel
+Stream(1, 2, 3, 4, 5).parEvalMap(5)(n => IO.pure(n * 2)).compile.toVector.unsafeRunSync()
+```
+
+However, its use with pure operations is rare; it is more common with functions or combinators that can have side effects:
+
+```scala
+import fs2.io.file.{Path, Files}
+import fs2.io.readInputStream
+
+import java.net.{URI, URL}
+import java.io.InputStream
+
+def getConnectionStream(url: URL): IO[InputStream] = IO(url.openConnection().getInputStream())
+
+// The Adventures of Tom Sawyer by Mark Twain 
+val bookParts = Stream(
+  "7193/pg7193.txt", // Part 1
+  "7194/pg7194.txt", // Part 2
+  "7195/pg7195.txt", // Part 3
+  "7196/pg7196.txt"  // Part 4
+).map( part => new URI(s"https://www.gutenberg.org/cache/epub/$part").toURL() )
+// bookParts: Stream[[x]Pure[x], URL] = Stream(..)
+
+bookParts
+  .covary[IO]
+  .parEvalMap(4)(url => IO.println(s"Getting connection from $url") >> getConnectionStream(url))
+  .flatMap(inps => readInputStream[IO](IO(inps), 4096))
+  .through(Files[IO].writeAll(Path("testdata/tom_sawyer.txt")))
+  .compile
+  .drain
+  .unsafeRunSync()
+```
+
+Although most of the time the order of the stream is not important. This may be the case for a number of reasons, such as if the resulting emitted values are not important, if the function you are passing may take significantly different amounts of time depending on the input provided, etcetera. For these cases there is a `parEvalMapUnordered` method. For example, if you just want to log the effects as soon as they're complete:
+
+``` scala mdoc
+def slowFibo(n: Int): Int = // Just to simulate an expensive computation
+  if n <= 0 then n
+  else if n == 1 then 1
+  else slowFibo(n - 1) + slowFibo(n - 2)
+
+Stream.eval(Random.scalaUtilRandom[IO]).flatMap { rnd =>
+  Stream.repeatEval[IO, Int](rnd.nextIntBounded(40))
+    .parEvalMapUnordered(2)(n => IO.println(s"Emitted value for $n with result: ${slowFibo(n)}"))
+}
+.interruptAfter(3.seconds)
+.compile
+.drain
+.unsafeRunSync()
+```
+
+Note that if you want unbounded concurrency, there are also `parEvalMapUnbounded` and `parEvalMapUnorderedUnbounded` versions of these methods which do not take a `maxConcurrent` argument.
+
+The function `parJoin` runs multiple streams concurrently, it is very useful when running multiple streams as independent processes instead of making them dependent on each other. The signature is:
 
 ```scala
 // note Concurrent[F] bound
@@ -543,7 +649,29 @@ import cats.effect.Concurrent
 def parJoin[F[_]: Concurrent,O](maxOpen: Int)(outer: Stream[F, Stream[F, O]]): Stream[F, O]
 ```
 
-It flattens the nested stream, letting up to `maxOpen` inner streams run at a time.
+It flattens the nested stream, letting up to `maxOpen` inner streams run at a time. Like `parEvalMapUnbounded`, there is a `parJoinUnbounded` method if you need ubounded concurrency.
+
+An example running three different processes at the same time using `parJoin`:
+
+```scala
+val processA = Stream.awakeEvery[IO](1.second).map(_ => 1).evalTap(x => IO.println(s"Process A: $x"))
+// processA: Stream[[x]IO[x], Int] = Stream(..)
+
+val processB = Stream.iterate[IO, Int](0)(_ + 1).metered(400.milliseconds).evalTap(x => IO.println(s"Process B: $x"))
+// processB: Stream[[x]IO[x], Int] = Stream(..)
+
+val processC = Stream(1, 2, 3, 4, 5)
+  .flatMap(t => Stream.sleep[IO]((t * 200).milliseconds) >> Stream.emit(t))
+  .repeat
+  .evalTap(x => IO.println(s"Process C: $x"))
+// processC: Stream[[x]IO[x], Int] = Stream(..)
+
+Stream(processA, processB, processC).parJoin(3)
+  .interruptAfter(5.seconds)
+  .compile
+  .drain
+  .unsafeRunSync()
+```
 
 The `Concurrent` bound on `F` is required anywhere concurrency is used in the library. As mentioned earlier, users can bring their own effect types provided they also supply an `Concurrent` instance in implicit scope.
 
@@ -590,10 +718,10 @@ val program =
 // program: Stream[[x]IO[x], Unit] = Stream(..)
 
 program.compile.drain.unsafeRunSync()
-// 12:28:16.697647457
-// 12:28:17.696506196
-// 12:28:18.696098856
-// 12:28:19.696133034
+// 11:49:09.012745515
+// 11:49:10.012660841
+// 11:49:11.012742700
+// 11:49:12.012703262
 ```
 
 Let's take this line by line now, so we can understand what's going on.
@@ -635,10 +763,10 @@ val program1 =
 // program1: Stream[[x]IO[x], Unit] = Stream(..)
 
 program1.compile.drain.unsafeRunSync()
-// 12:28:21.697853630
-// 12:28:22.697842459
-// 12:28:23.697993765
-// 12:28:24.697996369
+// 11:49:14.015118518
+// 11:49:15.015163163
+// 11:49:16.015182315
+// 11:49:17.015168558
 ```
 
 ### Talking to the external world
@@ -662,7 +790,7 @@ val s = Stream.exec(IO { destroyUniverse() }) ++ Stream("...moving on")
 // s: Stream[[x]IO[x], String] = Stream(..)
 s.compile.toVector.unsafeRunSync()
 // BOOOOM!!!
-// res50: Vector[String] = Vector("...moving on")
+// res53: Vector[String] = Vector("...moving on")
 ```
 
 The way you bring synchronous effects into your effect type may differ. `Sync.delay` can be used for this generally, without committing to a particular effect:
@@ -671,12 +799,12 @@ The way you bring synchronous effects into your effect type may differ. `Sync.de
 import cats.effect.Sync
 
 val T = Sync[IO]
-// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$5@20b861a3
+// T: cats.effect.kernel.Async[IO] = cats.effect.IO$$anon$5@20db1484
 val s2 = Stream.exec(T.delay { destroyUniverse() }) ++ Stream("...moving on")
 // s2: Stream[[x]IO[x], String] = Stream(..)
 s2.compile.toVector.unsafeRunSync()
 // BOOOOM!!!
-// res51: Vector[String] = Vector("...moving on")
+// res54: Vector[String] = Vector("...moving on")
 ```
 
 When using this approach, be sure the expression you pass to delay doesn't throw exceptions.
@@ -727,7 +855,7 @@ val bytes = IO.async_[Array[Byte]] { cb => c.readBytesE(cb) }
 // bytes: IO[Array[Byte]] = IO(...)
 
 Stream.eval(bytes).map(_.toList).compile.toVector.unsafeRunSync()
-// res52: Vector[List[Byte]] = Vector(List(0, 1, 2))
+// res55: Vector[List[Byte]] = Vector(List(0, 1, 2))
 ```
 
 Be sure to check out the
@@ -800,20 +928,20 @@ To convert a `Stream` into a downstream unicast `org.reactivestreams.Publisher`:
 val stream = Stream(1, 2, 3).covary[IO]
 // stream: Stream[IO, Int] = Stream(..)
 stream.toUnicastPublisher
-// res55: Resource[[A]IO[A], StreamUnicastPublisher[[A]IO[A], Int]] = Bind(
+// res58: Resource[[A]IO[A], StreamUnicastPublisher[[A]IO[A], Int]] = Bind(
 //   source = Bind(
 //     source = Bind(
 //       source = Eval(
 //         fa = Delay(
-//           thunk = cats.effect.IO$$$Lambda$12108/0x00007fd56bfe70a0@146b5ab2,
+//           thunk = cats.effect.IO$$$Lambda$11971/0x00007fc007fd42c0@37488864,
 //           event = cats.effect.tracing.TracingEvent$StackTrace
 //         )
 //       ),
-//       fs = cats.effect.std.Supervisor$$$Lambda$12815/0x00007fd56c1d4800@46720426
+//       fs = cats.effect.std.Supervisor$$$Lambda$12826/0x00007fc0081b4ff8@4d9961b3
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$12816/0x00007fd56c1d4bd0@42ad28fa
+//     fs = cats.effect.std.Dispatcher$$$Lambda$12827/0x00007fc0081b53c8@83d9aac
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$12818/0x00007fd56c1d5b98@217bfc75
+//   fs = cats.effect.kernel.Resource$$Lambda$12668/0x00007fc0081803d0@703ad01b
 // )
 ```
 
@@ -826,25 +954,25 @@ val publisher: Resource[IO, StreamUnicastPublisher[IO, Int]] = Stream(1, 2, 3).c
 //     source = Bind(
 //       source = Eval(
 //         fa = Delay(
-//           thunk = cats.effect.IO$$$Lambda$12108/0x00007fd56bfe70a0@6f0b9c22,
+//           thunk = cats.effect.IO$$$Lambda$11971/0x00007fc007fd42c0@3427dd0,
 //           event = cats.effect.tracing.TracingEvent$StackTrace
 //         )
 //       ),
-//       fs = cats.effect.std.Supervisor$$$Lambda$12815/0x00007fd56c1d4800@390ef6d1
+//       fs = cats.effect.std.Supervisor$$$Lambda$12826/0x00007fc0081b4ff8@5d010f2
 //     ),
-//     fs = cats.effect.std.Dispatcher$$$Lambda$12816/0x00007fd56c1d4bd0@124fe3f2
+//     fs = cats.effect.std.Dispatcher$$$Lambda$12827/0x00007fc0081b53c8@61dc021e
 //   ),
-//   fs = cats.effect.kernel.Resource$$Lambda$12818/0x00007fd56c1d5b98@6ca93d9a
+//   fs = cats.effect.kernel.Resource$$Lambda$12668/0x00007fc0081803d0@47c0ac36
 // )
 publisher.use { p =>
   p.toStream[IO].compile.toList
 }
-// res56: IO[List[Int]] = FlatMap(
+// res59: IO[List[Int]] = FlatMap(
 //   ioe = Delay(
-//     thunk = cats.effect.IO$$$Lambda$12108/0x00007fd56bfe70a0@6f0b9c22,
+//     thunk = cats.effect.IO$$$Lambda$11971/0x00007fc007fd42c0@3427dd0,
 //     event = cats.effect.tracing.TracingEvent$StackTrace
 //   ),
-//   f = cats.effect.kernel.Resource$$Lambda$12819/0x00007fd56c1d6400@5f7046a1,
+//   f = cats.effect.kernel.Resource$$Lambda$12829/0x00007fc0081b6828@577cf5e3,
 //   event = cats.effect.tracing.TracingEvent$StackTrace
 // )
 ```
@@ -892,16 +1020,16 @@ import cats.effect.unsafe.implicits.global
 case object Err extends Throwable
 
 (Stream(1) ++ Stream(2).map(_ => throw Err)).take(1).toList
-// res58: List[Int] = List(1)
+// res61: List[Int] = List(1)
 (Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
-// res59: List[Int] = List(1)
+// res62: List[Int] = List(1)
 ```
 
 The `take 1` uses `Pull` but doesn't examine the entire stream, and neither of these examples will ever throw an error. This makes sense. A bit more subtle is that this code will _also_ never throw an error:
 
 ```scala
 (Stream(1) ++ Stream.raiseError[IO](Err)).take(1).compile.toList.unsafeRunSync()
-// res60: List[Int] = List(1)
+// res63: List[Int] = List(1)
 ```
 
 The reason is simple: the consumer (the `take(1)`) terminates as soon as it has an element. Once it has that element, it is done consuming the stream and doesn't bother running any further steps of it, so the stream never actually completes normally---it has been interrupted before that can occur. We may be able to see in this case that nothing follows the emitted `1`, but FS2 doesn't know this until it actually runs another step of the stream.
@@ -914,7 +1042,7 @@ Stream(1).covary[IO].
           take(1).
           compile.toVector.unsafeRunSync()
 // finalized!
-// res61: Vector[Int] = Vector(1)
+// res64: Vector[Int] = Vector(1)
 ```
 
 That covers synchronous interrupts. Let's look at asynchronous interrupts. Ponder what the result of `merged` will be in this example:
