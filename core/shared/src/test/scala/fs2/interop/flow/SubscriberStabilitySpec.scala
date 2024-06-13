@@ -28,7 +28,8 @@ import cats.effect.std.Random
 
 import java.nio.ByteBuffer
 import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
-import scala.concurrent.duration._
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.concurrent.duration.*
 
 class SubscriberStabilitySpec extends Fs2Suite {
   val attempts = 100
@@ -66,5 +67,33 @@ class SubscriberStabilitySpec extends Fs2Suite {
         }
         .replicateA_(attempts)
     }
+  }
+
+  test("StreamSubscriber cancels subscription on downstream cancellation") {
+    def makePublisher(
+        requestCalled: AtomicBoolean,
+        subscriptionCancelled: AtomicBoolean
+    ): Publisher[ByteBuffer] =
+      new Publisher[ByteBuffer] {
+
+        class SubscriptionImpl extends Subscription {
+          override def request(n: Long): Unit = requestCalled.set(true)
+          override def cancel(): Unit = subscriptionCancelled.set(true)
+        }
+
+        override def subscribe(s: Subscriber[? >: ByteBuffer]): Unit =
+          s.onSubscribe(new SubscriptionImpl)
+      }
+
+    for {
+      requestCalled <- IO(new AtomicBoolean(false))
+      subscriptionCancelled <- IO(new AtomicBoolean(false))
+      publisher = makePublisher(requestCalled, subscriptionCancelled)
+      _ <- fromPublisher[IO](publisher, chunkSize = 1)
+        .interruptWhen(Stream.eval(IO(requestCalled.get())).repeat.spaced(10.millis))
+        .compile
+        .drain
+      _ <- IO(subscriptionCancelled.get).assert
+    } yield ()
   }
 }
