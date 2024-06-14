@@ -33,7 +33,7 @@ Quick links:
 
 ### <a id="docs"></a>Documentation and getting help ###
 
-* There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.
+* There are Scaladoc API documentations for [the core library][api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.
 * [The official guide](https://fs2.io/#/guide) is a good starting point for learning more about the library.
 * The [documentation page](https://fs2.io/#/documentation) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
 * [The FAQ](https://fs2.io/#/faq) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
