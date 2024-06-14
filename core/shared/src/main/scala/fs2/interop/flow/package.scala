@@ -25,8 +25,7 @@ package interop
 import cats.effect.{Async, IO, Resource}
 import cats.effect.unsafe.IORuntime
 
-import java.util.concurrent.Flow
-import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
+import java.util.concurrent.Flow.{Publisher, Processor, Subscriber, defaultBufferSize}
 
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
   *
@@ -199,13 +198,22 @@ package object flow {
   ): Stream[F, Nothing] =
     StreamSubscription.subscribe(stream, subscriber)
 
-  /** TODO. */
+  /** Creates a [[Processor]] from a [[Pipe]].
+    *
+    * You are required to manually subscribe this [[Processor]] to an upstream [[Publisher]], and have at least one downstream [[Subscriber]] subscribe to the [[Consumer]].
+    *
+    * @param pipe The [[Pipe]] which represents the [[Processor]] logic.
+    * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
+    *                  A high number may be useful if the publisher is triggering from IO,
+    *                  like requesting elements from a database.
+    *                  A high number will also lead to more elements in memory.
+    */
   def pipeToProcessor[F[_], I, O](
       pipe: Pipe[F, I, O],
       chunkSize: Int
   )(implicit
       F: Async[F]
-  ): Resource[F, Flow.Processor[I, O]] =
+  ): Resource[F, Processor[I, O]] =
     StreamProcessor.fromPipe(pipe, chunkSize)
 
   /** A default value for the `chunkSize` argument,
