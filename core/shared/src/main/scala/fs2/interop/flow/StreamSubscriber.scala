@@ -332,18 +332,22 @@ private[flow] object StreamSubscriber {
       chunkSize: Int
   )(implicit
       F: Async[F]
-  ): F[StreamSubscriber[F, A]] = {
+  ): F[StreamSubscriber[F, A]] =
+    F.delay(unsafe(chunkSize))
+
+  private[fs2] def unsafe[F[_], A](
+      chunkSize: Int
+  )(implicit
+      F: Async[F]
+  ): StreamSubscriber[F, A] = {
     require(chunkSize > 0, "The buffer size MUST be positive")
 
-    F.delay {
-      val currentState =
-        new AtomicReference[(State, () => Unit)]((State.Uninitialized(cb = None), noop))
-
-      new StreamSubscriber[F, A](
-        chunkSize,
-        currentState
+    new StreamSubscriber[F, A](
+      chunkSize,
+      currentState = new AtomicReference[(State, () => Unit)](
+        (State.Uninitialized(cb = None), noop)
       )
-    }
+    )
   }
 
   private sealed abstract class StreamSubscriberException(msg: String, cause: Throwable = null)

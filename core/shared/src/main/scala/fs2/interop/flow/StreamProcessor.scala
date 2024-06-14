@@ -70,7 +70,7 @@ private[flow] object StreamProcessor {
   )(implicit
       runtime: IORuntime
   ): StreamProcessor[IO, I, O] = {
-    val streamSubscriber = StreamSubscriber[IO, I](chunkSize).unsafeRunSync()
+    val streamSubscriber = StreamSubscriber.unsafe[IO, I](chunkSize)
     val inputStream = streamSubscriber.stream(subscribe = IO.unit)
     val outputStream = pipe(inputStream)
     val streamPublisher = StreamPublisher.unsafe(outputStream)
