@@ -24,7 +24,8 @@ package interop
 package flow
 
 import java.util.concurrent.Flow
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, IO, Resource}
+import cats.effect.unsafe.IORuntime
 
 private[flow] final class StreamProcessor[F[_], I, O](
     streamSubscriber: StreamSubscriber[F, I],
@@ -62,4 +63,20 @@ private[flow] object StreamProcessor {
       streamSubscriber,
       streamPublisher
     )
+
+  def unsafeFromPipe[I, O](
+      pipe: Pipe[IO, I, O],
+      chunkSize: Int
+  )(implicit
+      runtime: IORuntime
+  ): StreamProcessor[IO, I, O] = {
+    val streamSubscriber = StreamSubscriber[IO, I](chunkSize).unsafeRunSync()
+    val inputStream = streamSubscriber.stream(subscribe = IO.unit)
+    val outputStream = pipe(inputStream)
+    val streamPublisher = StreamPublisher.unsafe(outputStream)
+    new StreamProcessor(
+      streamSubscriber,
+      streamPublisher
+    )
+  }
 }

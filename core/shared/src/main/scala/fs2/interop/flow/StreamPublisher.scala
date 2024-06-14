@@ -23,8 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.IO
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, IO, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.unsafe.IORuntime
 

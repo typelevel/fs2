@@ -202,6 +202,13 @@ package object flow {
     *
     * You are required to manually subscribe this [[Processor]] to an upstream [[Publisher]], and have at least one downstream [[Subscriber]] subscribe to the [[Consumer]].
     *
+    * Closing the [[Resource]] means not accepting new subscriptions,
+    * but waiting for all active ones to finish consuming.
+    * Canceling the [[Resource.use]] means gracefully shutting down all active subscriptions.
+    * Thus, no more elements will be published.
+    *
+    * @see [[unsafePipeToProcessor]] for an unsafe version that returns a plain [[Processor]].
+    *
     * @param pipe The [[Pipe]] which represents the [[Processor]] logic.
     * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
     *                  A high number may be useful if the publisher is triggering from IO,
@@ -215,6 +222,26 @@ package object flow {
       F: Async[F]
   ): Resource[F, Processor[I, O]] =
     StreamProcessor.fromPipe(pipe, chunkSize)
+
+  /** Creates a [[Processor]] from a [[Pipe]].
+    *
+    * You are required to manually subscribe this [[Processor]] to an upstream [[Publisher]], and have at least one downstream [[Subscriber]] subscribe to the [[Consumer]].
+    *
+    * @see [[pipeToProcessor]] for a safe version that returns a [[Resource]].
+    *
+    * @param pipe The [[Pipe]] which represents the [[Processor]] logic.
+    * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
+    *                  A high number may be useful if the publisher is triggering from IO,
+    *                  like requesting elements from a database.
+    *                  A high number will also lead to more elements in memory.
+    */
+  def unsafePipeToProcessor[I, O](
+      pipe: Pipe[IO, I, O],
+      chunkSize: Int
+  )(implicit
+      runtime: IORuntime
+  ): Processor[I, O] =
+    StreamProcessor.unsafeFromPipe(pipe, chunkSize)
 
   /** A default value for the `chunkSize` argument,
     * that may be used in the absence of other constraints;
