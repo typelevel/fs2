@@ -22,10 +22,10 @@
 package fs2
 package interop
 
-import cats.effect.IO
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, IO, Resource}
 import cats.effect.unsafe.IORuntime
 
+import java.util.concurrent.Flow
 import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
 
 /** Implementation of the reactive-streams protocol for fs2; based on Java Flow.
@@ -198,6 +198,15 @@ package object flow {
       F: Async[F]
   ): Stream[F, Nothing] =
     StreamSubscription.subscribe(stream, subscriber)
+
+  /** TODO. */
+  def pipeToProcessor[F[_], I, O](
+      pipe: Pipe[F, I, O],
+      chunkSize: Int
+  )(implicit
+      F: Async[F]
+  ): Resource[F, Flow.Processor[I, O]] =
+    StreamProcessor.fromPipe(pipe, chunkSize)
 
   /** A default value for the `chunkSize` argument,
     * that may be used in the absence of other constraints;

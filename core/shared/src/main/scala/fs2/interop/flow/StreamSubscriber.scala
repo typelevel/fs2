@@ -330,7 +330,9 @@ private[flow] object StreamSubscriber {
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */
   def apply[F[_], A](
       chunkSize: Int
-  )(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
+  )(implicit
+      F: Async[F]
+  ): F[StreamSubscriber[F, A]] = {
     require(chunkSize > 0, "The buffer size MUST be positive")
 
     F.delay {
