@@ -42,7 +42,7 @@ private[flow] final class StreamProcessor[F[_], I, O](
   override def onComplete(): Unit =
     streamSubscriber.onComplete()
 
-  override def subscribe(subscriber: Flow.Subscriber[? >: O <: Object]): Unit =
+  override def subscribe(subscriber: Flow.Subscriber[? >: O]): Unit =
     streamPublisher.subscribe(subscriber)
 }
 
