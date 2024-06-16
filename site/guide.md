@@ -428,7 +428,7 @@ import cats.effect.IO
 Stream(1,2,3).merge(Stream.eval(IO { Thread.sleep(200); 4 })).compile.toVector.unsafeRunSync()
 ```
 
-Oops, we need a `cats.effect.ContextShift[IO]` in implicit scope. Let's add that:
+Oops, we need a `cats.effect.unsafe.IORuntime` in implicit scope. Let's add that:
 
 ```scala mdoc
 import cats.effect.IO
