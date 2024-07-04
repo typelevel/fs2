@@ -22,8 +22,6 @@
 package fs2
 package hashing
 
-import cats.effect.Sync
-
 /** Mutable data structure that incrementally computes a hash from chunks of bytes.
   *
   * To compute a hash, call `addChunk` one or more times and then call `computeAndReset`.
@@ -84,7 +82,4 @@ trait Hash[F[_]] {
         )
 }
 
-object Hash extends HashCompanionPlatform {
-  def apply[F[_]: Sync](algorithm: String): F[Hash[F]] =
-    Sync[F].delay(unsafe(algorithm))
-}
+object Hash extends HashCompanionPlatform

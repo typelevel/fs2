@@ -22,7 +22,7 @@
 package fs2
 package hashing
 
-import cats.effect.Sync
+import cats.effect.{IO, LiftIO, MonadCancel, Resource, Sync}
 
 /** Capability trait that provides hashing.
   *
@@ -34,22 +34,22 @@ import cats.effect.Sync
 trait Hashing[F[_]] {
 
   /** Creates a new hash using the specified hashing algorithm. */
-  def create(algorithm: String): F[Hash[F]]
+  def create(algorithm: String): Resource[F, Hash[F]]
 
   /** Creates a new MD-5 hash. */
-  def md5: F[Hash[F]] = create("MD-5")
+  def md5: Resource[F, Hash[F]] = create("MD-5")
 
   /** Creates a new SHA-1 hash. */
-  def sha1: F[Hash[F]] = create("SHA-1")
+  def sha1: Resource[F, Hash[F]] = create("SHA-1")
 
   /** Creates a new SHA-256 hash. */
-  def sha256: F[Hash[F]] = create("SHA-256")
+  def sha256: Resource[F, Hash[F]] = create("SHA-256")
 
   /** Creates a new SHA-384 hash. */
-  def sha384: F[Hash[F]] = create("SHA-384")
+  def sha384: Resource[F, Hash[F]] = create("SHA-384")
 
   /** Creates a new SHA-512 hash. */
-  def sha512: F[Hash[F]] = create("SHA-512")
+  def sha512: Resource[F, Hash[F]] = create("SHA-512")
 
   /** Returns a pipe that hashes the source byte stream and outputs the hash.
     *
@@ -57,15 +57,22 @@ trait Hashing[F[_]] {
     * to a file while simultaneously computing a hash, use `create` or `sha256` or
     * similar to create a `Hash[F]`.
     */
-  def hashWith(hash: F[Hash[F]]): Pipe[F, Byte, Byte] =
-    source => Stream.eval(hash).flatMap(h => h.hash(source))
+  def hashWith(hash: Resource[F, Hash[F]])(implicit F: MonadCancel[F, ?]): Pipe[F, Byte, Byte] =
+    source => Stream.resource(hash).flatMap(h => h.hash(source))
 }
 
 object Hashing {
-  implicit def apply[F[_]](implicit F: Hashing[F]): F.type = F
+  def apply[F[_]](implicit F: Hashing[F]): F.type = F
 
-  implicit def forSync[F[_]: Sync]: Hashing[F] = new Hashing[F] {
-    def create(algorithm: String): F[Hash[F]] =
+  def forSync[F[_]: Sync]: Hashing[F] = new Hashing[F] {
+    def create(algorithm: String): Resource[F, Hash[F]] =
       Hash[F](algorithm)
+  }
+
+  def forIO: Hashing[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Sync: LiftIO]: Hashing[F] = {
+    val _ = LiftIO[F]
+    forSync
   }
 }

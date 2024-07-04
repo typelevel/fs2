@@ -22,9 +22,12 @@
 package fs2
 package hashing
 
-import cats.effect.Sync
+import cats.effect.{Resource, Sync}
 
 trait HashCompanionPlatform {
+
+  def apply[F[_]: Sync](algorithm: String): Resource[F, Hash[F]] =
+    Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
   def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
     ???
