@@ -37,7 +37,7 @@ trait Hashing[F[_]] {
   def create(algorithm: String): Resource[F, Hash[F]]
 
   /** Creates a new MD-5 hash. */
-  def md5: Resource[F, Hash[F]] = create("MD-5")
+  def md5: Resource[F, Hash[F]] = create("MD5")
 
   /** Creates a new SHA-1 hash. */
   def sha1: Resource[F, Hash[F]] = create("SHA-1")
