@@ -24,11 +24,43 @@ package hashing
 
 import cats.effect.{Resource, Sync}
 
+import org.typelevel.scalaccompat.annotation._
+
+import scala.scalajs.js
+import scala.scalajs.js.annotation.JSImport
+import scala.scalajs.js.typedarray.Uint8Array
+
 trait HashCompanionPlatform {
 
   def apply[F[_]: Sync](algorithm: String): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
   def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
-    ???
+    unsafeFromHash(JsHash.createHash(algorithm))
+
+  private def unsafeFromHash[F[_]: Sync](h: JsHash.Hash): Hash[F] =
+    new Hash[F] {
+      def addChunk(bytes: Chunk[Byte]): F[Unit] = Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
+      def computeAndReset: F[Chunk[Byte]] = Sync[F].delay(unsafeComputeAndReset())
+
+      def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
+        h.update(slice.toUint8Array)
+
+      def unsafeComputeAndReset(): Chunk[Byte] = Chunk.uint8Array(h.digest())
+    }
+}
+
+private[fs2] object JsHash {
+
+  @js.native
+  @JSImport("crypto", "createHash")
+  @nowarn212("cat=unused")
+  private[fs2] def createHash(algorithm: String): Hash = js.native
+
+  @js.native
+  @nowarn212("cat=unused")
+  private[fs2] trait Hash extends js.Object {
+    def update(data: Uint8Array): Unit = js.native
+    def digest(): Uint8Array = js.native
+  }
 }
