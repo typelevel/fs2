@@ -23,12 +23,93 @@ package fs2
 package hashing
 
 import cats.effect.{Resource, Sync}
+import org.typelevel.scalaccompat.annotation._
+
+import scala.scalanative.unsafe._
+import scala.scalanative.unsigned._
 
 trait HashCompanionPlatform {
+  import openssl._
 
-  def apply[F[_]: Sync](algorithm: String): Resource[F, Hash[F]] =
-    Resource.eval(Sync[F].delay(unsafe(algorithm)))
+  def apply[F[_]](algorithm: String)(implicit F: Sync[F]): Resource[F, Hash[F]] = {
+    val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
+    zoneResource.flatMap { zone =>
+      val acquire = F.delay {
+        val ctx = EVP_MD_CTX_new()
+        if (ctx == null)
+          throw new RuntimeException(s"EVP_MD_CTX_new: ${getOpensslError()}")
+        ctx
+      }
+      Resource
+        .make(acquire)(ctx => F.delay(EVP_MD_CTX_free(ctx)))
+        .evalTap { ctx =>
+          F.delay {
+            val `type` = EVP_get_digestbyname(toCString(algorithm)(zone))
+            if (`type` == null)
+              throw new RuntimeException(s"EVP_get_digestbyname: ${getOpensslError()}")
+            if (EVP_DigestInit_ex(ctx, `type`, null) != 1)
+              throw new RuntimeException(s"EVP_DigestInit_ex: ${getOpensslError()}")
+          }
+        }
+        .map { ctx =>
+          new Hash[F] {
+            def addChunk(bytes: Chunk[Byte]): F[Unit] =
+              F.delay(unsafeAddChunk(bytes.toArraySlice))
 
-  def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
-    ???
+            def computeAndReset: F[Chunk[Byte]] =
+              F.delay(unsafeComputeAndReset())
+
+            def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
+              if (
+                EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1
+              )
+                throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
+
+            def unsafeComputeAndReset(): Chunk[Byte] = {
+              val md = new Array[Byte](EVP_MAX_MD_SIZE)
+              val size = stackalloc[CUnsignedInt]()
+              if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
+                throw new RuntimeException(s"EVP_DigestFinal_ex: ${getOpensslError()}")
+              Chunk.ArraySlice(md, 0, (!size).toInt)
+            }
+          }
+        }
+    }
+  }
+
+  private[this] def getOpensslError(): String =
+    fromCString(ERR_reason_error_string(ERR_get_error()))
+}
+
+@link("crypto")
+@extern
+@nowarn212("cat=unused")
+private[fs2] object openssl {
+
+  final val EVP_MAX_MD_SIZE = 64
+
+  type EVP_MD
+  type EVP_MD_CTX
+  type ENGINE
+
+  def ERR_get_error(): ULong = extern
+  def ERR_reason_error_string(e: ULong): CString = extern
+
+  def EVP_get_digestbyname(name: Ptr[CChar]): Ptr[EVP_MD] = extern
+
+  def EVP_MD_CTX_new(): Ptr[EVP_MD_CTX] = extern
+  def EVP_MD_CTX_free(ctx: Ptr[EVP_MD_CTX]): Unit = extern
+
+  def EVP_DigestInit_ex(ctx: Ptr[EVP_MD_CTX], `type`: Ptr[EVP_MD], impl: Ptr[ENGINE]): CInt =
+    extern
+  def EVP_DigestUpdate(ctx: Ptr[EVP_MD_CTX], d: Ptr[Byte], cnt: CSize): CInt = extern
+  def EVP_DigestFinal_ex(ctx: Ptr[EVP_MD_CTX], md: Ptr[Byte], s: Ptr[CUnsignedInt]): CInt = extern
+  def EVP_Digest(
+      data: Ptr[Byte],
+      count: CSize,
+      md: Ptr[Byte],
+      size: Ptr[CUnsignedInt],
+      `type`: Ptr[EVP_MD],
+      impl: Ptr[ENGINE]
+  ): CInt = extern
 }
