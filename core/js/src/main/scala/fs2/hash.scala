@@ -28,6 +28,7 @@ import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
 /** Provides various cryptographic hashes as pipes. Supported only on Node.js. */
+@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 object hash {
 
   /** Computes an MD2 digest. */
