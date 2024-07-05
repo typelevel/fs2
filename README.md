@@ -28,12 +28,10 @@ Quick links:
 
 [microsite]: http://fs2.io
 [api]: https://www.javadoc.io/doc/co.fs2/fs2-docs_2.13/latest/fs2/index.html
-[io-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-io_2.13/3.1.0/fs2-io_2.13-3.1.0-javadoc.jar/!/fs2/io/index.html
-[rx-api]: https://oss.sonatype.org/service/local/repositories/releases/archive/co/fs2/fs2-reactive-streams_2.13/3.1.0/fs2-reactive-streams_2.13-3.1.0-javadoc.jar/!/fs2/interop/reactivestreams/index.html
 
 ### <a id="docs"></a>Documentation and getting help ###
 
-* There are Scaladoc API documentations for [the core library][core-api], which defines and implements the core types for streams and pulls, as well as the type aliases for pipes and sinks. [The `io` library][io-api] provides FS2 bindings for NIO-based file I/O and TCP/UDP networking.
+* There are [Scaladoc API documentations][api] for the library.
 * [The official guide](https://fs2.io/#/guide) is a good starting point for learning more about the library.
 * The [documentation page](https://fs2.io/#/documentation) is intended to serve as a list of all references, including conference presentation recordings, academic papers, and blog posts, on the use and implementation of `fs2`.
 * [The FAQ](https://fs2.io/#/faq) has frequently asked questions. Feel free to open issues or PRs with additions to the FAQ!
