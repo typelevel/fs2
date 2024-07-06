@@ -24,10 +24,10 @@ package fs2
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
-import hash.openssl._
-
 @deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 trait HashSuitePlatform {
+  import hash.openssl._
+
   def digest(algo: String, str: String): List[Byte] = {
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)

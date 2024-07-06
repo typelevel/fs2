@@ -23,10 +23,10 @@ package fs2
 
 import scodec.bits.ByteVector
 
-import hash._
-
 @deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 trait HashSuitePlatform {
+  import hash._
+
   def digest(algo: String, str: String): List[Byte] = {
     val hash = createHash(algo.replace("-", "").toLowerCase())
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
