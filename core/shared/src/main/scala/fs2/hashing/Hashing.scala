@@ -22,7 +22,7 @@
 package fs2
 package hashing
 
-import cats.effect.{IO, LiftIO, MonadCancel, Resource, Sync}
+import cats.effect.{IO, LiftIO, Resource, Sync, SyncIO}
 
 /** Capability trait that provides hashing.
   *
@@ -31,25 +31,25 @@ import cats.effect.{IO, LiftIO, MonadCancel, Resource, Sync}
   * instance should be created for each hash you want to compute (`Hash` objects may be
   * reused to compute multiple hashes but care must be taken to ensure no concurrent usage).
   */
-trait Hashing[F[_]] {
+sealed trait Hashing[F[_]] {
 
   /** Creates a new hash using the specified hashing algorithm. */
-  def create(algorithm: String): Resource[F, Hash[F]]
+  def create(algorithm: HashAlgorithm): Resource[F, Hash[F]]
 
   /** Creates a new MD-5 hash. */
-  def md5: Resource[F, Hash[F]] = create("MD5")
+  def md5: Resource[F, Hash[F]] = create(HashAlgorithm.MD5)
 
   /** Creates a new SHA-1 hash. */
-  def sha1: Resource[F, Hash[F]] = create("SHA-1")
+  def sha1: Resource[F, Hash[F]] = create(HashAlgorithm.SHA1)
 
   /** Creates a new SHA-256 hash. */
-  def sha256: Resource[F, Hash[F]] = create("SHA-256")
+  def sha256: Resource[F, Hash[F]] = create(HashAlgorithm.SHA256)
 
   /** Creates a new SHA-384 hash. */
-  def sha384: Resource[F, Hash[F]] = create("SHA-384")
+  def sha384: Resource[F, Hash[F]] = create(HashAlgorithm.SHA384)
 
   /** Creates a new SHA-512 hash. */
-  def sha512: Resource[F, Hash[F]] = create("SHA-512")
+  def sha512: Resource[F, Hash[F]] = create(HashAlgorithm.SHA512)
 
   /** Returns a pipe that hashes the source byte stream and outputs the hash.
     *
@@ -57,17 +57,22 @@ trait Hashing[F[_]] {
     * to a file while simultaneously computing a hash, use `create` or `sha256` or
     * similar to create a `Hash[F]`.
     */
-  def hashWith(hash: Resource[F, Hash[F]])(implicit F: MonadCancel[F, ?]): Pipe[F, Byte, Byte] =
-    source => Stream.resource(hash).flatMap(h => h.hash(source))
+  def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Byte]
 }
 
 object Hashing {
+
   def apply[F[_]](implicit F: Hashing[F]): F.type = F
 
   def forSync[F[_]: Sync]: Hashing[F] = new Hashing[F] {
-    def create(algorithm: String): Resource[F, Hash[F]] =
+    def create(algorithm: HashAlgorithm): Resource[F, Hash[F]] =
       Hash[F](algorithm)
+
+    def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Byte] =
+      source => Stream.resource(hash).flatMap(h => h.hash(source))
   }
+
+  implicit def forSyncIO: Hashing[SyncIO] = forSync
 
   def forIO: Hashing[IO] = forLiftIO
 
@@ -75,4 +80,16 @@ object Hashing {
     val _ = LiftIO[F]
     forSync
   }
+
+  def hashPureStream(algorithm: HashAlgorithm, source: Stream[Pure, Byte]): Chunk[Byte] =
+    Hashing[SyncIO]
+      .create(algorithm)
+      .use(h => source.through(h.hash).compile.to(Chunk))
+      .unsafeRunSync()
+
+  def hashChunk(algorithm: HashAlgorithm, chunk: Chunk[Byte]): Chunk[Byte] =
+    Hashing[SyncIO]
+      .create(algorithm)
+      .use(h => h.addChunk(chunk) >> h.computeAndReset)
+      .unsafeRunSync()
 }

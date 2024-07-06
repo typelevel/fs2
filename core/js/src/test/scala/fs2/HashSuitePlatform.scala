@@ -28,7 +28,7 @@ trait HashSuitePlatform {
   import hash._
 
   def digest(algo: String, str: String): List[Byte] = {
-    val hash = createHash(algo.replace("-", "").toLowerCase())
+    val hash = createHash(algo.replace("-", ""))
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
     Chunk.uint8Array(hash.digest()).toList
   }

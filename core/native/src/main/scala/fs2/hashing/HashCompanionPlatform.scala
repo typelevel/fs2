@@ -31,7 +31,7 @@ import scala.scalanative.unsigned._
 trait HashCompanionPlatform {
   import openssl._
 
-  def apply[F[_]](algorithm: String)(implicit F: Sync[F]): Resource[F, Hash[F]] = {
+  def apply[F[_]](algorithm: HashAlgorithm)(implicit F: Sync[F]): Resource[F, Hash[F]] = {
     val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
     zoneResource.flatMap { zone =>
       val acquire = F.delay {
@@ -44,7 +44,7 @@ trait HashCompanionPlatform {
         .make(acquire)(ctx => F.delay(EVP_MD_CTX_free(ctx)))
         .evalMap { ctx =>
           F.delay {
-            val `type` = EVP_get_digestbyname(toCString(algorithm)(zone))
+            val `type` = EVP_get_digestbyname(toCString(toAlgorithmString(algorithm))(zone))
             if (`type` == null)
               throw new RuntimeException(s"EVP_get_digestbyname: ${getOpensslError()}")
             val init = () =>
@@ -81,6 +81,16 @@ trait HashCompanionPlatform {
         }
     }
   }
+
+  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+    algorithm match {
+      case HashAlgorithm.MD5         => "MD5"
+      case HashAlgorithm.SHA1        => "SHA-1"
+      case HashAlgorithm.SHA256      => "SHA-256"
+      case HashAlgorithm.SHA384      => "SHA-384"
+      case HashAlgorithm.SHA512      => "SHA-512"
+      case HashAlgorithm.Named(name) => name
+    }
 
   private[this] def getOpensslError(): String =
     fromCString(ERR_reason_error_string(ERR_get_error()))

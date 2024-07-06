@@ -22,12 +22,13 @@
 package fs2
 package hashing
 
-import scodec.bits.ByteVector
+sealed trait HashAlgorithm
 
-trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] = {
-    val hash = JsHash.createHash(algo.replace("-", ""))
-    hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Chunk.uint8Array(hash.digest())
-  }
+object HashAlgorithm {
+  case object MD5 extends HashAlgorithm
+  case object SHA1 extends HashAlgorithm
+  case object SHA256 extends HashAlgorithm
+  case object SHA384 extends HashAlgorithm
+  case object SHA512 extends HashAlgorithm
+  case class Named(name: String) extends HashAlgorithm
 }

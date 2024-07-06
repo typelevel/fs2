@@ -28,11 +28,21 @@ import java.security.MessageDigest
 
 private[hashing] trait HashCompanionPlatform {
 
-  def apply[F[_]: Sync](algorithm: String): Resource[F, Hash[F]] =
+  def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
-    unsafeFromMessageDigest(MessageDigest.getInstance(algorithm))
+  def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
+    unsafeFromMessageDigest(MessageDigest.getInstance(toAlgorithmString(algorithm)))
+
+  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+    algorithm match {
+      case HashAlgorithm.MD5         => "MD5"
+      case HashAlgorithm.SHA1        => "SHA-1"
+      case HashAlgorithm.SHA256      => "SHA-256"
+      case HashAlgorithm.SHA384      => "SHA-384"
+      case HashAlgorithm.SHA512      => "SHA-512"
+      case HashAlgorithm.Named(name) => name
+    }
 
   def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hash[F] =
     new Hash[F] {

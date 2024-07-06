@@ -32,12 +32,13 @@ import scala.scalajs.js.typedarray.Uint8Array
 
 trait HashCompanionPlatform {
 
-  def apply[F[_]: Sync](algorithm: String): Resource[F, Hash[F]] =
+  def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
+  def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
     new Hash[F] {
-      private var h = JsHash.createHash(algorithm)
+      private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
+      private var h = newHash()
 
       def addChunk(bytes: Chunk[Byte]): F[Unit] =
         Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
@@ -50,10 +51,21 @@ trait HashCompanionPlatform {
 
       def unsafeComputeAndReset(): Chunk[Byte] = {
         val result = Chunk.uint8Array(h.digest())
-        h = JsHash.createHash(algorithm)
+        h = newHash()
         result
       }
     }
+
+  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+    algorithm match {
+      case HashAlgorithm.MD5         => "MD5"
+      case HashAlgorithm.SHA1        => "SHA1"
+      case HashAlgorithm.SHA256      => "SHA256"
+      case HashAlgorithm.SHA384      => "SHA384"
+      case HashAlgorithm.SHA512      => "SHA512"
+      case HashAlgorithm.Named(name) => name
+    }
+
 }
 
 private[fs2] object JsHash {
