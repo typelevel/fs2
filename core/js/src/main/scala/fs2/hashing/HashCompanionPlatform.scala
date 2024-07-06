@@ -36,17 +36,23 @@ trait HashCompanionPlatform {
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
   def unsafe[F[_]: Sync](algorithm: String): Hash[F] =
-    unsafeFromHash(JsHash.createHash(algorithm))
-
-  private def unsafeFromHash[F[_]: Sync](h: JsHash.Hash): Hash[F] =
     new Hash[F] {
-      def addChunk(bytes: Chunk[Byte]): F[Unit] = Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
-      def computeAndReset: F[Chunk[Byte]] = Sync[F].delay(unsafeComputeAndReset())
+      private var h = JsHash.createHash(algorithm)
+
+      def addChunk(bytes: Chunk[Byte]): F[Unit] =
+        Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
+
+      def computeAndReset: F[Chunk[Byte]] =
+        Sync[F].delay(unsafeComputeAndReset())
 
       def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
         h.update(slice.toUint8Array)
 
-      def unsafeComputeAndReset(): Chunk[Byte] = Chunk.uint8Array(h.digest())
+      def unsafeComputeAndReset(): Chunk[Byte] = {
+        val result = Chunk.uint8Array(h.digest())
+        h = JsHash.createHash(algorithm)
+        result
+      }
     }
 }
 

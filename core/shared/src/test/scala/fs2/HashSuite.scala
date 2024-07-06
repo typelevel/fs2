@@ -29,7 +29,7 @@ import org.scalacheck.effect.PropF.forAllF
 import hash._
 
 @deprecated("Tests the deprecated fs2.hash object", "3.11.0")
-class HashSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform {
+class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
 
   def checkDigest[A](h: Pipe[IO, Byte, Byte], algo: String, str: String) = {
     val n =

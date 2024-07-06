@@ -42,16 +42,19 @@ trait HashCompanionPlatform {
       }
       Resource
         .make(acquire)(ctx => F.delay(EVP_MD_CTX_free(ctx)))
-        .evalTap { ctx =>
+        .evalMap { ctx =>
           F.delay {
             val `type` = EVP_get_digestbyname(toCString(algorithm)(zone))
             if (`type` == null)
               throw new RuntimeException(s"EVP_get_digestbyname: ${getOpensslError()}")
-            if (EVP_DigestInit_ex(ctx, `type`, null) != 1)
-              throw new RuntimeException(s"EVP_DigestInit_ex: ${getOpensslError()}")
+            val init = () =>
+              if (EVP_DigestInit_ex(ctx, `type`, null) != 1)
+                throw new RuntimeException(s"EVP_DigestInit_ex: ${getOpensslError()}")
+            init()
+            (ctx, init)
           }
         }
-        .map { ctx =>
+        .map { case (ctx, init) =>
           new Hash[F] {
             def addChunk(bytes: Chunk[Byte]): F[Unit] =
               F.delay(unsafeAddChunk(bytes.toArraySlice))
@@ -70,7 +73,9 @@ trait HashCompanionPlatform {
               val size = stackalloc[CUnsignedInt]()
               if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                 throw new RuntimeException(s"EVP_DigestFinal_ex: ${getOpensslError()}")
-              Chunk.ArraySlice(md, 0, (!size).toInt)
+              val result = Chunk.ArraySlice(md, 0, (!size).toInt)
+              init()
+              result
             }
           }
         }

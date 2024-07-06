@@ -24,6 +24,6 @@ package fs2
 import java.security.MessageDigest
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] =
-    MessageDigest.getInstance(algo).digest(str.getBytes).toList
+  def digest(algo: String, str: String): Chunk[Byte] =
+    Chunk.array(MessageDigest.getInstance(algo).digest(str.getBytes))
 }

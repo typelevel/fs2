@@ -27,9 +27,9 @@ import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF.forAllF
 
-class HashingSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
+class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform {
 
-  def checkDigest[A](h: Resource[IO, Hash[IO]], algo: String, str: String) = {
+  def checkHash[A](h: Resource[IO, Hash[IO]], algo: String, str: String) = {
     val n =
       if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
     val s =
@@ -41,16 +41,15 @@ class HashingSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
             acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    s.through(Hashing[IO].hashWith(h)).compile.toList.assertEquals(digest(algo, str))
+    s.through(Hashing[IO].hashWith(h)).compile.to(Chunk).assertEquals(digest(algo, str))
   }
 
-  group("digests") {
-    if (isJVM) test("md2")(forAllF((s: String) => checkDigest(Hashing[IO].create("MD2"), "MD2", s)))
-    test("md5")(forAllF((s: String) => checkDigest(Hashing[IO].md5, "MD5", s)))
-    test("sha1")(forAllF((s: String) => checkDigest(Hashing[IO].sha1, "SHA-1", s)))
-    test("sha256")(forAllF((s: String) => checkDigest(Hashing[IO].sha256, "SHA-256", s)))
-    test("sha384")(forAllF((s: String) => checkDigest(Hashing[IO].sha384, "SHA-384", s)))
-    test("sha512")(forAllF((s: String) => checkDigest(Hashing[IO].sha512, "SHA-512", s)))
+  group("hashes") {
+    test("md5")(forAllF((s: String) => checkHash(Hashing[IO].md5, "MD5", s)))
+    test("sha1")(forAllF((s: String) => checkHash(Hashing[IO].sha1, "SHA-1", s)))
+    test("sha256")(forAllF((s: String) => checkHash(Hashing[IO].sha256, "SHA-256", s)))
+    test("sha384")(forAllF((s: String) => checkHash(Hashing[IO].sha384, "SHA-384", s)))
+    test("sha512")(forAllF((s: String) => checkHash(Hashing[IO].sha512, "SHA-512", s)))
   }
 
   test("empty input") {
@@ -83,5 +82,40 @@ class HashingSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
     } yield assertEquals(oneHundred, Vector.fill(100)(once))
+  }
+
+  group("verify") {
+    test("success") {
+      forAllF { (strings: List[String]) =>
+        val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
+        Hashing[IO].sha256.use { h =>
+          val expected = digest("SHA256", strings.combineAll)
+          source.through(h.verify(expected)).compile.drain
+        }
+      }
+    }
+
+    test("failure") {
+      forAllF { (strings: List[String]) =>
+        val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
+        Hashing[IO].sha256
+          .use { h =>
+            val expected = digest("SHA256", strings.combineAll)
+            (source ++ Stream(0.toByte)).through(h.verify(expected)).compile.drain
+          }
+          .intercept[HashVerificationException]
+          .void
+      }
+    }
+  }
+
+  test("reuse") {
+    forAllF { (strings: List[String]) =>
+      Hashing[IO].sha256.use { h =>
+        val actual = strings.traverse(s => h.addChunk(Chunk.array(s.getBytes)) >> h.computeAndReset)
+        val expected = strings.map(s => digest("SHA256", s))
+        actual.assertEquals(expected)
+      }
+    }
   }
 }

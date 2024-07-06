@@ -20,15 +20,14 @@
  */
 
 package fs2
+package hashing
 
 import scodec.bits.ByteVector
 
-import hash._
-
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] = {
-    val hash = createHash(algo.replace("-", "").toLowerCase())
+  def digest(algo: String, str: String): Chunk[Byte] = {
+    val hash = JsHash.createHash(algo.replace("-", "").toLowerCase())
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Chunk.uint8Array(hash.digest()).toList
+    Chunk.uint8Array(hash.digest())
   }
 }
