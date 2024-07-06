@@ -31,7 +31,9 @@ import scala.scalanative.unsigned._
 trait HashCompanionPlatform {
   import openssl._
 
-  def apply[F[_]](algorithm: HashAlgorithm)(implicit F: Sync[F]): Resource[F, Hash[F]] = {
+  private[hashing] def apply[F[_]](
+      algorithm: HashAlgorithm
+  )(implicit F: Sync[F]): Resource[F, Hash[F]] = {
     val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
     zoneResource.flatMap { zone =>
       val acquire = F.delay {

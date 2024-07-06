@@ -81,12 +81,14 @@ object Hashing {
     forSync
   }
 
+  /** Returns the hash of the supplied stream. */
   def hashPureStream(algorithm: HashAlgorithm, source: Stream[Pure, Byte]): Chunk[Byte] =
     Hashing[SyncIO]
       .create(algorithm)
       .use(h => source.through(h.hash).compile.to(Chunk))
       .unsafeRunSync()
 
+  /** Returns the hash of the supplied chunk. */
   def hashChunk(algorithm: HashAlgorithm, chunk: Chunk[Byte]): Chunk[Byte] =
     Hashing[SyncIO]
       .create(algorithm)

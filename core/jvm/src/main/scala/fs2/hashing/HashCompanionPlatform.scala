@@ -28,10 +28,10 @@ import java.security.MessageDigest
 
 private[hashing] trait HashCompanionPlatform {
 
-  def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
+  private[hashing] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
+  private[hashing] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
     unsafeFromMessageDigest(MessageDigest.getInstance(toAlgorithmString(algorithm)))
 
   private def toAlgorithmString(algorithm: HashAlgorithm): String =
@@ -46,12 +46,16 @@ private[hashing] trait HashCompanionPlatform {
 
   def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hash[F] =
     new Hash[F] {
-      def addChunk(bytes: Chunk[Byte]): F[Unit] = Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
-      def computeAndReset: F[Chunk[Byte]] = Sync[F].delay(unsafeComputeAndReset())
+      def addChunk(bytes: Chunk[Byte]): F[Unit] =
+        Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
+
+      def computeAndReset: F[Chunk[Byte]] =
+        Sync[F].delay(unsafeComputeAndReset())
 
       def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
         d.update(slice.values, slice.offset, slice.size)
 
-      def unsafeComputeAndReset(): Chunk[Byte] = Chunk.array(d.digest())
+      def unsafeComputeAndReset(): Chunk[Byte] =
+        Chunk.array(d.digest())
     }
 }
