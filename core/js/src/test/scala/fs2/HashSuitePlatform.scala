@@ -25,6 +25,7 @@ import scodec.bits.ByteVector
 
 import hash._
 
+@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 trait HashSuitePlatform {
   def digest(algo: String, str: String): List[Byte] = {
     val hash = createHash(algo.replace("-", "").toLowerCase())

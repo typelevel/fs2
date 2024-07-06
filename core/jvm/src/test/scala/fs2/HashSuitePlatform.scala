@@ -23,6 +23,7 @@ package fs2
 
 import java.security.MessageDigest
 
+@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 trait HashSuitePlatform {
   def digest(algo: String, str: String): List[Byte] =
     MessageDigest.getInstance(algo).digest(str.getBytes).toList
