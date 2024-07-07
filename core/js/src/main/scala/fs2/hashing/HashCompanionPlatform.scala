@@ -32,10 +32,10 @@ import scala.scalajs.js.typedarray.Uint8Array
 
 trait HashCompanionPlatform {
 
-  private[hashing] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
+  private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  private[hashing] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
+  private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
     new Hash[F] {
       private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
       private var h = newHash()
