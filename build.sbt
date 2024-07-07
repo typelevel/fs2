@@ -254,9 +254,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super#Code"
   ),
-  // moved openssl bindings to fs2.hashing: #3454
+  // moved openssl/crypto bindings to fs2.hashing: #3454
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.hash.createHash"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$Hash")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$Hash"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$openssl$")
 )
 
 lazy val root = tlCrossRootProject
