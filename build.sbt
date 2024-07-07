@@ -257,6 +257,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // moved openssl/crypto bindings to fs2.hashing: #3454
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.hash.createHash"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.hash$Hash"),
+  ProblemFilters.exclude[MissingFieldProblem]("fs2.hash.openssl"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.hash$openssl$")
 )
 
