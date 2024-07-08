@@ -44,14 +44,14 @@ trait Hash[F[_]] {
     */
   def computeAndReset: F[Chunk[Byte]]
 
-  protected def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit
+  protected def unsafeAddChunk(chunk: Chunk[Byte]): Unit
   protected def unsafeComputeAndReset(): Chunk[Byte]
 
   /** Returns a pipe that updates this hash computation with chunks of bytes pulled from the pipe.
     */
   def update: Pipe[F, Byte, Byte] =
     _.mapChunks { c =>
-      unsafeAddChunk(c.toArraySlice)
+      unsafeAddChunk(c)
       c
     }
 

@@ -41,13 +41,13 @@ trait HashCompanionPlatform {
       private var h = newHash()
 
       def addChunk(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
+        Sync[F].delay(unsafeAddChunk(bytes))
 
       def computeAndReset: F[Chunk[Byte]] =
         Sync[F].delay(unsafeComputeAndReset())
 
-      def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
-        h.update(slice.toUint8Array)
+      def unsafeAddChunk(chunk: Chunk[Byte]): Unit =
+        h.update(chunk.toUint8Array)
 
       def unsafeComputeAndReset(): Chunk[Byte] = {
         val result = Chunk.uint8Array(h.digest())

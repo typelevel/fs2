@@ -22,7 +22,7 @@
 package fs2
 package hashing
 
-sealed trait HashAlgorithm
+sealed abstract class HashAlgorithm
 
 object HashAlgorithm {
   case object MD5 extends HashAlgorithm
@@ -30,5 +30,5 @@ object HashAlgorithm {
   case object SHA256 extends HashAlgorithm
   case object SHA384 extends HashAlgorithm
   case object SHA512 extends HashAlgorithm
-  case class Named(name: String) extends HashAlgorithm
+  final case class Named(name: String) extends HashAlgorithm
 }

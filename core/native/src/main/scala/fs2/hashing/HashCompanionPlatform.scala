@@ -59,16 +59,18 @@ trait HashCompanionPlatform {
         .map { case (ctx, init) =>
           new Hash[F] {
             def addChunk(bytes: Chunk[Byte]): F[Unit] =
-              F.delay(unsafeAddChunk(bytes.toArraySlice))
+              F.delay(unsafeAddChunk(bytes))
 
             def computeAndReset: F[Chunk[Byte]] =
               F.delay(unsafeComputeAndReset())
 
-            def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
+            def unsafeAddChunk(chunk: Chunk[Byte]): Unit = {
+              val slice = chunk.toArraySlice
               if (
                 EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1
               )
                 throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
+            }
 
             def unsafeComputeAndReset(): Chunk[Byte] = {
               val md = new Array[Byte](EVP_MAX_MD_SIZE)

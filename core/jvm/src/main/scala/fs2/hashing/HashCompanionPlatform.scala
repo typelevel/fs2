@@ -47,13 +47,15 @@ private[hashing] trait HashCompanionPlatform {
   def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hash[F] =
     new Hash[F] {
       def addChunk(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeAddChunk(bytes.toArraySlice))
+        Sync[F].delay(unsafeAddChunk(bytes))
 
       def computeAndReset: F[Chunk[Byte]] =
         Sync[F].delay(unsafeComputeAndReset())
 
-      def unsafeAddChunk(slice: Chunk.ArraySlice[Byte]): Unit =
+      def unsafeAddChunk(chunk: Chunk[Byte]): Unit = {
+        val slice = chunk.toArraySlice
         d.update(slice.values, slice.offset, slice.size)
+      }
 
       def unsafeComputeAndReset(): Chunk[Byte] =
         Chunk.array(d.digest())
