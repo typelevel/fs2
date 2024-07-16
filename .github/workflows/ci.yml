@@ -299,8 +299,6 @@ jobs:
         project: [ioJS, ioJVM, ioNative]
     runs-on: ${{ matrix.os }}
     steps:
-      - run: brew install sbt
-
       - name: Install sbt
         if: contains(runner.os, 'macos')
         run: brew install sbt
