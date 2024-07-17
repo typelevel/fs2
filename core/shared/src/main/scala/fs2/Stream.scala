@@ -4202,6 +4202,17 @@ object Stream extends StreamLowPriority {
     go(start).stream
   }
 
+  /** Like [[unfoldLoop]], but more efficient downstream as it outputs chunks. */
+  def unfoldChunkLoop[F[x] <: Pure[x], S, O](
+      start: S
+  )(f: S => (Chunk[O], Option[S])): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] = f(s) match {
+      case (o, None)    => Pull.output(o)
+      case (o, Some(t)) => Pull.output(o) >> go(t)
+    }
+    go(start).stream
+  }
+
   /** Like [[unfoldLoop]], but takes an effectful function. */
   def unfoldLoopEval[F[_], S, O](start: S)(f: S => F[(O, Option[S])]): Stream[F, O] = {
     def go(s: S): Pull[F, O, Unit] =
