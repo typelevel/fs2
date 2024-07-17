@@ -4212,6 +4212,16 @@ object Stream extends StreamLowPriority {
     go(start).stream
   }
 
+  /** Like [[unfoldLoopEval]], but more efficient downstream as it outputs chunks. */
+  def unfoldChunkLoopEval[F[_], S, O](start: S)(f: S => F[(Chunk[O], Option[S])]): Stream[F, O] = {
+    def go(s: S): Pull[F, O, Unit] =
+      Pull.eval(f(s)).flatMap {
+        case (o, None)    => Pull.output(o)
+        case (o, Some(t)) => Pull.output(o) >> go(t)
+      }
+    go(start).stream
+  }
+
   /** A view of `Stream` that removes the variance from the type parameters. This allows
     * defining syntax in which the type parameters appear in contravariant (i.e. input)
     * position, which would fail to compile if defined as instance methods.
