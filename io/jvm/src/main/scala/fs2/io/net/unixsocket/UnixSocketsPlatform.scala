@@ -28,7 +28,7 @@ import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
-import fs2.{Chunk, Stream}
+import fs2.Stream
 import fs2.io.file.{Files, Path}
 import fs2.io.net.Socket
 import java.nio.ByteBuffer
@@ -89,29 +89,36 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
   private def makeSocket[F[_]: Async](
       ch: SocketChannel
   ): F[Socket[F]] =
-    (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
-      new AsyncSocket[F](ch, readMutex, writeMutex)
+    makeSocket(ch, maxReadChunkSize = 16384, withExclusiveReads = true, withExclusiveWrites = true)
+
+  private def makeSocket[F[_]](
+      ch: SocketChannel,
+      maxReadChunkSize: Int,
+      withExclusiveReads: Boolean,
+      withExclusiveWrites: Boolean
+  )(implicit F: Async[F]): F[Socket[F]] = {
+    def maybeMutex(maybe: Boolean) = F.defer(if (maybe) Mutex[F].map(Some(_)) else F.pure(None))
+    (maybeMutex(withExclusiveReads), maybeMutex(withExclusiveWrites)).mapN {
+      (readMutex, writeMutex) => new AsyncSocket[F](ch, readMutex, writeMutex, maxReadChunkSize)
     }
+  }
 
   private final class AsyncSocket[F[_]](
       ch: SocketChannel,
-      readMutex: Mutex[F],
-      writeMutex: Mutex[F]
+      readMutex: Option[Mutex[F]],
+      writeMutex: Option[Mutex[F]],
+      maxReadChunkSize: Int
   )(implicit F: Async[F])
-      extends Socket.BufferedReads[F](readMutex) {
+      extends Socket.BufferedReads[F](readMutex, writeMutex, maxReadChunkSize) {
 
-    def readChunk(buff: ByteBuffer): F[Int] =
-      F.blocking(ch.read(buff)).cancelable(close)
+    protected def readChunk(buffer: ByteBuffer): F[Int] =
+      F.blocking(ch.read(buffer)).cancelable(close)
 
-    def write(bytes: Chunk[Byte]): F[Unit] = {
-      def go(buff: ByteBuffer): F[Unit] =
-        F.blocking(ch.write(buff)).cancelable(close) *>
-          F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
-
-      writeMutex.lock.surround {
-        F.delay(bytes.toByteBuffer).flatMap(go)
+    protected def writeChunk(buffer: ByteBuffer): F[Unit] =
+      F.blocking(ch.write(buffer)).cancelable(close).flatMap { _ =>
+        if (buffer.remaining() == 0) F.unit
+        else writeChunk(buffer)
       }
-    }
 
     def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
     def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
