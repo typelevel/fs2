@@ -40,6 +40,6 @@ trait HashSuitePlatform {
       `type`,
       null
     )
-    md.take((!size).toInt).toList
+    md.take(!size.toInt).toList
   }
 }

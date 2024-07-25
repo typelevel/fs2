@@ -85,7 +85,7 @@ object hash {
                 val size = stackalloc[CUnsignedInt]()
                 if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                   throw new RuntimeException(s"EVP_DigestFinal_ex: ${getError()}")
-                Chunk.ArraySlice(md, 0, (!size).toInt)
+                Chunk.ArraySlice(md, 0, !size.toInt)
               }
             }
         }
