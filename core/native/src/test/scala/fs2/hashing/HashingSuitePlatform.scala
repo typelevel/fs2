@@ -21,9 +21,25 @@
 
 package fs2
 
-import java.security.MessageDigest
+import scala.scalanative.unsafe._
+import scala.scalanative.unsigned._
 
-trait HashSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] =
-    MessageDigest.getInstance(algo).digest(str.getBytes).toList
+import hashing.openssl._
+
+trait HashingSuitePlatform {
+  def digest(algo: String, str: String): Chunk[Byte] = {
+    val bytes = str.getBytes
+    val md = new Array[Byte](EVP_MAX_MD_SIZE)
+    val size = stackalloc[CUnsignedInt]()
+    val `type` = EVP_get_digestbyname((algo.replace("-", "") + "\u0000").getBytes.atUnsafe(0))
+    EVP_Digest(
+      if (bytes.length > 0) bytes.atUnsafe(0) else null,
+      bytes.length.toULong,
+      md.atUnsafe(0),
+      size,
+      `type`,
+      null
+    )
+    Chunk.array(md.take((!size).toInt))
+  }
 }

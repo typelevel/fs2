@@ -20,36 +20,13 @@
  */
 
 package fs2
+package hashing
 
-import cats.effect.kernel.Sync
-import fs2.hashing.{Hashing, HashAlgorithm}
+import java.io.IOException
 
-/** Provides various cryptographic hashes as pipes. Requires OpenSSL. */
-@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
-object hash {
-
-  /** Computes an MD2 digest. */
-  def md2[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.Named("MD2"))
-
-  /** Computes an MD5 digest. */
-  def md5[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.MD5)
-
-  /** Computes a SHA-1 digest. */
-  def sha1[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA1)
-
-  /** Computes a SHA-256 digest. */
-  def sha256[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA256)
-
-  /** Computes a SHA-384 digest. */
-  def sha384[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA384)
-
-  /** Computes a SHA-512 digest. */
-  def sha512[F[_]: Sync]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA512)
-
-  private[this] def digest[F[_]](
-      algorithm: HashAlgorithm
-  )(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
-    val h = Hashing.forSync[F]
-    h.hashWith(h.create(algorithm))
-  }
-}
+case class HashVerificationException(
+    expected: Chunk[Byte],
+    actual: Chunk[Byte]
+) extends IOException(
+      s"Digest did not match, expected: ${expected.toByteVector.toHex}, actual: ${actual.toByteVector.toHex}"
+    )

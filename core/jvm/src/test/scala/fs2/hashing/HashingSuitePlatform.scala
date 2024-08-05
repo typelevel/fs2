@@ -21,14 +21,9 @@
 
 package fs2
 
-import scodec.bits.ByteVector
+import java.security.MessageDigest
 
-import hash._
-
-trait HashSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] = {
-    val hash = createHash(algo.replace("-", "").toLowerCase())
-    hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Chunk.uint8Array(hash.digest()).toList
-  }
+trait HashingSuitePlatform {
+  def digest(algo: String, str: String): Chunk[Byte] =
+    Chunk.array(MessageDigest.getInstance(algo).digest(str.getBytes))
 }

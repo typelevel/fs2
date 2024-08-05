@@ -20,20 +20,16 @@
  */
 
 package fs2
+package hashing
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF.forAllF
 
-import fs2.hashing.{Hashing, HashAlgorithm}
+class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform {
 
-@deprecated("Tests the deprecated fs2.hash object", "3.11.0")
-class HashSuite extends Fs2Suite with TestPlatform {
-
-  import hash._
-
-  def checkDigest[A](h: Pipe[IO, Byte, Byte], algo: String, str: String) = {
+  def checkHash[A](h: Resource[IO, Hash[IO]], algo: String, str: String) = {
     val n =
       if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
     val s =
@@ -45,37 +41,31 @@ class HashSuite extends Fs2Suite with TestPlatform {
             acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    val algorithm = algo match {
-      case "MD5"     => HashAlgorithm.MD5
-      case "SHA-1"   => HashAlgorithm.SHA1
-      case "SHA-256" => HashAlgorithm.SHA256
-      case "SHA-384" => HashAlgorithm.SHA384
-      case "SHA-512" => HashAlgorithm.SHA512
-      case other     => HashAlgorithm.Named(other)
-    }
-
-    val expected = Hashing.hashChunk(algorithm, Chunk.array(str.getBytes))
-    s.through(h).compile.to(Chunk).assertEquals(expected)
+    s.through(Hashing[IO].hashWith(h)).compile.to(Chunk).assertEquals(digest(algo, str))
   }
 
-  group("digests") {
-    if (isJVM) test("md2")(forAllF((s: String) => checkDigest(md2, "MD2", s)))
-    test("md5")(forAllF((s: String) => checkDigest(md5, "MD5", s)))
-    test("sha1")(forAllF((s: String) => checkDigest(sha1, "SHA-1", s)))
-    test("sha256")(forAllF((s: String) => checkDigest(sha256, "SHA-256", s)))
-    test("sha384")(forAllF((s: String) => checkDigest(sha384, "SHA-384", s)))
-    test("sha512")(forAllF((s: String) => checkDigest(sha512, "SHA-512", s)))
+  group("hashes") {
+    test("md5")(forAllF((s: String) => checkHash(Hashing[IO].md5, "MD5", s)))
+    test("sha1")(forAllF((s: String) => checkHash(Hashing[IO].sha1, "SHA-1", s)))
+    test("sha256")(forAllF((s: String) => checkHash(Hashing[IO].sha256, "SHA-256", s)))
+    test("sha384")(forAllF((s: String) => checkHash(Hashing[IO].sha384, "SHA-384", s)))
+    test("sha512")(forAllF((s: String) => checkHash(Hashing[IO].sha512, "SHA-512", s)))
   }
 
   test("empty input") {
-    Stream.empty.covary[IO].through(sha1).compile.count.assertEquals(20L)
+    Stream.empty
+      .covary[IO]
+      .through(Hashing[IO].hashWith(Hashing[IO].sha1))
+      .compile
+      .count
+      .assertEquals(20L)
   }
 
   test("zero or one output") {
     forAllF { (lb: List[Array[Byte]]) =>
       val size = lb
         .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
-        .through(sha1[IO])
+        .through(Hashing[IO].hashWith(Hashing[IO].sha1))
         .compile
         .count
       size.assertEquals(20L)
@@ -87,10 +77,45 @@ class HashSuite extends Fs2Suite with TestPlatform {
       .range(1, 100)
       .covary[IO]
       .flatMap(i => Stream.chunk(Chunk.array(i.toString.getBytes)))
-      .through(sha512)
+      .through(Hashing[IO].hashWith(Hashing[IO].sha512))
     for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
     } yield assertEquals(oneHundred, Vector.fill(100)(once))
+  }
+
+  group("verify") {
+    test("success") {
+      forAllF { (strings: List[String]) =>
+        val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
+        Hashing[IO].sha256.use { h =>
+          val expected = digest("SHA256", strings.combineAll)
+          source.through(h.verify(expected)).compile.drain
+        }
+      }
+    }
+
+    test("failure") {
+      forAllF { (strings: List[String]) =>
+        val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
+        Hashing[IO].sha256
+          .use { h =>
+            val expected = digest("SHA256", strings.combineAll)
+            (source ++ Stream(0.toByte)).through(h.verify(expected)).compile.drain
+          }
+          .intercept[HashVerificationException]
+          .void
+      }
+    }
+  }
+
+  test("reuse") {
+    forAllF { (strings: List[String]) =>
+      Hashing[IO].sha256.use { h =>
+        val actual = strings.traverse(s => h.addChunk(Chunk.array(s.getBytes)) >> h.computeAndReset)
+        val expected = strings.map(s => digest("SHA256", s))
+        actual.assertEquals(expected)
+      }
+    }
   }
 }

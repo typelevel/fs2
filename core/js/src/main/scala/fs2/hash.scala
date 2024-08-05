@@ -21,61 +21,40 @@
 
 package fs2
 
-import org.typelevel.scalaccompat.annotation._
-
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
-import scala.scalajs.js.typedarray.Uint8Array
+import cats.effect.SyncIO
+import fs2.hashing.{Hash, HashAlgorithm}
 
 /** Provides various cryptographic hashes as pipes. Supported only on Node.js. */
+@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 object hash {
 
   /** Computes an MD2 digest. */
-  def md2[F[_]]: Pipe[F, Byte, Byte] = digest(createHash("md2"))
+  def md2[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.Named("MD2"))
 
   /** Computes an MD5 digest. */
-  def md5[F[_]]: Pipe[F, Byte, Byte] = digest(createHash("md5"))
+  def md5[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.MD5)
 
   /** Computes a SHA-1 digest. */
-  def sha1[F[_]]: Pipe[F, Byte, Byte] =
-    digest(createHash("sha1"))
+  def sha1[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA1)
 
   /** Computes a SHA-256 digest. */
-  def sha256[F[_]]: Pipe[F, Byte, Byte] =
-    digest(createHash("sha256"))
+  def sha256[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA256)
 
   /** Computes a SHA-384 digest. */
-  def sha384[F[_]]: Pipe[F, Byte, Byte] =
-    digest(createHash("sha384"))
+  def sha384[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA384)
 
   /** Computes a SHA-512 digest. */
-  def sha512[F[_]]: Pipe[F, Byte, Byte] =
-    digest(createHash("sha512"))
+  def sha512[F[_]]: Pipe[F, Byte, Byte] = digest(HashAlgorithm.SHA512)
 
-  /** Computes the digest of the source stream, emitting the digest as a chunk
-    * after completion of the source stream.
-    */
-  private[this] def digest[F[_]](hash: => Hash): Pipe[F, Byte, Byte] =
-    in =>
+  private[this] def digest[F[_]](algorithm: HashAlgorithm): Pipe[F, Byte, Byte] =
+    source =>
       Stream.suspend {
-        in.chunks
-          .fold(hash) { (d, c) =>
-            val bytes = c.toUint8Array
-            d.update(bytes)
-            d
+        val h = Hash.unsafe[SyncIO](algorithm)
+        source.chunks
+          .fold(h) { (h, c) =>
+            h.addChunk(c).unsafeRunSync()
+            h
           }
-          .flatMap(d => Stream.chunk(Chunk.uint8Array(d.digest())))
+          .flatMap(h => Stream.chunk(h.computeAndReset.unsafeRunSync()))
       }
-
-  @js.native
-  @JSImport("crypto", "createHash")
-  @nowarn212("cat=unused")
-  private[fs2] def createHash(algorithm: String): Hash = js.native
-
-  @js.native
-  @nowarn212("cat=unused")
-  private[fs2] trait Hash extends js.Object {
-    def update(data: Uint8Array): Unit = js.native
-    def digest(): Uint8Array = js.native
-  }
 }
