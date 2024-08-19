@@ -122,7 +122,10 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
   }
 
   test("example of writing a file and a hash") {
-    def writeAll(path: String): Pipe[IO, Byte, Nothing] = ???
+    def writeAll(path: String): Pipe[IO, Byte, Nothing] = {
+      identity(path) // Ignore unused warning
+      ???
+    }
 
     def writeFileAndHash(path: String): Pipe[IO, Byte, Nothing] =
       source =>
