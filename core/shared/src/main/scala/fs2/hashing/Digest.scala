@@ -22,11 +22,19 @@
 package fs2
 package hashing
 
-import java.io.IOException
+import scodec.bits.ByteVector
 
-case class HashVerificationException(
-    expected: Digest,
-    actual: Digest
-) extends IOException(
-      s"Digest did not match, expected: $expected, actual: $actual"
-    )
+/** Result of a cryptographic hash operation. */
+final case class Digest(
+  bytes: ByteVector
+) {
+
+  override def equals(other: Any) = other match {
+    case that: Digest => bytes.equalsConstantTime(that.bytes)
+    case _ => false
+  }
+
+  override def toString = bytes.toHex
+
+  def toChunk: Chunk[Byte] = Chunk.byteVector(bytes)
+}

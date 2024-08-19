@@ -42,10 +42,10 @@ trait Hash[F[_]] {
 
   /** Finalizes the hash computation, returns the result, and resets this hash for a fresh computation.
     */
-  def computeAndReset: F[Chunk[Byte]]
+  def computeAndReset: F[Digest]
 
   protected def unsafeAddChunk(chunk: Chunk[Byte]): Unit
-  protected def unsafeComputeAndReset(): Chunk[Byte]
+  protected def unsafeComputeAndReset(): Digest
 
   /** Returns a pipe that updates this hash computation with chunks of bytes pulled from the pipe.
     */
@@ -59,7 +59,7 @@ trait Hash[F[_]] {
     * and sends those bytes to the supplied sink. Upon termination of the source and sink, the hash is emitted.
     */
   def observe(source: Stream[F, Byte], sink: Pipe[F, Byte, Nothing]): Stream[F, Byte] =
-    update(source).through(sink) ++ Stream.evalUnChunk(computeAndReset)
+    update(source).through(sink) ++ Stream.eval(computeAndReset).map(_.toChunk).unchunks
 
   /** Pipe that outputs the hash of the source after termination of the source.
     */
@@ -69,7 +69,7 @@ trait Hash[F[_]] {
   /** Pipe that, at termination of the source, verifies the hash of seen bytes matches the expected value
     * or otherwise fails with a [[HashVerificationException]].
     */
-  def verify(expected: Chunk[Byte])(implicit F: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
+  def verify(expected: Digest)(implicit F: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
     source =>
       update(source)
         .onComplete(
