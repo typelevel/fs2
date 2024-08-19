@@ -41,7 +41,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
             acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    s.through(Hashing[IO].hashWith(h)).compile.to(Chunk).assertEquals(digest(algo, str))
+    s.through(Hashing[IO].hashWith(h)).compile.lastOrError.assertEquals(digest(algo, str))
   }
 
   group("hashes") {
@@ -56,6 +56,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     Stream.empty
       .covary[IO]
       .through(Hashing[IO].hashWith(Hashing[IO].sha1))
+      .flatMap(d => Stream.chunk(d.bytes))
       .compile
       .count
       .assertEquals(20L)
@@ -66,6 +67,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
       val size = lb
         .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
         .through(Hashing[IO].hashWith(Hashing[IO].sha1))
+        .flatMap(d => Stream.chunk(d.bytes))
         .compile
         .count
       size.assertEquals(20L)
@@ -112,10 +114,29 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
   test("reuse") {
     forAllF { (strings: List[String]) =>
       Hashing[IO].sha256.use { h =>
-        val actual = strings.traverse(s => h.addChunk(Chunk.array(s.getBytes)) >> h.computeAndReset)
+        val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.digest)
         val expected = strings.map(s => digest("SHA256", s))
         actual.assertEquals(expected)
       }
     }
+  }
+
+  test("example of writing a file and a hash") {
+    def writeAll(path: String): Pipe[IO, Byte, Nothing] = ???
+
+    def writeFileAndHash(path: String): Pipe[IO, Byte, Nothing] =
+      source =>
+        // Create a hash
+        Stream.resource(Hashing[IO].sha256).flatMap { h =>
+          source
+            // Write source to file, updating the hash with observed bytes
+            .through(h.observe(writeAll(path)))
+            // Write digest to separate file
+            .map(_.bytes)
+            .unchunks
+            .through(writeAll(path + ".sha256"))
+        }
+
+    writeFileAndHash("output.txt")
   }
 }

@@ -52,9 +52,9 @@ object hash {
         val h = Hash.unsafe[SyncIO](algorithm)
         source.chunks
           .fold(h) { (h, c) =>
-            h.addChunk(c).unsafeRunSync()
+            h.update(c).unsafeRunSync()
             h
           }
-          .flatMap(h => Stream.chunk(h.computeAndReset.unsafeRunSync()))
+          .flatMap(h => Stream.chunk(h.digest.unsafeRunSync().bytes))
       }
 }

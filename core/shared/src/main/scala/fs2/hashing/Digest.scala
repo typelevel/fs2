@@ -22,19 +22,26 @@
 package fs2
 package hashing
 
-import scodec.bits.ByteVector
-
-/** Result of a cryptographic hash operation. */
+/** Result of a hash operation. */
 final case class Digest(
-  bytes: ByteVector
+    bytes: Chunk[Byte]
 ) {
 
   override def equals(other: Any) = other match {
-    case that: Digest => bytes.equalsConstantTime(that.bytes)
+    case that: Digest =>
+      // Note: following intentionally performs a constant time comparison
+      val thatBytes = that.bytes
+      if (bytes.size != thatBytes.size) false
+      else {
+        var result, idx = 0
+        while (idx < bytes.size) {
+          result = result | (bytes(idx) ^ thatBytes(idx))
+          idx += 1
+        }
+        result == 0
+      }
     case _ => false
   }
 
-  override def toString = bytes.toHex
-
-  def toChunk: Chunk[Byte] = Chunk.byteVector(bytes)
+  override def toString = bytes.toByteVector.toHex
 }

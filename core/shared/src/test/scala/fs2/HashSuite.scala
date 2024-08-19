@@ -55,7 +55,7 @@ class HashSuite extends Fs2Suite with TestPlatform {
     }
 
     val expected = Hashing.hashChunk(algorithm, Chunk.array(str.getBytes))
-    s.through(h).compile.to(Chunk).assertEquals(expected)
+    s.through(h).compile.to(Chunk).assertEquals(expected.bytes)
   }
 
   group("digests") {

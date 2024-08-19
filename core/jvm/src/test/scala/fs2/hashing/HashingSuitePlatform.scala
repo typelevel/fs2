@@ -20,10 +20,11 @@
  */
 
 package fs2
+package hashing
 
 import java.security.MessageDigest
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] =
-    Chunk.array(MessageDigest.getInstance(algo).digest(str.getBytes))
+  def digest(algo: String, str: String): Digest =
+    Digest(Chunk.array(MessageDigest.getInstance(algo).digest(str.getBytes)))
 }

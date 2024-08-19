@@ -40,17 +40,17 @@ trait HashCompanionPlatform {
       private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
       private var h = newHash()
 
-      def addChunk(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeAddChunk(bytes))
+      def update(bytes: Chunk[Byte]): F[Unit] =
+        Sync[F].delay(unsafeUpdate(bytes))
 
-      def computeAndReset: F[Chunk[Byte]] =
-        Sync[F].delay(unsafeComputeAndReset())
+      def digest: F[Digest] =
+        Sync[F].delay(unsafeDigest())
 
-      def unsafeAddChunk(chunk: Chunk[Byte]): Unit =
+      def unsafeUpdate(chunk: Chunk[Byte]): Unit =
         h.update(chunk.toUint8Array)
 
-      def unsafeComputeAndReset(): Chunk[Byte] = {
-        val result = Chunk.uint8Array(h.digest())
+      def unsafeDigest(): Digest = {
+        val result = Digest(Chunk.uint8Array(h.digest()))
         h = newHash()
         result
       }

@@ -20,6 +20,7 @@
  */
 
 package fs2
+package hashing
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -27,7 +28,7 @@ import scala.scalanative.unsigned._
 import hashing.openssl._
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] = {
+  def digest(algo: String, str: String): Digest = {
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
@@ -40,6 +41,6 @@ trait HashingSuitePlatform {
       `type`,
       null
     )
-    Chunk.array(md.take((!size).toInt))
+    Digest(Chunk.array(md.take((!size).toInt)))
   }
 }

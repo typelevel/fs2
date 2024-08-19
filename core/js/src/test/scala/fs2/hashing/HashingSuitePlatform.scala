@@ -25,9 +25,9 @@ package hashing
 import scodec.bits.ByteVector
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] = {
+  def digest(algo: String, str: String): Digest = {
     val hash = JsHash.createHash(algo.replace("-", ""))
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Chunk.uint8Array(hash.digest())
+    Digest(Chunk.uint8Array(hash.digest()))
   }
 }

@@ -58,13 +58,13 @@ trait HashCompanionPlatform {
         }
         .map { case (ctx, init) =>
           new Hash[F] {
-            def addChunk(bytes: Chunk[Byte]): F[Unit] =
-              F.delay(unsafeAddChunk(bytes))
+            def update(bytes: Chunk[Byte]): F[Unit] =
+              F.delay(unsafeUpdate(bytes))
 
-            def computeAndReset: F[Chunk[Byte]] =
-              F.delay(unsafeComputeAndReset())
+            def digest: F[Digest] =
+              F.delay(unsafeDigest())
 
-            def unsafeAddChunk(chunk: Chunk[Byte]): Unit = {
+            def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
               if (
                 EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1
@@ -72,12 +72,12 @@ trait HashCompanionPlatform {
                 throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
             }
 
-            def unsafeComputeAndReset(): Chunk[Byte] = {
+            def unsafeDigest(): Digest = {
               val md = new Array[Byte](EVP_MAX_MD_SIZE)
               val size = stackalloc[CUnsignedInt]()
               if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                 throw new RuntimeException(s"EVP_DigestFinal_ex: ${getOpensslError()}")
-              val result = Chunk.ArraySlice(md, 0, (!size).toInt)
+              val result = Digest(Chunk.ArraySlice(md, 0, (!size).toInt))
               init()
               result
             }

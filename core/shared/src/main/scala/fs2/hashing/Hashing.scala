@@ -26,10 +26,23 @@ import cats.effect.{IO, LiftIO, Resource, Sync, SyncIO}
 
 /** Capability trait that provides hashing.
   *
-  * The [[create]] method returns an action that instantiates a fresh `Hash` object.
-  * `Hash` is a mutable object that supports incremental computation of hashes. A `Hash`
-  * instance should be created for each hash you want to compute (`Hash` objects may be
-  * reused to compute multiple hashes but care must be taken to ensure no concurrent usage).
+  * The [[create]] method returns a fresh `Hash` object as a resource. `Hash` is a
+  * mutable object that supports incremental computation of hashes.
+  *
+  * A `Hash` instance should be created for each hash you want to compute, though `Hash`
+  * objects may be reused to compute consecutive hashes. When doing so, care must be taken
+  * to ensure no concurrent usage.
+  *
+  * The `hashWith` operation converts a `Resource[F, Hash[F]]` to a `Pipe[F, Byte, Digest]`.
+  * The resulting pipe outputs a single `Digest` once the source byte stream terminates.
+  *
+  * Alternatively, a `Resource[F, Hash[F]]` can be used directly (via `.use` or via
+  * `Stream.resource`). The `Hash[F]` trait provides lower level operations for computing
+  * hashes, both at an individual chunk level (via `update` and `digest`) and at stream level
+  * (e.g., via `observe` and `drain`).
+  *
+  * Finally, the `Hashing` companion object offers utilities for computing pure hashes:
+  * `hashPureStream` and `hashChunk`.
   */
 sealed trait Hashing[F[_]] {
 
@@ -57,7 +70,7 @@ sealed trait Hashing[F[_]] {
     * to a file while simultaneously computing a hash, use `create` or `sha256` or
     * similar to create a `Hash[F]`.
     */
-  def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Byte]
+  def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Digest]
 }
 
 object Hashing {
@@ -68,8 +81,8 @@ object Hashing {
     def create(algorithm: HashAlgorithm): Resource[F, Hash[F]] =
       Hash[F](algorithm)
 
-    def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Byte] =
-      source => Stream.resource(hash).flatMap(h => h.hash(source))
+    def hashWith(hash: Resource[F, Hash[F]]): Pipe[F, Byte, Digest] =
+      source => Stream.resource(hash).flatMap(_.drain(source))
   }
 
   implicit def forSyncIO: Hashing[SyncIO] = forSync
@@ -82,16 +95,16 @@ object Hashing {
   }
 
   /** Returns the hash of the supplied stream. */
-  def hashPureStream(algorithm: HashAlgorithm, source: Stream[Pure, Byte]): Chunk[Byte] =
+  def hashPureStream(algorithm: HashAlgorithm, source: Stream[Pure, Byte]): Digest =
     Hashing[SyncIO]
       .create(algorithm)
-      .use(h => source.through(h.hash).compile.to(Chunk))
+      .use(h => h.drain(source).compile.lastOrError)
       .unsafeRunSync()
 
   /** Returns the hash of the supplied chunk. */
-  def hashChunk(algorithm: HashAlgorithm, chunk: Chunk[Byte]): Chunk[Byte] =
+  def hashChunk(algorithm: HashAlgorithm, chunk: Chunk[Byte]): Digest =
     Hashing[SyncIO]
       .create(algorithm)
-      .use(h => h.addChunk(chunk) >> h.computeAndReset)
+      .use(h => h.update(chunk) >> h.digest)
       .unsafeRunSync()
 }

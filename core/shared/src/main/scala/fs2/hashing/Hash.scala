@@ -24,11 +24,11 @@ package hashing
 
 /** Mutable data structure that incrementally computes a hash from chunks of bytes.
   *
-  * To compute a hash, call `addChunk` one or more times and then call `computeAndReset`.
-  * The result of `computeAndReset` is the hash value of all the bytes since the last call
-  * to `computeAndReset`.
+  * To compute a hash, call `update` one or more times and then call `digest`.
+  * The result of `digest` is the hash value of all the bytes since the last call
+  * to `digest`.
   *
-  * A `Hash` does **not** store all bytes between calls to `computeAndReset` and hence is safe
+  * A `Hash` does **not** store all bytes between calls to `digest` and hence is safe
   * for computing hashes over very large data sets using constant memory.
   *
   * A `Hash` may be called from different fibers but operations on a hash should not be called
@@ -38,46 +38,45 @@ trait Hash[F[_]] {
 
   /** Adds the specified bytes to the current hash computation.
     */
-  def addChunk(bytes: Chunk[Byte]): F[Unit]
+  def update(bytes: Chunk[Byte]): F[Unit]
 
   /** Finalizes the hash computation, returns the result, and resets this hash for a fresh computation.
     */
-  def computeAndReset: F[Digest]
+  def digest: F[Digest]
 
-  protected def unsafeAddChunk(chunk: Chunk[Byte]): Unit
-  protected def unsafeComputeAndReset(): Digest
+  protected def unsafeUpdate(chunk: Chunk[Byte]): Unit
+  protected def unsafeDigest(): Digest
 
   /** Returns a pipe that updates this hash computation with chunks of bytes pulled from the pipe.
     */
   def update: Pipe[F, Byte, Byte] =
     _.mapChunks { c =>
-      unsafeAddChunk(c)
+      unsafeUpdate(c)
       c
     }
 
-  /** Returns a stream that when pulled, pulls on the source, updates this hash with bytes emitted,
-    * and sends those bytes to the supplied sink. Upon termination of the source and sink, the hash is emitted.
+  /** Returns a pipe that observes chunks from the source to the supplied sink, updating this hash with each
+    * observed chunk. At completion of the source and sink, a single digest is emitted.
     */
-  def observe(source: Stream[F, Byte], sink: Pipe[F, Byte, Nothing]): Stream[F, Byte] =
-    update(source).through(sink) ++ Stream.eval(computeAndReset).map(_.toChunk).unchunks
+  def observe(sink: Pipe[F, Byte, Nothing]): Pipe[F, Byte, Digest] =
+    source => sink(update(source)) ++ Stream.eval(digest)
 
-  /** Pipe that outputs the hash of the source after termination of the source.
+  /** Returns a pipe that outputs the digest of the source.
     */
-  def hash: Pipe[F, Byte, Byte] =
-    source => observe(source, _.drain)
+  def drain: Pipe[F, Byte, Digest] = observe(_.drain)
 
-  /** Pipe that, at termination of the source, verifies the hash of seen bytes matches the expected value
+  /** Returns a pppppthat, at termination of the source, verifies the digest of seen bytes matches the expected value
     * or otherwise fails with a [[HashVerificationException]].
     */
-  def verify(expected: Digest)(implicit F: RaiseThrowable[F]): Pipe[F, Byte, Byte] =
+  def verify(expected: Digest): Pipe[F, Byte, Byte] =
     source =>
       update(source)
         .onComplete(
           Stream
-            .eval(computeAndReset)
+            .eval(digest)
             .flatMap(actual =>
               if (actual == expected) Stream.empty
-              else Stream.raiseError(HashVerificationException(expected, actual))
+              else Pull.fail(HashVerificationException(expected, actual)).streamNoScope
             )
         )
 }
