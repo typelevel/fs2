@@ -65,7 +65,7 @@ trait Hash[F[_]] {
     */
   def drain: Pipe[F, Byte, Digest] = observe(_.drain)
 
-  /** Returns a pppppthat, at termination of the source, verifies the digest of seen bytes matches the expected value
+  /** Returns a pipe that, at termination of the source, verifies the digest of seen bytes matches the expected value
     * or otherwise fails with a [[HashVerificationException]].
     */
   def verify(expected: Digest): Pipe[F, Byte, Byte] =
