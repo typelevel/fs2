@@ -50,6 +50,6 @@ object hash {
       algorithm: HashAlgorithm
   )(implicit F: Sync[F]): Pipe[F, Byte, Byte] = {
     val h = Hashing.forSync[F]
-    s => h.hashWith(h.create(algorithm))(s).map(_.bytes).unchunks
+    s => h.hashWith(h.hash(algorithm))(s).map(_.bytes).unchunks
   }
 }

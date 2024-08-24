@@ -86,7 +86,7 @@ trait HashCompanionPlatform {
     }
   }
 
-  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+  private[hashing] def toAlgorithmString(algorithm: HashAlgorithm): String =
     algorithm match {
       case HashAlgorithm.MD5         => "MD5"
       case HashAlgorithm.SHA1        => "SHA-1"
@@ -103,6 +103,68 @@ trait HashCompanionPlatform {
       case HashAlgorithm.Named(name) => name
     }
 
+  private[hashing] def hmac[F[_]](algorithm: HashAlgorithm, key: Chunk[Byte])(implicit
+      F: Sync[F]
+  ): Resource[F, Hash[F]] = {
+    val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
+    zoneResource.flatMap { zone =>
+      val acquire = F.delay {
+        val ctx = HMAC_CTX_new()
+        if (ctx == null)
+          throw new RuntimeException(s"HMAC_CTX_new: ${getOpensslError()}")
+        ctx
+      }
+      Resource
+        .make(acquire)(ctx => F.delay(HMAC_CTX_free(ctx)))
+        .evalMap { ctx =>
+          F.delay {
+            val `type` = EVP_get_digestbyname(toCString(toAlgorithmString(algorithm))(zone))
+            if (`type` == null)
+              throw new RuntimeException(s"EVP_get_digestbyname: ${getOpensslError()}")
+            val keySlice = key.toArraySlice
+            val init = () =>
+              if (
+                HMAC_Init_ex(
+                  ctx,
+                  keySlice.values.atUnsafe(keySlice.offset),
+                  keySlice.size.toULong,
+                  `type`,
+                  null
+                ) != 1
+              )
+                throw new RuntimeException(s"HMAC_Init_ex: ${getOpensslError()}")
+            init()
+            (ctx, init)
+          }
+        }
+        .map { case (ctx, init) =>
+          new Hash[F] {
+            def update(bytes: Chunk[Byte]): F[Unit] =
+              F.delay(unsafeUpdate(bytes))
+
+            def digest: F[Digest] =
+              F.delay(unsafeDigest())
+
+            def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
+              val slice = chunk.toArraySlice
+              if (HMAC_Update(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1)
+                throw new RuntimeException(s"HMAC_Update: ${getOpensslError()}")
+            }
+
+            def unsafeDigest(): Digest = {
+              val md = new Array[Byte](EVP_MAX_MD_SIZE)
+              val size = stackalloc[CUnsignedInt]()
+              if (HMAC_Final(ctx, md.atUnsafe(0), size) != 1)
+                throw new RuntimeException(s"HMAC_Final: ${getOpensslError()}")
+              val result = Digest(Chunk.ArraySlice(md, 0, (!size).toInt))
+              init()
+              result
+            }
+          }
+        }
+    }
+  }
+
   private[this] def getOpensslError(): String =
     fromCString(ERR_reason_error_string(ERR_get_error()))
 }
@@ -117,6 +179,8 @@ private[fs2] object openssl {
   type EVP_MD
   type EVP_MD_CTX
   type ENGINE
+
+  type HMAC_CTX
 
   def ERR_get_error(): ULong = extern
   def ERR_reason_error_string(e: ULong): CString = extern
@@ -137,5 +201,26 @@ private[fs2] object openssl {
       size: Ptr[CUnsignedInt],
       `type`: Ptr[EVP_MD],
       impl: Ptr[ENGINE]
+  ): CInt = extern
+
+  def HMAC_CTX_new(): Ptr[HMAC_CTX] = extern
+  def HMAC_CTX_free(ctx: Ptr[HMAC_CTX]): Unit = extern
+  def HMAC_Init_ex(
+      ctx: Ptr[HMAC_CTX],
+      key: Ptr[Byte],
+      keyLen: CSize,
+      md: Ptr[EVP_MD],
+      impl: Ptr[ENGINE]
+  ): CInt = extern
+  def HMAC_Update(ctx: Ptr[HMAC_CTX], d: Ptr[Byte], cnt: CSize): CInt = extern
+  def HMAC_Final(ctx: Ptr[HMAC_CTX], md: Ptr[Byte], s: Ptr[CUnsignedInt]): CInt = extern
+  def HMAC(
+      evpMd: Ptr[EVP_MD],
+      key: Ptr[Byte],
+      keyLen: CSize,
+      data: Ptr[Byte],
+      count: CSize,
+      md: Ptr[Byte],
+      size: Ptr[CUnsignedInt]
   ): CInt = extern
 }

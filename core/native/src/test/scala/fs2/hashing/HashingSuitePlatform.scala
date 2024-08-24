@@ -28,21 +28,8 @@ import scala.scalanative.unsigned._
 import hashing.openssl._
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Digest = {
-    val name = algo match {
-      case "MD5"         => "MD5"
-      case "SHA-1"       => "SHA1"
-      case "SHA-224"     => "SHA224"
-      case "SHA-256"     => "SHA256"
-      case "SHA-384"     => "SHA384"
-      case "SHA-512"     => "SHA512"
-      case "SHA-512/224" => "SHA512-224"
-      case "SHA-512/256" => "SHA512-256"
-      case "SHA3-224"    => "SHA3-224"
-      case "SHA3-256"    => "SHA3-256"
-      case "SHA3-384"    => "SHA3-384"
-      case "SHA3-512"    => "SHA3-512"
-    }
+  def digest(algo: HashAlgorithm, str: String): Digest = {
+    val name = Hash.toAlgorithmString(algo)
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
@@ -54,6 +41,25 @@ trait HashingSuitePlatform {
       size,
       `type`,
       null
+    )
+    Digest(Chunk.array(md.take((!size).toInt)))
+  }
+
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Digest = {
+    val name = Hash.toAlgorithmString(algo)
+    val bytes = str.getBytes
+    val md = new Array[Byte](EVP_MAX_MD_SIZE)
+    val size = stackalloc[CUnsignedInt]()
+    val `type` = EVP_get_digestbyname((name + "\u0000").getBytes.atUnsafe(0))
+    val keySlice = key.toArraySlice
+    HMAC(
+      `type`,
+      keySlice.values.atUnsafe(keySlice.offset),
+      keySlice.size.toULong,
+      if (bytes.length > 0) bytes.atUnsafe(0) else null,
+      bytes.length.toULong,
+      md.atUnsafe(0),
+      size
     )
     Digest(Chunk.array(md.take((!size).toInt)))
   }

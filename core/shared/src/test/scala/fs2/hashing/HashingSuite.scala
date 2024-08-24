@@ -22,41 +22,48 @@
 package fs2
 package hashing
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF.forAllF
 
 class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform {
 
-  def checkHash[A](h: Resource[IO, Hash[IO]], algo: String, str: String) = {
+  def checkHash[A](algo: HashAlgorithm, str: String) =
+    streamFromString(str)
+      .through(Hashing[IO].hashWith(Hashing[IO].hash(algo)))
+      .compile
+      .lastOrError
+      .assertEquals(digest(algo, str))
+
+  def streamFromString(str: String): Stream[Pure, Byte] = {
     val n =
       if (str.length > 0) Gen.choose(1, str.length).sample.getOrElse(1) else 1
-    val s =
-      if (str.isEmpty) Stream.empty
-      else
-        str.getBytes
-          .grouped(n)
-          .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) =>
-            acc ++ Stream.chunk(Chunk.array(c))
-          )
-
-    s.through(Hashing[IO].hashWith(h)).compile.lastOrError.assertEquals(digest(algo, str))
+    if (str.isEmpty) Stream.empty
+    else
+      str.getBytes
+        .grouped(n)
+        .foldLeft(Stream.empty.covaryOutput[Byte])((acc, c) => acc ++ Stream.chunk(Chunk.array(c)))
   }
 
   group("hashes") {
-    test("md5")(forAllF((s: String) => checkHash(Hashing[IO].md5, "MD5", s)))
-    test("sha1")(forAllF((s: String) => checkHash(Hashing[IO].sha1, "SHA-1", s)))
-    test("sha224")(forAllF((s: String) => checkHash(Hashing[IO].sha224, "SHA-224", s)))
-    test("sha256")(forAllF((s: String) => checkHash(Hashing[IO].sha256, "SHA-256", s)))
-    test("sha384")(forAllF((s: String) => checkHash(Hashing[IO].sha384, "SHA-384", s)))
-    test("sha512")(forAllF((s: String) => checkHash(Hashing[IO].sha512, "SHA-512", s)))
-    test("sha512/224")(forAllF((s: String) => checkHash(Hashing[IO].sha512_224, "SHA-512/224", s)))
-    test("sha512/256")(forAllF((s: String) => checkHash(Hashing[IO].sha512_256, "SHA-512/256", s)))
-    test("sha3-224")(forAllF((s: String) => checkHash(Hashing[IO].sha3_224, "SHA3-224", s)))
-    test("sha3-256")(forAllF((s: String) => checkHash(Hashing[IO].sha3_256, "SHA3-256", s)))
-    test("sha3-384")(forAllF((s: String) => checkHash(Hashing[IO].sha3_384, "SHA3-384", s)))
-    test("sha3-512")(forAllF((s: String) => checkHash(Hashing[IO].sha3_512, "SHA3-512", s)))
+    HashAlgorithm.BuiltIn.foreach { algo =>
+      test(algo.toString)(forAllF((s: String) => checkHash(algo, s)))
+    }
+  }
+
+  def checkHmac[A](algo: HashAlgorithm, key: Chunk[Byte], str: String) =
+    streamFromString(str)
+      .through(Hashing[IO].hashWith(Hashing[IO].hmac(algo, key)))
+      .compile
+      .lastOrError
+      .assertEquals(hmac(algo, key, str))
+
+  group("hmacs") {
+    val key = Chunk.array(Array.range(0, 64).map(_.toByte))
+    HashAlgorithm.BuiltIn.foreach { algo =>
+      test(algo.toString)(forAllF((s: String) => checkHmac(algo, key, s)))
+    }
   }
 
   test("empty input") {
@@ -98,7 +105,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
       forAllF { (strings: List[String]) =>
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
         Hashing[IO].sha256.use { h =>
-          val expected = digest("SHA-256", strings.combineAll)
+          val expected = digest(HashAlgorithm.SHA256, strings.combineAll)
           source.through(h.verify(expected)).compile.drain
         }
       }
@@ -109,7 +116,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
         Hashing[IO].sha256
           .use { h =>
-            val expected = digest("SHA-256", strings.combineAll)
+            val expected = digest(HashAlgorithm.SHA256, strings.combineAll)
             (source ++ Stream(0.toByte)).through(h.verify(expected)).compile.drain
           }
           .intercept[HashVerificationException]
@@ -122,7 +129,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     forAllF { (strings: List[String]) =>
       Hashing[IO].sha256.use { h =>
         val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.digest)
-        val expected = strings.map(s => digest("SHA-256", s))
+        val expected = strings.map(s => digest(HashAlgorithm.SHA256, s))
         actual.assertEquals(expected)
       }
     }

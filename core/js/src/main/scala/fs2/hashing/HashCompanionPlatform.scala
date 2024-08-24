@@ -35,6 +35,9 @@ trait HashCompanionPlatform {
   private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
+  private[hashing] def hmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Resource[F, Hash[F]] =
+    Resource.eval(Sync[F].delay(unsafeHmac(algorithm, key)))
+
   private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
     new Hash[F] {
       private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
@@ -56,7 +59,7 @@ trait HashCompanionPlatform {
       }
     }
 
-  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+  private[hashing] def toAlgorithmString(algorithm: HashAlgorithm): String =
     algorithm match {
       case HashAlgorithm.MD5         => "MD5"
       case HashAlgorithm.SHA1        => "SHA1"
@@ -72,6 +75,27 @@ trait HashCompanionPlatform {
       case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
     }
+
+  private[fs2] def unsafeHmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Hash[F] =
+    new Hash[F] {
+      private def newHash() = JsHash.createHmac(toAlgorithmString(algorithm), key.toUint8Array)
+      private var h = newHash()
+
+      def update(bytes: Chunk[Byte]): F[Unit] =
+        Sync[F].delay(unsafeUpdate(bytes))
+
+      def digest: F[Digest] =
+        Sync[F].delay(unsafeDigest())
+
+      def unsafeUpdate(chunk: Chunk[Byte]): Unit =
+        h.update(chunk.toUint8Array)
+
+      def unsafeDigest(): Digest = {
+        val result = Digest(Chunk.uint8Array(h.digest()))
+        h = newHash()
+        result
+      }
+    }
 }
 
 private[hashing] object JsHash {
@@ -80,6 +104,11 @@ private[hashing] object JsHash {
   @JSImport("crypto", "createHash")
   @nowarn212("cat=unused")
   private[fs2] def createHash(algorithm: String): Hash = js.native
+
+  @js.native
+  @JSImport("crypto", "createHmac")
+  @nowarn212("cat=unused")
+  private[fs2] def createHmac(algorithm: String, key: Uint8Array): Hash = js.native
 
   @js.native
   @nowarn212("cat=unused")
