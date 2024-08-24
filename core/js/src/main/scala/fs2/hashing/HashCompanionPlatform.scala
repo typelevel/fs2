@@ -35,7 +35,10 @@ trait HashCompanionPlatform {
   private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  private[hashing] def hmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Resource[F, Hash[F]] =
+  private[hashing] def hmac[F[_]: Sync](
+      algorithm: HashAlgorithm,
+      key: Chunk[Byte]
+  ): Resource[F, Hash[F]] =
     Resource.eval(Sync[F].delay(unsafeHmac(algorithm, key)))
 
   private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
