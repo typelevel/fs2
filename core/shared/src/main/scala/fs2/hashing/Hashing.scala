@@ -55,6 +55,9 @@ sealed trait Hashing[F[_]] {
   /** Creates a new SHA-1 hash. */
   def sha1: Resource[F, Hash[F]] = create(HashAlgorithm.SHA1)
 
+  /** Creates a new SHA-224 hash. */
+  def sha224: Resource[F, Hash[F]] = create(HashAlgorithm.SHA224)
+
   /** Creates a new SHA-256 hash. */
   def sha256: Resource[F, Hash[F]] = create(HashAlgorithm.SHA256)
 
@@ -63,6 +66,24 @@ sealed trait Hashing[F[_]] {
 
   /** Creates a new SHA-512 hash. */
   def sha512: Resource[F, Hash[F]] = create(HashAlgorithm.SHA512)
+
+  /** Creates a new SHA-512/224 hash. */
+  def sha512_224: Resource[F, Hash[F]] = create(HashAlgorithm.SHA512_224)
+
+  /** Creates a new SHA-512/256 hash. */
+  def sha512_256: Resource[F, Hash[F]] = create(HashAlgorithm.SHA512_256)
+
+  /** Creates a new SHA3-224 hash. */
+  def sha3_224: Resource[F, Hash[F]] = create(HashAlgorithm.SHA3_224)
+
+  /** Creates a new SHA3-256 hash. */
+  def sha3_256: Resource[F, Hash[F]] = create(HashAlgorithm.SHA3_256)
+
+  /** Creates a new SHA3-384 hash. */
+  def sha3_384: Resource[F, Hash[F]] = create(HashAlgorithm.SHA3_384)
+
+  /** Creates a new SHA3-512 hash. */
+  def sha3_512: Resource[F, Hash[F]] = create(HashAlgorithm.SHA3_512)
 
   /** Returns a pipe that hashes the source byte stream and outputs the hash.
     *

@@ -27,8 +27,15 @@ sealed abstract class HashAlgorithm
 object HashAlgorithm {
   case object MD5 extends HashAlgorithm
   case object SHA1 extends HashAlgorithm
+  case object SHA224 extends HashAlgorithm
   case object SHA256 extends HashAlgorithm
   case object SHA384 extends HashAlgorithm
   case object SHA512 extends HashAlgorithm
+  case object SHA512_224 extends HashAlgorithm
+  case object SHA512_256 extends HashAlgorithm
+  case object SHA3_224 extends HashAlgorithm
+  case object SHA3_256 extends HashAlgorithm
+  case object SHA3_384 extends HashAlgorithm
+  case object SHA3_512 extends HashAlgorithm
   final case class Named(name: String) extends HashAlgorithm
 }

@@ -90,9 +90,16 @@ trait HashCompanionPlatform {
     algorithm match {
       case HashAlgorithm.MD5         => "MD5"
       case HashAlgorithm.SHA1        => "SHA-1"
+      case HashAlgorithm.SHA224      => "SHA-224"
       case HashAlgorithm.SHA256      => "SHA-256"
       case HashAlgorithm.SHA384      => "SHA-384"
       case HashAlgorithm.SHA512      => "SHA-512"
+      case HashAlgorithm.SHA512_224  => "SHA-512/224"
+      case HashAlgorithm.SHA512_256  => "SHA-512/256"
+      case HashAlgorithm.SHA3_224    => "SHA3-224"
+      case HashAlgorithm.SHA3_256    => "SHA3-256"
+      case HashAlgorithm.SHA3_384    => "SHA3-384"
+      case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
     }
 

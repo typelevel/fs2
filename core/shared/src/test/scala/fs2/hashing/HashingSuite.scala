@@ -47,9 +47,16 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
   group("hashes") {
     test("md5")(forAllF((s: String) => checkHash(Hashing[IO].md5, "MD5", s)))
     test("sha1")(forAllF((s: String) => checkHash(Hashing[IO].sha1, "SHA-1", s)))
+    test("sha224")(forAllF((s: String) => checkHash(Hashing[IO].sha224, "SHA-224", s)))
     test("sha256")(forAllF((s: String) => checkHash(Hashing[IO].sha256, "SHA-256", s)))
     test("sha384")(forAllF((s: String) => checkHash(Hashing[IO].sha384, "SHA-384", s)))
     test("sha512")(forAllF((s: String) => checkHash(Hashing[IO].sha512, "SHA-512", s)))
+    test("sha512/224")(forAllF((s: String) => checkHash(Hashing[IO].sha512_224, "SHA-512/224", s)))
+    test("sha512/256")(forAllF((s: String) => checkHash(Hashing[IO].sha512_256, "SHA-512/256", s)))
+    test("sha3-224")(forAllF((s: String) => checkHash(Hashing[IO].sha3_224, "SHA3-224", s)))
+    test("sha3-256")(forAllF((s: String) => checkHash(Hashing[IO].sha3_256, "SHA3-256", s)))
+    test("sha3-384")(forAllF((s: String) => checkHash(Hashing[IO].sha3_384, "SHA3-384", s)))
+    test("sha3-512")(forAllF((s: String) => checkHash(Hashing[IO].sha3_512, "SHA3-512", s)))
   }
 
   test("empty input") {
