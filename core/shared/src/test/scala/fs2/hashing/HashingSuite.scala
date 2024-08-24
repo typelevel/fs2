@@ -98,7 +98,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
       forAllF { (strings: List[String]) =>
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
         Hashing[IO].sha256.use { h =>
-          val expected = digest("SHA256", strings.combineAll)
+          val expected = digest("SHA-256", strings.combineAll)
           source.through(h.verify(expected)).compile.drain
         }
       }
@@ -109,7 +109,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
         Hashing[IO].sha256
           .use { h =>
-            val expected = digest("SHA256", strings.combineAll)
+            val expected = digest("SHA-256", strings.combineAll)
             (source ++ Stream(0.toByte)).through(h.verify(expected)).compile.drain
           }
           .intercept[HashVerificationException]
@@ -122,7 +122,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     forAllF { (strings: List[String]) =>
       Hashing[IO].sha256.use { h =>
         val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.digest)
-        val expected = strings.map(s => digest("SHA256", s))
+        val expected = strings.map(s => digest("SHA-256", s))
         actual.assertEquals(expected)
       }
     }
