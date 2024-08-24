@@ -31,6 +31,7 @@ trait HashingSuitePlatform {
   def digest(algo: String, str: String): Digest = {
     val name = algo match {
       case "MD5"         => "MD5"
+      case "SHA-1"       => "SHA1"
       case "SHA-224"     => "SHA224"
       case "SHA-256"     => "SHA256"
       case "SHA-384"     => "SHA384"
