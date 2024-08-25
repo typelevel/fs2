@@ -25,15 +25,15 @@ package hashing
 import scodec.bits.ByteVector
 
 trait HashingSuitePlatform {
-  def digest(algo: HashAlgorithm, str: String): Digest = {
-    val hash = JsHash.createHash(Hash.toAlgorithmString(algo))
+  def digest(algo: HashAlgorithm, str: String): Hash = {
+    val hash = JsHash.createHash(Hasher.toAlgorithmString(algo))
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Digest(Chunk.uint8Array(hash.digest()))
+    Hash(Chunk.uint8Array(hash.digest()))
   }
 
-  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Digest = {
-    val hash = JsHash.createHmac(Hash.toAlgorithmString(algo), key.toUint8Array)
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Hash = {
+    val hash = JsHash.createHmac(Hasher.toAlgorithmString(algo), key.toUint8Array)
     hash.update(ByteVector.view(str.getBytes).toUint8Array)
-    Digest(Chunk.uint8Array(hash.digest()))
+    Hash(Chunk.uint8Array(hash.digest()))
   }
 }

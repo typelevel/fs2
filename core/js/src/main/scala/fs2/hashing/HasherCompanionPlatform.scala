@@ -30,33 +30,27 @@ import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
-trait HashCompanionPlatform {
+trait HasherCompanionPlatform {
 
-  private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
+  private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hasher[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
   private[hashing] def hmac[F[_]: Sync](
       algorithm: HashAlgorithm,
       key: Chunk[Byte]
-  ): Resource[F, Hash[F]] =
+  ): Resource[F, Hasher[F]] =
     Resource.eval(Sync[F].delay(unsafeHmac(algorithm, key)))
 
-  private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
-    new Hash[F] {
+  private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hasher[F] =
+    new SyncHasher[F] {
       private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
       private var h = newHash()
-
-      def update(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeUpdate(bytes))
-
-      def digest: F[Digest] =
-        Sync[F].delay(unsafeDigest())
 
       def unsafeUpdate(chunk: Chunk[Byte]): Unit =
         h.update(chunk.toUint8Array)
 
-      def unsafeDigest(): Digest = {
-        val result = Digest(Chunk.uint8Array(h.digest()))
+      def unsafeHash(): Hash = {
+        val result = Hash(Chunk.uint8Array(h.digest()))
         h = newHash()
         result
       }
@@ -79,22 +73,16 @@ trait HashCompanionPlatform {
       case HashAlgorithm.Named(name) => name
     }
 
-  private[fs2] def unsafeHmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Hash[F] =
-    new Hash[F] {
+  private[fs2] def unsafeHmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Hasher[F] =
+    new SyncHasher[F] {
       private def newHash() = JsHash.createHmac(toAlgorithmString(algorithm), key.toUint8Array)
       private var h = newHash()
-
-      def update(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeUpdate(bytes))
-
-      def digest: F[Digest] =
-        Sync[F].delay(unsafeDigest())
 
       def unsafeUpdate(chunk: Chunk[Byte]): Unit =
         h.update(chunk.toUint8Array)
 
-      def unsafeDigest(): Digest = {
-        val result = Digest(Chunk.uint8Array(h.digest()))
+      def unsafeHash(): Hash = {
+        val result = Hash(Chunk.uint8Array(h.digest()))
         h = newHash()
         result
       }

@@ -28,18 +28,18 @@ import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-private[hashing] trait HashCompanionPlatform {
+private[hashing] trait HasherCompanionPlatform {
 
-  private[hashing] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
+  private[hashing] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hasher[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
   private[hashing] def hmac[F[_]: Sync](
       algorithm: HashAlgorithm,
       key: Chunk[Byte]
-  ): Resource[F, Hash[F]] =
+  ): Resource[F, Hasher[F]] =
     Resource.eval(Sync[F].delay(unsafeHmac(algorithm, key)))
 
-  private[hashing] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
+  private[hashing] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hasher[F] =
     unsafeFromMessageDigest(MessageDigest.getInstance(toAlgorithmString(algorithm)))
 
   private[hashing] def toAlgorithmString(algorithm: HashAlgorithm): String =
@@ -62,7 +62,7 @@ private[hashing] trait HashCompanionPlatform {
   private[hashing] def unsafeHmac[F[_]: Sync](
       algorithm: HashAlgorithm,
       key: Chunk[Byte]
-  ): Hash[F] = {
+  ): Hasher[F] = {
     val name = toMacAlgorithmString(algorithm)
     val mac = Mac.getInstance(name)
     mac.init(new SecretKeySpec(key.toArray, name))
@@ -86,37 +86,25 @@ private[hashing] trait HashCompanionPlatform {
       case HashAlgorithm.Named(name) => name
     }
 
-  def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hash[F] =
-    new Hash[F] {
-      def update(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeUpdate(bytes))
-
-      def digest: F[Digest] =
-        Sync[F].delay(unsafeDigest())
-
+  def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hasher[F] =
+    new SyncHasher[F] {
       def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
         val slice = chunk.toArraySlice
         d.update(slice.values, slice.offset, slice.size)
       }
 
-      def unsafeDigest(): Digest =
-        Digest(Chunk.array(d.digest()))
+      def unsafeHash(): Hash =
+        Hash(Chunk.array(d.digest()))
     }
 
-  def unsafeFromMac[F[_]: Sync](d: Mac): Hash[F] =
-    new Hash[F] {
-      def update(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeUpdate(bytes))
-
-      def digest: F[Digest] =
-        Sync[F].delay(unsafeDigest())
-
+  def unsafeFromMac[F[_]: Sync](d: Mac): Hasher[F] =
+    new SyncHasher[F] {
       def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
         val slice = chunk.toArraySlice
         d.update(slice.values, slice.offset, slice.size)
       }
 
-      def unsafeDigest(): Digest =
-        Digest(Chunk.array(d.doFinal()))
+      def unsafeHash(): Hash =
+        Hash(Chunk.array(d.doFinal()))
     }
 }

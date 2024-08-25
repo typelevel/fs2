@@ -27,15 +27,15 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 trait HashingSuitePlatform {
-  def digest(algo: HashAlgorithm, str: String): Digest =
-    Digest(
-      Chunk.array(MessageDigest.getInstance(Hash.toAlgorithmString(algo)).digest(str.getBytes))
+  def digest(algo: HashAlgorithm, str: String): Hash =
+    Hash(
+      Chunk.array(MessageDigest.getInstance(Hasher.toAlgorithmString(algo)).digest(str.getBytes))
     )
 
-  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Digest = {
-    val name = Hash.toMacAlgorithmString(algo)
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Hash = {
+    val name = Hasher.toMacAlgorithmString(algo)
     val m = Mac.getInstance(name)
     m.init(new SecretKeySpec(key.toArray, name))
-    Digest(Chunk.array(m.doFinal(str.getBytes)))
+    Hash(Chunk.array(m.doFinal(str.getBytes)))
   }
 }

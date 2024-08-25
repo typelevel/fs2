@@ -31,7 +31,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
 
   def checkHash[A](algo: HashAlgorithm, str: String) =
     streamFromString(str)
-      .through(Hashing[IO].hashWith(Hashing[IO].hash(algo)))
+      .through(Hashing[IO].hashWith(Hashing[IO].hasher(algo)))
       .compile
       .lastOrError
       .assertEquals(digest(algo, str))
@@ -128,7 +128,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
   test("reuse") {
     forAllF { (strings: List[String]) =>
       Hashing[IO].sha256.use { h =>
-        val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.digest)
+        val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.hash)
         val expected = strings.map(s => digest(HashAlgorithm.SHA256, s))
         actual.assertEquals(expected)
       }

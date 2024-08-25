@@ -28,8 +28,8 @@ import scala.scalanative.unsigned._
 import hashing.openssl._
 
 trait HashingSuitePlatform {
-  def digest(algo: HashAlgorithm, str: String): Digest = {
-    val name = Hash.toAlgorithmString(algo)
+  def digest(algo: HashAlgorithm, str: String): Hash = {
+    val name = Hasher.toAlgorithmString(algo)
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
@@ -42,11 +42,11 @@ trait HashingSuitePlatform {
       `type`,
       null
     )
-    Digest(Chunk.array(md.take((!size).toInt)))
+    Hash(Chunk.array(md.take((!size).toInt)))
   }
 
-  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Digest = {
-    val name = Hash.toAlgorithmString(algo)
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Hash = {
+    val name = Hasher.toAlgorithmString(algo)
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
@@ -61,6 +61,6 @@ trait HashingSuitePlatform {
       md.atUnsafe(0),
       size
     )
-    Digest(Chunk.array(md.take((!size).toInt)))
+    Hash(Chunk.array(md.take((!size).toInt)))
   }
 }

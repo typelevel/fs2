@@ -28,12 +28,12 @@ import org.typelevel.scalaccompat.annotation._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
-trait HashCompanionPlatform {
+trait HasherCompanionPlatform {
   import openssl._
 
   private[hashing] def apply[F[_]](
       algorithm: HashAlgorithm
-  )(implicit F: Sync[F]): Resource[F, Hash[F]] = {
+  )(implicit F: Sync[F]): Resource[F, Hasher[F]] = {
     val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
     zoneResource.flatMap { zone =>
       val acquire = F.delay {
@@ -57,13 +57,7 @@ trait HashCompanionPlatform {
           }
         }
         .map { case (ctx, init) =>
-          new Hash[F] {
-            def update(bytes: Chunk[Byte]): F[Unit] =
-              F.delay(unsafeUpdate(bytes))
-
-            def digest: F[Digest] =
-              F.delay(unsafeDigest())
-
+          new SyncHasher[F] {
             def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
               if (
@@ -72,12 +66,12 @@ trait HashCompanionPlatform {
                 throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
             }
 
-            def unsafeDigest(): Digest = {
+            def unsafeHash(): Hash = {
               val md = new Array[Byte](EVP_MAX_MD_SIZE)
               val size = stackalloc[CUnsignedInt]()
               if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                 throw new RuntimeException(s"EVP_DigestFinal_ex: ${getOpensslError()}")
-              val result = Digest(Chunk.ArraySlice(md, 0, (!size).toInt))
+              val result = Hash(Chunk.ArraySlice(md, 0, (!size).toInt))
               init()
               result
             }
@@ -105,7 +99,7 @@ trait HashCompanionPlatform {
 
   private[hashing] def hmac[F[_]](algorithm: HashAlgorithm, key: Chunk[Byte])(implicit
       F: Sync[F]
-  ): Resource[F, Hash[F]] = {
+  ): Resource[F, Hasher[F]] = {
     val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
     zoneResource.flatMap { zone =>
       val acquire = F.delay {
@@ -138,25 +132,19 @@ trait HashCompanionPlatform {
           }
         }
         .map { case (ctx, init) =>
-          new Hash[F] {
-            def update(bytes: Chunk[Byte]): F[Unit] =
-              F.delay(unsafeUpdate(bytes))
-
-            def digest: F[Digest] =
-              F.delay(unsafeDigest())
-
+          new SyncHasher[F] {
             def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
               if (HMAC_Update(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1)
                 throw new RuntimeException(s"HMAC_Update: ${getOpensslError()}")
             }
 
-            def unsafeDigest(): Digest = {
+            def unsafeHash(): Hash = {
               val md = new Array[Byte](EVP_MAX_MD_SIZE)
               val size = stackalloc[CUnsignedInt]()
               if (HMAC_Final(ctx, md.atUnsafe(0), size) != 1)
                 throw new RuntimeException(s"HMAC_Final: ${getOpensslError()}")
-              val result = Digest(Chunk.ArraySlice(md, 0, (!size).toInt))
+              val result = Hash(Chunk.ArraySlice(md, 0, (!size).toInt))
               init()
               result
             }

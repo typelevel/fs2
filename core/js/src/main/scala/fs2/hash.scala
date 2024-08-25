@@ -22,7 +22,7 @@
 package fs2
 
 import cats.effect.SyncIO
-import fs2.hashing.{Hash, HashAlgorithm}
+import fs2.hashing.{Hasher, HashAlgorithm}
 
 /** Provides various cryptographic hashes as pipes. Supported only on Node.js. */
 @deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
@@ -49,12 +49,12 @@ object hash {
   private[this] def digest[F[_]](algorithm: HashAlgorithm): Pipe[F, Byte, Byte] =
     source =>
       Stream.suspend {
-        val h = Hash.unsafe[SyncIO](algorithm)
+        val h = Hasher.unsafe[SyncIO](algorithm)
         source.chunks
           .fold(h) { (h, c) =>
             h.update(c).unsafeRunSync()
             h
           }
-          .flatMap(h => Stream.chunk(h.digest.unsafeRunSync().bytes))
+          .flatMap(h => Stream.chunk(h.hash.unsafeRunSync().bytes))
       }
 }
