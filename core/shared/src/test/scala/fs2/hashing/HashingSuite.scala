@@ -136,6 +136,23 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     }
   }
 
+  test("hashPureStream") {
+    forAllF { (strings: List[String]) =>
+      val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes)))
+      val actual = Hashing.hashPureStream(HashAlgorithm.SHA256, source)
+      val expected = digest(HashAlgorithm.SHA256, strings.combineAll)
+      actual.pure[IO].assertEquals(expected)
+    }
+  }
+
+  test("hashChunk") {
+    forAllF { (string: String) =>
+      val actual = Hashing.hashChunk(HashAlgorithm.SHA256, Chunk.array(string.getBytes))
+      val expected = digest(HashAlgorithm.SHA256, string)
+      actual.pure[IO].assertEquals(expected)
+    }
+  }
+
   test("example of writing a file and a hash") {
     def writeAll(path: String): Pipe[IO, Byte, Nothing] = {
       identity(path) // Ignore unused warning
