@@ -22,13 +22,47 @@
 package fs2
 package hashing
 
-sealed abstract class HashAlgorithm
+/** Enumeration of hash algorithms.
+  *
+  * Note: The existence of an algorithm in this list does not guarantee it is supported
+  * at runtime, as algorithm support is platform specific.
+  *
+  * The `Named` constructor allows specifying an algorithm name that's not in this list.
+  * The supplied name will be passed to the underlying crypto provider when creating a
+  * `Hasher`.
+  *
+  * Implementation note: this class is not sealed, and its constructor is private,  to
+  * allow for addition of new cases in the future without breaking compatibility.
+  */
+abstract class HashAlgorithm private ()
 
 object HashAlgorithm {
   case object MD5 extends HashAlgorithm
   case object SHA1 extends HashAlgorithm
+  case object SHA224 extends HashAlgorithm
   case object SHA256 extends HashAlgorithm
   case object SHA384 extends HashAlgorithm
   case object SHA512 extends HashAlgorithm
+  case object SHA512_224 extends HashAlgorithm
+  case object SHA512_256 extends HashAlgorithm
+  case object SHA3_224 extends HashAlgorithm
+  case object SHA3_256 extends HashAlgorithm
+  case object SHA3_384 extends HashAlgorithm
+  case object SHA3_512 extends HashAlgorithm
   final case class Named(name: String) extends HashAlgorithm
+
+  def BuiltIn: List[HashAlgorithm] = List(
+    MD5,
+    SHA1,
+    SHA224,
+    SHA256,
+    SHA384,
+    SHA512,
+    SHA512_224,
+    SHA512_256,
+    SHA3_224,
+    SHA3_256,
+    SHA3_384,
+    SHA3_512
+  )
 }

@@ -30,40 +30,63 @@ import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
 import scala.scalajs.js.typedarray.Uint8Array
 
-trait HashCompanionPlatform {
+trait HasherCompanionPlatform {
 
-  private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hash[F]] =
+  private[fs2] def apply[F[_]: Sync](algorithm: HashAlgorithm): Resource[F, Hasher[F]] =
     Resource.eval(Sync[F].delay(unsafe(algorithm)))
 
-  private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hash[F] =
-    new Hash[F] {
+  private[hashing] def hmac[F[_]: Sync](
+      algorithm: HashAlgorithm,
+      key: Chunk[Byte]
+  ): Resource[F, Hasher[F]] =
+    Resource.eval(Sync[F].delay(unsafeHmac(algorithm, key)))
+
+  private[fs2] def unsafe[F[_]: Sync](algorithm: HashAlgorithm): Hasher[F] =
+    new SyncHasher[F] {
       private def newHash() = JsHash.createHash(toAlgorithmString(algorithm))
       private var h = newHash()
 
-      def addChunk(bytes: Chunk[Byte]): F[Unit] =
-        Sync[F].delay(unsafeAddChunk(bytes))
-
-      def computeAndReset: F[Chunk[Byte]] =
-        Sync[F].delay(unsafeComputeAndReset())
-
-      def unsafeAddChunk(chunk: Chunk[Byte]): Unit =
+      def unsafeUpdate(chunk: Chunk[Byte]): Unit =
         h.update(chunk.toUint8Array)
 
-      def unsafeComputeAndReset(): Chunk[Byte] = {
-        val result = Chunk.uint8Array(h.digest())
+      def unsafeHash(): Hash = {
+        val result = Hash(Chunk.uint8Array(h.digest()))
         h = newHash()
         result
       }
     }
 
-  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+  private[hashing] def toAlgorithmString(algorithm: HashAlgorithm): String =
     algorithm match {
       case HashAlgorithm.MD5         => "MD5"
       case HashAlgorithm.SHA1        => "SHA1"
+      case HashAlgorithm.SHA224      => "SHA224"
       case HashAlgorithm.SHA256      => "SHA256"
       case HashAlgorithm.SHA384      => "SHA384"
       case HashAlgorithm.SHA512      => "SHA512"
+      case HashAlgorithm.SHA512_224  => "SHA512-224"
+      case HashAlgorithm.SHA512_256  => "SHA512-256"
+      case HashAlgorithm.SHA3_224    => "SHA3-224"
+      case HashAlgorithm.SHA3_256    => "SHA3-256"
+      case HashAlgorithm.SHA3_384    => "SHA3-384"
+      case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
+      case other                     => sys.error(s"unsupported algorithm $other")
+    }
+
+  private[fs2] def unsafeHmac[F[_]: Sync](algorithm: HashAlgorithm, key: Chunk[Byte]): Hasher[F] =
+    new SyncHasher[F] {
+      private def newHash() = JsHash.createHmac(toAlgorithmString(algorithm), key.toUint8Array)
+      private var h = newHash()
+
+      def unsafeUpdate(chunk: Chunk[Byte]): Unit =
+        h.update(chunk.toUint8Array)
+
+      def unsafeHash(): Hash = {
+        val result = Hash(Chunk.uint8Array(h.digest()))
+        h = newHash()
+        result
+      }
     }
 }
 
@@ -73,6 +96,11 @@ private[hashing] object JsHash {
   @JSImport("crypto", "createHash")
   @nowarn212("cat=unused")
   private[fs2] def createHash(algorithm: String): Hash = js.native
+
+  @js.native
+  @JSImport("crypto", "createHmac")
+  @nowarn212("cat=unused")
+  private[fs2] def createHmac(algorithm: String, key: Uint8Array): Hash = js.native
 
   @js.native
   @nowarn212("cat=unused")

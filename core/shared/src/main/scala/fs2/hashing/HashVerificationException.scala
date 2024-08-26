@@ -25,8 +25,8 @@ package hashing
 import java.io.IOException
 
 case class HashVerificationException(
-    expected: Chunk[Byte],
-    actual: Chunk[Byte]
+    expected: Hash,
+    actual: Hash
 ) extends IOException(
-      s"Digest did not match, expected: ${expected.toByteVector.toHex}, actual: ${actual.toByteVector.toHex}"
+      s"Hash did not match, expected: $expected, actual: $actual"
     )

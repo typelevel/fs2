@@ -28,12 +28,12 @@ import org.typelevel.scalaccompat.annotation._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
-trait HashCompanionPlatform {
+trait HasherCompanionPlatform {
   import openssl._
 
   private[hashing] def apply[F[_]](
       algorithm: HashAlgorithm
-  )(implicit F: Sync[F]): Resource[F, Hash[F]] = {
+  )(implicit F: Sync[F]): Resource[F, Hasher[F]] = {
     val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
     zoneResource.flatMap { zone =>
       val acquire = F.delay {
@@ -57,14 +57,8 @@ trait HashCompanionPlatform {
           }
         }
         .map { case (ctx, init) =>
-          new Hash[F] {
-            def addChunk(bytes: Chunk[Byte]): F[Unit] =
-              F.delay(unsafeAddChunk(bytes))
-
-            def computeAndReset: F[Chunk[Byte]] =
-              F.delay(unsafeComputeAndReset())
-
-            def unsafeAddChunk(chunk: Chunk[Byte]): Unit = {
+          new SyncHasher[F] {
+            def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
               if (
                 EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1
@@ -72,12 +66,12 @@ trait HashCompanionPlatform {
                 throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
             }
 
-            def unsafeComputeAndReset(): Chunk[Byte] = {
+            def unsafeHash(): Hash = {
               val md = new Array[Byte](EVP_MAX_MD_SIZE)
               val size = stackalloc[CUnsignedInt]()
               if (EVP_DigestFinal_ex(ctx, md.atUnsafe(0), size) != 1)
                 throw new RuntimeException(s"EVP_DigestFinal_ex: ${getOpensslError()}")
-              val result = Chunk.ArraySlice(md, 0, (!size).toInt)
+              val result = Hash(Chunk.ArraySlice(md, 0, (!size).toInt))
               init()
               result
             }
@@ -86,15 +80,79 @@ trait HashCompanionPlatform {
     }
   }
 
-  private def toAlgorithmString(algorithm: HashAlgorithm): String =
+  private[hashing] def toAlgorithmString(algorithm: HashAlgorithm): String =
     algorithm match {
       case HashAlgorithm.MD5         => "MD5"
       case HashAlgorithm.SHA1        => "SHA-1"
+      case HashAlgorithm.SHA224      => "SHA-224"
       case HashAlgorithm.SHA256      => "SHA-256"
       case HashAlgorithm.SHA384      => "SHA-384"
       case HashAlgorithm.SHA512      => "SHA-512"
+      case HashAlgorithm.SHA512_224  => "SHA-512/224"
+      case HashAlgorithm.SHA512_256  => "SHA-512/256"
+      case HashAlgorithm.SHA3_224    => "SHA3-224"
+      case HashAlgorithm.SHA3_256    => "SHA3-256"
+      case HashAlgorithm.SHA3_384    => "SHA3-384"
+      case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
+      case other                     => sys.error(s"unsupported algorithm $other")
     }
+
+  private[hashing] def hmac[F[_]](algorithm: HashAlgorithm, key: Chunk[Byte])(implicit
+      F: Sync[F]
+  ): Resource[F, Hasher[F]] = {
+    val zoneResource = Resource.make(F.delay(Zone.open()))(z => F.delay(z.close()))
+    zoneResource.flatMap { zone =>
+      val acquire = F.delay {
+        val ctx = HMAC_CTX_new()
+        if (ctx == null)
+          throw new RuntimeException(s"HMAC_CTX_new: ${getOpensslError()}")
+        ctx
+      }
+      Resource
+        .make(acquire)(ctx => F.delay(HMAC_CTX_free(ctx)))
+        .evalMap { ctx =>
+          F.delay {
+            val `type` = EVP_get_digestbyname(toCString(toAlgorithmString(algorithm))(zone))
+            if (`type` == null)
+              throw new RuntimeException(s"EVP_get_digestbyname: ${getOpensslError()}")
+            val keySlice = key.toArraySlice
+            val init = () =>
+              if (
+                HMAC_Init_ex(
+                  ctx,
+                  keySlice.values.atUnsafe(keySlice.offset),
+                  keySlice.size.toULong,
+                  `type`,
+                  null
+                ) != 1
+              )
+                throw new RuntimeException(s"HMAC_Init_ex: ${getOpensslError()}")
+            init()
+            (ctx, init)
+          }
+        }
+        .map { case (ctx, init) =>
+          new SyncHasher[F] {
+            def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
+              val slice = chunk.toArraySlice
+              if (HMAC_Update(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1)
+                throw new RuntimeException(s"HMAC_Update: ${getOpensslError()}")
+            }
+
+            def unsafeHash(): Hash = {
+              val md = new Array[Byte](EVP_MAX_MD_SIZE)
+              val size = stackalloc[CUnsignedInt]()
+              if (HMAC_Final(ctx, md.atUnsafe(0), size) != 1)
+                throw new RuntimeException(s"HMAC_Final: ${getOpensslError()}")
+              val result = Hash(Chunk.ArraySlice(md, 0, (!size).toInt))
+              init()
+              result
+            }
+          }
+        }
+    }
+  }
 
   private[this] def getOpensslError(): String =
     fromCString(ERR_reason_error_string(ERR_get_error()))
@@ -110,6 +168,8 @@ private[fs2] object openssl {
   type EVP_MD
   type EVP_MD_CTX
   type ENGINE
+
+  type HMAC_CTX
 
   def ERR_get_error(): ULong = extern
   def ERR_reason_error_string(e: ULong): CString = extern
@@ -130,5 +190,26 @@ private[fs2] object openssl {
       size: Ptr[CUnsignedInt],
       `type`: Ptr[EVP_MD],
       impl: Ptr[ENGINE]
+  ): CInt = extern
+
+  def HMAC_CTX_new(): Ptr[HMAC_CTX] = extern
+  def HMAC_CTX_free(ctx: Ptr[HMAC_CTX]): Unit = extern
+  def HMAC_Init_ex(
+      ctx: Ptr[HMAC_CTX],
+      key: Ptr[Byte],
+      keyLen: CSize,
+      md: Ptr[EVP_MD],
+      impl: Ptr[ENGINE]
+  ): CInt = extern
+  def HMAC_Update(ctx: Ptr[HMAC_CTX], d: Ptr[Byte], cnt: CSize): CInt = extern
+  def HMAC_Final(ctx: Ptr[HMAC_CTX], md: Ptr[Byte], s: Ptr[CUnsignedInt]): CInt = extern
+  def HMAC(
+      evpMd: Ptr[EVP_MD],
+      key: Ptr[Byte],
+      keyLen: CSize,
+      data: Ptr[Byte],
+      count: CSize,
+      md: Ptr[Byte],
+      size: Ptr[CUnsignedInt]
   ): CInt = extern
 }

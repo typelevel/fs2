@@ -20,10 +20,22 @@
  */
 
 package fs2
+package hashing
 
 import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] =
-    Chunk.array(MessageDigest.getInstance(algo).digest(str.getBytes))
+  def digest(algo: HashAlgorithm, str: String): Hash =
+    Hash(
+      Chunk.array(MessageDigest.getInstance(Hasher.toAlgorithmString(algo)).digest(str.getBytes))
+    )
+
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Hash = {
+    val name = Hasher.toMacAlgorithmString(algo)
+    val m = Mac.getInstance(name)
+    m.init(new SecretKeySpec(key.toArray, name))
+    Hash(Chunk.array(m.doFinal(str.getBytes)))
+  }
 }

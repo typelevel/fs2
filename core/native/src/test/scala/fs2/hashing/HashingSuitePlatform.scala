@@ -20,6 +20,7 @@
  */
 
 package fs2
+package hashing
 
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -27,11 +28,12 @@ import scala.scalanative.unsigned._
 import hashing.openssl._
 
 trait HashingSuitePlatform {
-  def digest(algo: String, str: String): Chunk[Byte] = {
+  def digest(algo: HashAlgorithm, str: String): Hash = {
+    val name = Hasher.toAlgorithmString(algo)
     val bytes = str.getBytes
     val md = new Array[Byte](EVP_MAX_MD_SIZE)
     val size = stackalloc[CUnsignedInt]()
-    val `type` = EVP_get_digestbyname((algo.replace("-", "") + "\u0000").getBytes.atUnsafe(0))
+    val `type` = EVP_get_digestbyname((name + "\u0000").getBytes.atUnsafe(0))
     EVP_Digest(
       if (bytes.length > 0) bytes.atUnsafe(0) else null,
       bytes.length.toULong,
@@ -40,6 +42,25 @@ trait HashingSuitePlatform {
       `type`,
       null
     )
-    Chunk.array(md.take((!size).toInt))
+    Hash(Chunk.array(md.take((!size).toInt)))
+  }
+
+  def hmac(algo: HashAlgorithm, key: Chunk[Byte], str: String): Hash = {
+    val name = Hasher.toAlgorithmString(algo)
+    val bytes = str.getBytes
+    val md = new Array[Byte](EVP_MAX_MD_SIZE)
+    val size = stackalloc[CUnsignedInt]()
+    val `type` = EVP_get_digestbyname((name + "\u0000").getBytes.atUnsafe(0))
+    val keySlice = key.toArraySlice
+    HMAC(
+      `type`,
+      keySlice.values.atUnsafe(keySlice.offset),
+      keySlice.size.toULong,
+      if (bytes.length > 0) bytes.atUnsafe(0) else null,
+      bytes.length.toULong,
+      md.atUnsafe(0),
+      size
+    )
+    Hash(Chunk.array(md.take((!size).toInt)))
   }
 }
