@@ -46,44 +46,12 @@ import cats.effect.{IO, LiftIO, Resource, Sync, SyncIO}
   */
 sealed trait Hashing[F[_]] {
 
-  /** Creates a new hasher using the specified hashing algorithm. */
+  /** Creates a new hasher using the specified hashing algorithm.
+    *
+    * The returned resource will fail with an exception during resource acquisition when the
+    * runtime platform does not support the specified hashing algorithm.
+    */
   def hasher(algorithm: HashAlgorithm): Resource[F, Hasher[F]]
-
-  /** Creates a new MD-5 hasher. */
-  def md5: Resource[F, Hasher[F]] = hasher(HashAlgorithm.MD5)
-
-  /** Creates a new SHA-1 hasher. */
-  def sha1: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA1)
-
-  /** Creates a new SHA-224 hasher. */
-  def sha224: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA224)
-
-  /** Creates a new SHA-256 hasher. */
-  def sha256: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA256)
-
-  /** Creates a new SHA-384 hasher. */
-  def sha384: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA384)
-
-  /** Creates a new SHA-512 hasher. */
-  def sha512: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA512)
-
-  /** Creates a new SHA-512/224 hasher. */
-  def sha512_224: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA512_224)
-
-  /** Creates a new SHA-512/256 hasher. */
-  def sha512_256: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA512_256)
-
-  /** Creates a new SHA3-224 hasher. */
-  def sha3_224: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA3_224)
-
-  /** Creates a new SHA3-256 hasher. */
-  def sha3_256: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA3_256)
-
-  /** Creates a new SHA3-384 hasher. */
-  def sha3_384: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA3_384)
-
-  /** Creates a new SHA3-512 hasher. */
-  def sha3_512: Resource[F, Hasher[F]] = hasher(HashAlgorithm.SHA3_512)
 
   /** Creates a new hasher using the specified HMAC algorithm. */
   def hmac(algorithm: HashAlgorithm, key: Chunk[Byte]): Resource[F, Hasher[F]]
@@ -94,7 +62,10 @@ sealed trait Hashing[F[_]] {
     * to a file while simultaneously computing a hash, use `hasher` or `sha256` or
     * similar to create a `Hasher[F]`.
     */
-  def hashWith(hash: Resource[F, Hasher[F]]): Pipe[F, Byte, Hash]
+  def hash(algorithm: HashAlgorithm): Pipe[F, Byte, Hash]
+
+  /** Like `hash` but takes a `Resource[F, Hasher[F]]` instead of a `HashAlgorithm`. */
+  def hashWith(hasher: Resource[F, Hasher[F]]): Pipe[F, Byte, Hash]
 }
 
 object Hashing {
@@ -108,8 +79,11 @@ object Hashing {
     def hmac(algorithm: HashAlgorithm, key: Chunk[Byte]): Resource[F, Hasher[F]] =
       Hasher.hmac[F](algorithm, key)
 
-    def hashWith(hash: Resource[F, Hasher[F]]): Pipe[F, Byte, Hash] =
-      source => Stream.resource(hash).flatMap(_.drain(source))
+    def hash(algorithm: HashAlgorithm): Pipe[F, Byte, Hash] =
+      hashWith(hasher(algorithm))
+
+    def hashWith(hasher: Resource[F, Hasher[F]]): Pipe[F, Byte, Hash] =
+      source => Stream.resource(hasher).flatMap(_.drain(source))
   }
 
   implicit def forSyncIO: Hashing[SyncIO] = forSync

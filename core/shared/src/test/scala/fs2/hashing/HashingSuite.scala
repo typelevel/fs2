@@ -31,7 +31,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
 
   def checkHash[A](algo: HashAlgorithm, str: String) =
     streamFromString(str)
-      .through(Hashing[IO].hashWith(Hashing[IO].hasher(algo)))
+      .through(Hashing[IO].hash(algo))
       .compile
       .lastOrError
       .assertEquals(digest(algo, str))
@@ -69,7 +69,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
   test("empty input") {
     Stream.empty
       .covary[IO]
-      .through(Hashing[IO].hashWith(Hashing[IO].sha1))
+      .through(Hashing[IO].hash(HashAlgorithm.SHA1))
       .flatMap(d => Stream.chunk(d.bytes))
       .compile
       .count
@@ -80,7 +80,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     forAllF { (lb: List[Array[Byte]]) =>
       val size = lb
         .foldLeft(Stream.empty.covaryOutput[Byte])((acc, b) => acc ++ Stream.chunk(Chunk.array(b)))
-        .through(Hashing[IO].hashWith(Hashing[IO].sha1))
+        .through(Hashing[IO].hash(HashAlgorithm.SHA1))
         .flatMap(d => Stream.chunk(d.bytes))
         .compile
         .count
@@ -93,7 +93,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
       .range(1, 100)
       .covary[IO]
       .flatMap(i => Stream.chunk(Chunk.array(i.toString.getBytes)))
-      .through(Hashing[IO].hashWith(Hashing[IO].sha512))
+      .through(Hashing[IO].hash(HashAlgorithm.SHA256))
     for {
       once <- s.compile.toVector
       oneHundred <- Vector.fill(100)(s.compile.toVector).parSequence
@@ -104,7 +104,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     test("success") {
       forAllF { (strings: List[String]) =>
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
-        Hashing[IO].sha256.use { h =>
+        Hashing[IO].hasher(HashAlgorithm.SHA256).use { h =>
           val expected = digest(HashAlgorithm.SHA256, strings.combineAll)
           source.through(h.verify(expected)).compile.drain
         }
@@ -114,7 +114,8 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     test("failure") {
       forAllF { (strings: List[String]) =>
         val source = strings.foldMap(s => Stream.chunk(Chunk.array(s.getBytes))).covary[IO]
-        Hashing[IO].sha256
+        Hashing[IO]
+          .hasher(HashAlgorithm.SHA256)
           .use { h =>
             val expected = digest(HashAlgorithm.SHA256, strings.combineAll)
             (source ++ Stream(0.toByte)).through(h.verify(expected)).compile.drain
@@ -127,7 +128,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
 
   test("reuse") {
     forAllF { (strings: List[String]) =>
-      Hashing[IO].sha256.use { h =>
+      Hashing[IO].hasher(HashAlgorithm.SHA256).use { h =>
         val actual = strings.traverse(s => h.update(Chunk.array(s.getBytes)) >> h.hash)
         val expected = strings.map(s => digest(HashAlgorithm.SHA256, s))
         actual.assertEquals(expected)
@@ -144,7 +145,7 @@ class HashingSuite extends Fs2Suite with HashingSuitePlatform with TestPlatform 
     def writeFileAndHash(path: String): Pipe[IO, Byte, Nothing] =
       source =>
         // Create a hash
-        Stream.resource(Hashing[IO].sha256).flatMap { h =>
+        Stream.resource(Hashing[IO].hasher(HashAlgorithm.SHA256)).flatMap { h =>
           source
             // Write source to file, updating the hash with observed bytes
             .through(h.observe(writeAll(path)))

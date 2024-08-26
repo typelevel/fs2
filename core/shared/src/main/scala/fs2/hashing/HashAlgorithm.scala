@@ -22,7 +22,19 @@
 package fs2
 package hashing
 
-sealed abstract class HashAlgorithm
+/** Enumeration of hash algorithms.
+  *
+  * Note: The existence of an algorithm in this list does not guarantee it is supported
+  * at runtime, as algorithm support is platform specific.
+  *
+  * The `Named` constructor allows specifying an algorithm name that's not in this list.
+  * The supplied name will be passed to the underlying crypto provider when creating a
+  * `Hasher`.
+  *
+  * Implementation note: this class is not sealed, and its constructor is private,  to
+  * allow for addition of new cases in the future without breaking compatibility.
+  */
+abstract class HashAlgorithm private ()
 
 object HashAlgorithm {
   case object MD5 extends HashAlgorithm

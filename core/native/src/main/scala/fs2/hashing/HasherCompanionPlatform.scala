@@ -95,6 +95,7 @@ trait HasherCompanionPlatform {
       case HashAlgorithm.SHA3_384    => "SHA3-384"
       case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
+      case other                     => sys.error(s"unsupported algorithm $other")
     }
 
   private[hashing] def hmac[F[_]](algorithm: HashAlgorithm, key: Chunk[Byte])(implicit

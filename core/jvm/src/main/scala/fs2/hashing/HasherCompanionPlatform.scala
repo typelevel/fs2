@@ -57,6 +57,7 @@ private[hashing] trait HasherCompanionPlatform {
       case HashAlgorithm.SHA3_384    => "SHA3-384"
       case HashAlgorithm.SHA3_512    => "SHA3-512"
       case HashAlgorithm.Named(name) => name
+      case other                     => sys.error(s"unsupported algorithm $other")
     }
 
   private[hashing] def unsafeHmac[F[_]: Sync](
@@ -84,6 +85,7 @@ private[hashing] trait HasherCompanionPlatform {
       case HashAlgorithm.SHA3_384    => "HmacSHA3-384"
       case HashAlgorithm.SHA3_512    => "HmacSHA3-512"
       case HashAlgorithm.Named(name) => name
+      case other                     => sys.error(s"unsupported algorithm $other")
     }
 
   def unsafeFromMessageDigest[F[_]: Sync](d: MessageDigest): Hasher[F] =
