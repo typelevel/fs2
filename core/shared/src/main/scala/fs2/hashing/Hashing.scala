@@ -97,10 +97,7 @@ object Hashing {
 
   /** Returns the hash of the supplied stream. */
   def hashPureStream(algorithm: HashAlgorithm, source: Stream[Pure, Byte]): Hash =
-    Hashing[SyncIO]
-      .hasher(algorithm)
-      .use(h => h.drain(source).compile.lastOrError)
-      .unsafeRunSync()
+    source.through(Hashing[SyncIO].hash(algorithm)).compile.lastOrError.unsafeRunSync()
 
   /** Returns the hash of the supplied chunk. */
   def hashChunk(algorithm: HashAlgorithm, chunk: Chunk[Byte]): Hash =
