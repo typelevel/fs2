@@ -8,4 +8,3 @@ addSbtPlugin("com.github.tkawachi" % "sbt-doctest" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.7")
 
 libraryDependencySchemes += "com.lihaoyi" %% "geny" % VersionScheme.Always
-
