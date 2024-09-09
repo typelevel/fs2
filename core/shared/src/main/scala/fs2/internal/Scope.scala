@@ -258,7 +258,7 @@ private[fs2] final class Scope[F[_]] private (
     * finalized after this scope is closed, but they will get finalized shortly after. See [[ScopedResource]] for
     * more details.
     */
-  def close(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
+  def close(ec: Resource.ExitCase): F[Either[Throwable, Unit]] = F.uncancelable { _ =>
     state.modify(s => Scope.State.closed -> s).flatMap {
       case previous: Scope.State.Open[F] =>
         for {
@@ -269,6 +269,7 @@ private[fs2] final class Scope[F[_]] private (
         } yield CompositeFailure.fromResults(resultChildren, resultResources)
       case _: Scope.State.Closed[F] => F.pure(Right(()))
     }
+  }
 
   /** Like `openAncestor` but returns self if open. */
   private def openScope: F[Scope[F]] =
