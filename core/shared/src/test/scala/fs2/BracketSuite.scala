@@ -371,4 +371,22 @@ class BracketSuite extends Fs2Suite {
           .flatMap(_.join) *> released.get.assert
       }
   }
+
+  val activeFibers = if (isJVM) 10000 else 100
+  test(
+    s"#3473 Scope.close frees it's children and it's parent's reference to itself uncancelably ($activeFibers fibers)"
+  ) {
+    (0 until 4).toList.traverse_ { _ =>
+      val fa = IO.ref(0).flatMap { ref =>
+        val res = Stream.resource(Resource.make(ref.update(_ + 1))(_ => ref.update(_ - 1)))
+
+        (0 to activeFibers).toList.parTraverse_ { _ =>
+          val fa = res.evalMap(_ => IO.sleep(10.millis)).take(10).compile.drain
+          IO.race(fa, IO.sleep(90.millis))
+        } >> ref.get.map(assertEquals(_, 0))
+      }
+
+      fa
+    }
+  }
 }
