@@ -1143,7 +1143,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     * @return Either a singleton stream, or a `never` stream.
     *  - If `this` is a finite stream, the result is a singleton stream, yielding a single boolean value.
-    *  - If `this` is empty, the result is a singleton stream, yielding a `true` value.
+    *  - If `this` is empty, the result is a singleton stream, yielding a `false` value.
     *  - If `this` is a non-terminating stream which contains a value matching the predicate, the result is a singleton
     *    stream containing `true`.
     *  - If `this` is a non-terminating stream which never contains a value matching the predicate, the result is a
