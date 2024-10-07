@@ -203,8 +203,8 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("debounce") {
     val delay = 200.milliseconds
     TestControl.executeEmbed {
-      (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
-        .sleep[IO](delay / 2) ++ Stream(6))
+      (Stream(1, 2, 3) ++ Stream.sleep_[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
+        .sleep_[IO](delay / 2) ++ Stream(6))
         .debounce(delay)
         .assertEmits(List(3, 6))
     }

@@ -115,7 +115,7 @@ class StreamMergeSuite extends Fs2Suite {
                       .merge(
                         Stream.bracket(register("R"))(_ => finalizer("R")) >>
                           Stream
-                            .eval(halt.complete(())) // immediately interrupt the outer stream
+                            .exec(halt.complete(()).void) // immediately interrupt the outer stream
                       )
                   }
                   .interruptWhen(halt.get.attempt)
@@ -156,7 +156,7 @@ class StreamMergeSuite extends Fs2Suite {
 
     group("hangs") {
       val full = if (isJVM) Stream.constant(42) else Stream.constant(42).evalTap(_ => IO.cede)
-      val hang = Stream.repeatEval(IO.never[Unit])
+      val hang = Stream.repeatEval(IO.never[Nothing])
       val hang2: Stream[IO, Nothing] = full.drain
       val hang3: Stream[IO, Nothing] =
         Stream

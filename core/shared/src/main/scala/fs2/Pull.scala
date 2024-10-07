@@ -1245,7 +1245,7 @@ object Pull extends PullLowPriority {
           // a Uncons is run on the same scope, without shifting.
           val runr = buildR[G, y, End]
           F.unit >> go(scope, extendedTopLevelScope, translation, runr, u.stream).attempt
-            .flatMap(_.fold(goErr(_, v), _.apply(new UnconsRunR(v))))
+            .flatMap(_.fold(goErr(_, v), _.apply((new UnconsRunR(v)): Run[G, Any, F[End]])))
 
         case s: StepLeg[G, y] @unchecked =>
           val v = getCont()
@@ -1253,7 +1253,7 @@ object Pull extends PullLowPriority {
           scope
             .shiftScope(s.scope, s.toString)
             .flatMap(go(_, extendedTopLevelScope, translation, runr, s.stream).attempt)
-            .flatMap(_.fold(goErr(_, v), _.apply(new StepLegRunR(v))))
+            .flatMap(_.fold(goErr(_, v), _.apply((new StepLegRunR(v)): Run[G, Any, F[End]])))
 
         case _: GetScope[?] =>
           go(scope, extendedTopLevelScope, translation, runner, getCont()(Succeeded(scope)))
