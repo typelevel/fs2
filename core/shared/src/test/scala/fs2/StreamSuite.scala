@@ -281,7 +281,7 @@ class StreamSuite extends Fs2Suite {
       test("8") {
         Counter[IO].flatMap { counter =>
           Pull
-            .pure(42)
+            .pure(())
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
@@ -294,7 +294,7 @@ class StreamSuite extends Fs2Suite {
       test("9") {
         Counter[IO].flatMap { counter =>
           Pull
-            .eval(IO(42))
+            .eval(IO.unit)
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
@@ -308,9 +308,9 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           Pull
             .eval(IO(42))
-            .flatMap { x =>
+            .flatMap { _ =>
               Pull
-                .pure(x)
+                .pure(())
                 .handleErrorWith(_ => Pull.eval(counter.increment))
                 .flatMap(_ => Pull.raiseError[IO](new Err))
             }
@@ -350,7 +350,7 @@ class StreamSuite extends Fs2Suite {
           Stream
             .range(0, 10)
             .append(Stream.raiseError[IO](new Err))
-            .handleErrorWith(_ => Stream.eval(counter.increment))
+            .handleErrorWith(_ => Stream.exec(counter.increment))
             .compile
             .drain >> counter.get.assertEquals(1L)
         }
@@ -970,8 +970,8 @@ class StreamSuite extends Fs2Suite {
           Stream
             .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
             .flatMap { case (startCondition, waitForStream) =>
-              val worker = Stream.eval(startCondition.get) ++ Stream.eval(
-                waitForStream.complete(())
+              val worker = Stream.eval(startCondition.get) ++ Stream.exec(
+                waitForStream.complete(()).void
               )
               val result = startCondition.complete(()) >> waitForStream.get
 

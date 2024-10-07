@@ -134,7 +134,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
         .flatMap { dir =>
           val a = dir / "a"
           val b = a / "b"
-          Stream.eval(Files[IO].createDirectory(a) >> Files[IO].createFile(b)) ++
+          Stream.exec(Files[IO].createDirectory(a) >> Files[IO].createFile(b)) ++
             Files[IO]
               .watch(dir, Nil, modifiers, 1.second)
               .takeWhile {
@@ -159,7 +159,7 @@ class WatcherSuite extends Fs2Suite with BaseFileSuite {
               case _                           => true
             }
             .concurrently(
-              smallDelay ++ Stream.eval(Files[IO].createDirectory(a) >> Files[IO].createFile(b))
+              smallDelay ++ Stream.exec(Files[IO].createDirectory(a) >> Files[IO].createFile(b))
             )
         }
         .compile
