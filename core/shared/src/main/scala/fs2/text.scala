@@ -529,7 +529,6 @@ object text {
     def go(
         stream: Stream[F, String],
         stringBuilder: StringBuilder,
-        linesBuffer: ArrayBuffer[String],
         ignoreFirstCharNewLine: BoolWrapper,
         first: Boolean
     ): Pull[F, String, Unit] =
@@ -548,7 +547,7 @@ object text {
             else Pull.output1(result)
           }
         case Some((chunk, stream)) =>
-          linesBuffer.clear()
+          val linesBuffer = ArrayBuffer.empty[String]
           chunk.foreach { string =>
             fillBuffers(stringBuilder, linesBuffer, string, ignoreFirstCharNewLine)
           }
@@ -562,7 +561,6 @@ object text {
               Pull.output(Chunk.from(linesBuffer)) >> go(
                 stream,
                 stringBuilder,
-                linesBuffer,
                 ignoreFirstCharNewLine,
                 first = false
               )
@@ -574,7 +572,6 @@ object text {
         go(
           s,
           new StringBuilder(),
-          ArrayBuffer.empty[String],
           new BoolWrapper(false),
           first = true
         ).stream
