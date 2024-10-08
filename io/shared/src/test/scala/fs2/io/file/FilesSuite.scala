@@ -23,7 +23,7 @@ package fs2
 package io
 package file
 
-import cats.effect.{IO, Resource}
+import cats.effect.{IO, Resource, Ref}
 import cats.kernel.Order
 import cats.syntax.all._
 
@@ -168,6 +168,23 @@ class FilesSuite extends Fs2IoSuite with BaseFileSuite {
         .assertEquals("""|foo
                          |bar
                          |""".stripMargin)
+    }
+
+    test("writeUtf8Lines - side effect") {
+      Stream
+        .resource(tempFile)
+        .flatMap { path =>
+          Stream.eval(Ref[IO].of(0)).flatMap { counter =>
+            Stream
+              .eval(counter.update(_ + 1).as(""))
+              .append(Stream.eval(counter.update(_ + 1).as("")))
+              .through(Files[IO].writeUtf8Lines(path)) ++
+              Stream.eval(counter.get)
+          }
+        }
+        .compile
+        .foldMonoid
+        .assertEquals(2)
     }
 
     test("writeUtf8Lines - empty stream") {
