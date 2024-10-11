@@ -590,7 +590,7 @@ class StreamSuite extends Fs2Suite {
 
   property("repeatN") {
     forAll(
-      Gen.chooseNum(1, 200),
+      Gen.chooseNum(0, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
       assertEquals(

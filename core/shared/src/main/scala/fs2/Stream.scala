@@ -2574,9 +2574,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * }}}
     */
   def repeatN(n: Long): Stream[F, O] = {
-    require(n > 0, "n must be > 0") // same behaviour as sliding
-    if (n > 1) this ++ repeatN(n - 1)
-    else this
+    require(n >= 0, "n must be >= 0")
+    if (n > 0) this ++ repeatN(n - 1)
+    else Stream.empty
   }
 
   /** Converts a `Stream[F,Either[Throwable,O]]` to a `Stream[F,O]`, which emits right values and fails upon the first `Left(t)`.
