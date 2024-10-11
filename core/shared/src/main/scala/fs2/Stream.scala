@@ -3496,7 +3496,8 @@ object Stream extends StreamLowPriority {
     go(0)
   }
 
-  /** As a result, the returned stream emits no elements and hence has output type `Nothing`.
+  /** Creates a stream that evaluates the supplied action for its effect and then discards the returned unit.
+    * As a result, the returned stream emits no elements and hence has output type `Nothing`.
     *
     * @example {{{
     * scala> import cats.effect.SyncIO
