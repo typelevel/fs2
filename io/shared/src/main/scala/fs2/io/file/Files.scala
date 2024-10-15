@@ -464,8 +464,13 @@ sealed trait Files[F[_]] extends FilesPlatform[F] {
   def writeUtf8Lines(path: Path, flags: Flags): Pipe[F, String, Nothing] = in =>
     in.pull.uncons
       .flatMap {
-        case Some(_) =>
-          in.intersperse(lineSeparator).append(Stream[F, String](lineSeparator)).underlying
+        case Some((next, rest)) =>
+          Stream
+            .chunk(next)
+            .append(rest)
+            .intersperse(lineSeparator)
+            .append(Stream[F, String](lineSeparator))
+            .underlying
         case None => Pull.done
       }
       .stream
