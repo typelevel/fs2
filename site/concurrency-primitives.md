@@ -20,7 +20,7 @@ import scala.concurrent.duration._
 import cats.effect.unsafe.implicits.global
 import fs2.concurrent.Channel
 
-Channel.unbounded[IO, String].flatMap{channel =>
+Channel.unbounded[IO, String].flatMap { channel =>
   val pub1 = Stream.repeatEval(IO("Hello")).evalMap(channel.send).metered(1.second)
   val pub2 = Stream.repeatEval(IO("World")).evalMap(channel.send).metered(2.seconds)
   val sub = channel.stream.evalMap(IO.println)
