@@ -38,14 +38,12 @@ import org.openjdk.jmh.annotations.{
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Flow.{Publisher, Subscriber, Subscription}
 
-import scala.concurrent.Future
-
 @State(Scope.Thread)
 @BenchmarkMode(Array(Mode.Throughput))
 @OutputTimeUnit(TimeUnit.SECONDS)
 class FlowInteropBenchmark {
-  @Param(Array("1024", "5120", "10240"))
-  var totalElements: Int = _
+  @Param(Array("1024", "5120", "10240", "51200", "512000"))
+  var totalElements: Long = _
 
   @Param(Array("1000"))
   var iterations: Int = _
@@ -57,25 +55,21 @@ class FlowInteropBenchmark {
         override final def subscribe(subscriber: Subscriber[? >: Unit]): Unit =
           subscriber.onSubscribe(
             new Subscription {
-              @volatile var i: Int = 0
+              var i: Long = 0
               @volatile var canceled: Boolean = false
 
+              // Sequential fast Publisher.
               override final def request(n: Long): Unit = {
-                Future {
-                  var j = 0
-                  while ((j < n) && (i < totalElements) && !canceled) {
-                    subscriber.onNext(())
-                    i += 1
-                    j += 1
-                  }
+                val elementsToProduce = math.min(i + n, totalElements)
 
-                  if (i == totalElements || canceled) {
-                    subscriber.onComplete()
-                  }
-                }(global.compute)
+                while (i < elementsToProduce) {
+                  subscriber.onNext(())
+                  i += 1
+                }
 
-                // Discarding the Future so it runs in the background.
-                ()
+                if (i == totalElements || canceled) {
+                  subscriber.onComplete()
+                }
               }
 
               override final def cancel(): Unit =
