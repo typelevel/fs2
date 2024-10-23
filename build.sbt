@@ -256,7 +256,23 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.hash.createHash"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.hash$Hash"),
   ProblemFilters.exclude[MissingFieldProblem]("fs2.hash.openssl"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$openssl$")
+  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$openssl$"),
+  // Privates: #3387
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next$"
+  ),
+  ProblemFilters.exclude[MissingFieldProblem](
+    "fs2.interop.flow.StreamSubscriber#Input.Next"
+  ),
+  ProblemFilters.exclude[Problem](
+    "fs2.interop.flow.StreamSubscriber#State#WaitingOnUpstream.*"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem](
+    "fs2.interop.flow.StreamSubscriber$State$WaitingOnUpstream$"
+  )
 )
 
 lazy val root = tlCrossRootProject
