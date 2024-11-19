@@ -1081,6 +1081,25 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     go(s, this).stream
   }
 
+  /** Like `[[Stream#fold]]`, but accepts a function returning an `F[_]`.
+    *
+    * @example {{{
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).covary[SyncIO].evalFold(0)((acc,i) => SyncIO(acc + i)).compile.toVector.unsafeRunSync()
+    * res0: Vector[Int] = Vector(10)
+    * }}}
+    */
+  def evalFold[F2[x] >: F[x], O2](z: O2)(f: (O2, O) => F2[O2]): Stream[F2, O2] = {
+    def go(z: O2, in: Stream[F2, O]): Pull[F2, O2, Unit] =
+      in.pull.uncons1.flatMap {
+        case None => Pull.output1(z)
+        case Some((hd, tl)) =>
+          Pull.eval(f(z, hd)).flatMap(ns => go(ns, tl))
+      }
+
+    go(z, this).stream
+  }
+
   /** Effectfully maps and filters the elements of the stream depending on the optionality of the result of the
     * application of the effectful function `f`.
     *

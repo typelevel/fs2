@@ -480,6 +480,15 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  test("evalFold") {
+    forAllF { (s: Stream[Pure, Int], n: Int) =>
+      val f = (_: Int) + (_: Int)
+      s.covary[IO]
+        .evalFold(n) { case (s, i) => IO.pure(f(s, i)) }
+        .assertEmitsSameAs(s.fold(n)(f))
+    }
+  }
+
   group("evalMapFilter") {
     test("with effectful optional identity function") {
       forAllF { (s: Stream[Pure, Int]) =>
