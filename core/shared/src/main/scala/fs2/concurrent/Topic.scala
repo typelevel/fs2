@@ -208,7 +208,7 @@ object Topic {
         }
 
         def publish: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
+          in.onFinalize(close.void)
             .evalMap(publish1)
             .takeWhile(_.isRight)
             .drain
