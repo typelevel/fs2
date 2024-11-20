@@ -151,7 +151,7 @@ object Channel {
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
+          in.onFinalize(close.void)
             .evalMap(send)
             .takeWhile(_.isRight)
             .drain

@@ -323,4 +323,19 @@ class ChannelSuite extends Fs2Suite {
     racingSendOperations(channel)
   }
 
+  test("stream should terminate when sendAll is interrupted") {
+    val program =
+      Channel
+        .bounded[IO, Unit](1)
+        .flatMap { ch =>
+          val producer =
+            Stream
+              .eval(IO.canceled)
+              .through(ch.sendAll)
+
+          ch.stream.concurrently(producer).compile.drain
+        }
+
+    TestControl.executeEmbed(program) // will fail if program is deadlocked
+  }
 }

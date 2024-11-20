@@ -287,4 +287,25 @@ class TopicSuite extends Fs2Suite {
 
     check.replicateA_(10000)
   }
+
+  test("publisher cancellation does not deadlock") {
+    val program =
+      Topic[IO, String]
+        .flatMap { topic =>
+          val publisher =
+            Stream
+              .constant("1")
+              .covary[IO]
+              .evalTap(_ => IO.canceled)
+              .through(topic.publish)
+
+          Stream
+            .resource(topic.subscribeAwait(1))
+            .flatMap(subscriber => subscriber.concurrently(publisher))
+            .compile
+            .drain
+        }
+
+    TestControl.executeEmbed(program) // will fail if program is deadlocked
+  }
 }
