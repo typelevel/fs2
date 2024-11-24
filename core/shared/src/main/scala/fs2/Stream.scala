@@ -5564,6 +5564,26 @@ object Stream extends StreamLowPriority {
       interop.flow.pipeToProcessor(pipe = self, chunkSize)
   }
 
+  /** Provides operations on IO pipes for syntactic convenience. */
+  implicit final class IOPipeOps[I, O](private val self: Pipe[IO, I, O]) extends AnyVal {
+
+    /** Creates a [[Processor]] from this [[Pipe]].
+      *
+      * You are required to manually subscribe this [[Processor]] to an upstream [[Publisher]], and have at least one downstream [[Subscriber]] subscribe to the [[Consumer]].
+      *
+      * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
+      *                  A high number may be useful if the publisher is triggering from IO,
+      *                  like requesting elements from a database.
+      *                  A high number will also lead to more elements in memory.
+      */
+    def unsafeToProcessor(
+        chunkSize: Int
+    )(implicit
+        runtime: IORuntime
+    ): Processor[I, O] =
+      interop.flow.unsafePipeToProcessor(pipe = self, chunkSize)
+  }
+
   /** Provides operations on pure pipes for syntactic convenience. */
   implicit final class PurePipeOps[I, O](private val self: Pipe[Pure, I, O]) extends AnyVal {
 
