@@ -23,7 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.Async
+import cats.effect.Async
 
 import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Subscriber, Subscription}

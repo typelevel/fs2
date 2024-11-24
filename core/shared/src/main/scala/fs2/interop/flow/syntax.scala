@@ -23,9 +23,9 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, Resource}
 
-import java.util.concurrent.Flow.{Publisher, Subscriber}
+import java.util.concurrent.Flow.{Processor, Publisher, Subscriber}
 
 object syntax {
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
@@ -56,5 +56,15 @@ object syntax {
       fromPublisher[F, A](chunkSize) { subscriber =>
         F.delay(publisher.subscribe(subscriber))
       }
+  }
+
+  final class FromProcessorPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
+    def apply[I, O](
+        processor: Processor[I, O],
+        chunkSize: Int
+    )(implicit
+        F: Async[F]
+    ): Pipe[F, I, O] =
+      new ProcessorPipe(processor, chunkSize)
   }
 }
