@@ -36,7 +36,7 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-private[flow] final class StreamSubscriber[F[_], A] private (
+private[fs2] final class StreamSubscriber[F[_], A] private (
     chunkSize: Int,
     currentState: AtomicReference[(StreamSubscriber.State, () => Unit)]
 )(implicit
@@ -106,7 +106,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   // Interop API.
 
   /** Creates a downstream [[Stream]] from this [[Subscriber]]. */
-  private[flow] def stream(subscribe: F[Unit]): Stream[F, A] = {
+  private[fs2] def stream(subscribe: F[Unit]): Stream[F, A] = {
     // Called when downstream has finished consuming records.
     val finalize =
       F.delay(nextState(input = Complete(canceled = true)))
@@ -324,7 +324,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   }
 }
 
-private[flow] object StreamSubscriber {
+private[fs2] object StreamSubscriber {
   private final val noop = () => ()
 
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */

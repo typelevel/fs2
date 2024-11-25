@@ -28,7 +28,7 @@ import cats.syntax.all.*
 import java.util.concurrent.Flow
 import cats.effect.Async
 
-private[flow] final class ProcessorPipe[F[_], I, O](
+private[fs2] final class ProcessorPipe[F[_], I, O](
     processor: Flow.Processor[I, O],
     chunkSize: Int
 )(implicit

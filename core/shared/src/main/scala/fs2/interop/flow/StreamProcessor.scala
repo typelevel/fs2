@@ -27,7 +27,7 @@ import java.util.concurrent.Flow
 import cats.effect.{Async, IO, Resource}
 import cats.effect.unsafe.IORuntime
 
-private[flow] final class StreamProcessor[F[_], I, O](
+private[fs2] final class StreamProcessor[F[_], I, O](
     streamSubscriber: StreamSubscriber[F, I],
     streamPublisher: StreamPublisher[F, O]
 ) extends Flow.Processor[I, O] {
@@ -47,7 +47,7 @@ private[flow] final class StreamProcessor[F[_], I, O](
     streamPublisher.subscribe(subscriber)
 }
 
-private[flow] object StreamProcessor {
+private[fs2] object StreamProcessor {
   def fromPipe[F[_], I, O](
       pipe: Pipe[F, I, O],
       chunkSize: Int
