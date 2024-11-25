@@ -198,24 +198,6 @@ package object flow {
   ): Stream[F, Nothing] =
     StreamSubscription.subscribe(stream, subscriber)
 
-  /** Creates a [[Pipe]] from the given [[Processor]]
-    *
-    * The input stream won't be consumed until you request elements from the output stream,
-    * and thus the processor is not initiated until then.
-    *
-    * @note The [[Pipe]] can be reused multiple times as long as the [[Processor]] can be reused.
-    * Each invocation of the pipe will create and manage its own internal [[Publisher]] and [[Subscriber]],
-    * and use them to subscribe to and from the [[Processor]] respectively.
-    *
-    * @param [[processor]] the [[Processor]] that represents the [[Pipe]] logic.
-    * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
-    *                  A high number may be useful if the publisher is triggering from IO,
-    *                  like requesting elements from a database.
-    *                  A high number will also lead to more elements in memory.
-    */
-  def processorToPipe[F[_]]: syntax.FromProcessorPartiallyApplied[F] =
-    new syntax.FromProcessorPartiallyApplied[F](dummy = true)
-
   /** A default value for the `chunkSize` argument,
     * that may be used in the absence of other constraints;
     * we encourage choosing an appropriate value consciously.

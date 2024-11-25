@@ -25,7 +25,7 @@ package flow
 
 import cats.effect.{Async, Resource}
 
-import java.util.concurrent.Flow.{Processor, Publisher, Subscriber}
+import java.util.concurrent.Flow.{Publisher, Subscriber}
 
 object syntax {
   implicit final class PublisherOps[A](private val publisher: Publisher[A]) extends AnyVal {
@@ -46,6 +46,7 @@ object syntax {
       flow.subscribeStream(stream, subscriber)
   }
 
+  // TODO: Move to the Stream companion object when removing the deprecated flow package object and syntax.
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
     def apply[A](
         publisher: Publisher[A],
@@ -56,15 +57,5 @@ object syntax {
       fromPublisher[F, A](chunkSize) { subscriber =>
         F.delay(publisher.subscribe(subscriber))
       }
-  }
-
-  final class FromProcessorPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
-    def apply[I, O](
-        processor: Processor[I, O],
-        chunkSize: Int
-    )(implicit
-        F: Async[F]
-    ): Pipe[F, I, O] =
-      new ProcessorPipe(processor, chunkSize)
   }
 }

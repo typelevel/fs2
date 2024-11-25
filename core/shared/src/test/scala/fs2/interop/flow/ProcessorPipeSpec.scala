@@ -36,7 +36,7 @@ final class ProcessorPipeSpec extends Fs2Suite {
         chunkSize = bufferSize
       )
 
-      val pipe = processorToPipe[IO](
+      val pipe = Pipe.fromProcessor[IO](
         processor,
         chunkSize = bufferSize
       )
