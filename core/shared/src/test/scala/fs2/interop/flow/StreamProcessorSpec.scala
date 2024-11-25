@@ -31,10 +31,9 @@ import java.util.concurrent.Flow.Publisher
 final class StreamProcessorSpec extends Fs2Suite {
   test("should process upstream input and propagate results to downstream") {
     forAllF(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
-      val processor = pipeToProcessor[IO, Int, Int](
-        pipe = stream => stream.map(_ * 1),
-        chunkSize = bufferSize
-      )
+      val pipe = (stream: Stream[IO, Int]) => stream.map(_ * 1)
+
+      val processor = pipe.toProcessor(chunkSize = bufferSize)
 
       val publisher = toPublisher(
         Stream.emits(ints).covary[IO]

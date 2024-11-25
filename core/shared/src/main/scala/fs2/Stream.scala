@@ -5561,7 +5561,7 @@ object Stream extends StreamLowPriority {
     )(implicit
         F: Async[F]
     ): Resource[F, Processor[I, O]] =
-      interop.flow.pipeToProcessor(pipe = self, chunkSize)
+      interop.flow.StreamProcessor.fromPipe(pipe = self, chunkSize)
   }
 
   /** Provides operations on IO pipes for syntactic convenience. */
@@ -5581,7 +5581,7 @@ object Stream extends StreamLowPriority {
     )(implicit
         runtime: IORuntime
     ): Processor[I, O] =
-      interop.flow.unsafePipeToProcessor(pipe = self, chunkSize)
+      interop.flow.StreamProcessor.unsafeFromPipe(pipe = self, chunkSize)
   }
 
   /** Provides operations on pure pipes for syntactic convenience. */

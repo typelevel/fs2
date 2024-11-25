@@ -32,8 +32,7 @@ final class ProcessorPipeSpec extends Fs2Suite {
     forAllF(Arbitrary.arbitrary[Seq[Int]], Gen.posNum[Int]) { (ints, bufferSize) =>
       // Since creating a Flow.Processor is very complex,
       // we will reuse our Pipe => Processor logic.
-      val processor = unsafePipeToProcessor[Int, Int](
-        pipe = stream => stream.map(_ * 1),
+      val processor = ((stream: Stream[IO, Int]) => stream.map(_ * 1)).unsafeToProcessor(
         chunkSize = bufferSize
       )
 
