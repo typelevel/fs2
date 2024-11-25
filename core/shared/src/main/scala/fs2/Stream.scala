@@ -2853,7 +2853,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * @param subscriber the [[Subscriber]] that will receive the elements of the stream.
     */
   def subscribe[F2[x] >: F[x]: Async, O2 >: O](subscriber: Subscriber[O2]): Stream[F2, Nothing] =
-    interop.flow.subscribeAsStream[F2, O2](this, subscriber)
+    interop.flow.StreamSubscription.subscribe[F2, O2](this, subscriber)
 
   /** Emits all elements of the input except the first one.
     *
@@ -3001,7 +3001,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** @see [[toPublisher]] */
   def toPublisherResource[F2[x] >: F[x]: Async, O2 >: O]: Resource[F2, Publisher[O2]] =
-    interop.flow.toPublisher(this)
+    interop.flow.StreamPublisher(this)
 
   /** Translates effect type from `F` to `G` using the supplied `FunctionK`.
     */
@@ -3911,7 +3911,7 @@ object Stream extends StreamLowPriority {
     *                  either the `Chunk` is filled or the publisher finishes.
     */
   def fromPublisher[F[_]]: interop.flow.syntax.FromPublisherPartiallyApplied[F] =
-    interop.flow.fromPublisher
+    new interop.flow.syntax.FromPublisherPartiallyApplied(dummy = true)
 
   /** Like `emits`, but works for any G that has a `Foldable` instance.
     */
@@ -4697,7 +4697,7 @@ object Stream extends StreamLowPriority {
     def unsafeToPublisher()(implicit
         runtime: IORuntime
     ): Publisher[A] =
-      interop.flow.unsafeToPublisher(self)
+      interop.flow.StreamPublisher.unsafe(self)
   }
 
   /** Projection of a `Stream` providing various ways to get a `Pull` from the `Stream`. */
