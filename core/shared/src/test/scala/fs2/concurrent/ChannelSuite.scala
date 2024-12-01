@@ -29,6 +29,8 @@ import scala.concurrent.duration._
 
 import org.scalacheck.effect.PropF.forAllF
 
+import scala.concurrent.CancellationException
+
 class ChannelSuite extends Fs2Suite {
 
   test("receives some simple elements above capacity and closes") {
@@ -336,6 +338,8 @@ class ChannelSuite extends Fs2Suite {
           ch.stream.concurrently(producer).compile.drain
         }
 
-    TestControl.executeEmbed(program) // will fail if program is deadlocked
+    TestControl
+      .executeEmbed(program)
+      .intercept[CancellationException]
   }
 }
