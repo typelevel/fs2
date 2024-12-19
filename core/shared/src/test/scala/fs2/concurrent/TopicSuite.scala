@@ -25,6 +25,8 @@ package concurrent
 import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
+import scala.concurrent.CancellationException
+
 import cats.effect.testkit.TestControl
 
 class TopicSuite extends Fs2Suite {
@@ -204,6 +206,8 @@ class TopicSuite extends Fs2Suite {
             .drain
         }
 
-    TestControl.executeEmbed(program) // will fail if program is deadlocked
+    TestControl
+      .executeEmbed(program)
+      .intercept[CancellationException]
   }
 }
