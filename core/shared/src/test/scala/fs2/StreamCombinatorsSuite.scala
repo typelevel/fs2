@@ -1328,6 +1328,20 @@ class StreamCombinatorsSuite extends Fs2Suite {
         )
         .assertEquals(4.seconds)
     }
+
+    test("scope propagation") {
+      Deferred[IO, Unit]
+        .flatMap { d =>
+          Stream
+            .bracket(IO.unit)(_ => d.complete(()).void)
+            .prefetch
+            .evalMap(_ => IO.sleep(1.second) >> d.complete(()))
+            .timeout(5.seconds)
+            .compile
+            .last
+        }
+        .assertEquals(Some(true))
+    }
   }
 
   test("range") {

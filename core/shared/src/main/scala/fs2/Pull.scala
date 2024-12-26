@@ -464,10 +464,7 @@ object Pull extends PullLowPriority {
   def extendScopeTo[F[_], O](
       s: Stream[F, O]
   )(implicit F: MonadError[F, Throwable]): Pull[F, Nothing, Stream[F, O]] =
-    for {
-      scope <- Pull.getScope[F]
-      lease <- Pull.eval(scope.lease)
-    } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
+    Pull.getScope[F].map(scope => Stream.bracket(scope.lease)(_.cancel.rethrow) *> s)
 
   /** Repeatedly uses the output of the pull as input for the next step of the
     * pull. Halts when a step terminates with `None` or `Pull.raiseError`.
