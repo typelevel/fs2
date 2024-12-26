@@ -238,31 +238,39 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] = {
     assert(pipes.nonEmpty, s"pipes should not be empty")
-    Stream.force {
-      for {
-        // topic: contains the chunk that the pipes are processing at one point.
-        // until and unless all pipes are finished with it, won't move to next one
-        topic <- Topic[F2, Chunk[O]]
-        // Coordination: neither the producer nor any consumer starts
-        // until and unless all consumers are subscribed to topic.
-        allReady <- CountDownLatch[F2](pipes.length)
-      } yield {
-        val checkIn = allReady.release >> allReady.await
+    underlying.uncons.flatMap {
+      case Some((hd, tl)) =>
+        for {
+          // topic: contains the chunk that the pipes are processing at one point.
+          // until and unless all pipes are finished with it, won't move to next one
+          topic <- Pull.eval(Topic[F2, Chunk[O]])
+          // Coordination: neither the producer nor any consumer starts
+          // until and unless all consumers are subscribed to topic.
+          allReady <- Pull.eval(CountDownLatch[F2](pipes.length))
 
-        def dump(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-          Stream.resource(topic.subscribeAwait(1)).flatMap { sub =>
-            // Wait until all pipes are ready before consuming.
-            // Crucial: checkin is not passed to the pipe,
-            // so pipe cannot interrupt it and alter the latch count
-            Stream.exec(checkIn) ++ pipe(sub.unchunks)
-          }
+          checkIn = allReady.release >> allReady.await
 
-        val dumpAll: Stream[F2, O2] = Stream(pipes: _*).map(dump).parJoinUnbounded
-        // Wait until all pipes are checked in before pulling
-        val pump = Stream.exec(allReady.await) ++ topic.publish(chunks)
-        dumpAll.concurrently(pump)
-      }
-    }
+          dump = (pipe: Pipe[F2, O, O2]) =>
+            Stream.resource(topic.subscribeAwait(1)).flatMap { sub =>
+              // Wait until all pipes are ready before consuming.
+              // Crucial: checkin is not passed to the pipe,
+              // so pipe cannot interrupt it and alter the latch count
+              Stream.exec(checkIn) ++ pipe(sub.unchunks)
+            }
+
+          dumpAll: Stream[F2, O2] <-
+            Pull.extendScopeTo(Stream(pipes: _*).map(dump).parJoinUnbounded)
+
+          chunksStream = Stream.chunk(hd).append(tl.stream).chunks
+
+          // Wait until all pipes are checked in before pulling
+          pump = Stream.exec(allReady.await) ++ topic.publish(chunksStream)
+
+          _ <- dumpAll.concurrently(pump).underlying
+        } yield ()
+
+      case None => Pull.done
+    }.stream
   }
 
   /** Behaves like the identity function, but requests `n` elements at a time from the input.
@@ -2366,17 +2374,28 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
               }
           }
 
-        val background =
-          Stream.exec(semaphore.acquire) ++
-            interruptWhen(stop.get.map(_.asRight[Throwable]))
-              .foreach(forkOnElem)
-              .onFinalizeCase {
-                case ExitCase.Succeeded => releaseAndCheckCompletion
-                case _                  => stop.complete(()) *> releaseAndCheckCompletion
-              }
+        underlying.uncons.flatMap {
+          case Some((hd, tl)) =>
+            for {
+              foreground <- Pull.extendScopeTo(
+                channel.stream.evalMap(_.rethrow).onFinalize(stop.complete(()) *> end.get)
+              )
+              background = Stream
+                .exec(semaphore.acquire) ++
+                Stream
+                  .chunk(hd)
+                  .append(tl.stream)
+                  .interruptWhen(stop.get.map(_.asRight[Throwable]))
+                  .foreach(forkOnElem)
+                  .onFinalizeCase {
+                    case ExitCase.Succeeded => releaseAndCheckCompletion
+                    case _                  => stop.complete(()) *> releaseAndCheckCompletion
+                  }
+              _ <- foreground.concurrently(background).underlying
+            } yield ()
 
-        val foreground = channel.stream.evalMap(_.rethrow)
-        foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
+          case None => Pull.done
+        }.stream
       }
 
     Stream.force(action)
