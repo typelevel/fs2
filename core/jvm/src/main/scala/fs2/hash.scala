@@ -24,6 +24,7 @@ package fs2
 import java.security.MessageDigest
 
 /** Provides various cryptographic hashes as pipes. */
+@deprecated("Use fs2.hashing.Hashing[F] instead", "3.11.0")
 object hash {
 
   /** Computes an MD2 digest. */

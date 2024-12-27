@@ -26,9 +26,9 @@ import scala.collection.immutable.ArraySeq
 private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
   self: Chunk[O] =>
 
-  def asSeqPlatform: Option[IndexedSeq[O]] =
+  private[fs2] def asSeqPlatform: Option[IndexedSeq[O]] =
     this match {
-      case arraySlice: Chunk.ArraySlice[_] =>
+      case arraySlice: Chunk.ArraySlice[?] =>
         Some(
           ArraySeq
             .unsafeWrapArray(arraySlice.values)

@@ -26,9 +26,12 @@ import cats.syntax.all._
 import org.scalacheck.Gen
 import org.scalacheck.effect.PropF.forAllF
 
-import hash._
+import fs2.hashing.{Hashing, HashAlgorithm}
 
-class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
+@deprecated("Tests the deprecated fs2.hash object", "3.11.0")
+class HashSuite extends Fs2Suite with TestPlatform {
+
+  import hash._
 
   def checkDigest[A](h: Pipe[IO, Byte, Byte], algo: String, str: String) = {
     val n =
@@ -42,7 +45,17 @@ class HashSuite extends Fs2Suite with HashSuitePlatform with TestPlatform {
             acc ++ Stream.chunk(Chunk.array(c))
           )
 
-    s.through(h).compile.toList.assertEquals(digest(algo, str))
+    val algorithm = algo match {
+      case "MD5"     => HashAlgorithm.MD5
+      case "SHA-1"   => HashAlgorithm.SHA1
+      case "SHA-256" => HashAlgorithm.SHA256
+      case "SHA-384" => HashAlgorithm.SHA384
+      case "SHA-512" => HashAlgorithm.SHA512
+      case other     => HashAlgorithm.Named(other)
+    }
+
+    val expected = Hashing.hashChunk(algorithm, Chunk.array(str.getBytes))
+    s.through(h).compile.to(Chunk).assertEquals(expected.bytes)
   }
 
   group("digests") {

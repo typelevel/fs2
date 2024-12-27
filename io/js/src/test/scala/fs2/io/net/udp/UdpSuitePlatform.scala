@@ -24,8 +24,6 @@ package io
 package net
 package udp
 
-import cats.syntax.all._
-
 import fs2.io.internal.facade
 
 trait UdpSuitePlatform extends Fs2Suite {

@@ -19,23 +19,29 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal
+package fs2
+package hashing
 
-import org.typelevel.scalaccompat.annotation._
+/** Result of a hash operation. */
+final case class Hash(
+    bytes: Chunk[Byte]
+) {
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSGlobal
-import scala.concurrent.ExecutionContext
+  override def equals(other: Any) = other match {
+    case that: Hash =>
+      // Note: following intentionally performs a constant time comparison
+      val thatBytes = that.bytes
+      if (bytes.size != thatBytes.size) false
+      else {
+        var result, idx = 0
+        while (idx < bytes.size) {
+          result = result | (bytes(idx) ^ thatBytes(idx))
+          idx += 1
+        }
+        result == 0
+      }
+    case _ => false
+  }
 
-private[io] object MicrotaskExecutor extends ExecutionContext {
-
-  def execute(runnable: Runnable): Unit = queueMicrotask(() => runnable.run())
-
-  def reportFailure(cause: Throwable): Unit = cause.printStackTrace()
-
-  @JSGlobal("queueMicrotask")
-  @js.native
-  @nowarn212("cat=unused")
-  private def queueMicrotask(function: js.Function0[Any]): Unit = js.native
-
+  override def toString = bytes.toByteVector.toHex
 }

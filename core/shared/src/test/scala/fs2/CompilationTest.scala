@@ -98,8 +98,14 @@ object ThisModuleShouldCompile {
   // Join a pure stream of effectful streams without type annotations
   Stream(s, s).parJoinUnbounded
 
+  // Join a sequence of effectful streams without type annotations
+  List(s, s).parJoinUnbounded
+
   // Join an effectul stream of pure streams requires type annotation on inner stream
   Stream[IO, Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
+
+  // Join a sequence of pure streams requires type annotation on inner stream
+  List[Stream[IO, Nothing]](Stream.empty).parJoinUnbounded
 
   val pure: List[Int] = Stream.range(0, 5).compile.toList
   val io: IO[List[Int]] = Stream.range(0, 5).covary[IO].compile.toList

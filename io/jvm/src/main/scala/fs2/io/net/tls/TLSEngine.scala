@@ -72,7 +72,7 @@ private[tls] object TLSEngine {
     } yield new TLSEngine[F] {
       private val doLog: (() => String) => F[Unit] =
         logger match {
-          case e: TLSLogger.Enabled[_] => msg => e.log(msg())
+          case e: TLSLogger.Enabled[?] => msg => e.log(msg())
           case TLSLogger.Disabled      => _ => Applicative[F].unit
         }
 
@@ -216,9 +216,8 @@ private[tls] object TLSEngine {
                 binding.read(engine.getSession.getPacketBufferSize).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake
                   case None =>
-                    unwrapBuffer.inputRemains.flatMap(x =>
-                      if (x > 0) Applicative[F].unit else stopUnwrap
-                    )
+                    unwrapBuffer.inputRemains
+                      .flatMap(x => if (x > 0) Applicative[F].unit else stopUnwrap)
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>

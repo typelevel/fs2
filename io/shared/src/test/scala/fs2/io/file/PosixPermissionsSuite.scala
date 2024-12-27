@@ -59,4 +59,28 @@ class PosixPermissionsSuite extends Fs2Suite {
     assertEquals(PosixPermissions.fromString("rwx"), None)
     assertEquals(PosixPermissions.fromString("rwxrwxrw?"), None)
   }
+
+  test("add/remove all") {
+    case class TC(p: PosixPermission, adding: String, removing: String)
+    val all = Seq(
+      TC(PosixPermission.OwnerRead, "400", "377"),
+      TC(PosixPermission.OwnerWrite, "600", "177"),
+      TC(PosixPermission.OwnerExecute, "700", "077"),
+      TC(PosixPermission.GroupRead, "740", "037"),
+      TC(PosixPermission.GroupWrite, "760", "017"),
+      TC(PosixPermission.GroupExecute, "770", "007"),
+      TC(PosixPermission.OthersRead, "774", "003"),
+      TC(PosixPermission.OthersWrite, "776", "001"),
+      TC(PosixPermission.OthersExecute, "777", "000")
+    )
+    var goingUp = PosixPermissions.fromInt(0).get
+    var goingDown = PosixPermissions.fromInt(511).get
+    all.foreach { case TC(p, adding, removing) =>
+      goingUp = goingUp.add(p)
+      assertEquals(goingUp, PosixPermissions.fromOctal(adding).get)
+
+      goingDown = goingDown.remove(p)
+      assertEquals(goingDown, PosixPermissions.fromOctal(removing).get)
+    }
+  }
 }

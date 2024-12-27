@@ -268,7 +268,7 @@ object Demultiplexer {
       case ah: DecodeState.AwaitingHeader =>
         processHeader(ah.acc ++ newData, ah.startedAtOffsetZero, payloadUnitStartAfterData)
 
-      case ab: DecodeState.AwaitingBody[_] =>
+      case ab: DecodeState.AwaitingBody[?] =>
         processBody(ab.accumulate(newData), payloadUnitStartAfterData)
     }
 

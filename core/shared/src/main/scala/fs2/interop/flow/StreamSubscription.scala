@@ -23,8 +23,8 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.{Async, Outcome}
-import cats.effect.syntax.all._
+import cats.effect.kernel.Async
+import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 
 import java.util.concurrent.CancellationException
@@ -60,7 +60,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
 
   // This is a def rather than a val, because it is only used once.
   // And having fields increase the instantiation cost and delay garbage collection.
-  def run: F[Unit] = {
+  def run: Stream[F, Nothing] = {
     val subscriptionPipe: Pipe[F, A, A] = in => {
       def go(s: Stream[F, A]): Pull[F, A, Unit] =
         Pull.eval(F.delay(requests.getAndSet(0))).flatMap { n =>
@@ -101,8 +101,15 @@ private[flow] final class StreamSubscription[F[_], A] private (
         .through(subscriptionPipe)
         .chunks
         .foreach(chunk => F.delay(chunk.foreach(subscriber.onNext)))
-        .compile
-        .drain
+        .onFinalizeCase {
+          case ExitCase.Succeeded   => F.delay(onComplete())
+          case ExitCase.Errored(ex) => F.delay(onError(ex))
+          case ExitCase.Canceled    =>
+            // if the subscriber canceled us, no further action necessary
+            // if we were externally canceled, this is handled below
+            F.unit
+        }
+        .mask
 
     val cancellation = F.asyncCheckAttempt[Unit] { cb =>
       F.delay {
@@ -116,18 +123,12 @@ private[flow] final class StreamSubscription[F[_], A] private (
     }
 
     events
-      .race(cancellation)
-      .guaranteeCase {
-        case Outcome.Succeeded(result) =>
-          result.flatMap {
-            case Left(())  => F.delay(onComplete()) // Events finished normally.
-            case Right(()) => F.unit // Events was canceled.
-          }
-        case Outcome.Errored(ex) => F.delay(onError(ex))
-        case Outcome.Canceled() =>
+      .mergeHaltBoth(Stream.exec(cancellation))
+      .onFinalizeCase {
+        case ExitCase.Canceled =>
           F.delay(onError(new CancellationException("StreamSubscription.run was canceled")))
+        case _ => F.unit
       }
-      .void
   }
 
   // According to the spec, it's acceptable for a concurrent cancel to not
@@ -202,9 +203,8 @@ private[flow] object StreamSubscription {
       subscriber: Subscriber[A]
   )(implicit
       F: Async[F]
-  ): F[Unit] =
-    F.delay(apply(stream, subscriber)).flatMap { subscription =>
-      F.delay(subscriber.onSubscribe(subscription)) >>
-        subscription.run
+  ): Stream[F, Nothing] =
+    Stream.eval(F.delay(apply(stream, subscriber))).flatMap { subscription =>
+      Stream.eval(F.delay(subscriber.onSubscribe(subscription))) >> subscription.run
     }
 }

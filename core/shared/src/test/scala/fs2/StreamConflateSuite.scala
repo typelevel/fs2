@@ -21,9 +21,27 @@
 
 package fs2
 
-import java.security.MessageDigest
+import cats.effect.IO
+import cats.effect.testkit.TestControl
 
-trait HashSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] =
-    MessageDigest.getInstance(algo).digest(str.getBytes).toList
+import scala.concurrent.duration._
+
+class StreamConflateSuite extends Fs2Suite {
+
+  test("conflateMap") {
+    TestControl.executeEmbed(
+      Stream
+        .iterate(0)(_ + 1)
+        .covary[IO]
+        .metered(10.millis)
+        .conflateMap(100)(List(_))
+        .metered(101.millis)
+        .take(5)
+        .compile
+        .toList
+        .assertEquals(
+          List(0) :: (1 until 10).toList :: 10.until(40).toList.grouped(10).toList
+        )
+    )
+  }
 }

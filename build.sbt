@@ -2,16 +2,16 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.10"
+ThisBuild / tlBaseVersion := "3.12"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.12"
+val Scala213 = "2.13.15"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.18", Scala213, "3.3.1")
+ThisBuild / crossScalaVersions := Seq("2.12.20", Scala213, "3.3.4")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -244,6 +244,34 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // sealed trait: #3349
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.tls.TLSParameters.withClientAuthType"
+  ),
+  // equals/hashCode/toString on file attributes: #3345
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super=uals"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.file.PosixFileAttributes.fs2$io$file$PosixFileAttributes$$super#Code"
+  ),
+  // moved openssl/crypto bindings to fs2.hashing: #3454
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.hash.createHash"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$Hash"),
+  ProblemFilters.exclude[MissingFieldProblem]("fs2.hash.openssl"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.hash$openssl$"),
+  // Privates: #3387
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.interop.flow.StreamSubscriber$Input$Next$"
+  ),
+  ProblemFilters.exclude[MissingFieldProblem](
+    "fs2.interop.flow.StreamSubscriber#Input.Next"
+  ),
+  ProblemFilters.exclude[Problem](
+    "fs2.interop.flow.StreamSubscriber#State#WaitingOnUpstream.*"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem](
+    "fs2.interop.flow.StreamSubscriber$State$WaitingOnUpstream$"
   )
 )
 
@@ -259,7 +287,7 @@ lazy val root = tlCrossRootProject
     benchmark
   )
 
-lazy val commonNativeSettings = Seq[Setting[_]](
+lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
   Test / nativeBrewFormulas += "openssl"
 )
@@ -270,13 +298,13 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "fs2-core",
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.38",
-      "org.typelevel" %%% "cats-core" % "2.10.0",
-      "org.typelevel" %%% "cats-effect" % "3.6-c7ca678",
-      "org.typelevel" %%% "cats-effect-laws" % "3.6-c7ca678" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.6-c7ca678" % Test,
-      "org.typelevel" %%% "cats-laws" % "2.10.0" % Test,
+      "org.typelevel" %%% "cats-core" % "2.11.0",
+      "org.typelevel" %%% "cats-effect" % "3.6.0-RC1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.6.0-RC1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.6.0-RC1" % Test,
+      "org.typelevel" %%% "cats-laws" % "2.11.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
     ),
     tlJdkRelease := None,
@@ -313,7 +341,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.0.0-M4" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
@@ -325,13 +353,13 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.4.0",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.6.0",
     tlJdkRelease := None
   )
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.21" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.38.23" % Optional,
       "com.google.jimfs" % "jimfs" % "1.3.0" % Test
     )
   )

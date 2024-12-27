@@ -21,18 +21,19 @@
 
 package fs2
 
-import scala.annotation.tailrec
-import scala.concurrent.duration._
 import cats.data.Chain
-import cats.effect.{Deferred, IO, Outcome, Ref, Resource, SyncIO}
+import cats.effect.*
 import cats.effect.std.Queue
-import cats.syntax.all._
-import org.scalacheck.Gen
+import cats.syntax.all.*
+import fs2.concurrent.SignallingRef
 import org.scalacheck.Arbitrary.arbitrary
+import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import org.scalacheck.effect.PropF.forAllF
-import fs2.concurrent.SignallingRef
+
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.tailrec
+import scala.concurrent.duration.*
 
 class StreamSuite extends Fs2Suite {
 
@@ -136,6 +137,26 @@ class StreamSuite extends Fs2Suite {
           val s = if (v.isEmpty) Stream.empty else v.map(Stream.emits).reduce(_ ++ _)
           assertEquals(s.chunks.unchunks.toVector, v.flatten)
         }
+      }
+    }
+
+    group("ensure") {
+      property("preserves chunks") {
+        forAll { (s: Stream[Pure, Int]) =>
+          val s1 = s.covary[Fallible].chunks
+          val s2 = s.covary[Fallible].ensure(new Err)(_ => true).chunks
+          assertEquals(s1.toList, s2.toList)
+        }
+      }
+      test("fails when predicate fails") {
+        val err = new Err
+        val s = Stream(1, 2, 3).ensure[Fallible](err)(_ != 2).attempt
+        assertEquals(s.toList, Right(List(Right(1), Left(err))))
+      }
+      test("succeeds when predicate succeeds") {
+        val err = new Err
+        val s = Stream(1, 2, 3).ensure[Fallible](err)(_ != 10)
+        assertEquals(s.toList, s.covary[Fallible].toList)
       }
     }
 
@@ -243,10 +264,24 @@ class StreamSuite extends Fs2Suite {
           )
       }
 
+      test("7b - list parJoinUnbounded") {
+        List(
+          Stream.emit(1),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2)
+        ).parJoinUnbounded.attempt.compile.toVector
+          .map(it =>
+            assert(
+              it.collect { case Left(t) => t }
+                .exists(_.isInstanceOf[Err])
+            )
+          )
+      }
+
       test("8") {
         Counter[IO].flatMap { counter =>
           Pull
-            .pure(42)
+            .pure(())
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
@@ -259,7 +294,7 @@ class StreamSuite extends Fs2Suite {
       test("9") {
         Counter[IO].flatMap { counter =>
           Pull
-            .eval(IO(42))
+            .eval(IO.unit)
             .handleErrorWith(_ => Pull.eval(counter.increment))
             .flatMap(_ => Pull.raiseError[IO](new Err))
             .stream
@@ -273,9 +308,9 @@ class StreamSuite extends Fs2Suite {
         Counter[IO].flatMap { counter =>
           Pull
             .eval(IO(42))
-            .flatMap { x =>
+            .flatMap { _ =>
               Pull
-                .pure(x)
+                .pure(())
                 .handleErrorWith(_ => Pull.eval(counter.increment))
                 .flatMap(_ => Pull.raiseError[IO](new Err))
             }
@@ -315,7 +350,7 @@ class StreamSuite extends Fs2Suite {
           Stream
             .range(0, 10)
             .append(Stream.raiseError[IO](new Err))
-            .handleErrorWith(_ => Stream.eval(counter.increment))
+            .handleErrorWith(_ => Stream.exec(counter.increment))
             .compile
             .drain >> counter.get.assertEquals(1L)
         }
@@ -368,6 +403,22 @@ class StreamSuite extends Fs2Suite {
             case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
           }
       }
+
+      test("16b - list parJoinUnbounded CompositeFailure".flaky) {
+        List(
+          Stream.emit(1).covary[IO],
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.raiseError[IO](new Err),
+          Stream.emit(2).covary[IO]
+        ).parJoinUnbounded.compile.toVector.attempt
+          .map {
+            case Left(err: CompositeFailure) =>
+              assert(err.all.toList.count(_.isInstanceOf[Err]) == 3)
+            case Left(err)    => fail("Expected Left[CompositeFailure]", err)
+            case Right(value) => fail(s"Expected Left[CompositeFailure] got Right($value)")
+          }
+      }
     }
   }
 
@@ -407,6 +458,12 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
+    test("list parJoin") {
+      testCancelation {
+        List(constantStream, constantStream).parJoinUnbounded
+      }
+    }
+
     test("#1236") {
       testCancelation {
         Stream
@@ -419,6 +476,22 @@ class StreamSuite extends Fs2Suite {
                 .foreach(q.offer),
               Stream.repeatEval(q.take).drain
             ).parJoin(2)
+          }
+      }
+    }
+
+    test("#1236 (list parJoinUnbounded)") {
+      testCancelation {
+        Stream
+          .eval(Queue.bounded[IO, Int](1))
+          .flatMap { q =>
+            List(
+              Stream
+                .unfold(0)(i => (i + 1, i + 1).some)
+                .flatMap(i => Stream.sleep_[IO](50.milliseconds) ++ Stream.emit(i))
+                .foreach(q.offer),
+              Stream.repeatEval(q.take).drain
+            ).parJoinUnbounded
           }
       }
     }
@@ -517,7 +590,7 @@ class StreamSuite extends Fs2Suite {
 
   property("repeatN") {
     forAll(
-      Gen.chooseNum(1, 200),
+      Gen.chooseNum(0, 200),
       Gen.chooseNum(1, 200).flatMap(i => Gen.listOfN(i, arbitrary[Int]))
     ) { (n: Int, testValues: List[Int]) =>
       assertEquals(
@@ -756,6 +829,22 @@ class StreamSuite extends Fs2Suite {
       }
     }
 
+    test("5 (list parJoinUnbounded)") {
+      forAllF { (s: List[Stream[Pure, Int]]) =>
+        SignallingRef[IO, Boolean](false).flatMap { signal =>
+          Counter[IO].flatMap { counter =>
+            val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+            (Stream.exec(sleepAndSet.start.void) :: s.map(_ =>
+              Stream
+                .bracket(counter.increment)(_ => counter.decrement)
+                .evalMap(_ => IO.never)
+                .interruptWhen(signal.discrete)
+            )).parJoinUnbounded.compile.drain >> counter.get.assertEquals(0L)
+          }
+        }
+      }
+    }
+
     test("6") {
       // simpler version of (5) above which previously failed reliably, checks the case where a
       // stream is interrupted while in the middle of a resource acquire that is immediately followed
@@ -775,6 +864,25 @@ class StreamSuite extends Fs2Suite {
             .parJoinUnbounded
             .compile
             .drain >> counter.get.assertEquals(0L)
+        }
+      }
+    }
+
+    test("6b (list parJoinUnbounded)") {
+      // simpler version of (5) above which previously failed reliably, checks the case where a
+      // stream is interrupted while in the middle of a resource acquire that is immediately followed
+      // by a step that never completes!
+      SignallingRef[IO, Boolean](false).flatMap { signal =>
+        Counter[IO].flatMap { counter =>
+          val sleepAndSet = IO.sleep(20.millis) >> signal.set(true)
+          (Stream.exec(sleepAndSet.start.void) :: List(Stream(1))
+            .map { inner =>
+              Stream
+                .bracket(counter.increment >> IO.sleep(2.seconds))(_ => counter.decrement)
+                .flatMap(_ => inner)
+                .evalMap(_ => IO.never)
+                .interruptWhen(signal.discrete)
+            }).parJoinUnbounded.compile.drain >> counter.get.assertEquals(0L)
         }
       }
     }
@@ -862,8 +970,8 @@ class StreamSuite extends Fs2Suite {
           Stream
             .eval(Deferred[IO, Unit].product(Deferred[IO, Unit]))
             .flatMap { case (startCondition, waitForStream) =>
-              val worker = Stream.eval(startCondition.get) ++ Stream.eval(
-                waitForStream.complete(())
+              val worker = Stream.eval(startCondition.get) ++ Stream.exec(
+                waitForStream.complete(()).void
               )
               val result = startCondition.complete(()) >> waitForStream.get
 

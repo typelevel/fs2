@@ -87,8 +87,33 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
   def collect[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
     val b = makeArrayBuilder[Any]
     b.sizeHint(size)
-    val f = pf.runWith(b += _)
-    foreach { o => f(o); () }
+    var i = 0
+    while (i < size) {
+      import fs2.Chunk.NotApplied
+      val r = pf.applyOrElse(apply(i), NotApplied)
+      if (r.asInstanceOf[AnyRef] ne NotApplied) {
+        b += r
+      }
+      i += 1
+    }
+    Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+  }
+
+  /** More efficient version of `takeWhile(pf.isDefinedAt).map(pf)`. */
+  def collectWhile[O2](pf: PartialFunction[O, O2]): Chunk[O2] = {
+    val b = makeArrayBuilder[Any]
+    b.sizeHint(size)
+    var i = 0
+    while (i < size) {
+      import fs2.Chunk.NotApplied
+      val r = pf.applyOrElse(apply(i), NotApplied)
+      if (r.asInstanceOf[AnyRef] eq NotApplied) {
+        return Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
+      } else {
+        b += r
+      }
+      i += 1
+    }
     Chunk.array(b.result()).asInstanceOf[Chunk[O2]]
   }
 
@@ -355,7 +380,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     * of `++`.
     */
   def toIndexedChunk: Chunk[O] = this match {
-    case _: Chunk.Queue[_] =>
+    case _: Chunk.Queue[?] =>
       val b = makeArrayBuilder[Any]
       b.sizeHint(size)
       foreach(o => b += o)
@@ -482,6 +507,12 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
       F.map(loop(0, size).value)(Chunk.chain)
     }
 
+  /** Alias for [[filter]].
+    *
+    * Implemented to enable filtering in for comprehensions
+    */
+  def withFilter(p: O => Boolean): Chunk[O] = filter(p)
+
   /** Zips this chunk the the supplied chunk, returning a chunk of tuples.
     */
   def zip[O2](that: Chunk[O2]): Chunk[(O, O2)] = zipWith(that)(Tuple2.apply)
@@ -522,7 +553,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
 
   override def equals(a: Any): Boolean =
     a match {
-      case c: Chunk[_] =>
+      case c: Chunk[?] =>
         size == c.size && iterator.sameElements(c.iterator: Iterator[Any])
       case _ => false
     }
@@ -537,7 +568,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     */
   def asSeq: IndexedSeq[O] =
     asSeqPlatform.getOrElse(this match {
-      case indexedSeqChunk: Chunk.IndexedSeqChunk[_] =>
+      case indexedSeqChunk: Chunk.IndexedSeqChunk[?] =>
         indexedSeqChunk.s match {
           case indexedSeq: IndexedSeq[O] =>
             indexedSeq
@@ -563,6 +594,9 @@ object Chunk
     extends CollectorK[Chunk]
     with ChunkCompanionPlatform
     with ChunkCompanionRuntimePlatform {
+
+  // A special value that is used to indicate that whether a PartialFunction is applied
+  private final val NotApplied: Any => Any = _ => Chunk.NotApplied
 
   private val empty_ : Chunk[Nothing] = new EmptyChunk
   private final class EmptyChunk extends Chunk[Nothing] {
@@ -1483,8 +1517,8 @@ object Chunk
                 case Right(b) =>
                   buf += b
                   go()
-                case Left(a) =>
-                  state = (f(a).iterator) :: h :: tail
+                case Left(a2) =>
+                  state = (f(a2).iterator) :: h :: tail
                   go()
               }
           }
@@ -1579,10 +1613,10 @@ private[fs2] final class ChunkAsSeq[+O](
 
   override def equals(that: Any): Boolean =
     that match {
-      case thatChunkWrapper: ChunkAsSeq[_] =>
+      case thatChunkWrapper: ChunkAsSeq[?] =>
         chunk == thatChunkWrapper.chunk
 
-      case seq: GSeq[_] =>
+      case seq: GSeq[?] =>
         chunk.iterator.sameElements(seq.iterator): @nowarn213("msg=a type was inferred to be `Any`")
 
       case _ =>

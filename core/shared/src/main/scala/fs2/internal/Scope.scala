@@ -259,10 +259,13 @@ private[fs2] final class Scope[F[_]] private (
     * more details.
     */
   def close(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
+    F.uncancelable(_ => close_(ec))
+
+  private def close_(ec: Resource.ExitCase): F[Either[Throwable, Unit]] =
     state.modify(s => Scope.State.closed -> s).flatMap {
       case previous: Scope.State.Open[F] =>
         for {
-          resultChildren <- traverseError[Scope[F]](previous.children, _.close(ec))
+          resultChildren <- traverseError[Scope[F]](previous.children, _.close_(ec))
           resultResources <- traverseError[ScopedResource[F]](previous.resources, _.release(ec))
           _ <- self.interruptible.map(_.cancelParent).getOrElse(F.unit)
           _ <- self.parent.fold(F.unit)(_.releaseChildScope(self.id))

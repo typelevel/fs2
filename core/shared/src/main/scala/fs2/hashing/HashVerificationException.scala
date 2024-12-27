@@ -20,26 +20,13 @@
  */
 
 package fs2
+package hashing
 
-import scala.scalanative.unsafe._
-import scala.scalanative.unsigned._
+import java.io.IOException
 
-import hash.openssl._
-
-trait HashSuitePlatform {
-  def digest(algo: String, str: String): List[Byte] = {
-    val bytes = str.getBytes
-    val md = new Array[Byte](EVP_MAX_MD_SIZE)
-    val size = stackalloc[CUnsignedInt]()
-    val `type` = EVP_get_digestbyname((algo.replace("-", "") + "\u0000").getBytes.atUnsafe(0))
-    EVP_Digest(
-      if (bytes.length > 0) bytes.atUnsafe(0) else null,
-      bytes.length.toULong,
-      md.atUnsafe(0),
-      size,
-      `type`,
-      null
+case class HashVerificationException(
+    expected: Hash,
+    actual: Hash
+) extends IOException(
+      s"Hash did not match, expected: $expected, actual: $actual"
     )
-    md.take((!size).toInt).toList
-  }
-}

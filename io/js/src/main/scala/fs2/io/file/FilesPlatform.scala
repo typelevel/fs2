@@ -23,8 +23,8 @@ package fs2
 package io
 package file
 
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.Traverse
+import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
 import fs2.io.file.Files.UnsealedFiles
 import fs2.io.internal.facade
@@ -175,7 +175,7 @@ private[fs2] trait FilesCompanionPlatform {
           )
         ).adaptError { case IOException(ex) => ex }
       else
-        walk(path, Int.MaxValue, true).evalTap(deleteIfExists).compile.drain
+        walk(path, WalkOptions.Default.withFollowLinks(true)).evalTap(deleteIfExists).compile.drain
 
     override def exists(path: Path, followLinks: Boolean): F[Boolean] =
       (if (followLinks)
@@ -368,6 +368,54 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def size(path: Path): F[Long] =
       stat(path).map(_.size.toString.toLong)
+
+    override def walkWithAttributes(start: Path, options: WalkOptions): Stream[F, PathInfo] = {
+
+      def go(
+          start: Path,
+          maxDepth: Int,
+          ancestry: List[Either[Path, FileKey]]
+      ): Stream[F, PathInfo] =
+        Stream.eval(getBasicFileAttributes(start, followLinks = false)).mask.flatMap { attr =>
+          Stream.emit(PathInfo(start, attr)) ++ {
+            if (maxDepth == 0) Stream.empty
+            else if (attr.isDirectory)
+              list(start).mask.flatMap { path =>
+                go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+              }
+            else if (attr.isSymbolicLink && options.followLinks)
+              Stream.eval(getBasicFileAttributes(start, followLinks = true)).mask.flatMap { attr =>
+                val fileKey = attr.fileKey
+                val isCycle = Traverse[List].existsM(ancestry) {
+                  case Right(ancestorKey) => F.pure(fileKey.contains(ancestorKey))
+                  case Left(ancestorPath) => isSameFile(start, ancestorPath)
+                }
+
+                Stream.eval(isCycle).flatMap { isCycle =>
+                  if (!isCycle)
+                    list(start).mask.flatMap { path =>
+                      go(path, maxDepth - 1, attr.fileKey.toRight(start) :: ancestry)
+                    }
+                  else if (options.allowCycles)
+                    Stream.empty
+                  else
+                    Stream.raiseError(new FileSystemLoopException(start.toString))
+                }
+
+              }
+            else
+              Stream.empty
+          }
+        }
+
+      go(
+        start,
+        options.maxDepth,
+        Nil
+      )
+        .chunkN(options.chunkSize)
+        .flatMap(Stream.chunk)
+    }
 
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>

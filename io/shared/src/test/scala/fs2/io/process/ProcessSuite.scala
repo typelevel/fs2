@@ -163,7 +163,7 @@ class ProcessSuite extends Fs2Suite {
     test("exit value cancelation") {
       ProcessBuilder("cat")
         .spawn[IO]
-        .use(_.exitValue)
+        .use(_.exitValue.void)
         .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
     }
 

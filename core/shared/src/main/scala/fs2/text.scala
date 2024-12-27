@@ -22,7 +22,6 @@
 package fs2
 
 import cats.ApplicativeThrow
-import cats.syntax.foldable._
 import java.nio.{Buffer, ByteBuffer, CharBuffer}
 import java.nio.charset.{
   CharacterCodingException,
@@ -485,47 +484,52 @@ object text {
     def fillBuffers(
         stringBuilder: StringBuilder,
         linesBuffer: ArrayBuffer[String],
-        string: String
+        string: String,
+        ignoreFirstCharNewLine: BoolWrapper
     ): Unit = {
-      val l = stringBuilder.length
-
-      var i =
-        if (l > 0 && stringBuilder(l - 1) == '\r') {
-          if (string.nonEmpty && string(0) == '\n') {
-            stringBuilder.deleteCharAt(l - 1)
-            linesBuffer += stringBuilder.result()
-            stringBuilder.clear()
-            1
-          } else if (stringBuilder(l - 1) == '\r') {
-            stringBuilder.deleteCharAt(l - 1)
-            linesBuffer += stringBuilder.result()
-            stringBuilder.clear()
-            0
-          } else 0
-        } else 0
-
-      while (i < string.size) {
-        string(i) match {
-          case '\n' =>
-            linesBuffer += stringBuilder.result()
-            stringBuilder.clear()
-          case '\r' if i + 1 < string.size && string(i + 1) == '\n' =>
-            linesBuffer += stringBuilder.result()
-            stringBuilder.clear()
-            i += 1
-          case '\r' if i + 1 < string.size =>
-            linesBuffer += stringBuilder.result()
-            stringBuilder.clear()
-          case other =>
-            stringBuilder.append(other)
+      var i = if (ignoreFirstCharNewLine.value) {
+        ignoreFirstCharNewLine.value = false
+        if (string.nonEmpty && string(0) == '\n') {
+          1
+        } else {
+          0
         }
-        i += 1
+      } else {
+        0
+      }
+
+      val stringSize = string.size
+      while (i < stringSize) {
+        val idx = indexForNl(string, stringSize, i)
+        if (idx < 0) {
+          stringBuilder.appendAll(string.slice(i, stringSize))
+          i = stringSize
+        } else {
+          if (stringBuilder.isEmpty) {
+            linesBuffer += string.slice(i, idx)
+          } else {
+            stringBuilder.appendAll(string.slice(i, idx))
+            linesBuffer += stringBuilder.result()
+            stringBuilder.clear()
+          }
+          i = idx + 1
+          if (string(i - 1) == '\r') {
+            if (i < stringSize) {
+              if (string(i) == '\n') {
+                i += 1
+              }
+            } else {
+              ignoreFirstCharNewLine.value = true
+            }
+          }
+        }
       }
     }
 
     def go(
         stream: Stream[F, String],
         stringBuilder: StringBuilder,
+        ignoreFirstCharNewLine: BoolWrapper,
         first: Boolean
     ): Pull[F, String, Unit] =
       stream.pull.uncons.flatMap {
@@ -545,7 +549,7 @@ object text {
         case Some((chunk, stream)) =>
           val linesBuffer = ArrayBuffer.empty[String]
           chunk.foreach { string =>
-            fillBuffers(stringBuilder, linesBuffer, string)
+            fillBuffers(stringBuilder, linesBuffer, string, ignoreFirstCharNewLine)
           }
 
           maxLineLength match {
@@ -554,11 +558,24 @@ object text {
                 new LineTooLongException(stringBuilder.length, max)
               )(raiseThrowable)
             case _ =>
-              Pull.output(Chunk.from(linesBuffer)) >> go(stream, stringBuilder, first = false)
+              Pull.output(Chunk.from(linesBuffer)) >> go(
+                stream,
+                stringBuilder,
+                ignoreFirstCharNewLine,
+                first = false
+              )
           }
       }
 
-    s => Stream.suspend(go(s, new StringBuilder(), first = true).stream)
+    s =>
+      Stream.suspend(
+        go(
+          s,
+          new StringBuilder(),
+          new BoolWrapper(false),
+          first = true
+        ).stream
+      )
   }
 
   /** Transforms a stream of `String` to a stream of `Char`. */
@@ -864,4 +881,17 @@ object text {
     def encodeWithAlphabet[F[_]](alphabet: Bases.HexAlphabet): Pipe[F, Byte, String] =
       _.chunks.map(c => c.toByteVector.toHex(alphabet))
   }
+
+  private class BoolWrapper(var value: Boolean)
+
+  @inline private def indexForNl(string: String, stringSize: Int, begin: Int): Int = {
+    var i = begin
+    while (i < stringSize)
+      string.charAt(i) match {
+        case '\n' | '\r' => return i
+        case _           => i = i + 1
+      }
+    -1
+  }
+
 }

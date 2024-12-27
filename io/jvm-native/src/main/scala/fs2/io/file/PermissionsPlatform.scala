@@ -26,7 +26,7 @@ package file
 import java.nio.file.attribute.{FileAttribute, PosixFilePermissions}
 
 private[file] trait PermissionsPlatform {
-  def toNioFileAttribute: FileAttribute[_] = (this: @unchecked) match {
+  def toNioFileAttribute: FileAttribute[?] = (this: @unchecked) match {
     case p: PosixPermissions =>
       PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(p.toString))
   }

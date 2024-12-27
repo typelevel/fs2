@@ -65,6 +65,14 @@ class StreamCombinatorsSuite extends Fs2Suite {
       Stream(s, s, s, s, s).parJoin(5).compile.drain
     }
 
+    test("list liveness") {
+      val s = Stream
+        .awakeEvery[IO](1.milli)
+        .evalMap(_ => IO.async_[Unit](cb => munitExecutionContext.execute(() => cb(Right(())))))
+        .take(200)
+      List(s, s, s, s, s).parJoinUnbounded.compile.drain
+    }
+
     test("short periods, no underflow") {
       val input: Stream[IO, Int] = Stream.range(0, 10)
       TestControl.executeEmbed(input.metered(1.nanos).assertEmitsSameAs(input))
@@ -195,10 +203,27 @@ class StreamCombinatorsSuite extends Fs2Suite {
   test("debounce") {
     val delay = 200.milliseconds
     TestControl.executeEmbed {
-      (Stream(1, 2, 3) ++ Stream.sleep[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
-        .sleep[IO](delay / 2) ++ Stream(6))
+      (Stream(1, 2, 3) ++ Stream.sleep_[IO](delay * 2) ++ Stream() ++ Stream(4, 5) ++ Stream
+        .sleep_[IO](delay / 2) ++ Stream(6))
         .debounce(delay)
         .assertEmits(List(3, 6))
+    }
+  }
+
+  test("keepAlive") {
+    def pause(pauseDuration: FiniteDuration): Stream[IO, Nothing] =
+      Stream.sleep[IO](pauseDuration).drain
+
+    val irregularStream: Stream[IO, Int] =
+      Stream(1, 2) ++ pause(250.milliseconds) ++
+        Stream(3, 4) ++ pause(500.millis) ++
+        Stream(5) ++ pause(50.millis) ++
+        Stream(6)
+
+    TestControl.executeEmbed {
+      irregularStream
+        .keepAlive(maxIdle = 200.milliseconds, heartbeat = 0.pure[IO])
+        .assertEmits(List(1, 2, 0, 3, 4, 0, 0, 5, 6))
     }
   }
 
@@ -455,6 +480,15 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  test("evalFold") {
+    forAllF { (s: Stream[Pure, Int], n: Int) =>
+      val f = (_: Int) + (_: Int)
+      s.covary[IO]
+        .evalFold(n) { case (s, i) => IO.pure(f(s, i)) }
+        .assertEmitsSameAs(s.fold(n)(f))
+    }
+  }
+
   group("evalMapFilter") {
     test("with effectful optional identity function") {
       forAllF { (s: Stream[Pure, Int]) =>
@@ -679,16 +713,18 @@ class StreamCombinatorsSuite extends Fs2Suite {
   }
 
   test("fromIterator") {
-    forAllF { (x: List[Int], cs: Int) =>
+    // Note: important to use Vector here and not List in order to prevent https://github.com/typelevel/fs2/issues/3415
+    forAllF { (x: Vector[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromIterator[IO](x.iterator, chunkSize).assertEmits(x)
+      Stream.fromIterator[IO](x.iterator, chunkSize).assertEmits(x.toList)
     }
   }
 
   test("fromBlockingIterator") {
-    forAllF { (x: List[Int], cs: Int) =>
+    // Note: important to use Vector here and not List in order to prevent https://github.com/typelevel/fs2/issues/3415
+    forAllF { (x: Vector[Int], cs: Int) =>
       val chunkSize = (cs % 4096).abs + 1
-      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).assertEmits(x)
+      Stream.fromBlockingIterator[IO](x.iterator, chunkSize).assertEmits(x.toList)
     }
   }
 
