@@ -28,7 +28,7 @@ import org.scalacheck.effect.PropF.forAllF
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 
-class IoSuite extends io.Fs2IoSuite {
+class IoSuite extends Fs2Suite {
   group("readInputStream") {
     test("non-buffered") {
       forAllF { (bytes: Array[Byte], chunkSize0: Int) =>
