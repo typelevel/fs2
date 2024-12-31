@@ -483,7 +483,7 @@ object Pull extends PullLowPriority {
       scope: Scope[F]
   )(implicit F: MonadThrow[F]): Pull[F, O, R] =
     pull match {
-      case p: Pull.FlatMapOutput[F, O, p] @unchecked =>
+      case p: Pull.FlatMapOutput[?, ?, ?] =>
         bindAcquireToScope(p.stream, scope).flatMapOutput(o => bindAcquireToScope(p.fun(o), scope))
       case p: Pull.Acquire[F, r] @unchecked =>
         Pull
@@ -505,7 +505,7 @@ object Pull extends PullLowPriority {
           }
       case p: Pull.Bind[F, O, x, R] @unchecked =>
         new ScopedBind[F, O, x, R](p, scope)
-      case p: Pull.InScope[F, O] @unchecked =>
+      case p: Pull.InScope[?, ?]  =>
         Pull.InScope(bindAcquireToScope(p.stream, scope), p.useInterruption)
       case p: Pull.StepLeg[F, O] @unchecked =>
         Pull.StepLeg(
@@ -516,17 +516,18 @@ object Pull extends PullLowPriority {
         Pull.Uncons(
           bindAcquireToScope(p.stream, scope)
         )
-      case p: Pull.AlgEffect[F, R] @unchecked =>
-        p // workaround for Scala 3 'Pull.CloseScope case is unreachable'
-      case p: Pull.Translate[g, F, O] @unchecked => p
-//      case p: Pull.InterruptWhen[?]   => p
-//      case p: Pull.CloseScope         => p
-//      case p: Pull.GetScope[?]        => p
-//      case p: Pull.Eval[?, ?]         => p
-      case p: Pull.Fail                    => p
-      case p: Pull.Succeeded[R] @unchecked => p
-      case p: Pull.Interrupted             => p
-      case p: Pull.Output[O] @unchecked    => p
+      case other => other
+//      case p: Pull.AlgEffect[F, R] @unchecked =>
+//        p // workaround for Scala 3 'Pull.CloseScope case is unreachable'
+//      case p: Pull.Translate[g, F, O] @unchecked => p
+////      case p: Pull.InterruptWhen[?]   => p
+////      case p: Pull.CloseScope         => p
+////      case p: Pull.GetScope[?]        => p
+////      case p: Pull.Eval[?, ?]         => p
+//      case p: Pull.Fail                    => p
+//      case p: Pull.Succeeded[R] @unchecked => p
+//      case p: Pull.Interrupted             => p
+//      case p: Pull.Output[O] @unchecked    => p
     }
 
   /** Repeatedly uses the output of the pull as input for the next step of the
