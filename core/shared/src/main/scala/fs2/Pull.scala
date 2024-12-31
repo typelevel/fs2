@@ -505,7 +505,7 @@ object Pull extends PullLowPriority {
           }
       case p: Pull.Bind[F, O, x, R] @unchecked =>
         new ScopedBind[F, O, x, R](p, scope)
-      case p: Pull.InScope[?, ?]  =>
+      case p: Pull.InScope[?, ?] =>
         Pull.InScope(bindAcquireToScope(p.stream, scope), p.useInterruption)
       case p: Pull.StepLeg[F, O] @unchecked =>
         Pull.StepLeg(
