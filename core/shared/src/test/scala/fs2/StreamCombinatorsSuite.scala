@@ -1342,6 +1342,22 @@ class StreamCombinatorsSuite extends Fs2Suite {
         }
         .assertEquals(Some(true))
     }
+
+    test("scope propagation, multiple pulls") {
+      Stream(1, 2, 3, 4, 5, 6)
+        .flatMap(i => Stream.bracket(Deferred[IO, Int])(_.complete(i).void))
+        .parEvalMap(2)(d => IO.sleep(1.second).as(d))
+        .parEvalMap(2)(d => IO.sleep(1.second).as(d))
+        .parEvalMap(2)(d => IO.sleep(1.second) >> d.complete(0))
+        .evalMap(completed =>
+          IO.raiseUnless(completed)(new RuntimeException("resource released prematurely"))
+        )
+        .timeout(15.seconds)
+        .compile
+        .last
+        .assertEquals(Some(()))
+    }
+
   }
 
   test("range") {

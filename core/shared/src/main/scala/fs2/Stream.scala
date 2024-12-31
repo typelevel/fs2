@@ -238,7 +238,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] = {
     assert(pipes.nonEmpty, s"pipes should not be empty")
-    extendScopeThrough { source =>
+    extendScopeThrough[F2, O2] { source =>
       Stream.force {
         for {
           // topic: contains the chunk that the pipes are processing at one point.
@@ -2326,7 +2326,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       isOrdered: Boolean,
       f: O => F2[O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    extendScopeThrough { source =>
+    extendScopeThrough[F2, O2] { source =>
       Stream.force {
         (
           Semaphore[F2](concurrency),
@@ -2458,7 +2458,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def prefetchN[F2[x] >: F[x]: Concurrent](
       n: Int
-  ): Stream[F2, O] = extendScopeThrough { source =>
+  ): Stream[F2, O] = extendScopeThrough[F2, O] { source =>
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
       chan.stream.unchunks.concurrently {
         source.chunks.through(chan.sendAll)
@@ -2932,15 +2932,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * channel's stream.
     */
   def extendScopeThrough[F2[x] >: F[x], O2](
-      f: Stream[F, O] => Stream[F2, O2]
+      f: Stream[F2, O] => Stream[F2, O2]
   )(implicit F: MonadError[F2, Throwable]): Stream[F2, O2] =
-    this.pull.peek
-      .flatMap {
-        case Some((_, tl)) => Pull.extendScopeTo(f(tl))
-        case None          => Pull.extendScopeTo(f(Stream.empty))
-      }
-      .flatMap(_.underlying)
-      .stream
+    this.pull.peek.flatMap {
+      case Some((_, stream)) =>
+        Pull
+          .getScope[F2]
+          .flatMap { scope =>
+            f(
+              Pull.bindAcquireToScope(stream.underlying, scope).stream
+            ).underlying
+          }
+      case None => Pull.done
+    }.stream
 
   /** Fails this stream with a `TimeoutException` if it does not complete within given `timeout`. */
   def timeout[F2[x] >: F[x]: Temporal](
