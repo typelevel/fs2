@@ -483,77 +483,47 @@ object Pull extends PullLowPriority {
       scope: Scope[F]
   )(implicit F: MonadThrow[F]): Pull[F, O, R] =
     pull match {
-      case p: Pull.FlatMapOutput[F, O, p] =>
-        bindAcquireToScope(p.stream, scope).flatMapOutput(o =>
-          bindAcquireToScope(p.fun(o), scope)
-        )
-      case p: Pull.Acquire[F, r] =>
-        println(s" - Acquire: $pull")
-
+      case p: Pull.FlatMapOutput[?, ?, ?] =>
+        bindAcquireToScope(p.stream, scope).flatMapOutput(o => bindAcquireToScope(p.fun(o), scope))
+      case p: Pull.Acquire[?, ?] =>
         Pull
           .eval(
             scope.acquireResource(
               poll => poll(p.resource),
-              (r: r, e: Resource.ExitCase) => {
-                println("--- releasing")
-                p.release(r, e)
-              }
+              p.release
             )
           )
           .flatMap {
             case Outcome.Succeeded(Left(id)) =>
               Pull.raiseError(new RuntimeException(s"what to do with id? $id"))
             case Outcome.Succeeded(Right(r)) =>
-              println(s"--- acquired: $r")
               Pull.pure(r)
             case Outcome.Errored(e) => Pull.raiseError(e)
             case Outcome.Canceled() => Pull.raiseError(new InterruptedException)
           }
 
-      case p: Pull.Bind[F, O, x, R] =>
-        println(s" - Bind: $pull")
+      case p: Pull.Bind[?, ?, ?, ?] =>
         new ScopedBind(p, scope)
-      case p: Pull.InScope[F, O] =>
-        println(s" - InScope: $pull")
+      case p: Pull.InScope[?, ?] =>
         Pull.InScope(bindAcquireToScope(p.stream, scope), p.useInterruption)
-      case p: Pull.StepLeg[F, O] =>
-        println(s" - StepLeg: $pull")
+      case Pull.StepLeg(stream, stepScope) =>
         Pull.StepLeg(
-          bindAcquireToScope(p.stream, scope),
-          p.scope
+          bindAcquireToScope(stream.asInstanceOf[Pull[F, O, Unit]], scope),
+          stepScope
         )
-      case p: Pull.Uncons[F, ?] =>
-        println(s" - Uncons: $pull")
+      case Pull.Uncons(stream) =>
         Pull.Uncons(
-          bindAcquireToScope(p.stream, scope)
+          bindAcquireToScope(stream.asInstanceOf[Pull[F, O, Unit]], scope)
         )
-      case p: Pull.Translate[g, F, O] =>
-        println(s" - Translate: $pull")
-        p
-      case p: Pull.InterruptWhen[F] =>
-        println(s" - InterruptWhen: $pull")
-        p
-      case p: Pull.CloseScope =>
-        println(s" - CloseScope: $pull")
-        p
-      case p: Pull.GetScope[F] =>
-        println(s" - GetScope: $pull")
-        p
-      case p: Pull.Eval[F, ?] =>
-        println(s" - Eval: $pull")
-        p
-      case p: Pull.Fail =>
-        println(s" - Fail: $pull")
-        p
-      case p: Pull.Succeeded[?] =>
-        println(s" - Succeeded: $pull")
-        p
-      case p: Pull.Interrupted =>
-        println(s" - Interrupted: $pull")
-        p
-      case p: Pull.Output[?] =>
-        println(s" - Output: $pull")
-        p
+      case p: Pull.Translate[?, ?, ?] => p
+      case p: Pull.InterruptWhen[?]   => p
+      case p: Pull.CloseScope         => p
+      case p: Pull.GetScope[?]        => p
+      case p: Pull.Eval[?, ?]         => p
+      case p: Pull.Fail               => p
+      case p: Pull.Succeeded[?]       => p
+      case p: Pull.Interrupted        => p
+      case p: Pull.Output[?]          => p
     }
 
   /** Repeatedly uses the output of the pull as input for the next step of the
