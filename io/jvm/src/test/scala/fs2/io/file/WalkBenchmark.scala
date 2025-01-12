@@ -27,7 +27,7 @@ import cats.effect.IO
 import java.io.File
 import scala.concurrent.duration.*
 
-class WalkBenchmark extends Fs2IoSuite {
+class WalkBenchmark extends Fs2Suite {
 
   override def munitIOTimeout = 5.minutes
 

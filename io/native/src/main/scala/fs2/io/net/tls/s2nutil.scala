@@ -44,7 +44,7 @@ private[tls] object s2nutil {
         throw new S2nException(error)
     }
 
-  @alwaysinline def guard[A](thunk: => CInt): CInt = {
+  @alwaysinline def guard(thunk: => CInt): CInt = {
     val rtn = thunk
     if (rtn < 0) {
       val error = !s2n_errno_location()
