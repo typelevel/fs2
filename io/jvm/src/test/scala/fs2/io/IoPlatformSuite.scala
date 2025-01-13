@@ -64,12 +64,11 @@ class IoPlatformSuite extends Fs2Suite {
                 (bs1.length != (o1 + l1)) &&
                 // we expect that next slice will wrap same buffer
                 ((bs2 eq bs1) && (o2 == o1 + l1))
-              } || {
-                // if first slice buffer is 'full'
-                (bs2.length == (o1 + l1)) &&
-                // we expect new buffer allocated for next slice
-                ((bs2 ne bs1) && (o2 == 0))
-              }
+              } ||
+              // if first slice buffer is 'full'
+              (bs2.length == (o1 + l1)) &&
+              // we expect new buffer allocated for next slice
+              ((bs2 ne bs1) && (o2 == 0))
             case _ => false // unexpected chunk subtype
           }
       }

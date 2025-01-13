@@ -198,9 +198,8 @@ class StreamPerformanceSuite extends Fs2Suite {
                 val s: Stream[SyncIO, Int] =
                   List
                     .fill(N)(bracketed)
-                    .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) {
-                      (acc, hd) =>
-                        acc.handleErrorWith(_ => hd)
+                    .foldLeft(Stream.raiseError[SyncIO](new Err): Stream[SyncIO, Int]) { (acc, hd) =>
+                      acc.handleErrorWith(_ => hd)
                     }
                 s.compile.toList.attempt
                   .flatMap(_ => (ok.get, open.get).tupled)
