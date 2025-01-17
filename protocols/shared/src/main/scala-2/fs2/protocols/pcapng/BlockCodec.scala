@@ -44,8 +44,9 @@ object BlockCodec {
     ("Block Total Length"     | constant(length.bv)                 )}
   // format: on
 
-  def unknownByteOrder[L <: HList, LB <: HList](hexConstant: ByteVector)(f: Length => Codec[L])(
-      implicit
+  def unknownByteOrder[L <: HList, LB <: HList](
+      hexConstant: ByteVector
+  )(f: Length => Codec[L])(implicit
       prepend: Prepend.Aux[L, Unit :: HNil, LB],
       init: Init.Aux[LB, L],
       last: Last.Aux[LB, Unit]
