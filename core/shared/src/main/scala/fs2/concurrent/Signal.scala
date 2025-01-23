@@ -481,8 +481,11 @@ object SignallingMapRef {
       .map { case (state, ids) =>
         def newId = ids.getAndUpdate(_ + 1)
 
-        def updateAndNotify[U](state: State, k: K, f: Option[V] => (Option[V], U))
-            : (State, F[U]) = {
+        def updateAndNotify[U](
+            state: State,
+            k: K,
+            f: Option[V] => (Option[V], U)
+        ): (State, F[U]) = {
 
           val keyState = state.keys.get(k)
 
