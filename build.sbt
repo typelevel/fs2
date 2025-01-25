@@ -2,7 +2,7 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.11"
+ThisBuild / tlBaseVersion := "3.12"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -299,9 +299,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.1.38",
       "org.typelevel" %%% "cats-core" % "2.11.0",
-      "org.typelevel" %%% "cats-effect" % "3.5.6",
-      "org.typelevel" %%% "cats-effect-laws" % "3.5.6" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.5.6" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.5.7",
+      "org.typelevel" %%% "cats-effect-laws" % "3.5.7" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.5.7" % Test,
       "org.typelevel" %%% "cats-laws" % "2.11.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test,
