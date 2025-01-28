@@ -863,7 +863,8 @@ object Chunk
     // ClassTag(values.getClass.getComponentType) -- we only keep it for bincompat
 
     require(
-      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
+      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size,
+      "ArraySlice out of bounds"
     )
 
     override protected def thisClassTag: ClassTag[Any] = ct.asInstanceOf[ClassTag[Any]]

@@ -86,7 +86,8 @@ private[fs2] trait ChunkCompanionPlatform extends ChunkCompanion213And3Compat {
       private[fs2] val ct: ClassTag[O]
   ) extends Chunk[O] {
     require(
-      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size
+      offset >= 0 && offset <= values.size && length >= 0 && length <= values.size && offset + length <= values.size,
+      "IArraySlice out of bounds"
     )
 
     def size = length
