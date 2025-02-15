@@ -177,9 +177,8 @@ class StreamZipSuite extends Fs2Suite {
         Logger[IO]
           .flatMap { logger =>
             def s(tag: String) =
-              logger.logLifecycle(tag) >> {
+              logger.logLifecycle(tag) >>
                 logger.logLifecycle(s"$tag - 1") ++ logger.logLifecycle(s"$tag - 2")
-              }
 
             s("a").zip(s("b")).compile.drain >>
               logger.get.assertEquals(
