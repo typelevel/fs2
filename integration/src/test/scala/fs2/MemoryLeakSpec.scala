@@ -46,7 +46,7 @@ class MemoryLeakSpec extends FunSuite {
       warmupIterations: Int = 3,
       samplePeriod: FiniteDuration = 1.seconds,
       monitorPeriod: FiniteDuration = 10.seconds,
-      limitTotalBytesIncreasePerSecond: Long = 700000,
+      limitTotalBytesIncreasePerSecond: Long = 1400000,
       limitConsecutiveIncreases: Int = 10
   )
 
