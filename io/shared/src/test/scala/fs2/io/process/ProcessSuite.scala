@@ -29,7 +29,7 @@ import cats.syntax.all._
 
 import scala.concurrent.duration._
 
-class ProcessSuite extends Fs2IoSuite {
+class ProcessSuite extends Fs2Suite {
 
   test("echo") {
     ProcessBuilder("echo", "hello", "world").spawn[IO].use { p =>
