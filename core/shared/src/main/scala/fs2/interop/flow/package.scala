@@ -22,8 +22,7 @@
 package fs2
 package interop
 
-import cats.effect.IO
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, IO, Resource}
 import cats.effect.unsafe.IORuntime
 
 import java.util.concurrent.Flow.{Publisher, Subscriber, defaultBufferSize}
