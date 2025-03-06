@@ -29,9 +29,15 @@ import cats.syntax.all._
 import fs2.io.CollectionCompat._
 
 import java.lang
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
+import scala.concurrent.ExecutionContext
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+
+    private def javaVersion: Int = System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
+
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
@@ -53,10 +59,25 @@ private[process] trait ProcessesCompanionPlatform {
         } { process =>
           F.delay(process.isAlive())
             .ifM(
-              F.blocking {
-                process.destroy()
-                process.waitFor()
-                ()
+              {
+                val f = F.blocking {
+                  process.destroy()
+                  process.waitFor()
+                  ()
+                }
+                // Run in virtual thread if possible
+                if (javaVersion >= 21) {
+                  val virtualThreadExecutor = classOf[Executors]
+                    .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
+                    .invoke(null)
+                    .asInstanceOf[ExecutorService]
+
+                  val vtEC = ExecutionContext.fromExecutor(virtualThreadExecutor)
+                    
+                  F.evalOn(f, vtEC)
+                } else {
+                  f
+                }
               },
               F.unit
             )
