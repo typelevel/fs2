@@ -24,6 +24,54 @@ package compression
 
 private[compression] trait CompressionPlatform[F[_]] {
 
+  private val GZIP_MAGIC = Array[Byte](0x1f, 0x8b.toByte)
+
+  def gzipMulti(
+      fileName: Option[Nothing],
+      modificationTime: Option[Nothing],
+      comment: Option[Nothing],
+      deflateParams: DeflateParams
+  ): Pipe[F, Byte, Byte] = { input =>
+    input.chunks
+      .scanChunks(State.initial) { (state, chunk) =>
+        val bytes = chunk.flatMap(identity).toArray
+        if (isGzipHeader(bytes)) {
+          processNewMember(state, bytes)
+        } else {
+          processMember(state, bytes)
+        }
+      }
+  }
+
+  private case class State(
+      crc32: Int,
+      memberCount: Int,
+      buffer: Array[Byte]
+  )
+
+  private object State {
+    def initial = State(0, 0, Array.empty[Byte])
+  }
+
+  private def isGzipHeader(bytes: Array[Byte]): Boolean =
+    bytes.length >= 2 && bytes(0) == GZIP_MAGIC(0) && bytes(1) == GZIP_MAGIC(1)
+
+  private def processNewMember(state: State, bytes: Array[Byte]): (State, Chunk[Byte]) = {
+    val newState = state.copy(
+      memberCount = state.memberCount + 1,
+      crc32 = 0,
+      buffer = bytes
+    )
+    (newState, Chunk.array(bytes))
+  }
+
+  private def processMember(state: State, bytes: Array[Byte]): (State, Chunk[Byte]) = {
+    val newState = state.copy(
+      buffer = bytes
+    )
+    (newState, Chunk.array(bytes))
+  }
+
   /** Returns a pipe that incrementally compresses input into the GZIP format
     * as defined by RFC 1952 at https://www.ietf.org/rfc/rfc1952.txt. Output is
     * compatible with the GNU utils `gunzip` utility, as well as really anything
