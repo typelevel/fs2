@@ -15,7 +15,7 @@ ThisBuild / crossScalaVersions := Seq("2.12.20", Scala213, "3.3.5")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("21"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"), JavaSpec.temurin("21"))
 ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
 ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
