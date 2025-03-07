@@ -33,6 +33,6 @@ private[fs2] trait ioplatform extends iojvmnative {
     stdin(bufSize).through(text.utf8.decode)
 
   // Scala-native doesn't support virtual threads
-  def evalOnVirtualThreadIfAvailable[F[_], A](fa: F[A]): F[A] = fa
+  private[io] def evalOnVirtualThreadIfAvailable[F[_], A](fa: F[A]): F[A] = fa
 
 }
