@@ -48,7 +48,7 @@ private[process] trait ProcessesCompanionPlatform {
     private val javaVersion: Int =
       System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
 
-    private def evOnVirtualThreadECIfPossible[A](f : => F[A]): F[A] =
+    private def evOnVirtualThreadECIfPossible[A](f: => F[A]): F[A] =
       if (javaVersion >= 21) {
         F.evalOn(f, vtEC)
       } else {
