@@ -31,6 +31,8 @@ import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
 import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
+import java.util.concurrent.ExecutorService
 
 private[fs2] trait ioplatform extends iojvmnative {
 
@@ -143,5 +145,26 @@ private[fs2] trait ioplatform extends iojvmnative {
       }
     }
   }
+
+  private lazy val vtExecutor: Option[ExecutionContext] = {
+    val javaVersion: Int =
+      System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
+
+    // From JVM 21 on we can use virtual threads
+    if (javaVersion >= 21) {
+      val virtualThreadExecutor = classOf[Executors]
+        .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
+        .invoke(null)
+        .asInstanceOf[ExecutorService]
+
+      ExecutionContext.fromExecutor(virtualThreadExecutor).some
+    } else {
+      None
+    }
+
+  }
+
+  def evalOnVirtualThreadIfAvailable[F[_]: Async, A](fa: F[A]): F[A] =
+    vtExecutor.fold(fa)(ec => fa.evalOn(ec))
 
 }

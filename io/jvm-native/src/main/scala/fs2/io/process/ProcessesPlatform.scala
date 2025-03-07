@@ -25,35 +25,13 @@ package process
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.syntax.all._
-import fs2.io.CollectionCompat._
+import cats.syntax.all.*
+import fs2.io.CollectionCompat.*
 
 import java.lang
-import java.util.concurrent.Executors
-import java.util.concurrent.ExecutorService
-import scala.concurrent.ExecutionContext
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
-
-    private lazy val vtEC: ExecutionContext = {
-      val virtualThreadExecutor = classOf[Executors]
-        .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
-        .invoke(null)
-        .asInstanceOf[ExecutorService]
-
-      ExecutionContext.fromExecutor(virtualThreadExecutor)
-    }
-
-    private val javaVersion: Int =
-      System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
-
-    private def evOnVirtualThreadECIfPossible[A](f: => F[A]): F[A] =
-      if (javaVersion >= 21) {
-        F.evalOn(f, vtEC)
-      } else {
-        f
-      }
 
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
@@ -76,7 +54,7 @@ private[process] trait ProcessesCompanionPlatform {
         } { process =>
           F.delay(process.isAlive())
             .ifM(
-              evOnVirtualThreadECIfPossible(
+              evalOnVirtualThreadIfAvailable(
                 F.blocking {
                   process.destroy()
                   process.waitFor()
@@ -91,7 +69,7 @@ private[process] trait ProcessesCompanionPlatform {
             def isAlive = F.delay(process.isAlive())
 
             def exitValue = isAlive.ifM(
-              evOnVirtualThreadECIfPossible(F.interruptible(process.waitFor())),
+              evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
               F.delay(process.exitValue())
             )
 
