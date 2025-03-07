@@ -48,6 +48,13 @@ private[process] trait ProcessesCompanionPlatform {
     private val javaVersion: Int =
       System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
 
+    private def evOnVirtualThreadECIfPossible[A](f : => F[A]): F[A] =
+      if (javaVersion >= 21) {
+        F.evalOn(f, vtEC)
+      } else {
+        f
+      }
+
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
@@ -69,19 +76,13 @@ private[process] trait ProcessesCompanionPlatform {
         } { process =>
           F.delay(process.isAlive())
             .ifM(
-              {
-                val f = F.blocking {
+              evOnVirtualThreadECIfPossible(
+                F.blocking {
                   process.destroy()
                   process.waitFor()
                   ()
                 }
-                // Run in virtual thread if possible
-                if (javaVersion >= 21) {
-                  F.evalOn(f, vtEC)
-                } else {
-                  f
-                }
-              },
+              ),
               F.unit
             )
         }
@@ -90,7 +91,7 @@ private[process] trait ProcessesCompanionPlatform {
             def isAlive = F.delay(process.isAlive())
 
             def exitValue = isAlive.ifM(
-              F.interruptible(process.waitFor()),
+              evOnVirtualThreadECIfPossible(F.interruptible(process.waitFor())),
               F.delay(process.exitValue())
             )
 
