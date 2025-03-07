@@ -146,7 +146,7 @@ private[fs2] trait ioplatform extends iojvmnative {
     }
   }
 
-  private lazy val vtExecutor: Option[ExecutionContext] = {
+  private lazy val vtExecutor: ExecutionContext = {
     val javaVersion: Int =
       System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
 
@@ -157,14 +157,18 @@ private[fs2] trait ioplatform extends iojvmnative {
         .invoke(null)
         .asInstanceOf[ExecutorService]
 
-      ExecutionContext.fromExecutor(virtualThreadExecutor).some
+      ExecutionContext.fromExecutor(virtualThreadExecutor)
     } else {
-      None
+      null
     }
 
   }
 
-  def evalOnVirtualThreadIfAvailable[F[_]: Async, A](fa: F[A]): F[A] =
-    vtExecutor.fold(fa)(ec => fa.evalOn(ec))
+  private[io] def evalOnVirtualThreadIfAvailable[F[_]: Async, A](fa: F[A]): F[A] =
+    if (vtExecutor != null) {
+      fa.evalOn(vtExecutor)
+    } else {
+      fa
+    }
 
 }
