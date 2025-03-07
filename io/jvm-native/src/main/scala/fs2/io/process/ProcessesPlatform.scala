@@ -36,7 +36,16 @@ import scala.concurrent.ExecutionContext
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
 
-    private def javaVersion: Int =
+    private lazy val vtEC: ExecutionContext = {
+      val virtualThreadExecutor = classOf[Executors]
+        .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
+        .invoke(null)
+        .asInstanceOf[ExecutorService]
+
+      ExecutionContext.fromExecutor(virtualThreadExecutor)
+    }
+
+    private val javaVersion: Int =
       System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
 
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
@@ -68,13 +77,6 @@ private[process] trait ProcessesCompanionPlatform {
                 }
                 // Run in virtual thread if possible
                 if (javaVersion >= 21) {
-                  val virtualThreadExecutor = classOf[Executors]
-                    .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
-                    .invoke(null)
-                    .asInstanceOf[ExecutorService]
-
-                  val vtEC = ExecutionContext.fromExecutor(virtualThreadExecutor)
-
                   F.evalOn(f, vtEC)
                 } else {
                   f
