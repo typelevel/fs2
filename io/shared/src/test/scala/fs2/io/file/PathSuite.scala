@@ -31,7 +31,7 @@ import org.scalacheck.Cogen
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
-class PathSuite extends Fs2IoSuite {
+class PathSuite extends Fs2Suite {
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters
