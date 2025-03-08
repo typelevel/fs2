@@ -25,13 +25,14 @@ package process
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.syntax.all._
-import fs2.io.CollectionCompat._
+import cats.syntax.all.*
+import fs2.io.CollectionCompat.*
 
 import java.lang
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
@@ -53,11 +54,13 @@ private[process] trait ProcessesCompanionPlatform {
         } { process =>
           F.delay(process.isAlive())
             .ifM(
-              F.blocking {
-                process.destroy()
-                process.waitFor()
-                ()
-              },
+              evalOnVirtualThreadIfAvailable(
+                F.blocking {
+                  process.destroy()
+                  process.waitFor()
+                  ()
+                }
+              ),
               F.unit
             )
         }
@@ -66,7 +69,7 @@ private[process] trait ProcessesCompanionPlatform {
             def isAlive = F.delay(process.isAlive())
 
             def exitValue = isAlive.ifM(
-              F.interruptible(process.waitFor()),
+              evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
               F.delay(process.exitValue())
             )
 

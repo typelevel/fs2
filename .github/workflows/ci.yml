@@ -29,8 +29,17 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         scala: [2.12, 2.13, 3]
-        java: [temurin@17]
+        java: [temurin@17, temurin@21]
         project: [rootJS, rootJVM, rootNative]
+        exclude:
+          - scala: 2.12
+            java: temurin@21
+          - scala: 3
+            java: temurin@21
+          - project: rootJS
+            java: temurin@21
+          - project: rootNative
+            java: temurin@21
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -53,6 +62,19 @@ jobs:
 
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Install brew formulae (ubuntu)
@@ -135,6 +157,19 @@ jobs:
 
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Download target directories (2.12, rootJS)
@@ -281,6 +316,19 @@ jobs:
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
 
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        run: sbt +update
+
       - name: Submit Dependencies
         uses: scalacenter/sbt-dependency-submission@v2
         with:
@@ -317,6 +365,19 @@ jobs:
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
         run: sbt +update
 
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
+        run: sbt +update
+
       - if: matrix.project == 'ioNative'
         run: brew install s2n
 
@@ -349,6 +410,19 @@ jobs:
 
       - name: sbt update
         if: matrix.java == 'temurin@17' && steps.setup-java-temurin-17.outputs.cache-hit == 'false'
+        run: sbt +update
+
+      - name: Setup Java (temurin@21)
+        id: setup-java-temurin-21
+        if: matrix.java == 'temurin@21'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: sbt
+
+      - name: sbt update
+        if: matrix.java == 'temurin@21' && steps.setup-java-temurin-21.outputs.cache-hit == 'false'
         run: sbt +update
 
       - name: Generate site
