@@ -146,6 +146,7 @@ private[fs2] trait ioplatform extends iojvmnative {
     }
   }
 
+  // Using null instead of Option because null check is faster
   private lazy val vtExecutor: ExecutionContext = {
     val javaVersion: Int =
       System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
