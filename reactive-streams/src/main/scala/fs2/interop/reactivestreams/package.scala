@@ -60,6 +60,7 @@ package object reactivestreams {
     *                   A high number can be useful if the publisher is triggering from IO, like requesting elements from a database.
     *                   The publisher can use this `bufferSize` to query elements in batch.
     *                   A high number will also lead to more elements in memory.
+    *                   The stream will not emit new element until, either the `Chunk` is filled or the publisher finishes.
     */
   def fromPublisher[F[_]: Async, A](p: Publisher[A], bufferSize: Int): Stream[F, A] =
     Stream
@@ -87,6 +88,7 @@ package object reactivestreams {
       *                   A high number can be useful if the publisher is triggering from IO, like requesting elements from a database.
       *                   The publisher can use this `bufferSize` to query elements in batch.
       *                   A high number will also lead to more elements in memory.
+      *                   The stream will not emit new element until, either the `Chunk` is filled or the publisher finishes.
       */
     def toStreamBuffered[F[_]: Async](bufferSize: Int): Stream[F, A] =
       fromPublisher(publisher, bufferSize)

@@ -34,6 +34,8 @@ import java.io.{InputStream, OutputStream}
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
+import scala.concurrent.ExecutionContext
+import java.util.concurrent.ExecutorService
 
 private[fs2] trait ioplatform extends iojvmnative {
 
@@ -162,5 +164,31 @@ private[fs2] trait ioplatform extends iojvmnative {
       }
     }
   }
+
+  // Using null instead of Option because null check is faster
+  private lazy val vtExecutor: ExecutionContext = {
+    val javaVersion: Int =
+      System.getProperty("java.version").stripPrefix("1.").takeWhile(_.isDigit).toInt
+
+    // From JVM 21 on we can use virtual threads
+    if (javaVersion >= 21) {
+      val virtualThreadExecutor = classOf[Executors]
+        .getDeclaredMethod("newVirtualThreadPerTaskExecutor")
+        .invoke(null)
+        .asInstanceOf[ExecutorService]
+
+      ExecutionContext.fromExecutor(virtualThreadExecutor)
+    } else {
+      null
+    }
+
+  }
+
+  private[io] def evalOnVirtualThreadIfAvailable[F[_]: Async, A](fa: F[A]): F[A] =
+    if (vtExecutor != null) {
+      fa.evalOn(vtExecutor)
+    } else {
+      fa
+    }
 
 }
