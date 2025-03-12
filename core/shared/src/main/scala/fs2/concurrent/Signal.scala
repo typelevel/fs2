@@ -31,6 +31,7 @@ import cats.{Applicative, Functor, Invariant, Monad}
 import cats.arrow.FunctionK
 import scala.collection.immutable.LongMap
 import fs2.concurrent.SignallingRef.TransformedSignallingRef
+import fs2.concurrent.Signal.TransformedSignal
 import cats.data.State
 
 /** Pure holder of a single value of type `A` that can be read in the effect `F`. */
@@ -137,6 +138,11 @@ trait Signal[F[_], A] { outer =>
     */
   def waitUntil(p: A => Boolean)(implicit F: Concurrent[F]): F[Unit] =
     discrete.forall(a => !p(a)).compile.drain
+
+  def mapK[G[_]](
+      f: FunctionK[F, G]
+  )(implicit G: Functor[G], dummy: DummyImplicit): Signal[G, A] =
+    new TransformedSignal(this, f)
 }
 
 object Signal extends SignalInstances {
@@ -163,6 +169,16 @@ object Signal extends SignalInstances {
         }
       def get: F[B] = Functor[F].map(fa.get)(f)
     }
+
+  final private class TransformedSignal[F[_], G[_], A](
+      underlying: Signal[F, A],
+      trans: FunctionK[F, G]
+  )(implicit G: Functor[G])
+      extends Signal[G, A] {
+    override def get: G[A] = trans(underlying.get)
+    override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
+    override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
+  }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
 
@@ -199,7 +215,7 @@ object Signal extends SignalInstances {
   * need looping even without any other writers.
   */
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A] {
-  def mapK[G[_]](
+  override def mapK[G[_]](
       f: FunctionK[F, G]
   )(implicit G: Functor[G], dummy: DummyImplicit): SignallingRef[G, A] =
     new TransformedSignallingRef(this, f)
@@ -372,12 +388,7 @@ object SignallingRef {
     // --- Signal-specific methods
     override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
     override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
-    override def changes(implicit eqA: Eq[A]): Signal[G, A] =
-      new Signal[G, A] {
-        def discrete = underlying.changes.discrete.translate(trans)
-        def continuous = underlying.changes.continuous.translate(trans)
-        def get: G[A] = trans(underlying.changes.get)
-      }
+    override def changes(implicit eqA: Eq[A]): Signal[G, A] = underlying.changes.mapK(trans)
   }
   private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
       lensGet: A => B,
