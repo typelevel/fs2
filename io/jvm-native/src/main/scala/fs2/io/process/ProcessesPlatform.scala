@@ -25,8 +25,10 @@ package process
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.syntax.all._
-import fs2.io.CollectionCompat._
+import cats.syntax.all.*
+import fs2.io.CollectionCompat.*
+
+import java.lang
 import java.lang.ProcessBuilder.Redirect
 
 private[process] trait ProcessesCompanionPlatform {
@@ -63,19 +65,26 @@ private[process] trait ProcessesCompanionPlatform {
           builder.start()
         }
       } { process =>
-        F.delay(process.isAlive())
-          .ifM(
-            F.blocking {
-              process.destroy()
-              process.waitFor()
-              ()
-            },
-            F.unit
-          )
-      }
-      .map { process =>
-        new UnsealedProcess[F] {
-          def isAlive = F.delay(process.isAlive())
+          F.delay(process.isAlive())
+            .ifM(
+              evalOnVirtualThreadIfAvailable(
+                F.blocking {
+                  process.destroy()
+                  process.waitFor()
+                  ()
+                }
+              ),
+              F.unit
+            )
+        }
+        .map { process =>
+          new UnsealedProcess[F] {
+            def isAlive = F.delay(process.isAlive())
+
+            def exitValue = isAlive.ifM(
+              evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
+              F.delay(process.exitValue())
+            )
 
           def exitValue = isAlive.ifM(
             F.interruptible(process.waitFor()),
