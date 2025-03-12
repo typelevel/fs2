@@ -252,9 +252,8 @@ private[flow] final class StreamSubscriber[F[_], A] private (
               inOnNextLoop = false
               buffer = null
               cb.apply(Right(None))
-            } else if (index == 0) {
+            } else if (buffer eq null) {
               inOnNextLoop = false
-              buffer = null
               cb.apply(Right(None))
             } else {
               val chunk = Chunk.array(buffer, offset = 0, length = index)
