@@ -44,9 +44,10 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
   protected def openChannel(address: UnixSocketAddress) =
     Resource
-      .make(F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX)).pipe(evalOnVirtualThreadIfAvailable(_)))(ch =>
-        F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_))
-      )
+      .make(
+        F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX))
+          .pipe(evalOnVirtualThreadIfAvailable(_))
+      )(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
       .evalTap { ch =>
         F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
           .cancelable(F.blocking(ch.close()))
@@ -55,16 +56,19 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
 
   protected def openServerChannel(address: UnixSocketAddress) =
     Resource
-      .make(F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX)).pipe(evalOnVirtualThreadIfAvailable(_)))(ch =>
-        F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_))
-      )
+      .make(
+        F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX))
+          .pipe(evalOnVirtualThreadIfAvailable(_))
+      )(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
       .evalTap { sch =>
         F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
-          .cancelable(F.blocking(sch.close())).pipe(evalOnVirtualThreadIfAvailable(_))
+          .cancelable(F.blocking(sch.close()))
+          .pipe(evalOnVirtualThreadIfAvailable(_))
       }
       .map { sch =>
         Resource.makeFull[F, SocketChannel] { poll =>
-          poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))).pipe(evalOnVirtualThreadIfAvailable(_))
+          poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
+            .pipe(evalOnVirtualThreadIfAvailable(_))
         }(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
       }
 
