@@ -23,8 +23,7 @@ package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.syntax.all._
-import scala.util.chaining._
-import fs2.io.evalOnVirtualThreadIfAvailable
+import fs2.io.syntax.AsyncOps
 import fs2.io.file.Files
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
@@ -45,31 +44,31 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
   protected def openChannel(address: UnixSocketAddress) =
     Resource
       .make(
-        F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX))
-          .pipe(evalOnVirtualThreadIfAvailable(_))
-      )(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
+        F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX)).evalOnVirtualThreadIfAvailable()
+      )(ch => F.blocking(ch.close()))
+      .evalOnVirtualThreadIfAvailable()
       .evalTap { ch =>
         F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
           .cancelable(F.blocking(ch.close()))
-          .pipe(evalOnVirtualThreadIfAvailable(_))
+          .evalOnVirtualThreadIfAvailable()
       }
 
   protected def openServerChannel(address: UnixSocketAddress) =
     Resource
       .make(
         F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX))
-          .pipe(evalOnVirtualThreadIfAvailable(_))
-      )(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
+          .evalOnVirtualThreadIfAvailable()
+      )(ch => F.blocking(ch.close()).evalOnVirtualThreadIfAvailable())
       .evalTap { sch =>
         F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
           .cancelable(F.blocking(sch.close()))
-          .pipe(evalOnVirtualThreadIfAvailable(_))
+          .evalOnVirtualThreadIfAvailable()
       }
       .map { sch =>
         Resource.makeFull[F, SocketChannel] { poll =>
           poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
-            .pipe(evalOnVirtualThreadIfAvailable(_))
-        }(ch => F.blocking(ch.close()).pipe(evalOnVirtualThreadIfAvailable(_)))
+            .evalOnVirtualThreadIfAvailable()
+        }(ch => F.blocking(ch.close()).evalOnVirtualThreadIfAvailable())
       }
 
 }
