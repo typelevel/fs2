@@ -18,7 +18,7 @@
           imports = [ typelevel-nix.typelevelShell ];
           name = "fs2-shell";
           typelevelShell = {
-            jdk.package = pkgs.jdk23;
+            jdk.package = pkgs.jdk17;
             nodejs.enable = true;
             native.enable = true;
             native.libraries = [ pkgs.zlib pkgs.s2n-tls pkgs.openssl ];
