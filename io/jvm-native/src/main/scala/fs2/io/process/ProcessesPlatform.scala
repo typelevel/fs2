@@ -25,12 +25,16 @@ package process
 
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-import cats.syntax.all._
-import fs2.io.CollectionCompat._
+
 import java.lang.ProcessBuilder.Redirect
+import cats.syntax.all.*
+import fs2.io.CollectionCompat.*
+
+import java.lang
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
@@ -60,22 +64,27 @@ private[process] trait ProcessesCompanionPlatform {
               builder.redirectError(Redirect.DISCARD)
           }
 
-          builder.start()
+        } { process =>
+          F.delay(process.isAlive())
+            .ifM(
+              evalOnVirtualThreadIfAvailable(
+                F.blocking {
+                  process.destroy()
+                  process.waitFor()
+                  ()
+                }
+              ),
+              F.unit
+            )
         }
-      } { process =>
-        F.delay(process.isAlive())
-          .ifM(
-            F.blocking {
-              process.destroy()
-              process.waitFor()
-              ()
-            },
-            F.unit
-          )
-      }
-      .map { process =>
-        new UnsealedProcess[F] {
-          def isAlive = F.delay(process.isAlive())
+        .map { process =>
+          new UnsealedProcess[F] {
+            def isAlive = F.delay(process.isAlive())
+
+            def exitValue = isAlive.ifM(
+              evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
+              F.delay(process.exitValue())
+            )
 
           def exitValue = isAlive.ifM(
             F.interruptible(process.waitFor()),

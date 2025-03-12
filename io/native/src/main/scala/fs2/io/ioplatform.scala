@@ -32,4 +32,7 @@ private[fs2] trait ioplatform extends iojvmnative {
   def stdinUtf8[F[_]](bufSize: Int)(implicit F: Sync[F]): Stream[F, String] =
     stdin(bufSize).through(text.utf8.decode)
 
+  // Scala-native doesn't support virtual threads
+  private[io] def evalOnVirtualThreadIfAvailable[F[_], A](fa: F[A]): F[A] = fa
+
 }
