@@ -372,6 +372,14 @@ object SignallingRef {
     // --- Signal-specific methods
     override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
     override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
+    override def changes(implicit eqA: Eq[A]): Signal[G, A] =
+      new Signal[G, A] {
+        def discrete = TransformedSignallingRef.this.discrete.changes
+        def continuous = TransformedSignallingRef.this.continuous
+        def get = TransformedSignallingRef.this.get
+      }
+    override def waitUntil(p: A => Boolean)(implicit G: Concurrent[G]): G[Unit] =
+      TransformedSignallingRef.this.discrete.forall(a => !p(a)).compile.drain
   }
   private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
       lensGet: A => B,
