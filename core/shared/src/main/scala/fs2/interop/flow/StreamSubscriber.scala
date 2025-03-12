@@ -164,10 +164,10 @@ private[flow] final class StreamSubscriber[F[_], A] private (
             state -> run {
               // We do the updates here,
               // to ensure they happen after we have secured the state.
-              inOnNextLoop = true
               buffer = new Array(chunkSize)
               buffer(0) = a
               index = 1
+              inOnNextLoop = true
             }
           }
 
@@ -198,6 +198,8 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           Failed(
             new InvalidStateException(operation = s"Received record [${buffer.last}]", state)
           ) -> run {
+            // We do the updates here,
+            // to ensure they happen after we have secured the state.
             inOnNextLoop = false
             buffer = null
           }
@@ -206,10 +208,6 @@ private[flow] final class StreamSubscriber[F[_], A] private (
       case Error(ex) => {
         case Uninitialized(Some(cb)) =>
           Terminal -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             cb.apply(Left(ex))
           }
 
@@ -229,10 +227,6 @@ private[flow] final class StreamSubscriber[F[_], A] private (
       case Complete(canceled) => {
         case Uninitialized(Some(cb)) =>
           Terminal -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             cb.apply(Right(None))
           }
 
@@ -276,19 +270,11 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
         case Idle(s) =>
           WaitingOnUpstream(cb, s) -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             s.request(chunkSize.toLong)
           }
 
         case state @ Uninitialized(Some(otherCB)) =>
           Terminal -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             val ex = Left(new InvalidStateException(operation = "Received request", state))
             otherCB.apply(ex)
             cb.apply(ex)
@@ -308,19 +294,11 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
         case Failed(ex) =>
           Terminal -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             cb.apply(Left(ex))
           }
 
         case Terminal =>
           Terminal -> run {
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
             cb.apply(Right(None))
           }
       }
