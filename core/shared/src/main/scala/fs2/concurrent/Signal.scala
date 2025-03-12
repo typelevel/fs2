@@ -378,8 +378,6 @@ object SignallingRef {
         def continuous = underlying.changes.continuous.translate(trans)
         def get: G[A] = trans(underlying.changes.get)
       }
-    override def waitUntil(p: A => Boolean)(implicit C: Concurrent[G]): G[Unit] =
-      trans(underlying.waitUntil(p))
   }
   private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
       lensGet: A => B,
