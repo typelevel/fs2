@@ -53,7 +53,7 @@ private[net] trait SocketCompanionPlatform {
         }
       }
 
-  private[net] class AsyncSocket[F[_]](
+  private[net] case class AsyncSocket[F[_]](
       sock: facade.net.Socket,
       readStream: SuspendedStream[F, Byte]
   )(implicit F: Async[F])
