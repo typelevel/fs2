@@ -30,7 +30,7 @@ import fs2.io.file.Files
 import fs2.io.file.Path
 import scodec.bits.ByteVector
 
-abstract class TLSSuite extends Fs2IoSuite {
+abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
     cert <- Resource.eval {
       Files[IO].readAll(Path("io/shared/src/test/resources/cert.pem")).compile.to(ByteVector)

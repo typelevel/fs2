@@ -22,6 +22,7 @@
 package fs2
 package io
 
+import cats.Show
 import cats.effect.kernel.{Async, Outcome, Resource, Sync}
 import cats.effect.kernel.implicits._
 import cats.effect.kernel.Deferred
@@ -30,6 +31,8 @@ import fs2.internal.ThreadFactories
 import fs2.io.internal.PipedStreamBuffer
 
 import java.io.{InputStream, OutputStream}
+import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import scala.concurrent.ExecutionContext
 import java.util.concurrent.ExecutorService
@@ -72,6 +75,22 @@ private[fs2] trait ioplatform extends iojvmnative {
   @deprecated("Use overload with Async, which is cancelable", "3.5.0")
   def stdinUtf8[F[_]](bufSize: Int, F: Sync[F]): Stream[F, String] =
     stdin(bufSize, F).through(text.utf8.decode)
+
+  /** Pipe of bytes that writes emitted values to standard output asynchronously. */
+  def stdout[F[_]: Sync]: Pipe[F, Byte, Nothing] =
+    writeOutputStream(Sync[F].blocking(System.out), false)
+
+  /** Pipe of bytes that writes emitted values to standard error asynchronously. */
+  def stderr[F[_]: Sync]: Pipe[F, Byte, Nothing] =
+    writeOutputStream(Sync[F].blocking(System.err), false)
+
+  /** Writes this stream to standard output asynchronously, converting each element to
+    * a sequence of bytes via `Show` and the given `Charset`.
+    */
+  def stdoutLines[F[_]: Sync, O: Show](
+      charset: Charset = StandardCharsets.UTF_8
+  ): Pipe[F, O, Nothing] =
+    _.map(_.show).through(text.encode(charset)).through(stdout)
 
   /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
     * that is closed whenever the resulting stream terminates.

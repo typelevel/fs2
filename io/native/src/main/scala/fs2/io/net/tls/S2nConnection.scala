@@ -136,7 +136,7 @@ private[tls] object S2nConnection {
         }.iterateUntil(_.toInt == S2N_NOT_BLOCKED) *>
           F.delay(guard_(s2n_connection_free_handshake(conn)))
 
-      def read(n: Int) = readBuffer.get(n).flatMap { buf =>
+      def read(n: Int) = readBuffer.get(n).use { buf =>
         def go(i: Int): F[Option[Chunk[Byte]]] =
           F.delay {
             readTasks.set(F.unit)
