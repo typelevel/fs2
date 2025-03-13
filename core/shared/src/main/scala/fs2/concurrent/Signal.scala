@@ -141,7 +141,7 @@ trait Signal[F[_], A] { outer =>
 
   def mapK[G[_]](
       f: FunctionK[F, G]
-  )(implicit G: Functor[G], dummy: DummyImplicit): Signal[G, A] =
+  ): Signal[G, A] =
     new TransformedSignal(this, f)
 }
 
@@ -173,8 +173,7 @@ object Signal extends SignalInstances {
   final private class TransformedSignal[F[_], G[_], A](
       underlying: Signal[F, A],
       trans: FunctionK[F, G]
-  )(implicit G: Functor[G])
-      extends Signal[G, A] {
+  ) extends Signal[G, A] {
     override def get: G[A] = trans(underlying.get)
     override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
     override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
@@ -215,7 +214,7 @@ object Signal extends SignalInstances {
   * need looping even without any other writers.
   */
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A] {
-  override def mapK[G[_]](
+  def mapK[G[_]](
       f: FunctionK[F, G]
   )(implicit G: Functor[G], dummy: DummyImplicit): SignallingRef[G, A] =
     new TransformedSignallingRef(this, f)
