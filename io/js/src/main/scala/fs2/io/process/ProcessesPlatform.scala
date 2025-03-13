@@ -53,13 +53,28 @@ private[process] trait ProcessesCompanionPlatform {
             spawnOptions.asInstanceOf[facade.child_process.SpawnOptions]
           )
 
-          process.outputMode match {
-            case ProcessOutputMode.Separate => // Default behavior
-            case ProcessOutputMode.Merged   => spawnOptions.updateDynamic("stdio")("pipe")
-            case ProcessOutputMode.FileOutput(path) =>
-              spawnOptions.updateDynamic("stdio")(js.Array("pipe", path.toString, path.toString))
-            case ProcessOutputMode.Inherit  => spawnOptions.updateDynamic("stdio")("inherit")
-            case ProcessOutputMode.Ignore   => spawnOptions.updateDynamic("stdio")("ignore")
+          process.outputConfig.stdin match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array(path.toString, "pipe", "pipe"))
+            case StreamOutputMode.Pipe => 
+          }
+
+          process.outputConfig.stdout match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array("pipe", path.toString, "pipe"))
+            case StreamOutputMode.Pipe =>
+          }
+
+          process.outputConfig.stderr match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array("pipe", "pipe", path.toString))
+            case StreamOutputMode.Pipe => 
           }
 
           val fs2Process = new UnsealedProcess[F] {

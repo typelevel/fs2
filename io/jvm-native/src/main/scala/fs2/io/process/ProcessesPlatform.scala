@@ -51,18 +51,29 @@ private[process] trait ProcessesCompanionPlatform {
             env.put(k, v)
           }
 
-          process.outputMode match {
-            case ProcessOutputMode.Separate => // Default behavior
-            case ProcessOutputMode.Merged   => builder.redirectErrorStream(true)
-            case ProcessOutputMode.FileOutput(path) =>
-              builder.redirectOutput(Redirect.to(path.toNioPath.toFile))
-            case ProcessOutputMode.Inherit  =>
-              builder.redirectOutput(Redirect.INHERIT)
-              builder.redirectError(Redirect.INHERIT)
-            case ProcessOutputMode.Ignore   =>
-              builder.redirectOutput(Redirect.DISCARD)
-              builder.redirectError(Redirect.DISCARD)
-          }
+          process.outputConfig.stdin match {
+              case StreamOutputMode.Inherit => builder.redirectInput(Redirect.INHERIT)
+              case StreamOutputMode.Ignore  => builder.redirectInput(Redirect.DISCARD)
+              case StreamOutputMode.FileOutput(path) =>
+                builder.redirectInput(Redirect.from(path.toNioPath.toFile))
+              case StreamOutputMode.Pipe => 
+            }
+
+            process.outputConfig.stdout match {
+              case StreamOutputMode.Inherit => builder.redirectOutput(Redirect.INHERIT)
+              case StreamOutputMode.Ignore  => builder.redirectOutput(Redirect.DISCARD)
+              case StreamOutputMode.FileOutput(path) =>
+                builder.redirectOutput(Redirect.to(path.toNioPath.toFile))
+              case StreamOutputMode.Pipe =>
+            }
+
+            process.outputConfig.stderr match {
+              case StreamOutputMode.Inherit => builder.redirectError(Redirect.INHERIT)
+              case StreamOutputMode.Ignore  => builder.redirectError(Redirect.DISCARD)
+              case StreamOutputMode.FileOutput(path) =>
+                builder.redirectError(Redirect.to(path.toNioPath.toFile))
+              case StreamOutputMode.Pipe => 
+            }
 
           builder.start()
         }
