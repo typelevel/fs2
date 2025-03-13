@@ -345,4 +345,21 @@ abstract class CompressionSuite(implicit compression: Compression[IO]) extends F
       }
     }
   }
+
+  test("gunzip handles concatenated gzip files") {
+    val input = Stream
+      .emits("foo\nbar\n".getBytes)
+      .through(Compression[IO].gzip())
+      .append(
+        Stream.emits("baz\n".getBytes).through(Compression[IO].gzip())
+      )
+
+    input
+      .through(Compression[IO].gunzipMulti(InflateParams()))
+      .flatMap(_.content)
+      .through(text.utf8.decode)
+      .compile
+      .string
+      .assertEquals("foo\nbar\nbaz\n")
+  }
 }
