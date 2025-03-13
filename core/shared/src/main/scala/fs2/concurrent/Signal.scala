@@ -177,6 +177,7 @@ object Signal extends SignalInstances {
     override def get: G[A] = trans(underlying.get)
     override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
     override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
+    override def changes(implicit eqA: Eq[A]): Signal[G, A] = underlying.changes.mapK(trans)
   }
 
   implicit class SignalOps[F[_], A](val self: Signal[F, A]) extends AnyVal {
@@ -216,7 +217,7 @@ object Signal extends SignalInstances {
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A] {
   def mapK[G[_]](
       f: FunctionK[F, G]
-  )(implicit G: Functor[G], dummy: DummyImplicit): SignallingRef[G, A] =
+  )(implicit F: Concurrent[F], G: Functor[G], dummy: DummyImplicit): SignallingRef[G, A] =
     new TransformedSignallingRef(this, f)
 }
 
@@ -367,7 +368,7 @@ object SignallingRef {
   final private class TransformedSignallingRef[F[_], G[_], A](
       underlying: SignallingRef[F, A],
       trans: FunctionK[F, G]
-  )(implicit G: Functor[G])
+  )(implicit F: Concurrent[F], G: Functor[G])
       extends SignallingRef[G, A] {
 
     // --- Ref methods: these are lifted using trans, just like in TransformedRef2
@@ -388,6 +389,8 @@ object SignallingRef {
     override def discrete: Stream[G, A] = underlying.discrete.translate(trans)
     override def continuous: Stream[G, A] = underlying.continuous.translate(trans)
     override def changes(implicit eqA: Eq[A]): Signal[G, A] = underlying.changes.mapK(trans)
+    override def waitUntil(p: A => Boolean)(implicit G: Concurrent[G]): G[Unit] =
+      trans(underlying.waitUntil(p))
   }
   private final class LensSignallingRef[F[_], A, B](underlying: SignallingRef[F, A])(
       lensGet: A => B,
