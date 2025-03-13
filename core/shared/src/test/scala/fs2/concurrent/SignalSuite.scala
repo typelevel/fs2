@@ -25,7 +25,6 @@ package concurrent
 import cats.effect.IO
 import cats.effect.kernel.Ref
 import cats.syntax.all._
-import cats.instances.option._
 import cats.arrow.FunctionK
 import cats.effect.testkit.TestControl
 // import cats.laws.discipline.{ApplicativeTests, FunctorTests}
@@ -325,12 +324,12 @@ class SignalSuite extends Fs2Suite {
   test("SignallingRef.mapK() returns a SignallingRef") {
     for {
       s <- SignallingRef[IO, Int](0)
-      nt = new FunctionK[IO, Option] {
-        def apply[A](fa: IO[A]): Option[A] = Some(fa.unsafeRunSync())
+      nt = new FunctionK[IO, IO] {
+        def apply[A](fa: IO[A]): IO[A] = fa
       }
       transformed = s.mapK(nt)
     } yield assert(
-      transformed.isInstanceOf[SignallingRef[Option, Int]],
+      transformed.isInstanceOf[SignallingRef[IO, Int]],
       s"Expected transformed to be a SignallingRef but got: ${transformed.getClass.getName}"
     )
   }
