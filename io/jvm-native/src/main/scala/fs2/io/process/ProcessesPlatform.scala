@@ -28,7 +28,6 @@ import cats.effect.kernel.Resource
 import cats.syntax.all.*
 import fs2.io.CollectionCompat.*
 
-import java.lang
 import java.lang.ProcessBuilder.Redirect
 
 

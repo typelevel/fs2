@@ -48,11 +48,9 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   test("stdout and stderr") {
-    ProcessBuilder(
-      "node",
-      "-e",
-      "console.log('good day stdout'); console.error('how do you do stderr')"
-    ).spawn[IO]
+    ProcessBuilder("node", "-e", "console.log('good day stdout'); console.error('how do you do stderr')")
+      .withOutputConfig(ProcessOutputConfig())
+      .spawn[IO]
       .use { p =>
         val testOut = p.stdout
           .through(fs2.text.utf8.decode)
@@ -69,6 +67,49 @@ class ProcessSuite extends Fs2IoSuite {
         val textExit = p.exitValue.assertEquals(0)
 
         testOut.both(testErr).both(textExit).void
+      }
+  }
+
+  test("merged stdout and stderr") {
+    ProcessBuilder("node", "-e", "console.log('merged stdout'); console.error('merged stderr')")
+      .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.Pipe, stderr = StreamOutputMode.Pipe))
+      .spawn[IO]
+      .use { p =>
+        p.stdout
+          .through(fs2.text.utf8.decode)
+          .compile
+          .string
+          .assert(s => s.contains("merged stdout") && s.contains("merged stderr"))
+      }
+  }
+
+  test("file output") {
+    Files[IO].tempFile.use { path =>
+      ProcessBuilder("echo", "file output test")
+        .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.FileOutput(path)))
+        .spawn[IO]
+        .use(_.exitValue)
+        .assertEquals(0) *> 
+      Files[IO].readUtf8(path).compile.string.assertEquals("file output test\n")
+    }
+  }
+
+  test("ignored output") {
+    ProcessBuilder("echo", "ignored output")
+      .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.Ignore))
+      .spawn[IO]
+      .use(_.exitValue)
+      .assertEquals(0)
+  }
+
+  test("stdin piping") {
+    ProcessBuilder("cat")
+      .withOutputConfig(ProcessOutputConfig(stdin = StreamOutputMode.Pipe))
+      .spawn[IO]
+      .use { p =>
+        val input = Stream.emit("piped input test").through(fs2.text.utf8.encode).through(p.stdin).compile.drain
+        val output = p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals("piped input test")
+        input *> output
       }
   }
 
