@@ -327,7 +327,7 @@ class SignalSuite extends Fs2Suite {
       nt = new FunctionK[IO, IO] {
         def apply[A](fa: IO[A]): IO[A] = fa
       }
-      transformed = s.mapK(nt)
+      transformed: SignallingRef[IO, Int] = s.mapK(nt)
     } yield assert(
       transformed.isInstanceOf[SignallingRef[IO, Int]],
       s"Expected transformed to be a SignallingRef but got: ${transformed.getClass.getName}"
