@@ -49,6 +49,9 @@ sealed abstract class ProcessBuilder private {
     */
   def workingDirectory: Option[Path]
 
+  /** Configures how stdout and stderr should be handled. */
+  def outputConfig: ProcessOutputConfig
+
   /** @see [[command]] */
   def withCommand(command: String): ProcessBuilder
 
@@ -67,6 +70,9 @@ sealed abstract class ProcessBuilder private {
   /** @see [[workingDirectory]] */
   def withCurrentWorkingDirectory: ProcessBuilder
 
+  /** @see [[outputMode]] */
+  def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder
+
   /** Starts the process and returns a handle for interacting with it.
     * Closing the resource will kill the process if it has not already terminated.
     */
@@ -74,10 +80,24 @@ sealed abstract class ProcessBuilder private {
     Processes[F].spawn(this)
 }
 
+sealed trait StreamOutputMode
+object StreamOutputMode {
+  case object Pipe extends StreamOutputMode       
+  case object Inherit extends StreamOutputMode   
+  case object Ignore extends StreamOutputMode    
+  case class FileOutput(path: Path) extends StreamOutputMode 
+}
+
+final case class ProcessOutputConfig(
+    stdin: StreamOutputMode = StreamOutputMode.Pipe,
+    stdout: StreamOutputMode = StreamOutputMode.Pipe,
+    stderr: StreamOutputMode = StreamOutputMode.Pipe
+)
+
 object ProcessBuilder {
 
   def apply(command: String, args: List[String]): ProcessBuilder =
-    ProcessBuilderImpl(command, args, true, Map.empty, None)
+    ProcessBuilderImpl(command, args, true, Map.empty, None, ProcessOutputConfig())
 
   def apply(command: String, args: String*): ProcessBuilder =
     apply(command, args.toList)
@@ -87,7 +107,8 @@ object ProcessBuilder {
       args: List[String],
       inheritEnv: Boolean,
       extraEnv: Map[String, String],
-      workingDirectory: Option[Path]
+      workingDirectory: Option[Path],
+      outputConfig: ProcessOutputConfig
   ) extends ProcessBuilder {
 
     def withCommand(command: String): ProcessBuilder = copy(command = command)
@@ -100,7 +121,9 @@ object ProcessBuilder {
 
     def withWorkingDirectory(workingDirectory: Path): ProcessBuilder =
       copy(workingDirectory = Some(workingDirectory))
-    def withCurrentWorkingDirectory: ProcessBuilder = copy(workingDirectory = None)
-  }
 
+    def withCurrentWorkingDirectory: ProcessBuilder = copy(workingDirectory = None)
+
+    def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder = copy(outputConfig = outputConfig)
+  }
 }

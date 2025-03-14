@@ -36,18 +36,46 @@ private[process] trait ProcessesCompanionPlatform {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource {
         F.async_[(Process[F], F[Unit])] { cb =>
-          val childProcess = facade.child_process.spawn(
-            process.command,
-            process.args.toJSArray,
-            new facade.child_process.SpawnOptions {
-              cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-              env =
+          
+
+          val spawnOptions = js.Dynamic.literal {
+              "cwd" -> process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+              "env" ->(
                 if (process.inheritEnv)
                   (facade.process.env ++ process.extraEnv).toJSDictionary
                 else
-                  process.extraEnv.toJSDictionary
+                  process.extraEnv.toJSDictionary)
             }
+
+          val childProcess = facade.child_process.spawn(
+            process.command,
+            process.args.toJSArray,
+            spawnOptions.asInstanceOf[facade.child_process.SpawnOptions]
           )
+
+          process.outputConfig.stdin match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array(path.toString, "pipe", "pipe"))
+            case StreamOutputMode.Pipe => 
+          }
+
+          process.outputConfig.stdout match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array("pipe", path.toString, "pipe"))
+            case StreamOutputMode.Pipe =>
+          }
+
+          process.outputConfig.stderr match {
+            case StreamOutputMode.Inherit => spawnOptions.updateDynamic("stdio")("inherit")
+            case StreamOutputMode.Ignore  => spawnOptions.updateDynamic("stdio")("ignore")
+            case StreamOutputMode.FileOutput(path) =>
+              spawnOptions.updateDynamic("stdio")(js.Array("pipe", "pipe", path.toString))
+            case StreamOutputMode.Pipe => 
+          }
 
           val fs2Process = new UnsealedProcess[F] {
 
@@ -84,7 +112,7 @@ private[process] trait ProcessesCompanionPlatform {
               } else {
                 childProcess.kill()
                 childProcess.once("exit", () => cb(Either.unit))
-                Left(None)
+                Left(None) 
               }
             }
           }
