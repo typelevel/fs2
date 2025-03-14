@@ -23,8 +23,8 @@ package fs2.io.net.unixsocket
 
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.syntax.all._
-import fs2.io.syntax.AsyncOps
 import fs2.io.file.Files
+import fs2.io.evalOnVirtualThreadIfAvailable
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
 
@@ -42,33 +42,32 @@ object JdkUnixSockets {
 private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
   protected def openChannel(address: UnixSocketAddress) =
-    Resource
-      .make(
-        F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX)).evalOnVirtualThreadIfAvailable()
-      )(ch => F.blocking(ch.close()))
-      .evalOnVirtualThreadIfAvailable()
-      .evalTap { ch =>
-        F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
-          .cancelable(F.blocking(ch.close()))
-          .evalOnVirtualThreadIfAvailable()
-      }
+    evalOnVirtualThreadIfAvailable(
+      Resource
+        .make(
+          F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX))
+        )(ch => evalOnVirtualThreadIfAvailable(F.blocking(ch.close())))
+        .evalTap { ch =>
+          F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
+            .cancelable(F.blocking(ch.close()))
+        }
+    )
 
   protected def openServerChannel(address: UnixSocketAddress) =
-    Resource
-      .make(
-        F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX))
-          .evalOnVirtualThreadIfAvailable()
-      )(ch => F.blocking(ch.close()).evalOnVirtualThreadIfAvailable())
-      .evalTap { sch =>
-        F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
-          .cancelable(F.blocking(sch.close()))
-          .evalOnVirtualThreadIfAvailable()
-      }
-      .map { sch =>
-        Resource.makeFull[F, SocketChannel] { poll =>
-          poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
-            .evalOnVirtualThreadIfAvailable()
-        }(ch => F.blocking(ch.close()).evalOnVirtualThreadIfAvailable())
-      }
+    evalOnVirtualThreadIfAvailable(
+      Resource
+        .make(
+          F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX))
+        )(ch => F.blocking(ch.close()))
+        .evalTap { sch =>
+          F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
+            .cancelable(evalOnVirtualThreadIfAvailable(F.blocking(sch.close())))
+        }
+        .map { sch =>
+          Resource.makeFull[F, SocketChannel] { poll =>
+            poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
+          }(ch => F.blocking(ch.close()))
+        }
+    )
 
 }
