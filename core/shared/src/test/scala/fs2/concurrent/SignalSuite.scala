@@ -321,7 +321,7 @@ class SignalSuite extends Fs2Suite {
     TestControl.executeEmbed(prog).assertEquals(expected)
   }
 
-  test("SignallingRef.mapK() returns a SignallingRef") {
+  test("SignallingRef#mapK returns a SignallingRef") {
     for {
       s <- SignallingRef[IO, Int](0)
       nt = new FunctionK[IO, IO] {
