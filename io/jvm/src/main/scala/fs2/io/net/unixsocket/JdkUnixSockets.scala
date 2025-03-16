@@ -46,7 +46,7 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
       Resource
         .make(
           F.blocking(SocketChannel.open(StandardProtocolFamily.UNIX))
-        )(ch => evalOnVirtualThreadIfAvailable(F.blocking(ch.close())))
+        )(ch => F.blocking(ch.close()))
         .evalTap { ch =>
           F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
             .cancelable(F.blocking(ch.close()))
@@ -61,7 +61,7 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
         )(ch => F.blocking(ch.close()))
         .evalTap { sch =>
           F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
-            .cancelable(evalOnVirtualThreadIfAvailable(F.blocking(sch.close())))
+            .cancelable(F.blocking(sch.close()))
         }
         .map { sch =>
           Resource.makeFull[F, SocketChannel] { poll =>
