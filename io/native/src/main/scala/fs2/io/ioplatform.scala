@@ -170,7 +170,7 @@ private[fs2] trait ioplatform extends iojvmnative {
   @deprecated("Prefer non-blocking, async variant", "3.5.0")
   def stdinUtf8[F[_], SourceBreakingDummy](bufSize: Int, F: Sync[F]): Stream[F, String] =
     stdin(bufSize, F).through(text.utf8.decode)
- 
+
   // Scala-native doesn't support virtual threads
   private[io] def evalOnVirtualThreadIfAvailable[F[_], A](fa: F[A]): F[A] = fa
 
