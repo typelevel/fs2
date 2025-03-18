@@ -73,6 +73,17 @@ sealed abstract class ProcessBuilder private {
   /** @see [[outputMode]] */
   def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder
 
+  /* @param mode The mode for handling stdin
+    */
+  def redirectInput(mode: StreamRedirect): ProcessBuilder = 
+    withOutputConfig(outputConfig.copy(stdin = mode))
+
+  def redirectOutput(mode: StreamRedirect): ProcessBuilder = 
+    withOutputConfig(outputConfig.copy(stdout = mode))
+
+  def redirectError(mode: StreamRedirect): ProcessBuilder = 
+    withOutputConfig(outputConfig.copy(stderr = mode))
+
   /** Starts the process and returns a handle for interacting with it.
     * Closing the resource will kill the process if it has not already terminated.
     */
@@ -80,18 +91,18 @@ sealed abstract class ProcessBuilder private {
     Processes[F].spawn(this)
 }
 
-sealed trait StreamOutputMode
-object StreamOutputMode {
-  case object Pipe extends StreamOutputMode       
-  case object Inherit extends StreamOutputMode   
-  case object Ignore extends StreamOutputMode    
-  case class FileOutput(path: Path) extends StreamOutputMode 
+sealed abstract class StreamRedirect
+object StreamRedirect {
+  case object Pipe extends StreamRedirect       
+  case object Inherit extends StreamRedirect   
+  case object Discard extends StreamRedirect    
+  final case class File(path: Path) extends StreamRedirect 
 }
 
 final case class ProcessOutputConfig(
-    stdin: StreamOutputMode = StreamOutputMode.Pipe,
-    stdout: StreamOutputMode = StreamOutputMode.Pipe,
-    stderr: StreamOutputMode = StreamOutputMode.Pipe
+    stdin: StreamRedirect = StreamRedirect.Pipe,
+    stdout: StreamRedirect = StreamRedirect.Pipe,
+    stderr: StreamRedirect = StreamRedirect.Pipe
 )
 
 object ProcessBuilder {

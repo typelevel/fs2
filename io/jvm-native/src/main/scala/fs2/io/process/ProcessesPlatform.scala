@@ -51,27 +51,27 @@ private[process] trait ProcessesCompanionPlatform {
           }
 
           process.outputConfig.stdin match {
-              case StreamOutputMode.Inherit => builder.redirectInput(Redirect.INHERIT)
-              case StreamOutputMode.Ignore  => builder.redirectInput(Redirect.DISCARD)
-              case StreamOutputMode.FileOutput(path) =>
+              case StreamRedirect.Inherit => builder.redirectInput(Redirect.INHERIT)
+              case StreamRedirect.Discard  => builder.redirectInput(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
                 builder.redirectInput(Redirect.from(path.toNioPath.toFile))
-              case StreamOutputMode.Pipe => 
+              case StreamRedirect.Pipe => 
             }
 
             process.outputConfig.stdout match {
-              case StreamOutputMode.Inherit => builder.redirectOutput(Redirect.INHERIT)
-              case StreamOutputMode.Ignore  => builder.redirectOutput(Redirect.DISCARD)
-              case StreamOutputMode.FileOutput(path) =>
+              case StreamRedirect.Inherit => builder.redirectOutput(Redirect.INHERIT)
+              case StreamRedirect.Discard  => builder.redirectOutput(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
                 builder.redirectOutput(Redirect.to(path.toNioPath.toFile))
-              case StreamOutputMode.Pipe =>
+              case StreamRedirect.Pipe =>
             }
 
             process.outputConfig.stderr match {
-              case StreamOutputMode.Inherit => builder.redirectError(Redirect.INHERIT)
-              case StreamOutputMode.Ignore  => builder.redirectError(Redirect.DISCARD)
-              case StreamOutputMode.FileOutput(path) =>
+              case StreamRedirect.Inherit => builder.redirectError(Redirect.INHERIT)
+              case StreamRedirect.Discard  => builder.redirectError(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
                 builder.redirectError(Redirect.to(path.toNioPath.toFile))
-              case StreamOutputMode.Pipe => 
+              case StreamRedirect.Pipe => 
             }
 
           builder.start()
@@ -79,11 +79,13 @@ private[process] trait ProcessesCompanionPlatform {
       } { process =>
         F.delay(process.isAlive())
           .ifM(
+            evalOnVirtualThreadIfAvailable(
             F.blocking {
               process.destroy()
               process.waitFor()
               ()
-            },
+            }
+            ),
             F.unit
           )
       }
