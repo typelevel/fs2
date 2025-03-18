@@ -24,6 +24,7 @@ package io
 package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
+import fs2.io.file.FileHandle
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
@@ -69,6 +70,8 @@ trait Socket[F[_]] {
   /** Writes the supplied stream of bytes to this socket via `write` semantics.
     */
   def writes: Pipe[F, Byte, Nothing]
+
+  def sendfile(file: FileHandle[F], chunkSize: Long): F[Unit]
 }
 
 object Socket extends SocketCompanionPlatform
