@@ -34,6 +34,7 @@ import fs2.io.net.Socket
 import fs2.io.evalOnVirtualThreadIfAvailable
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
+import fs2.io.file.FileHandle
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forIO: UnixSockets[IO] = forLiftIO
@@ -100,6 +101,19 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
       extends Socket.BufferedReads[F](readMutex) {
+
+    def sendfile(file: FileHandle[F], chunkSize: Long): F[Unit] = {
+      def transfer(offset: Long, remaining: Long, chunkSize: Long): F[Unit] =
+        if (remaining <= 0) F.unit
+        else {
+          val toTransfer = Math.min(chunkSize, remaining)
+          file.transferTo(offset, toTransfer, ch).flatMap { transferred =>
+            if (transferred > 0) transfer(offset + transferred, remaining - transferred, chunkSize)
+            else F.unit
+          }
+        }
+      file.size.flatMap(size => transfer(0, size, chunkSize))
+    }
 
     def readChunk(buff: ByteBuffer): F[Int] =
       evalOnVirtualThreadIfAvailable(F.blocking(ch.read(buff)))

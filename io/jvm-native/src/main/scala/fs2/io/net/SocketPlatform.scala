@@ -31,6 +31,7 @@ import cats.syntax.all._
 import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
+import fs2.io.file.FileHandle
 
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
@@ -109,6 +110,25 @@ private[net] trait SocketCompanionPlatform {
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
       extends BufferedReads[F](readMutex) {
+
+    def sendfile(file: FileHandle[F], chunkSize: Long): F[Unit] = {
+      val writableChannel = new java.nio.channels.WritableByteChannel {
+        def isOpen: Boolean = ch.isOpen
+        def close(): Unit = {}
+        def write(src: ByteBuffer): Int = ch.write(src).get()
+      }
+
+      def transfer(offset: Long, remaining: Long, chunkSize: Long): F[Unit] =
+        if (remaining <= 0) F.unit
+        else {
+          val toTransfer = Math.min(chunkSize, remaining)
+          file.transferTo(offset, toTransfer, writableChannel).flatMap { transferred =>
+            if (transferred > 0) transfer(offset + transferred, remaining - transferred, chunkSize)
+            else F.unit
+          }
+        }
+      file.size.flatMap(size => transfer(0, size, chunkSize))
+    }
 
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
