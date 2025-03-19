@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#3-subscription-code]]
   */
-private[flow] final class StreamSubscription[F[_], A] private (
+private[fs2] final class StreamSubscription[F[_], A] private (
     stream: Stream[F, A],
     subscriber: Subscriber[A],
     requests: AtomicLong,
@@ -171,7 +171,7 @@ private[flow] final class StreamSubscription[F[_], A] private (
     }
 }
 
-private[flow] object StreamSubscription {
+private[fs2] object StreamSubscription {
   private final val Sentinel = () => ()
 
   // UNSAFE + SIDE-EFFECTING!

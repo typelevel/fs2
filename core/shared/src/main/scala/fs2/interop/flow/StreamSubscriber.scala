@@ -23,7 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.Async
+import cats.effect.Async
 
 import java.util.Objects.requireNonNull
 import java.util.concurrent.Flow.{Subscriber, Subscription}
@@ -36,7 +36,7 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#2-subscriber-code]]
   */
-private[flow] final class StreamSubscriber[F[_], A] private (
+private[fs2] final class StreamSubscriber[F[_], A] private (
     chunkSize: Int,
     currentState: AtomicReference[(StreamSubscriber.State, () => Unit)]
 )(implicit
@@ -106,7 +106,7 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   // Interop API.
 
   /** Creates a downstream [[Stream]] from this [[Subscriber]]. */
-  private[flow] def stream(subscribe: F[Unit]): Stream[F, A] = {
+  private[fs2] def stream(subscribe: F[Unit]): Stream[F, A] = {
     // Called when downstream has finished consuming records.
     val finalize =
       F.delay(nextState(input = Complete(canceled = true)))
@@ -323,24 +323,30 @@ private[flow] final class StreamSubscriber[F[_], A] private (
   }
 }
 
-private[flow] object StreamSubscriber {
+private[fs2] object StreamSubscriber {
   private final val noop = () => ()
 
   /** Instantiates a new [[StreamSubscriber]] for the given buffer size. */
   def apply[F[_], A](
       chunkSize: Int
-  )(implicit F: Async[F]): F[StreamSubscriber[F, A]] = {
+  )(implicit
+      F: Async[F]
+  ): F[StreamSubscriber[F, A]] =
+    F.delay(unsafe(chunkSize))
+
+  private[fs2] def unsafe[F[_], A](
+      chunkSize: Int
+  )(implicit
+      F: Async[F]
+  ): StreamSubscriber[F, A] = {
     require(chunkSize > 0, "The buffer size MUST be positive")
 
-    F.delay {
-      val currentState =
-        new AtomicReference[(State, () => Unit)]((State.Uninitialized(cb = None), noop))
-
-      new StreamSubscriber[F, A](
-        chunkSize,
-        currentState
+    new StreamSubscriber[F, A](
+      chunkSize,
+      currentState = new AtomicReference[(State, () => Unit)](
+        (State.Uninitialized(cb = None), noop)
       )
-    }
+    )
   }
 
   private sealed abstract class StreamSubscriberException(msg: String, cause: Throwable = null)

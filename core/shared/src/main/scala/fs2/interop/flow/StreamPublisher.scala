@@ -23,8 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.IO
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, IO, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.unsafe.IORuntime
 
@@ -42,7 +41,7 @@ import scala.util.control.NoStackTrace
   *
   * @see [[https://github.com/reactive-streams/reactive-streams-jvm#1-publisher-code]]
   */
-private[flow] sealed abstract class StreamPublisher[F[_], A] private (
+private[fs2] sealed abstract class StreamPublisher[F[_], A] private (
     stream: Stream[F, A]
 )(implicit
     F: Async[F]
@@ -65,7 +64,7 @@ private[flow] sealed abstract class StreamPublisher[F[_], A] private (
   }
 }
 
-private[flow] object StreamPublisher {
+private[fs2] object StreamPublisher {
   private final class DispatcherStreamPublisher[F[_], A](
       stream: Stream[F, A],
       dispatcher: Dispatcher[F]

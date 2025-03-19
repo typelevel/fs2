@@ -23,7 +23,7 @@ package fs2
 package interop
 package flow
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, Resource}
 
 import java.util.concurrent.Flow.{Publisher, Subscriber}
 
@@ -46,6 +46,7 @@ object syntax {
       flow.subscribeStream(stream, subscriber)
   }
 
+  // TODO: Move to the Stream companion object when removing the deprecated flow package object and syntax.
   final class FromPublisherPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
     def apply[A](
         publisher: Publisher[A],

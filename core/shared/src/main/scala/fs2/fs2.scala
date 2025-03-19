@@ -19,6 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+import java.util.concurrent.Flow.Processor
+import cats.effect.Async
+
 package object fs2 {
 
   /** A stream transformation represented as a function from stream to stream.
@@ -26,6 +29,36 @@ package object fs2 {
     * Pipes are typically applied with the `through` operation on `Stream`.
     */
   type Pipe[F[_], -I, +O] = Stream[F, I] => Stream[F, O]
+
+  object Pipe {
+    final class FromProcessorPartiallyApplied[F[_]](private val dummy: Boolean) extends AnyVal {
+      def apply[I, O](
+          processor: Processor[I, O],
+          chunkSize: Int
+      )(implicit
+          F: Async[F]
+      ): Pipe[F, I, O] =
+        new interop.flow.ProcessorPipe(processor, chunkSize)
+    }
+
+    /** Creates a [[Pipe]] from the given [[Processor]].
+      *
+      * The input stream won't be consumed until you request elements from the output stream,
+      * and thus the processor is not initiated until then.
+      *
+      * @note The [[Pipe]] can be reused multiple times as long as the [[Processor]] can be reused.
+      * Each invocation of the pipe will create and manage its own internal [[Publisher]] and [[Subscriber]],
+      * and use them to subscribe to and from the [[Processor]] respectively.
+      *
+      * @param [[processor]] the [[Processor]] that represents the [[Pipe]] logic.
+      * @param chunkSize setup the number of elements asked each time from the upstream [[Publisher]].
+      *                  A high number may be useful if the publisher is triggering from IO,
+      *                  like requesting elements from a database.
+      *                  A high number will also lead to more elements in memory.
+      */
+    def fromProcessor[F[_]]: FromProcessorPartiallyApplied[F] =
+      new FromProcessorPartiallyApplied[F](dummy = true)
+  }
 
   /** A stream transformation that combines two streams in to a single stream,
     * represented as a function from two streams to a single stream.
