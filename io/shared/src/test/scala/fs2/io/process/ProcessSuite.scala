@@ -72,7 +72,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("merged stdout and stderr") {
     ProcessBuilder("node", "-e", "console.log('merged stdout'); console.error('merged stderr')")
-      .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.Pipe, stderr = StreamOutputMode.Pipe))
+      .withOutputConfig(ProcessOutputConfig(stdout = StreamRedirect.Pipe, stderr = StreamRedirect.Pipe))
       .spawn[IO]
       .use { p =>
         p.stdout
@@ -86,7 +86,7 @@ class ProcessSuite extends Fs2IoSuite {
   test("file output") {
     Files[IO].tempFile.use { path =>
       ProcessBuilder("echo", "file output test")
-        .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.FileOutput(path)))
+        .withOutputConfig(ProcessOutputConfig(stdout = StreamRedirect.File(path)))
         .spawn[IO]
         .use(_.exitValue)
         .assertEquals(0) *> 
@@ -96,7 +96,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("ignored output") {
     ProcessBuilder("echo", "ignored output")
-      .withOutputConfig(ProcessOutputConfig(stdout = StreamOutputMode.Ignore))
+      .withOutputConfig(ProcessOutputConfig(stdout = StreamRedirect.Discard))
       .spawn[IO]
       .use(_.exitValue)
       .assertEquals(0)
@@ -104,7 +104,7 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("stdin piping") {
     ProcessBuilder("cat")
-      .withOutputConfig(ProcessOutputConfig(stdin = StreamOutputMode.Pipe))
+      .withOutputConfig(ProcessOutputConfig(stdin = StreamRedirect.Pipe))
       .spawn[IO]
       .use { p =>
         val input = Stream.emit("piped input test").through(fs2.text.utf8.encode).through(p.stdin).compile.drain
