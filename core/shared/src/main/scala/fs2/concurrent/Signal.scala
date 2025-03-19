@@ -215,7 +215,7 @@ object Signal extends SignalInstances {
   * need looping even without any other writers.
   */
 abstract class SignallingRef[F[_], A] extends Ref[F, A] with Signal[F, A] {
-  def mapK[G[_]](
+  override def mapK[G[_]](
       f: FunctionK[F, G]
   )(implicit G: Functor[G], dummy: DummyImplicit): SignallingRef[G, A] =
     new TransformedSignallingRef(this, f)

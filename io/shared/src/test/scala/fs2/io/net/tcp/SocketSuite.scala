@@ -25,13 +25,12 @@ package net
 package tcp
 
 import cats.effect.IO
-import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 
-class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
+class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
   val timeout = 30.seconds
 
@@ -162,30 +161,35 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
     }
 
     test("errors - should be captured in the effect") {
-      (for {
+      val connectionRefused = for {
         port <- Network[IO].serverResource(Some(ip"127.0.0.1")).use(s => IO.pure(s._1.port))
         _ <- Network[IO]
           .client(SocketAddress(host"localhost", port))
           .use_
-          .recover { case ex: ConnectException =>
-            assertEquals(ex.getMessage, "Connection refused")
-          }
-      } yield ()) >> (for {
-        bindAddress <- Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1)
-        _ <- Network[IO]
-          .serverResource(Some(bindAddress.host), Some(bindAddress.port))
-          .void
-          .recover { case ex: BindException =>
-            assertEquals(ex.getMessage, "Address already in use")
-          }
-      } yield ()).use_ >> (for {
-        _ <- Network[IO].client(SocketAddress.fromString("not.example.com:80").get).use_.recover {
-          case ex: UnknownHostException =>
+          .interceptMessage[ConnectException]("Connection refused")
+      } yield ()
+
+      val addressAlreadyInUse =
+        Network[IO].serverResource(Some(ip"127.0.0.1")).map(_._1).use { bindAddress =>
+          Network[IO]
+            .serverResource(Some(bindAddress.host), Some(bindAddress.port))
+            .use_
+            .interceptMessage[BindException]("Address already in use")
+        }
+
+      val unknownHost = Network[IO]
+        .client(SocketAddress.fromString("not.example.com:80").get)
+        .use_
+        .attempt
+        .map {
+          case Left(ex: UnknownHostException) =>
             assert(
               ex.getMessage == "not.example.com: Name or service not known" || ex.getMessage == "not.example.com: nodename nor servname provided, or not known"
             )
+          case _ => assert(false)
         }
-      } yield ())
+
+      connectionRefused *> addressAlreadyInUse *> unknownHost
     }
 
     test("options - should work with socket options") {
@@ -221,7 +225,7 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
         }
     }
 
-    test("read after timed out read not allowed on JVM or Native") {
+    test("read after timed out read") {
       val setup = for {
         serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
         (bindAddress, server) = serverSetup
@@ -235,22 +239,10 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
           val prg =
             client.write(msg) *>
               client.readN(msg.size) *>
-              client.readN(msg.size).timeout(100.millis).recover { case _: TimeoutException =>
-                Chunk.empty
-              } *>
+              (client.readN(msg.size) *> IO.raiseError(new AssertionError("didn't timeout")))
+                .timeoutTo(100.millis, IO.unit) *>
               client.write(msg) *>
-              client
-                .readN(msg.size)
-                .flatMap { c =>
-                  if (isJVM || isNative) {
-                    assertEquals(c.size, 0)
-                    // Read again now that the pending read is no longer pending
-                    client.readN(msg.size).map(c => assertEquals(c.size, 0))
-                  } else {
-                    assertEquals(c, msg)
-                    IO.unit
-                  }
-                }
+              client.readN(msg.size).flatMap(c => IO(assertEquals(c, msg)))
           Stream.eval(prg).concurrently(echoServer)
         }
         .compile
@@ -263,6 +255,32 @@ class SocketSuite extends Fs2IoSuite with SocketSuitePlatform {
           clients.head.flatMap(_.reads).compile.drain.timeout(2.seconds).recover {
             case _: TimeoutException => ()
           }
+        }
+      }
+    }
+
+    test("accepted socket closes timely") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        clients.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
+          Network[IO].client(bindAddress).use { client =>
+            client.read(1).assertEquals(None)
+          }
+        }
+      }
+    }
+
+    test("endOfOutput / endOfInput ignores ENOTCONN") {
+      Network[IO].serverResource().use { case (bindAddress, clients) =>
+        Network[IO].client(bindAddress).surround(IO.sleep(100.millis)).background.surround {
+          clients
+            .take(1)
+            .foreach { socket =>
+              socket.write(Chunk.array("fs2.rocks".getBytes)) *>
+                IO.sleep(1.second) *>
+                socket.endOfOutput *> socket.endOfInput
+            }
+            .compile
+            .drain
         }
       }
     }

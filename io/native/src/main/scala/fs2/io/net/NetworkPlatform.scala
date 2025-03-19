@@ -37,10 +37,31 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
   def forIO: Network[IO] = forLiftIO
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
-    val _ = LiftIO[F]
-    forAsync
-  }
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
+    new UnsealedNetwork[F] {
+      private lazy val globalSocketGroup =
+        new FdPollingSocketGroup[F]()(Dns.forAsync, implicitly, implicitly)
+
+      def client(
+          to: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] = globalSocketGroup.client(to, options)
+
+      def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] = globalSocketGroup.server(address, port, options)
+
+      def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        globalSocketGroup.serverResource(address, port, options)
+
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync
+    }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))
@@ -67,7 +88,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
         globalSocketGroup.serverResource(address, port, options)
 
-      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync(F)
     }
 
 }

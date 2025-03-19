@@ -25,6 +25,7 @@ package net
 
 import cats.effect.IO
 import cats.effect.LiftIO
+import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
 import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
@@ -78,10 +79,62 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
   def forIO: Network[IO] = forLiftIO
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
-    val _ = LiftIO[F]
-    forAsync
-  }
+  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
+    new UnsealedNetwork[F] {
+      private lazy val fallback = forAsync[F]
+
+      private def tryGetSelector =
+        IO.pollers.map(_.collectFirst { case selector: Selector => selector }).to[F]
+
+      private implicit def dns: Dns[F] = Dns.forAsync[F]
+
+      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) => Resource.pure(new SelectingSocketGroup[F](selector))
+          case None           => fallback.socketGroup(threadCount, threadFactory)
+        }
+
+      def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
+        fallback.datagramSocketGroup(threadFactory)
+
+      def client(
+          to: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] = Resource.eval(tryGetSelector).flatMap {
+        case Some(selector) => new SelectingSocketGroup(selector).client(to, options)
+        case None           => fallback.client(to, options)
+      }
+
+      def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] = Stream.eval(tryGetSelector).flatMap {
+        case Some(selector) => new SelectingSocketGroup(selector).server(address, port, options)
+        case None           => fallback.server(address, port, options)
+      }
+
+      def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) =>
+            new SelectingSocketGroup(selector).serverResource(address, port, options)
+          case None => fallback.serverResource(address, port, options)
+        }
+
+      def openDatagramSocket(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption],
+          protocolFamily: Option[ProtocolFamily]
+      ): Resource[F, DatagramSocket[F]] =
+        fallback.openDatagramSocket(address, port, options, protocolFamily)
+
+      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+    }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))

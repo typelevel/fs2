@@ -19,12 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io.net.unixsocket
 
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
+import cats.effect.IO
 
-private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
-    new FdPollingUnixSockets[F]
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  testProvider("native")(UnixSockets.forLiftIO[IO])
 }
