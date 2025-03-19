@@ -25,6 +25,7 @@ package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.io.file.FileHandle
+import cats.effect.kernel.Async
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
@@ -71,7 +72,28 @@ trait Socket[F[_]] {
     */
   def writes: Pipe[F, Byte, Nothing]
 
-  def sendfile(file: FileHandle[F], chunkSize: Long): F[Unit]
+  /** Reads a file in chunks and writes it to a socket.
+    * Streams the file contents in chunks of the specified size and sends them over the socket.
+    * The stream terminates when the entire file has been read and written.
+    *
+    * @param file the file handle to read from
+    * @param chunkSize the size of each chunk to read
+    * @param F an implicit `Async` instance for effectful computations
+    */
+  def sendfile(file: FileHandle[F], chunkSize: Int)(implicit F: Async[F]): F[Unit] =
+    Stream
+      .unfoldEval(0L) { offset =>
+        F.map(file.read(chunkSize, offset)) {
+          case Some(chunk) if chunk.nonEmpty =>
+            Some((chunk, offset + chunk.size))
+          case _ =>
+            None
+        }
+      }
+      .flatMap(chunk => Stream.chunk(chunk))
+      .through(writes)
+      .compile
+      .drain
 }
 
 object Socket extends SocketCompanionPlatform
