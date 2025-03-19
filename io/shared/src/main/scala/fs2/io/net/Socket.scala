@@ -74,24 +74,60 @@ trait Socket[F[_]] {
 
   /** Reads a file in chunks and writes it to a socket.
     * Streams the file contents in chunks of the specified size and sends them over the socket.
-    * The stream terminates when the entire file has been read and written.
+    * The stream terminates when the entire file has reached end of file or the specified count is reached.
     *
     * @param file the file handle to read from
+    * @param offset the starting position in the file
+    * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
     * @param F an implicit `Async` instance for effectful computations
     */
-  def sendfile(file: FileHandle[F], chunkSize: Int)(implicit F: Async[F]): F[Unit] =
+  def sendfile(file: FileHandle[F], offset: Long, count: Long, chunkSize: Int)(implicit
+      F: Async[F]
+  ): F[Unit] =
     Stream
-      .unfoldEval(0L) { offset =>
-        F.map(file.read(chunkSize, offset)) {
-          case Some(chunk) if chunk.nonEmpty =>
-            Some((chunk, offset + chunk.size))
-          case _ =>
-            None
-        }
+      .unfoldEval((offset, count)) { case (currOffset, remaining) =>
+        if (remaining > 0) {
+          F.map(file.read(chunkSize.min(remaining.toInt), currOffset)) {
+            case Some(chunk) if chunk.nonEmpty =>
+              Some((chunk, (currOffset + chunk.size, remaining - chunk.size)))
+            case _ =>
+              None
+          }
+        } else F.pure(None: Option[(fs2.Chunk[Byte], (Long, Long))])
       }
-      .flatMap(chunk => Stream.chunk(chunk))
+      .flatMap(Stream.chunk)
       .through(writes)
+      .compile
+      .drain
+
+  /** Reads from a socket and writes to a file.
+    * Streams the socket data in chunks of the specified size and writes them to the file.
+    * The stream terminates when the socket signals end of input or the specified count is reached.
+    *
+    * @param file the file handle to write to
+    * @param offset the starting position in the file
+    * @param count the maximum number of bytes to transfer
+    * @param chunkSize the size of each chunk to read
+    * @param F an implicit `Async` instance for effectful computations
+    */
+  def recvfile(file: FileHandle[F], offset: Long, count: Long, chunkSize: Int)(implicit
+      F: Async[F]
+  ): F[Unit] =
+    Stream
+      .unfoldEval((offset, count)) { case (currOffset, remaining) =>
+        if (remaining > 0) {
+          F.map(read(chunkSize.min(remaining.toInt))) {
+            case Some(chunk) if chunk.nonEmpty =>
+              Some(((chunk, currOffset), (currOffset + chunk.size, remaining - chunk.size)))
+            case _ =>
+              None
+          }
+        } else F.pure(None: Option[((fs2.Chunk[Byte], Long), (Long, Long))])
+      }
+      .evalMap { case (chunk, writeOffset) =>
+        file.write(chunk, writeOffset)
+      }
       .compile
       .drain
 }
