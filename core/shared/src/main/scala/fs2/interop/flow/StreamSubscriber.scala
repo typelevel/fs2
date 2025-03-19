@@ -66,9 +66,9 @@ private[flow] final class StreamSubscriber[F[_], A] private (
     * since they are always done on the effect run after the state update took place.
     * Meaning this should be correct if the Producer is well-behaved.
     */
-  private var inOnNextLoop: Boolean = _
+  private var inOnNextLoop: Boolean = false
   private var buffer: Array[Any] = null
-  private var index: Int = _
+  private var index: Int = 0
 
   /** Receives the next record from the upstream reactive-streams system. */
   override final def onNext(a: A): Unit = {
@@ -164,10 +164,10 @@ private[flow] final class StreamSubscriber[F[_], A] private (
             state -> run {
               // We do the updates here,
               // to ensure they happen after we have secured the state.
-              inOnNextLoop = true
-              index = 1
               buffer = new Array(chunkSize)
               buffer(0) = a
+              index = 1
+              inOnNextLoop = true
             }
           }
 
@@ -188,15 +188,18 @@ private[flow] final class StreamSubscriber[F[_], A] private (
           Idle(s) -> run {
             // We do the updates here,
             // to ensure they happen after we have secured the state.
-            cb.apply(Right(Some(Chunk.array(buffer))))
+            val chunk = Chunk.array(buffer)
             inOnNextLoop = false
             buffer = null
+            cb.apply(Right(Some(chunk)))
           }
 
         case state =>
           Failed(
             new InvalidStateException(operation = s"Received record [${buffer.last}]", state)
           ) -> run {
+            // We do the updates here,
+            // to ensure they happen after we have secured the state.
             inOnNextLoop = false
             buffer = null
           }
@@ -206,19 +209,15 @@ private[flow] final class StreamSubscriber[F[_], A] private (
         case Uninitialized(Some(cb)) =>
           Terminal -> run {
             cb.apply(Left(ex))
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            buffer = null
           }
 
         case WaitingOnUpstream(cb, _) =>
           Terminal -> run {
-            cb.apply(Left(ex))
             // We do the updates here,
             // to ensure they happen after we have secured the state.
             inOnNextLoop = false
             buffer = null
+            cb.apply(Left(ex))
           }
 
         case _ =>
@@ -240,17 +239,21 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
         case WaitingOnUpstream(cb, s) =>
           Terminal -> run {
+            // We do the updates here,
+            // to ensure they happen after we have secured the state.
             if (canceled) {
               s.cancel()
-              cb.apply(Right(None))
-            } else if (index == 0) {
-              cb.apply(Right(None))
-            } else {
-              cb.apply(Right(Some(Chunk.array(buffer, offset = 0, length = index))))
-              // We do the updates here,
-              // to ensure they happen after we have secured the state.
               inOnNextLoop = false
               buffer = null
+              cb.apply(Right(None))
+            } else if (buffer eq null) {
+              inOnNextLoop = false
+              cb.apply(Right(None))
+            } else {
+              val chunk = Chunk.array(buffer, offset = 0, length = index)
+              inOnNextLoop = false
+              buffer = null
+              cb.apply(Right(Some(chunk)))
             }
           }
 
@@ -268,10 +271,6 @@ private[flow] final class StreamSubscriber[F[_], A] private (
         case Idle(s) =>
           WaitingOnUpstream(cb, s) -> run {
             s.request(chunkSize.toLong)
-            // We do the updates here,
-            // to ensure they happen after we have secured the state.
-            inOnNextLoop = false
-            index = 0
           }
 
         case state @ Uninitialized(Some(otherCB)) =>
@@ -283,14 +282,14 @@ private[flow] final class StreamSubscriber[F[_], A] private (
 
         case state @ WaitingOnUpstream(otherCB, s) =>
           Terminal -> run {
-            s.cancel()
-            val ex = Left(new InvalidStateException(operation = "Received request", state))
-            otherCB.apply(ex)
-            cb.apply(ex)
             // We do the updates here,
             // to ensure they happen after we have secured the state.
             inOnNextLoop = false
             buffer = null
+            s.cancel()
+            val ex = Left(new InvalidStateException(operation = "Received request", state))
+            otherCB.apply(ex)
+            cb.apply(ex)
           }
 
         case Failed(ex) =>
