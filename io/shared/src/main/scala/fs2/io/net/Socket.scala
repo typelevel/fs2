@@ -25,7 +25,6 @@ package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.io.file.FileHandle
-import cats.effect.Concurrent
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
