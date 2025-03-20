@@ -31,6 +31,7 @@ import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
 import fs2.io.file.{Files, Path}
 import fs2.io.net.Socket
+import fs2.io.evalOnVirtualThreadIfAvailable
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
@@ -101,7 +102,8 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       extends Socket.BufferedReads[F](readMutex) {
 
     def readChunk(buff: ByteBuffer): F[Int] =
-      F.blocking(ch.read(buff)).cancelable(close)
+      evalOnVirtualThreadIfAvailable(F.blocking(ch.read(buff)))
+        .cancelable(close)
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
@@ -109,7 +111,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
 
       writeMutex.lock.surround {
-        F.delay(bytes.toByteBuffer).flatMap(go)
+        F.delay(bytes.toByteBuffer).flatMap(buffer => evalOnVirtualThreadIfAvailable(go(buffer)))
       }
     }
 
@@ -118,15 +120,19 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
     private def raiseIpAddressError[A]: F[A] =
       F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
 
-    def isOpen: F[Boolean] = F.blocking(ch.isOpen())
-    def close: F[Unit] = F.blocking(ch.close())
+    def isOpen: F[Boolean] = evalOnVirtualThreadIfAvailable(F.blocking(ch.isOpen()))
+    def close: F[Unit] = evalOnVirtualThreadIfAvailable(F.blocking(ch.close()))
     def endOfOutput: F[Unit] =
-      F.blocking {
-        ch.shutdownOutput(); ()
-      }
+      evalOnVirtualThreadIfAvailable(
+        F.blocking {
+          ch.shutdownOutput(); ()
+        }
+      )
     def endOfInput: F[Unit] =
-      F.blocking {
-        ch.shutdownInput(); ()
-      }
+      evalOnVirtualThreadIfAvailable(
+        F.blocking {
+          ch.shutdownInput(); ()
+        }
+      )
   }
 }
