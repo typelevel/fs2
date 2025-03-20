@@ -118,7 +118,6 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
         F.blocking(chan.write(bytes.toByteBuffer, offset))
-
     }
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.SeekableByteChannel`. Because a `SeekableByteChannel` doesn't provide all the functionalities required by `FileHandle` some features like locking will be unavailable. */
