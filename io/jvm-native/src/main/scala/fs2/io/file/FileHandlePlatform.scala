@@ -28,7 +28,6 @@ import java.nio.channels.{FileChannel, FileLock, SeekableByteChannel}
 import java.nio.file.{OpenOption, Path => JPath}
 
 import cats.effect.kernel.{Async, Resource, Sync}
-import java.nio.channels.WritableByteChannel
 import java.nio.channels.ReadableByteChannel
 
 private[file] trait FileHandlePlatform[F[_]] {

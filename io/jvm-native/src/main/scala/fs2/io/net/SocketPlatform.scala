@@ -31,7 +31,6 @@ import cats.syntax.all._
 import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
-import fs2.io.file.FileHandle
 
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
