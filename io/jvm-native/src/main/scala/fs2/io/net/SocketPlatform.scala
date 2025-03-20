@@ -111,25 +111,6 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F])
       extends BufferedReads[F](readMutex) {
 
-    def sendfile(file: FileHandle[F], chunkSize: Long): F[Unit] = {
-      val writableChannel = new java.nio.channels.WritableByteChannel {
-        def isOpen: Boolean = ch.isOpen
-        def close(): Unit = {}
-        def write(src: ByteBuffer): Int = ch.write(src).get()
-      }
-
-      def transfer(offset: Long, remaining: Long, chunkSize: Long): F[Unit] =
-        if (remaining <= 0) F.unit
-        else {
-          val toTransfer = Math.min(chunkSize, remaining)
-          file.transferTo(offset, toTransfer, writableChannel).flatMap { transferred =>
-            if (transferred > 0) transfer(offset + transferred, remaining - transferred, chunkSize)
-            else F.unit
-          }
-        }
-      file.size.flatMap(size => transfer(0, size, chunkSize))
-    }
-
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
         ch.read(
