@@ -33,7 +33,6 @@ import fs2.io.file.{Files, Path}
 import fs2.io.net.Socket
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
-import fs2.io.file.FileHandle
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forIO: UnixSockets[IO] = forLiftIO
