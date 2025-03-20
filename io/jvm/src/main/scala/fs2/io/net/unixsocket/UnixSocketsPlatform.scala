@@ -107,13 +107,11 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        evalOnVirtualThreadIfAvailable(
-          F.blocking(ch.write(buff)).cancelable(close) *>
-            F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
-        )
+        F.blocking(ch.write(buff)).cancelable(close) *>
+          F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
 
       writeMutex.lock.surround {
-        F.delay(bytes.toByteBuffer).flatMap(go)
+        F.delay(bytes.toByteBuffer).flatMap(buffer => evalOnVirtualThreadIfAvailable(go(buffer)))
       }
     }
 
