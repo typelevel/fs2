@@ -34,7 +34,6 @@ import fs2.io.net.Socket
 import fs2.io.evalOnVirtualThreadIfAvailable
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
-import fs2.io.file.FileHandle
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forIO: UnixSockets[IO] = forLiftIO
