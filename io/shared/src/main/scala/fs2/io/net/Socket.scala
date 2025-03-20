@@ -25,7 +25,7 @@ package net
 
 import com.comcast.ip4s.{IpAddress, SocketAddress}
 import fs2.io.file.FileHandle
-import cats.effect.kernel.Async
+import cats.effect.Concurrent
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
@@ -80,26 +80,26 @@ trait Socket[F[_]] {
     * @param offset the starting position in the file
     * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
-    * @param F an implicit `Async` instance for effectful computations
+    * @param F an implicit `Concurrent` instance for effectful computations
     */
-  def sendfile(file: FileHandle[F], offset: Long, count: Long, chunkSize: Int)(implicit
-      F: Async[F]
-  ): F[Unit] =
-    Stream
-      .unfoldEval((offset, count)) { case (currOffset, remaining) =>
-        if (remaining > 0) {
-          F.map(file.read(chunkSize.min(remaining.toInt), currOffset)) {
-            case Some(chunk) if chunk.nonEmpty =>
-              Some((chunk, (currOffset + chunk.size, remaining - chunk.size)))
-            case _ =>
-              None
-          }
-        } else F.pure(None: Option[(fs2.Chunk[Byte], (Long, Long))])
-      }
-      .flatMap(Stream.chunk)
-      .through(writes)
-      .compile
-      .drain
+  def sendfile(
+      file: FileHandle[F],
+      offset: Long,
+      count: Long,
+      chunkSize: Int
+  )(implicit F: Concurrent[F]): F[Unit] = {
+
+    def go(currOffset: Long, remaining: Long): Stream[F, Byte] =
+      if (remaining > 0)
+        Stream.eval(file.read(chunkSize.min(remaining.toInt), currOffset)).flatMap {
+          case Some(chunk) if chunk.nonEmpty =>
+            Stream.chunk(chunk) ++ go(currOffset + chunk.size, remaining - chunk.size)
+          case _ => Stream.empty
+        }
+      else Stream.empty
+
+    go(offset, count).through(writes).compile.drain
+  }
 
   /** Reads from a socket and writes to a file.
     * Streams the socket data in chunks of the specified size and writes them to the file.
@@ -109,27 +109,31 @@ trait Socket[F[_]] {
     * @param offset the starting position in the file
     * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
-    * @param F an implicit `Async` instance for effectful computations
+    * @param F an implicit `Concurrent` instance for effectful computations
     */
-  def recvfile(file: FileHandle[F], offset: Long, count: Long, chunkSize: Int)(implicit
-      F: Async[F]
-  ): F[Unit] =
-    Stream
-      .unfoldEval((offset, count)) { case (currOffset, remaining) =>
-        if (remaining > 0) {
-          F.map(read(chunkSize.min(remaining.toInt))) {
-            case Some(chunk) if chunk.nonEmpty =>
-              Some(((chunk, currOffset), (currOffset + chunk.size, remaining - chunk.size)))
-            case _ =>
-              None
-          }
-        } else F.pure(None: Option[((fs2.Chunk[Byte], Long), (Long, Long))])
-      }
-      .evalMap { case (chunk, writeOffset) =>
-        file.write(chunk, writeOffset)
+  def recvfile(
+      file: FileHandle[F],
+      offset: Long,
+      count: Long,
+      chunkSize: Int
+  )(implicit F: Concurrent[F]): F[Unit] = {
+
+    def go(currOffset: Long, remaining: Long): Stream[F, Chunk[Byte]] =
+      if (remaining > 0)
+        Stream.eval(read(chunkSize.min(remaining.toInt))).flatMap {
+          case Some(chunk) if chunk.nonEmpty =>
+            Stream.emit(chunk) ++ go(currOffset + chunk.size, remaining - chunk.size)
+          case _ => Stream.empty
+        }
+      else Stream.empty
+
+    go(offset, count)
+      .evalMap { chunk =>
+        file.write(chunk, offset)
       }
       .compile
       .drain
+  }
 }
 
 object Socket extends SocketCompanionPlatform
