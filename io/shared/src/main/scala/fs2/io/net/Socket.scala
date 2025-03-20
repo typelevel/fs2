@@ -80,25 +80,24 @@ trait Socket[F[_]] {
     * @param offset the starting position in the file
     * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
-    * @param F an implicit `Concurrent` instance for effectful computations
     */
   def sendfile(
       file: FileHandle[F],
       offset: Long,
       count: Long,
       chunkSize: Int
-  )(implicit F: Concurrent[F]): F[Unit] = {
+  ): Stream[F, Unit] = {
 
     def go(currOffset: Long, remaining: Long): Stream[F, Byte] =
       if (remaining > 0)
-        Stream.eval(file.read(chunkSize.min(remaining.toInt), currOffset)).flatMap {
+        Stream.eval(file.read(math.min(remaining, chunkSize.toLong).toInt, currOffset)).flatMap {
           case Some(chunk) if chunk.nonEmpty =>
             Stream.chunk(chunk) ++ go(currOffset + chunk.size, remaining - chunk.size)
           case _ => Stream.empty
         }
       else Stream.empty
 
-    go(offset, count).through(writes).compile.drain
+    go(offset, count).through(writes)
   }
 
   /** Reads from a socket and writes to a file.
@@ -109,30 +108,27 @@ trait Socket[F[_]] {
     * @param offset the starting position in the file
     * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
-    * @param F an implicit `Concurrent` instance for effectful computations
     */
   def recvfile(
       file: FileHandle[F],
       offset: Long,
       count: Long,
       chunkSize: Int
-  )(implicit F: Concurrent[F]): F[Unit] = {
+  ): Stream[F, Unit] = {
 
-    def go(currOffset: Long, remaining: Long): Stream[F, Chunk[Byte]] =
+    def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
       if (remaining > 0)
-        Stream.eval(read(chunkSize.min(remaining.toInt))).flatMap {
+        Stream.eval(read(math.min(remaining, chunkSize.toLong).toInt)).flatMap {
           case Some(chunk) if chunk.nonEmpty =>
-            Stream.emit(chunk) ++ go(currOffset + chunk.size, remaining - chunk.size)
+            Stream.eval(file.write(chunk, currOffset)) >> go(
+              currOffset + chunk.size,
+              remaining - chunk.size
+            )
           case _ => Stream.empty
         }
       else Stream.empty
 
     go(offset, count)
-      .evalMap { chunk =>
-        file.write(chunk, offset)
-      }
-      .compile
-      .drain
   }
 }
 
