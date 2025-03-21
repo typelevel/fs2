@@ -29,6 +29,7 @@ import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
+import fs2.io.file._
 
 class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
@@ -284,5 +285,87 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
+    test("sendfile - sends data from file to socket from the offset") {
+      val content = "Hello, world!"
+      val offset = 7L
+      val count = 5L
+      val expected = "world"
+      val chunkSize = 2
+
+      val setup = for {
+        tempFile <- Files[IO].tempFile
+        _ <- Stream
+          .emits(content.getBytes)
+          .covary[IO]
+          .through(Files[IO].writeAll(tempFile))
+          .compile
+          .drain
+          .toResource
+        serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (bindAddress, server) = serverSetup
+        client <- Network[IO].client(bindAddress)
+      } yield (tempFile, server, client)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (tempFile, server, client) =>
+          val serverStream = server.head.flatMap { socket =>
+            Stream.eval(socket.reads.through(text.utf8.decode).compile.string)
+          }
+          val clientStream =
+            Stream.resource(Files[IO].open(tempFile, Flags.Read)).flatMap { fileHandle =>
+              client.sendfile(fileHandle, offset, count, chunkSize).drain ++
+                Stream.eval(client.endOfOutput)
+            }
+          serverStream.concurrently(clientStream)
+        }
+        .compile
+        .lastOrError
+        .map { received =>
+          assertEquals(received, expected)
+        }
+    }
+    test("recvfile - send data from socket to file from the offset") {
+      val content = "Hello, world!"
+      val offset = 0L
+      val count = 5L
+      val expected = "Hello"
+      val chunkSize = 2
+
+      val setup = for {
+        tempFile <- Files[IO].tempFile
+        serverSetup <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (bindAddress, server) = serverSetup
+        client <- Network[IO].client(bindAddress)
+      } yield (tempFile, server, client)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (tempFile, server, client) =>
+          val serverStream = server.head.flatMap { socket =>
+            Stream.eval(socket.write(Chunk.array(content.getBytes))) >>
+              Stream.eval(socket.endOfOutput)
+          }
+
+          val clientStream =
+            Stream.resource(Files[IO].open(tempFile, Flags.Write)).flatMap { fileHandle =>
+              client.recvfile(fileHandle, offset, count, chunkSize).drain
+            }
+
+          val checkFile = Files[IO]
+            .readAll(tempFile, chunkSize, Flags.Read)
+            .through(text.utf8.decode)
+            .compile
+            .string
+
+          clientStream.concurrently(serverStream).drain ++ Stream.eval(checkFile)
+        }
+        .compile
+        .lastOrError
+        .map { received =>
+          assertEquals(received, expected)
+        }
+    }
+
   }
 }
