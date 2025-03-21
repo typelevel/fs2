@@ -138,7 +138,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       F.blocking {
         ch.shutdownInput(); ()
       }
-    def sendfile(
+    override def sendfile(
         file: FileHandle[F],
         offset: Long,
         count: Long,
@@ -159,7 +159,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
 
       transferChunks(offset, count).drain
     }
-    def recvfile(
+    override def recvfile(
         file: FileHandle[F],
         offset: Long,
         count: Long,
