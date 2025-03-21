@@ -85,7 +85,7 @@ trait Socket[F[_]] {
       offset: Long,
       count: Long,
       chunkSize: Int
-  ): Stream[F, Unit] = {
+  ): Stream[F, Nothing] = {
 
     def go(currOffset: Long, remaining: Long): Stream[F, Byte] =
       if (remaining > 0)
@@ -113,9 +113,9 @@ trait Socket[F[_]] {
       offset: Long,
       count: Long,
       chunkSize: Int
-  ): Stream[F, Unit] = {
+  ): Stream[F, Nothing] = {
 
-    def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+    def go(currOffset: Long, remaining: Long): Stream[F, Nothing] =
       if (remaining > 0)
         Stream.eval(read(math.min(remaining, chunkSize.toLong).toInt)).flatMap {
           case Some(chunk) if chunk.nonEmpty =>
