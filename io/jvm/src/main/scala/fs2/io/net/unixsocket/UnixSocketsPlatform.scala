@@ -138,41 +138,49 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       F.blocking {
         ch.shutdownInput(); ()
       }
-   def sendfile(file: FileHandle[F], offset: Long, count: Long, chunkSize: Int): Stream[F, Nothing] = {
-  def transferChunks(offset: Long, remaining: Long): Stream[F, Unit] =
-    if (remaining <= 0) Stream.empty
-    else {
-      val toTransfer = remaining.min(chunkSize.toLong)
-      Stream.eval(writeMutex.lock.surround {
-      file.transferTo(offset, toTransfer, ch)
-      }).flatMap { written =>
-        transferChunks(offset + written, remaining - written)
-      }
+    def sendfile(
+        file: FileHandle[F],
+        offset: Long,
+        count: Long,
+        chunkSize: Int
+    ): Stream[F, Nothing] = {
+      def transferChunks(offset: Long, remaining: Long): Stream[F, Unit] =
+        if (remaining <= 0) Stream.empty
+        else {
+          val toTransfer = remaining.min(chunkSize.toLong)
+          Stream
+            .eval(writeMutex.lock.surround {
+              file.transferTo(offset, toTransfer, ch)
+            })
+            .flatMap { written =>
+              transferChunks(offset + written, remaining - written)
+            }
+        }
+
+      transferChunks(offset, count).drain
     }
+    def recvfile(
+        file: FileHandle[F],
+        offset: Long,
+        count: Long,
+        chunkSize: Int
+    ): Stream[F, Nothing] = {
 
-  transferChunks(offset, count).drain
-}
-def recvfile(
-    file: FileHandle[F],
-    offset: Long,
-    count: Long,
-    chunkSize: Int
-): Stream[F, Nothing] = {
+      def go(offset: Long, remaining: Long): Stream[F, Nothing] =
+        if (remaining <= 0) Stream.empty
+        else {
+          val toTransfer = remaining.min(chunkSize.toLong)
+          Stream
+            .eval(writeMutex.lock.surround {
+              file.transferFrom(ch, offset, toTransfer)
+            })
+            .flatMap { readBytes =>
+              go(offset + readBytes, remaining - readBytes)
+            }
+        }
 
-  def go(offset: Long, remaining: Long): Stream[F, Nothing] =
-    if (remaining <= 0) Stream.empty
-    else {
-      val toTransfer = remaining.min(chunkSize.toLong)
-      Stream.eval(writeMutex.lock.surround {
-        file.transferFrom(ch, offset, toTransfer)
-      }).flatMap { readBytes =>
-        go(offset + readBytes, remaining - readBytes)
-      }
+      go(offset, count)
     }
-
-  go(offset, count)
-}
-
 
   }
 }
