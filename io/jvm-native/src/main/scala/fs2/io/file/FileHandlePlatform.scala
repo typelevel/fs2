@@ -130,7 +130,7 @@ private[file] trait FileHandleCompanionPlatform {
 
       override def transferFrom(src: ReadableByteChannel, position: Long, count: Long): F[Long] =
         F.blocking(chan.transferFrom(src, position, count))
-    
+
     }
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.SeekableByteChannel`. Because a `SeekableByteChannel` doesn't provide all the functionalities required by `FileHandle` some features like locking will be unavailable. */
@@ -186,10 +186,10 @@ private[file] trait FileHandleCompanionPlatform {
             chan.write(bytes.toByteBuffer)
           }
         }
-        override def transferTo(position: Long, count: Long, target: WritableByteChannel): F[Long] =
+      override def transferTo(position: Long, count: Long, target: WritableByteChannel): F[Long] =
         F.raiseError(unsupportedOperationException)
 
-        override def transferFrom(src: ReadableByteChannel, position: Long, count: Long): F[Long] =
+      override def transferFrom(src: ReadableByteChannel, position: Long, count: Long): F[Long] =
         F.raiseError(unsupportedOperationException)
     }
 }
