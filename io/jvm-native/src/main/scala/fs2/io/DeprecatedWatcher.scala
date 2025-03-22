@@ -263,17 +263,19 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path.getParent, types, modifiers).flatMap(key =>
-        track(
-          Registration(
-            path,
-            true,
-            key,
-            types,
-            modifiers,
-            false,
-            false,
-            F.unit
+      F.blocking(path.toAbsolutePath).flatMap(absolutePath =>
+        registerUntracked(absolutePath.getParent, types, modifiers).flatMap(key =>
+          track(
+            Registration(
+              absolutePath,
+              true,
+              key,
+              types,
+              modifiers,
+              false,
+              false,
+              F.unit
+            )
           )
         )
       )
