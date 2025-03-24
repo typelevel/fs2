@@ -22,6 +22,8 @@
 package fs2
 package io.net
 
+import fs2.io.file.SyncFileHandle
+import fs2.io.file.FileHandle
 import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.Async
@@ -76,6 +78,64 @@ private final class SelectingSocket[F[_]: LiftIO] private (
   def endOfInput: F[Unit] =
     F.delay {
       ch.shutdownInput(); ()
+    }
+  override def sendfile(
+      file: FileHandle[F],
+      offset: Long,
+      count: Long,
+      chunkSize: Int
+  ): Stream[F, Nothing] = file match {
+    case syncFileHandle: SyncFileHandle[F] =>
+      val fileChannel = syncFileHandle.chan
+
+      def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+        if (remaining <= 0) Stream.empty
+        else {
+          val toTransfer = remaining.min(chunkSize.toLong)
+          Stream
+            .eval(writeMutex.lock.surround {
+              F.blocking(fileChannel.transferTo(currOffset, toTransfer, ch))
+            })
+            .flatMap { written =>
+              if (written == 0) Stream.empty
+              else go(currOffset + written, remaining - written)
+            }
+        }
+
+      go(offset, count).drain
+
+    case _ =>
+      super.sendfile(file, offset, count, chunkSize)
+  }
+
+  override def recvfile(
+      file: FileHandle[F],
+      offset: Long,
+      count: Long,
+      chunkSize: Int
+  ): Stream[F, Nothing] =
+
+    file match {
+      case syncFileHandle: SyncFileHandle[F] =>
+        val fileChannel = syncFileHandle.chan
+
+        def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+          if (remaining <= 0) Stream.empty
+          else {
+            val toTransfer = remaining.min(chunkSize.toLong)
+            Stream
+              .eval(writeMutex.lock.surround {
+                F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer))
+              })
+              .flatMap { readBytes =>
+                go(currOffset + readBytes, remaining - readBytes)
+              }
+          }
+
+        go(offset, count).drain
+
+      case _ =>
+        super.recvfile(file, offset, count, chunkSize)
     }
 
 }

@@ -20,7 +20,7 @@
  */
 
 package fs2.io.net.unixsocket
-
+import fs2.io.file.SyncFileHandle
 import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
@@ -143,44 +143,59 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         offset: Long,
         count: Long,
         chunkSize: Int
-    ): Stream[F, Nothing] = {
-      def transferChunks(offset: Long, remaining: Long): Stream[F, Unit] =
-        if (remaining <= 0) Stream.empty
-        else {
-          val toTransfer = remaining.min(chunkSize.toLong)
-          Stream
-            .eval(writeMutex.lock.surround {
-              file.transferTo(offset, toTransfer, ch)
-            })
-            .flatMap { written =>
-              transferChunks(offset + written, remaining - written)
-            }
-        }
+    ): Stream[F, Nothing] = file match {
+      case syncFileHandle: SyncFileHandle[F] =>
+        val fileChannel = syncFileHandle.chan
 
-      transferChunks(offset, count).drain
+        def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+          if (remaining <= 0) Stream.empty
+          else {
+            val toTransfer = remaining.min(chunkSize.toLong)
+            Stream
+              .eval(writeMutex.lock.surround {
+                F.blocking(fileChannel.transferTo(currOffset, toTransfer, ch))
+              })
+              .flatMap { written =>
+                if (written == 0) Stream.empty
+                else go(currOffset + written, remaining - written)
+              }
+          }
+
+        go(offset, count).drain
+
+      case _ =>
+        super.sendfile(file, offset, count, chunkSize)
     }
+
     override def recvfile(
         file: FileHandle[F],
         offset: Long,
         count: Long,
         chunkSize: Int
-    ): Stream[F, Nothing] = {
+    ): Stream[F, Nothing] =
 
-      def go(offset: Long, remaining: Long): Stream[F, Nothing] =
-        if (remaining <= 0) Stream.empty
-        else {
-          val toTransfer = remaining.min(chunkSize.toLong)
-          Stream
-            .eval(writeMutex.lock.surround {
-              file.transferFrom(ch, offset, toTransfer)
-            })
-            .flatMap { readBytes =>
-              go(offset + readBytes, remaining - readBytes)
+      file match {
+        case syncFileHandle: SyncFileHandle[F] =>
+          val fileChannel = syncFileHandle.chan
+
+          def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+            if (remaining <= 0) Stream.empty
+            else {
+              val toTransfer = remaining.min(chunkSize.toLong)
+              Stream
+                .eval(writeMutex.lock.surround {
+                  F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer))
+                })
+                .flatMap { readBytes =>
+                  go(currOffset + readBytes, remaining - readBytes)
+                }
             }
-        }
 
-      go(offset, count)
-    }
+          go(offset, count).drain
+
+        case _ =>
+          super.recvfile(file, offset, count, chunkSize)
+      }
 
   }
 }
