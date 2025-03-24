@@ -64,7 +64,7 @@ private[file] trait FileHandlePlatform[F[_]] {
     * @param lock the lock object which represents the locked file or region.
     */
   def unlock(lock: Lock): F[Unit]
-  
+
 }
 
 class SyncFileHandle[F[_]](val chan: FileChannel)(implicit F: Sync[F]) extends FileHandle[F] {
