@@ -183,11 +183,12 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             else {
               val toTransfer = remaining.min(chunkSize.toLong)
               Stream
-                .eval(writeMutex.lock.surround {
+                .eval(readMutex.lock.surround {
                   F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer))
                 })
                 .flatMap { readBytes =>
-                  go(currOffset + readBytes, remaining - readBytes)
+                  if (readBytes == 0) Stream.empty
+                  else go(currOffset + readBytes, remaining - readBytes)
                 }
             }
 
