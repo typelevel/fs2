@@ -97,8 +97,11 @@ private final class SelectingSocket[F[_]: LiftIO] private (
               F.blocking(fileChannel.transferTo(currOffset, toTransfer, ch))
             })
             .flatMap { written =>
-              if (written == 0) Stream.empty
-              else go(currOffset + written, remaining - written)
+              if (written > 0) {
+                go(currOffset + written, remaining - written)
+              } else {
+                Stream.eval(selector.select(ch, OP_WRITE).to) >> go(currOffset, remaining)
+              }
             }
         }
 
@@ -113,31 +116,32 @@ private final class SelectingSocket[F[_]: LiftIO] private (
       offset: Long,
       count: Long,
       chunkSize: Int
-  ): Stream[F, Nothing] =
+  ): Stream[F, Nothing] = file match {
+    case syncFileHandle: SyncFileHandle[F] =>
+      val fileChannel = syncFileHandle.chan
 
-    file match {
-      case syncFileHandle: SyncFileHandle[F] =>
-        val fileChannel = syncFileHandle.chan
-
-        def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
-          if (remaining <= 0) Stream.empty
-          else {
-            val toTransfer = remaining.min(chunkSize.toLong)
-            Stream
-              .eval(writeMutex.lock.surround {
-                F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer))
-              })
-              .flatMap { readBytes =>
+      def go(currOffset: Long, remaining: Long): Stream[F, Unit] =
+        if (remaining <= 0) Stream.empty
+        else {
+          val toTransfer = remaining.min(chunkSize.toLong)
+          Stream
+            .eval(readMutex.lock.surround {
+              F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer))
+            })
+            .flatMap { readBytes =>
+              if (readBytes > 0) {
                 go(currOffset + readBytes, remaining - readBytes)
+              } else {
+                Stream.eval(selector.select(ch, OP_READ).to) *> go(currOffset, remaining)
               }
-          }
+            }
+        }
 
-        go(offset, count).drain
+      go(offset, count).drain
 
-      case _ =>
-        super.recvfile(file, offset, count, chunkSize)
-    }
-
+    case _ =>
+      super.recvfile(file, offset, count, chunkSize)
+  }
 }
 
 private object SelectingSocket {
