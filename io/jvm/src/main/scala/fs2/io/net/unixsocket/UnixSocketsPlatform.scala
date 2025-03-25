@@ -135,9 +135,9 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           ch.shutdownInput(); ()
         }
       )
-      F.blocking {
-        ch.shutdownInput(); ()
-      }
+    F.blocking {
+      ch.shutdownInput(); ()
+    }
     override def sendfile(
         file: FileHandle[F],
         offset: Long,
