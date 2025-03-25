@@ -67,7 +67,7 @@ private[file] trait FileHandlePlatform[F[_]] {
 
 }
 
-class SyncFileHandle[F[_]](val chan: FileChannel)(implicit F: Sync[F]) extends FileHandle[F] {
+private[io] final class SyncFileHandle[F[_]](val chan: FileChannel)(implicit F: Sync[F]) extends FileHandle[F] {
   type Lock = FileLock
 
   override def force(metaData: Boolean): F[Unit] =
