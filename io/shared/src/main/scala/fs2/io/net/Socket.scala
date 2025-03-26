@@ -71,8 +71,8 @@ trait Socket[F[_]] {
     */
   def writes: Pipe[F, Byte, Nothing]
 
-  /** Reads a file in chunks and writes it to a socket.
-    * Streams the file contents in chunks of the specified size and sends them over the socket.
+  /** Reads a file and writes it to a socket.
+    * Streams the file contents of the specified size and sends them over the socket.
     * The stream terminates when the entire file has reached end of file or the specified count is reached.
     *
     * @param file the file handle to read from
@@ -100,7 +100,7 @@ trait Socket[F[_]] {
   }
 
   /** Reads from a socket and writes to a file.
-    * Streams the socket data in chunks of the specified size and writes them to the file.
+    * Streams the socket data of the specified size and writes them to the file.
     * The stream terminates when the socket signals end of input or the specified count is reached.
     *
     * @param file the file handle to write to

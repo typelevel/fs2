@@ -150,8 +150,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         def go(currOffset: Long, remaining: Long): F[Unit] =
           if (remaining <= 0) F.unit
           else {
-            val toTransfer = remaining.min(chunkSize.toLong)
-            F.blocking(fileChannel.transferTo(currOffset, toTransfer, ch)).flatMap { written =>
+            F.blocking(fileChannel.transferTo(currOffset, remaining, ch)).flatMap { written =>
               if (written == 0) F.unit
               else {
                 go(currOffset + written, remaining - written)
@@ -177,8 +176,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         def go(currOffset: Long, remaining: Long): F[Unit] =
           if (remaining <= 0) F.unit
           else {
-            val toTransfer = remaining.min(chunkSize.toLong)
-            F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer)).flatMap { readBytes =>
+            F.blocking(fileChannel.transferFrom(ch, currOffset, remaining)).flatMap { readBytes =>
               if (readBytes == 0) F.unit
               else {
                 go(currOffset + readBytes, remaining - readBytes)

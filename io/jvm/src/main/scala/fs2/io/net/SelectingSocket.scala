@@ -91,8 +91,7 @@ private final class SelectingSocket[F[_]: LiftIO] private (
       def go(currOffset: Long, remaining: Long): F[Unit] =
         if (remaining <= 0) F.unit
         else {
-          val toTransfer = remaining.min(chunkSize.toLong)
-          F.blocking(fileChannel.transferTo(currOffset, toTransfer, ch)).flatMap { written =>
+          F.blocking(fileChannel.transferTo(currOffset, remaining, ch)).flatMap { written =>
             if (written > 0) {
               go(currOffset + written, remaining - written)
             } else {
@@ -119,8 +118,7 @@ private final class SelectingSocket[F[_]: LiftIO] private (
       def go(currOffset: Long, remaining: Long): F[Unit] =
         if (remaining <= 0) F.unit
         else {
-          val toTransfer = remaining.min(chunkSize.toLong)
-          F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer)).flatMap { readBytes =>
+          F.blocking(fileChannel.transferFrom(ch, currOffset, remaining)).flatMap { readBytes =>
             if (readBytes > 0) {
               go(currOffset + readBytes, remaining - readBytes)
             } else {
