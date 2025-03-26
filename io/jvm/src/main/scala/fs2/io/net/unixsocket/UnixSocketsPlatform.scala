@@ -179,7 +179,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           else {
             val toTransfer = remaining.min(chunkSize.toLong)
             F.blocking(fileChannel.transferFrom(ch, currOffset, toTransfer)).flatMap { readBytes =>
-              if (readBytes > 0) F.unit
+              if (readBytes == 0) F.unit
               else {
                 go(currOffset + readBytes, remaining - readBytes)
               }
