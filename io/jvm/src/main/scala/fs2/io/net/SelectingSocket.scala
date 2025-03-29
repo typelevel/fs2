@@ -105,33 +105,6 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     case _ =>
       super.sendfile(file, offset, count, chunkSize)
   }
-
-  override def recvfile(
-      file: FileHandle[F],
-      offset: Long,
-      count: Long,
-      chunkSize: Int
-  ): Stream[F, Nothing] = file match {
-    case syncFileHandle: SyncFileHandle[F] =>
-      val fileChannel = syncFileHandle.chan
-
-      def go(currOffset: Long, remaining: Long): F[Unit] =
-        if (remaining <= 0) F.unit
-        else {
-          F.blocking(fileChannel.transferFrom(ch, currOffset, remaining)).flatMap { readBytes =>
-            if (readBytes > 0) {
-              go(currOffset + readBytes, remaining - readBytes)
-            } else {
-              selector.select(ch, OP_READ).to *> go(currOffset, remaining)
-            }
-          }
-        }
-
-      Stream.eval(readMutex.lock.surround(go(offset, count))).drain
-
-    case _ =>
-      super.recvfile(file, offset, count, chunkSize)
-  }
 }
 
 private object SelectingSocket {

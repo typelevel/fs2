@@ -98,37 +98,6 @@ trait Socket[F[_]] {
 
     go(offset, count).through(writes)
   }
-
-  /** Reads from a socket and writes to a file.
-    * Streams the socket data of the specified size and writes them to the file.
-    * The stream terminates when the socket signals end of input or the specified count is reached.
-    *
-    * @param file the file handle to write to
-    * @param offset the starting position in the file
-    * @param count the maximum number of bytes to transfer
-    * @param chunkSize the size of each chunk to read
-    */
-  def recvfile(
-      file: FileHandle[F],
-      offset: Long,
-      count: Long,
-      chunkSize: Int
-  ): Stream[F, Nothing] = {
-
-    def go(currOffset: Long, remaining: Long): Stream[F, Nothing] =
-      if (remaining > 0)
-        Stream.eval(read(math.min(remaining, chunkSize.toLong).toInt)).flatMap {
-          case Some(chunk) if chunk.nonEmpty =>
-            Stream.eval(file.write(chunk, currOffset)) >> go(
-              currOffset + chunk.size,
-              remaining - chunk.size
-            )
-          case _ => Stream.empty
-        }
-      else Stream.empty
-
-    go(offset, count)
-  }
 }
 
 object Socket extends SocketCompanionPlatform
