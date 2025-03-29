@@ -80,7 +80,7 @@ trait Socket[F[_]] {
     * @param count the maximum number of bytes to transfer
     * @param chunkSize the size of each chunk to read
     */
-  def sendfile(
+  def sendFile(
       file: FileHandle[F],
       offset: Long,
       count: Long,

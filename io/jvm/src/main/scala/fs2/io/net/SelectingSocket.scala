@@ -79,7 +79,7 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     F.delay {
       ch.shutdownInput(); ()
     }
-  override def sendfile(
+  override def sendFile(
       file: FileHandle[F],
       offset: Long,
       count: Long,
@@ -103,7 +103,7 @@ private final class SelectingSocket[F[_]: LiftIO] private (
       Stream.eval(writeMutex.lock.surround(go(offset, count))).drain
 
     case _ =>
-      super.sendfile(file, offset, count, chunkSize)
+      super.sendFile(file, offset, count, chunkSize)
   }
 }
 

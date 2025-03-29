@@ -285,7 +285,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
-    test("sendfile - sends data from file to socket from the offset") {
+    test("sendFile - sends data from file to socket from the offset") {
       val content = "Hello, world!"
       val offset = 7L
       val count = 5L
@@ -314,7 +314,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           }
           val clientStream =
             Stream.resource(Files[IO].open(tempFile, Flags.Read)).flatMap { fileHandle =>
-              client.sendfile(fileHandle, offset, count, chunkSize).drain ++
+              client.sendFile(fileHandle, offset, count, chunkSize).drain ++
                 Stream.eval(client.endOfOutput)
             }
           serverStream.concurrently(clientStream)

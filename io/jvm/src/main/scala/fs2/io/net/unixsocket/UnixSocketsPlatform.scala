@@ -135,7 +135,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           ch.shutdownInput(); ()
         }
       )
-    override def sendfile(
+    override def sendFile(
         file: FileHandle[F],
         offset: Long,
         count: Long,
@@ -158,7 +158,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         Stream.eval(writeMutex.lock.surround(go(offset, count))).drain
 
       case _ =>
-        super.sendfile(file, offset, count, chunkSize)
+        super.sendFile(file, offset, count, chunkSize)
     }
   }
 }
