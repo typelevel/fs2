@@ -325,6 +325,5 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           assertEquals(received, expected)
         }
     }
-
   }
 }

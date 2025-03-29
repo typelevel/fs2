@@ -160,6 +160,5 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       case _ =>
         super.sendfile(file, offset, count, chunkSize)
     }
-
   }
 }
