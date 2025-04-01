@@ -100,7 +100,7 @@ private final class SelectingSocket[F[_]: LiftIO] private (
           }
         }
 
-      Stream.eval(writeMutex.lock.surround(go(offset, count))).drain
+      Stream.exec(writeMutex.lock.surround(go(offset, count)))
 
     case _ =>
       super.sendFile(file, offset, count, chunkSize)
