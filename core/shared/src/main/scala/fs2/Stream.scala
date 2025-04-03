@@ -2896,7 +2896,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def takeThrough(p: O => Boolean): Stream[F, O] =
     this.pull.takeThrough(p).void.stream
 
-  /** Emits the longest prefix of the input for which all elements test true according to `f`.
+  /** Emits the longest prefix of the input for which all elements test true according to `p`.
     *
     * @example {{{
     * scala> Stream.range(0,1000).takeWhile(_ != 5).toList
