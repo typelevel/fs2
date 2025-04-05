@@ -36,18 +36,46 @@ private[process] trait ProcessesCompanionPlatform {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource {
         F.async_[(Process[F], F[Unit])] { cb =>
-          val childProcess = facade.child_process.spawn(
-            process.command,
-            process.args.toJSArray,
-            new facade.child_process.SpawnOptions {
-              cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-              env =
+          
+
+          val spawnOptions = new facade.child_process.SpawnOptions {
+              "cwd" -> process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+              "env" ->(
                 if (process.inheritEnv)
                   (facade.process.env ++ process.extraEnv).toJSDictionary
                 else
-                  process.extraEnv.toJSDictionary
+                  process.extraEnv.toJSDictionary)
             }
+
+          val childProcess = facade.child_process.spawn(
+            process.command,
+            process.args.toJSArray,
+            spawnOptions.asInstanceOf[facade.child_process.SpawnOptions]
           )
+
+          process.outputConfig.stdin match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard  => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) =>
+              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => //Default behaviour
+          }
+
+          process.outputConfig.stdout match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard  => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) =>
+              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => //Default behaviour
+          }
+
+          process.outputConfig.stderr match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard  => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) =>
+              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => //Default behaviour
+          }
 
           val fs2Process = new UnsealedProcess[F] {
 
@@ -84,7 +112,7 @@ private[process] trait ProcessesCompanionPlatform {
               } else {
                 childProcess.kill()
                 childProcess.once("exit", () => cb(Either.unit))
-                Left(None)
+                Left(None) 
               }
             }
           }
