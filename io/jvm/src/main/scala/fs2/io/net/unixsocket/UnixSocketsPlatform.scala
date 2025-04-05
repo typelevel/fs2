@@ -20,7 +20,7 @@
  */
 
 package fs2.io.net.unixsocket
-
+import fs2.io.file.SyncFileHandle
 import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
@@ -34,6 +34,7 @@ import fs2.io.net.Socket
 import fs2.io.evalOnVirtualThreadIfAvailable
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
+import fs2.io.file.FileHandle
 
 private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forIO: UnixSockets[IO] = forLiftIO
@@ -134,5 +135,30 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           ch.shutdownInput(); ()
         }
       )
+    override def sendFile(
+        file: FileHandle[F],
+        offset: Long,
+        count: Long,
+        chunkSize: Int
+    ): Stream[F, Nothing] = file match {
+      case syncFileHandle: SyncFileHandle[F] =>
+        val fileChannel = syncFileHandle.chan
+
+        def go(currOffset: Long, remaining: Long): F[Unit] =
+          if (remaining <= 0) F.unit
+          else {
+            F.blocking(fileChannel.transferTo(currOffset, remaining, ch)).flatMap { written =>
+              if (written == 0) F.unit
+              else {
+                go(currOffset + written, remaining - written)
+              }
+            }
+          }
+
+        Stream.exec(writeMutex.lock.surround(go(offset, count)))
+
+      case _ =>
+        super.sendFile(file, offset, count, chunkSize)
+    }
   }
 }

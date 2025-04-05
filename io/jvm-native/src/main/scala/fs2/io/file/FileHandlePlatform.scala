@@ -67,6 +67,47 @@ private[file] trait FileHandlePlatform[F[_]] {
 
 }
 
+private[io] final class SyncFileHandle[F[_]](val chan: FileChannel)(implicit F: Sync[F])
+    extends FileHandle[F] {
+  type Lock = FileLock
+
+  override def force(metaData: Boolean): F[Unit] =
+    F.blocking(chan.force(metaData))
+
+  override def lock: F[Lock] =
+    F.blocking(chan.lock)
+
+  override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
+    F.blocking(chan.lock(position, size, shared))
+
+  override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
+    F.blocking {
+      val buf = ByteBuffer.allocate(numBytes)
+      val len = chan.read(buf, offset)
+      if (len < 0) None
+      else if (len == 0) Some(Chunk.empty)
+      else Some(Chunk.array(buf.array, 0, len))
+    }
+
+  override def size: F[Long] =
+    F.blocking(chan.size)
+
+  override def truncate(size: Long): F[Unit] =
+    F.blocking { chan.truncate(size); () }
+
+  override def tryLock: F[Option[Lock]] =
+    F.blocking(Option(chan.tryLock()))
+
+  override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
+    F.blocking(Option(chan.tryLock(position, size, shared)))
+
+  override def unlock(f: Lock): F[Unit] =
+    F.blocking(f.release())
+
+  override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
+    F.blocking(chan.write(bytes.toByteBuffer, offset))
+}
+
 private[file] trait FileHandleCompanionPlatform {
   @deprecated("Use Files[F].open", "3.0.0")
   def fromPath[F[_]: Async](path: JPath, flags: Seq[OpenOption]): Resource[F, FileHandle[F]] =
@@ -76,49 +117,11 @@ private[file] trait FileHandleCompanionPlatform {
   def fromFileChannel[F[_]: Async](channel: F[FileChannel]): Resource[F, FileHandle[F]] =
     Files.forAsync[F].openFileChannel(channel)
 
-  /** Creates a `FileHandle[F]` from a `java.nio.channels.FileChannel`. */
+  /** Creates a `SyncFileHandle[F]` from a `java.nio.channels.FileChannel`. */
   private[file] def make[F[_]](
       chan: FileChannel
   )(implicit F: Sync[F]): FileHandle[F] =
-    new FileHandle[F] {
-      type Lock = FileLock
-
-      override def force(metaData: Boolean): F[Unit] =
-        F.blocking(chan.force(metaData))
-
-      override def lock: F[Lock] =
-        F.blocking(chan.lock)
-
-      override def lock(position: Long, size: Long, shared: Boolean): F[Lock] =
-        F.blocking(chan.lock(position, size, shared))
-
-      override def read(numBytes: Int, offset: Long): F[Option[Chunk[Byte]]] =
-        F.blocking {
-          val buf = ByteBuffer.allocate(numBytes)
-          val len = chan.read(buf, offset)
-          if (len < 0) None
-          else if (len == 0) Some(Chunk.empty)
-          else Some(Chunk.array(buf.array, 0, len))
-        }
-
-      override def size: F[Long] =
-        F.blocking(chan.size)
-
-      override def truncate(size: Long): F[Unit] =
-        F.blocking { chan.truncate(size); () }
-
-      override def tryLock: F[Option[Lock]] =
-        F.blocking(Option(chan.tryLock()))
-
-      override def tryLock(position: Long, size: Long, shared: Boolean): F[Option[Lock]] =
-        F.blocking(Option(chan.tryLock(position, size, shared)))
-
-      override def unlock(f: Lock): F[Unit] =
-        F.blocking(f.release())
-
-      override def write(bytes: Chunk[Byte], offset: Long): F[Int] =
-        F.blocking(chan.write(bytes.toByteBuffer, offset))
-    }
+    new SyncFileHandle[F](chan)
 
   /** Creates a `FileHandle[F]` from a `java.nio.channels.SeekableByteChannel`. Because a `SeekableByteChannel` doesn't provide all the functionalities required by `FileHandle` some features like locking will be unavailable. */
   private[file] def makeFromSeekableByteChannel[F[_]](

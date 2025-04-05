@@ -22,6 +22,8 @@
 package fs2
 package io.net
 
+import fs2.io.file.SyncFileHandle
+import fs2.io.file.FileHandle
 import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.Async
@@ -77,7 +79,32 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     F.delay {
       ch.shutdownInput(); ()
     }
+  override def sendFile(
+      file: FileHandle[F],
+      offset: Long,
+      count: Long,
+      chunkSize: Int
+  ): Stream[F, Nothing] = file match {
+    case syncFileHandle: SyncFileHandle[F] =>
+      val fileChannel = syncFileHandle.chan
 
+      def go(currOffset: Long, remaining: Long): F[Unit] =
+        if (remaining <= 0) F.unit
+        else {
+          F.blocking(fileChannel.transferTo(currOffset, remaining, ch)).flatMap { written =>
+            if (written > 0) {
+              go(currOffset + written, remaining - written)
+            } else {
+              selector.select(ch, OP_WRITE).to *> go(currOffset, remaining)
+            }
+          }
+        }
+
+      Stream.exec(writeMutex.lock.surround(go(offset, count)))
+
+    case _ =>
+      super.sendFile(file, offset, count, chunkSize)
+  }
 }
 
 private object SelectingSocket {
