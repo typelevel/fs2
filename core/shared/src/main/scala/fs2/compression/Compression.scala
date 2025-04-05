@@ -70,6 +70,12 @@ sealed trait Compression[F[_]] extends CompressionPlatform[F] {
     * @return See [[compression.GunzipResult]]
     */
   def gunzip(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]]
+
+  def gunzipMulti(inflateParams: InflateParams): Stream[F, Byte] => Stream[F, GunzipResult[F]] = { input =>
+    input.through(inflate(inflateParams)).chunks.map { chunk =>
+      GunzipResult(Stream.chunk(chunk))
+    }
+  }
 }
 
 object Compression extends CompressionCompanionPlatform {
