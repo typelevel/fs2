@@ -141,7 +141,7 @@ private[tls] object S2nConnection {
           F.delay {
             readTasks.set(F.unit)
             val blocked = stackalloc[s2n_blocked_status]()
-            val readed = guard(s2n_recv(conn, buf + i.toLong, (n - i).toLong, blocked))
+            val readed = guard(s2n_recv(conn, buf + i.toLong, (n - i).toCSSize, blocked))
             (!blocked, Math.max(readed, 0))
           }.guaranteeCase { oc =>
             blindingSleep.whenA(oc.isError)
@@ -171,7 +171,7 @@ private[tls] object S2nConnection {
           F.delay {
             writeTasks.set(F.unit)
             val blocked = stackalloc[s2n_blocked_status]()
-            val wrote = guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toLong, blocked))
+            val wrote = guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
             (!blocked, Math.max(wrote, 0))
           }.productL(F.delay(writeTasks.get).flatten)
             .flatMap { case (blocked, wrote) =>
