@@ -61,22 +61,29 @@ class NodeJSCompressionSuite extends CompressionSuite {
     Chunk.uint8Array(out).toArray
   }
 
+  def noneOnJs[A](a: A): Option[A] =
+    if (isJVM || isNative) Some(a) else None
+
   test("gzip |> gunzip ~= id") {
     forAllF {
       (
           s: String,
           level: DeflateParams.Level,
           strategy: DeflateParams.Strategy,
-          flushMode: DeflateParams.FlushMode
+          flushMode: DeflateParams.FlushMode,
+          epochSeconds: Int
       ) =>
+        val expectedFileName = noneOnJs(toEncodableFileName(s))
+        val expectedComment = noneOnJs(toEncodableComment(s))
+        val expectedMTime = MTime.fromEpochSeconds(epochSeconds.toLong)
         Stream
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             Compression[IO].gzip(
-              fileName = None,
-              modificationTime = None,
-              comment = None,
+              fileName = Some(s),
+              modificationTime = MTime.fromEpochSeconds(epochSeconds.toLong),
+              comment = Some(s),
               DeflateParams(
                 bufferSize = 8192,
                 header = ZLibParams.Header.GZIP,
@@ -91,6 +98,9 @@ class NodeJSCompressionSuite extends CompressionSuite {
             Compression[IO].gunzip(8192)
           )
           .flatMap { gunzipResult =>
+            assertEquals(gunzipResult.fileName, expectedFileName)
+            assertEquals(gunzipResult.comment, expectedComment)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -105,16 +115,20 @@ class NodeJSCompressionSuite extends CompressionSuite {
           s: String,
           level: DeflateParams.Level,
           strategy: DeflateParams.Strategy,
-          flushMode: DeflateParams.FlushMode
+          flushMode: DeflateParams.FlushMode,
+          epochSeconds: Int
       ) =>
+        val expectedFileName = noneOnJs(toEncodableFileName(s))
+        val expectedComment = noneOnJs(toEncodableComment(s))
+        val expectedMTime = MTime.fromEpochSeconds(epochSeconds.toLong)
         Stream
           .chunk(Chunk.array(s.getBytes))
           .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
           .through(
             Compression[IO].gzip(
-              fileName = None,
-              modificationTime = None,
-              comment = None,
+              fileName = Some(s),
+              modificationTime = MTime.fromEpochSeconds(epochSeconds.toLong),
+              comment = Some(s),
               DeflateParams(
                 bufferSize = 1031,
                 header = ZLibParams.Header.GZIP,
@@ -129,6 +143,9 @@ class NodeJSCompressionSuite extends CompressionSuite {
             Compression[IO].gunzip(509)
           )
           .flatMap { gunzipResult =>
+            assertEquals(gunzipResult.fileName, expectedFileName)
+            assertEquals(gunzipResult.comment, expectedComment)
+            if (epochSeconds > 0) assertEquals(gunzipResult.modificationTime, expectedMTime)
             gunzipResult.content
           }
           .compile
@@ -136,6 +153,9 @@ class NodeJSCompressionSuite extends CompressionSuite {
           .assertEquals(s.getBytes.toVector)
     }
   }
+
+
+  // -----------------------------------
 
   test("gzip |> gunzip ~= id (mutually prime chunk sizes, decompression larger)") {
     forAllF {
@@ -231,4 +251,16 @@ class NodeJSCompressionSuite extends CompressionSuite {
       .assertEquals(expectedContent)
   }
 
+
+  def toEncodableFileName(fileName: String): String =
+    new String(
+      fileName.replaceAll("\u0000", "_").getBytes(StandardCharsets.ISO_8859_1),
+      StandardCharsets.ISO_8859_1
+    )
+
+  def toEncodableComment(comment: String): String =
+    new String(
+      comment.replaceAll("\u0000", " ").getBytes(StandardCharsets.ISO_8859_1),
+      StandardCharsets.ISO_8859_1
+    )
 }

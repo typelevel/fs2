@@ -26,11 +26,7 @@ import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.Async
 import cats.syntax.all._
-import fs2.compression.Compression
-import fs2.compression.DeflateParams
-import fs2.compression.GunzipResult
-import fs2.compression.InflateParams
-import fs2.compression.ZLibParams
+import fs2.compression.{Compression, DeflateParams, GunzipResult, InflateParams, MTime, ZLibParams}
 import fs2.io.internal.facade
 
 private[io] trait compressionplatform {
@@ -65,9 +61,9 @@ private[io] trait compressionplatform {
         }
 
       def gzip(
-          fileName: Option[Nothing],
-          modificationTime: Option[Nothing],
-          comment: Option[Nothing],
+          fileName: Option[String],
+          modificationTime: Option[MTime],
+          comment: Option[String],
           deflateParams: DeflateParams
       ): Pipe[F, Byte, Byte] = deflateImpl(deflateParams) { options =>
         require(!deflateParams.fhCrcEnabled, "FHCRC is not supported on Node.js")
