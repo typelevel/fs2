@@ -26,4 +26,5 @@ import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
   testProvider("native")(UnixSockets.forLiftIO[IO])
+  testPeerCred("native")(UnixSockets.forLiftIO[IO])
 }

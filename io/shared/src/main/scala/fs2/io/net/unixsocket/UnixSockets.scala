@@ -26,12 +26,24 @@ import fs2.Stream
 import fs2.io.net.Socket
 import fs2.io.net.SocketOption
 
-/** Capability of working with AF_UNIX sockets. */
+/** Capability of working with AF_UNIX sockets.
+  *
+  * This trait provides functionality for creating Unix domain socket clients and servers.
+  * Unix domain sockets provide inter-process communication on the same host using the filesystem
+  * as the address namespace.
+  *
+  * Socket options can be configured for both client and server sockets, including:
+  * - Standard socket options like SO_REUSEADDR, SO_KEEPALIVE, etc.
+  * - Unix-specific options like SO_PEERCRED for retrieving peer process credentials
+  */
 trait UnixSockets[F[_]] {
 
   /** Returns a resource which opens a unix socket to the specified path.
     * @param address The unix socket address to connect to
-    * @param options List of socket options to apply to the socket
+    * @param options List of socket options to apply to the socket. Common options include:
+    *               - SO_REUSEADDR: Allows reuse of local addresses
+    *               - SO_KEEPALIVE: Enables TCP keepalive messages
+    *               - SO_PEERCRED: Retrieves peer process credentials (Unix-specific)
     */
   def client(address: UnixSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
@@ -46,7 +58,10 @@ trait UnixSockets[F[_]] {
     * @param address The unix socket address to listen on
     * @param deleteIfExists Whether to delete the socket file if it exists
     * @param deleteOnClose Whether to delete the socket file when the server closes
-    * @param options List of socket options to apply to the server socket
+    * @param options List of socket options to apply to the server socket. Common options include:
+    *               - SO_REUSEADDR: Allows reuse of local addresses
+    *               - SO_KEEPALIVE: Enables TCP keepalive messages
+    *               - SO_PEERCRED: Retrieves peer process credentials (Unix-specific)
     */
   def server(
       address: UnixSocketAddress,
@@ -61,6 +76,20 @@ object UnixSockets extends UnixSocketsCompanionPlatform {
 
   /** Socket option for getting the credentials of the peer process.
     * This is only supported on Unix platforms.
+    *
+    * The SO_PEERCRED option returns the credentials of the peer process connected via a Unix domain socket.
+    * This includes:
+    * - Process ID (pid)
+    * - User ID (uid)
+    * - Group ID (gid)
+    *
+    * This option is useful for security-sensitive applications that need to verify the identity
+    * of the connecting process.
+    *
+    * Note: This option is not supported on all platforms:
+    * - Native: Fully supported
+    * - JDK: Supported via JNR
+    * - JavaScript: Not supported (throws UnsupportedOperationException)
     */
   val SO_PEERCRED: SocketOption.Key[PeerCredentials] = new SocketOption.Key[PeerCredentials] {
     private[net] def native: Int = 0x1002 // SO_PEERCRED

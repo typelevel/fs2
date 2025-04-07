@@ -26,4 +26,5 @@ import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
   testProvider("node.js")(UnixSockets.forAsync[IO])
+  testPeerCred("node.js")(UnixSockets.forAsync[IO])
 }

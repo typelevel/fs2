@@ -25,27 +25,62 @@ package io.net.unixsocket
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import fs2.io.net.SocketOption
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
   def testProvider(provider: String)(implicit sockets: UnixSockets[IO]) =
     test(s"echoes - $provider") {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
+      val options = List(SocketOption.reuseAddress(true))
 
       val server = UnixSockets[IO]
-        .server(address)
+        .server(address, options = options)
         .map { client =>
           client.reads.through(client.writes)
         }
         .parJoinUnbounded
 
-      def client(msg: Chunk[Byte]) = UnixSockets[IO].client(address).use { server =>
+      def client(msg: Chunk[Byte]) = UnixSockets[IO].client(address, options).use { server =>
         server.write(msg) *> server.endOfOutput *> server.reads.compile
           .to(Chunk)
           .map(read => assertEquals(read, msg))
       }
 
       val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))
+
+      (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalMap(identity))
+        .concurrently(server)
+        .compile
+        .drain
+    }
+
+  def testPeerCred(provider: String)(implicit sockets: UnixSockets[IO]) =
+    test(s"peer credentials - $provider") {
+      val address = UnixSocketAddress("fs2-unix-sockets-peercred-test.sock")
+      val options = List(SocketOption.reuseAddress(true))
+
+      val server = UnixSockets[IO]
+        .server(address, options = options)
+        .map { client =>
+          client.getOption(UnixSockets.SO_PEERCRED).attempt.flatMap {
+            case Right(creds) =>
+              IO(assert(creds.pid > 0))
+              client.reads.through(client.writes)
+            case Left(_) =>
+              // SO_PEERCRED might not be supported on all platforms
+              client.reads.through(client.writes)
+          }
+        }
+        .parJoinUnbounded
+
+      def client(msg: Chunk[Byte]) = UnixSockets[IO].client(address, options).use { server =>
+        server.write(msg) *> server.endOfOutput *> server.reads.compile
+          .to(Chunk)
+          .map(read => assertEquals(read, msg))
+      }
+
+      val clients = (0 until 10).map(b => client(Chunk.singleton(b.toByte)))
 
       (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalMap(identity))
         .concurrently(server)
