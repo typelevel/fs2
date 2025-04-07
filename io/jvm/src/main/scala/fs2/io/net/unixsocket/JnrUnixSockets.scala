@@ -24,6 +24,7 @@ package fs2.io.net.unixsocket
 import cats.effect.kernel.{Async, Resource}
 import cats.effect.syntax.all._
 import fs2.io.file.Files
+import fs2.io.net.SocketOption
 import java.nio.channels.SocketChannel
 import jnr.unixsocket.{
   UnixServerSocketChannel,
@@ -50,14 +51,19 @@ object JnrUnixSockets {
 
 private[unixsocket] class JnrUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
     extends UnixSockets.AsyncUnixSockets[F] {
-  protected def openChannel(address: UnixSocketAddress) =
+  protected def openChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     Resource.make(F.blocking(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path))))(ch =>
       F.blocking(ch.close())
-    )
+    ).evalTap { ch =>
+      options.traverse_(opt => F.blocking(opt.apply(ch.getSocket)))
+    }
 
-  protected def openServerChannel(address: UnixSocketAddress) =
+  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     Resource
       .make(F.blocking(UnixServerSocketChannel.open()))(ch => F.blocking(ch.close()))
+      .evalTap { sch =>
+        options.traverse_(opt => F.blocking(opt.apply(sch.getSocket)))
+      }
       .evalTap { sch =>
         F.blocking(sch.socket().bind(new JnrUnixSocketAddress(address.path)))
           .cancelable(F.blocking(sch.close()))

@@ -71,4 +71,34 @@ private[net] trait SocketOptionCompanionPlatform {
 
   def noDelay(value: Boolean): SocketOption =
     boolean(StandardSocketOptions.TCP_NODELAY, value)
+
+  implicit class KeyOps[A](key: Key[A]) {
+    def get[F[_]](socket: Socket[F]): F[A] = socket.getOption(key)
+
+    private[net] def native: Int = key match {
+      case StandardSocketOptions.SO_SNDBUF => 0x1001
+      case StandardSocketOptions.SO_RCVBUF => 0x1002
+      case StandardSocketOptions.SO_REUSEADDR => 0x0004
+      case StandardSocketOptions.SO_REUSEPORT => 0x0200
+      case StandardSocketOptions.SO_KEEPALIVE => 0x0008
+      case StandardSocketOptions.TCP_NODELAY => 0x0001
+      case _ => throw new IllegalArgumentException(s"Unsupported socket option: $key")
+    }
+
+    private[net] def fromNative(value: Int): A = key match {
+      case StandardSocketOptions.SO_SNDBUF => value.asInstanceOf[A]
+      case StandardSocketOptions.SO_RCVBUF => value.asInstanceOf[A]
+      case StandardSocketOptions.SO_REUSEADDR => (value != 0).asInstanceOf[A]
+      case StandardSocketOptions.SO_REUSEPORT => (value != 0).asInstanceOf[A]
+      case StandardSocketOptions.SO_KEEPALIVE => (value != 0).asInstanceOf[A]
+      case StandardSocketOptions.TCP_NODELAY => (value != 0).asInstanceOf[A]
+      case _ => throw new IllegalArgumentException(s"Unsupported socket option: $key")
+    }
+
+    private[net] def getJs(socket: fs2.io.internal.facade.net.Socket): A = key match {
+      case StandardSocketOptions.SO_KEEPALIVE => socket.readyState == "open" && !socket.destroyed
+      case StandardSocketOptions.TCP_NODELAY => true // Node.js sockets are always nodelay
+      case _ => throw new IllegalArgumentException(s"Unsupported socket option: $key")
+    }
+  }
 }

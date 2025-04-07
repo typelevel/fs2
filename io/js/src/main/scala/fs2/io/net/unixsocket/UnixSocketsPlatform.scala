@@ -32,6 +32,7 @@ import fs2.concurrent.Channel
 import fs2.io.file.Files
 import fs2.io.file.Path
 import fs2.io.net.Socket
+import fs2.io.net.SocketOption
 import fs2.io.internal.facade
 
 import scala.scalajs.js
@@ -50,7 +51,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
   def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] =
     new UnixSockets[F] {
 
-      override def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
+      override def client(address: UnixSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]] =
         Resource
           .make(
             F.delay(
@@ -63,17 +64,21 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
             }
           )
           .evalTap { socket =>
+            options.traverse_(opt => F.delay(opt.applyJs(socket)))
+          }
+          .evalTap { socket =>
             F.async_[Unit] { cb =>
               socket.connect(address.path, () => cb(Right(())))
               ()
             }
           }
-          .flatMap(Socket.forAsync[F])
+          .flatMap(socket => Socket.forAsync[F](socket).map(new UnixSocket(socket, _)))
 
       override def server(
           address: UnixSocketAddress,
-          deleteIfExists: Boolean,
-          deleteOnClose: Boolean
+          deleteIfExists: Boolean = false,
+          deleteOnClose: Boolean = true,
+          options: List[SocketOption] = Nil
       ): fs2.Stream[F, Socket[F]] =
         for {
           dispatcher <- Stream.resource(Dispatcher.sequential[F])
@@ -81,13 +86,15 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
           errored <- Stream.eval(F.deferred[js.JavaScriptException])
           server <- Stream.bracket(
             F.delay {
-              facade.net.createServer(
+              val srv = facade.net.createServer(
                 new facade.net.ServerOptions {
                   pauseOnConnect = true
                   allowHalfOpen = true
                 },
                 sock => dispatcher.unsafeRunAndForget(channel.send(sock))
               )
+              options.foreach(opt => opt.applyJs(srv))
+              srv
             }
           )(server =>
             F.async_[Unit] { cb =>
@@ -114,9 +121,27 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
               ()
             }
           )
-          socket <- channel.stream.flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+          socket <- channel.stream.flatMap(sock => Stream.resource(Socket.forAsync(sock).map(new UnixSocket(sock, _))))
         } yield socket
 
+      private class UnixSocket[F[_]](socket: facade.net.Socket, underlying: Socket[F])(implicit F: Async[F]) extends Socket[F] {
+        def read(maxBytes: Int): F[Option[Chunk[Byte]]] = underlying.read(maxBytes)
+        def readN(numBytes: Int): F[Chunk[Byte]] = underlying.readN(numBytes)
+        def reads: Stream[F, Byte] = underlying.reads
+        def endOfInput: F[Unit] = underlying.endOfInput
+        def endOfOutput: F[Unit] = underlying.endOfOutput
+        def isOpen: F[Boolean] = underlying.isOpen
+        def remoteAddress: F[SocketAddress[IpAddress]] = underlying.remoteAddress
+        def localAddress: F[SocketAddress[IpAddress]] = underlying.localAddress
+        def write(bytes: Chunk[Byte]): F[Unit] = underlying.write(bytes)
+        def writes: Pipe[F, Byte, Nothing] = underlying.writes
+        def getOption[A](option: SocketOption.Key[A]): F[A] = option match {
+          case UnixSockets.SO_PEERCRED =>
+            F.raiseError(new UnsupportedOperationException("SO_PEERCRED is not supported on Node.js"))
+          case _ =>
+            F.delay(option.getJs(socket))
+        }
+      }
     }
 
 }

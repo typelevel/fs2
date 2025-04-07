@@ -24,6 +24,7 @@ package fs2.io.internal
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.unsafe._
 
+@extern
 private[io] object sysun {
   import Nat._
   type _108 = Digit3[_1, _0, _8]
@@ -33,8 +34,11 @@ private[io] object sysun {
     CArray[CChar, _108]
   ]
 
+  type ucred_t = CStruct3[CInt, CInt, CInt]
+  final val SO_PEERCRED = 0x1002
 }
 
+@extern
 private[io] object sysunOps {
   import sysun._
 
@@ -45,4 +49,9 @@ private[io] object sysunOps {
     def sun_path_=(sun_path: CArray[CChar, _108]): Unit = sockaddr_un._2 = sun_path
   }
 
+  implicit class ucred_tOps(val ptr: Ptr[sysun.ucred_t]) extends AnyVal {
+    def pid: Ptr[CInt] = ptr._1
+    def uid: Ptr[CInt] = ptr._2
+    def gid: Ptr[CInt] = ptr._3
+  }
 }

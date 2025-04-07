@@ -36,6 +36,7 @@ import fs2.io.internal.SocketHelpers
 import fs2.io.internal.syssocket._
 import fs2.io.internal.sysun._
 import fs2.io.internal.sysunOps._
+import fs2.io.net.SocketOption
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.string._
@@ -47,9 +48,10 @@ import scala.scalanative.unsigned._
 private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[F])
     extends UnixSockets[F] {
 
-  def client(address: UnixSocketAddress): Resource[F, Socket[F]] = for {
+  def client(address: UnixSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
     fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
+    _ <- Resource.eval(options.traverse_(opt => F.delay(opt.applyNative(fd))))
     handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
     _ <- Resource.eval {
       handle
@@ -72,8 +74,9 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
 
   def server(
       address: UnixSocketAddress,
-      deleteIfExists: Boolean,
-      deleteOnClose: Boolean
+      deleteIfExists: Boolean = false,
+      deleteOnClose: Boolean = true,
+      options: List[SocketOption] = Nil
   ): Stream[F, Socket[F]] = for {
     poller <- Stream.eval(fileDescriptorPoller[F])
 
@@ -82,6 +85,7 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
     }
 
     fd <- Stream.resource(SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM))
+    _ <- Stream.eval(options.traverse_(opt => F.delay(opt.applyNative(fd))))
     handle <- Stream.resource(poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK))
 
     _ <- Stream.eval {

@@ -61,6 +61,13 @@ trait Socket[F[_]] {
   /** Asks for the local address of the socket. */
   def localAddress: F[SocketAddress[IpAddress]]
 
+  /** Gets the value of a socket option.
+    *
+    * @param option the socket option to get
+    * @return the value of the socket option
+    */
+  def getOption[A](option: SocketOption.Key[A]): F[A]
+
   /** Writes `bytes` to the peer.
     *
     * Completes when the bytes are written to the socket.

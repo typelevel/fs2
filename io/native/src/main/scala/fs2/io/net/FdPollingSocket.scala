@@ -32,6 +32,10 @@ import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.SocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.ResizableBuffer
+import fs2.io.internal.SocketHelpers
+import fs2.io.internal.syssocket._
+import fs2.io.internal.sysun._
+import fs2.io.internal.sysunOps._
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.errno._
@@ -56,6 +60,24 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
   def endOfOutput: F[Unit] = shutdownF(1)
   private[this] def shutdownF(how: Int): F[Unit] = F.delay {
     guardMask_(shutdown(fd, how))(_ == ENOTCONN)
+  }
+
+  def getOption[A](option: SocketOption.Key[A]): F[A] = F.delay {
+    option match {
+      case unixsocket.UnixSockets.SO_PEERCRED =>
+        val ucred = stackalloc[ucred_t]()
+        val optlen = stackalloc[socklen_t]()
+        !optlen = sizeof[ucred_t].toUInt
+        guard_(getsockopt(fd, SOL_SOCKET, SO_PEERCRED, ucred.asInstanceOf[Ptr[Byte]], optlen))
+        val value = (!ucred.pid.toLong << 32) | (!ucred.uid.toLong << 16) | !ucred.gid.toLong
+        option.fromNative(value.toInt)
+      case _ =>
+        val optval = stackalloc[CInt]()
+        val optlen = stackalloc[socklen_t]()
+        !optlen = sizeof[CInt].toUInt
+        guard_(getsockopt(fd, SOL_SOCKET, option.native, optval.asInstanceOf[Ptr[Byte]], optlen))
+        option.fromNative(!optval)
+    }
   }
 
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readBuffer.get(maxBytes).use { buf =>

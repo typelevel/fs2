@@ -24,13 +24,16 @@ package fs2.io.net.unixsocket
 import cats.effect.kernel.Resource
 import fs2.Stream
 import fs2.io.net.Socket
+import fs2.io.net.SocketOption
 
 /** Capability of working with AF_UNIX sockets. */
 trait UnixSockets[F[_]] {
 
   /** Returns a resource which opens a unix socket to the specified path.
+    * @param address The unix socket address to connect to
+    * @param options List of socket options to apply to the socket
     */
-  def client(address: UnixSocketAddress): Resource[F, Socket[F]]
+  def client(address: UnixSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
   /** Listens to the specified path for connections and emits a `Socket` for each connection.
     *
@@ -39,14 +42,44 @@ trait UnixSockets[F[_]] {
     * which will first delete the path.
     *
     * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose = false`.
+    *
+    * @param address The unix socket address to listen on
+    * @param deleteIfExists Whether to delete the socket file if it exists
+    * @param deleteOnClose Whether to delete the socket file when the server closes
+    * @param options List of socket options to apply to the server socket
     */
   def server(
       address: UnixSocketAddress,
       deleteIfExists: Boolean = false,
-      deleteOnClose: Boolean = true
+      deleteOnClose: Boolean = true,
+      options: List[SocketOption] = Nil
   ): Stream[F, Socket[F]]
 }
 
 object UnixSockets extends UnixSocketsCompanionPlatform {
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
+
+  /** Socket option for getting the credentials of the peer process.
+    * This is only supported on Unix platforms.
+    */
+  val SO_PEERCRED: SocketOption.Key[PeerCredentials] = new SocketOption.Key[PeerCredentials] {
+    private[net] def native: Int = 0x1002 // SO_PEERCRED
+    private[net] def fromNative(value: Int): PeerCredentials = {
+      val pid = (value >> 32) & 0xFFFFFFFF
+      val uid = (value >> 16) & 0xFFFF
+      val gid = value & 0xFFFF
+      PeerCredentials(pid.toInt, uid.toInt, gid.toInt)
+    }
+    private[net] def getJs(socket: fs2.io.internal.facade.net.Socket): PeerCredentials =
+      throw new UnsupportedOperationException("SO_PEERCRED is not supported on Node.js")
+    def get[F[_]](socket: Socket[F]): F[PeerCredentials] = socket.getOption(this)
+  }
 }
+
+/** Credentials of a peer process connected via a Unix domain socket.
+  *
+  * @param pid Process ID of the peer process
+  * @param uid User ID of the peer process
+  * @param gid Group ID of the peer process
+  */
+case class PeerCredentials(pid: Int, uid: Int, gid: Int)

@@ -34,6 +34,30 @@ sealed trait SocketOption {
 }
 
 object SocketOption extends SocketOptionCompanionPlatform {
+  sealed trait Key[A] {
+    /** Gets the value of this socket option from a socket.
+      * 
+      * @param socket the socket to get the option from
+      * @return the value of the socket option
+      */
+    def get[F[_]](socket: Socket[F]): F[A]
+
+    /** Gets the native value of this socket option.
+      * Used by native implementations.
+      */
+    private[net] def native: Int
+
+    /** Converts a native value to the socket option value.
+      * Used by native implementations.
+      */
+    private[net] def fromNative(value: Int): A
+
+    /** Gets the value of this socket option from a JavaScript socket.
+      * Used by JavaScript implementations.
+      */
+    private[net] def getJs(socket: fs2.io.internal.facade.net.Socket): A
+  }
+
   def apply[A](key0: Key[A], value0: A): SocketOption = new SocketOption {
     type Value = A
     val key = key0
