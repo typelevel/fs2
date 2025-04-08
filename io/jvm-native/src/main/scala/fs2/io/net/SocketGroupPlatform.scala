@@ -33,7 +33,7 @@ import java.nio.channels.{
 import java.nio.channels.AsynchronousChannelGroup
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Ipv4Address, Port, SocketAddress}
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
   private[fs2] def unsafe[F[_]: Async: Dns](
@@ -84,10 +84,18 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         address: Option[Host],
         port: Option[Port],
         options: List[SocketOption]
-    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = {
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+      serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap { bound =>
+        bound.serverSocketInfo.localAddress.map { case addr: SocketAddress[IpAddress] => (addr, bound.clients) }
+      }
+
+    def serverBound(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+    ): Resource[F, BoundServer[F]] = {
 
       val setup: Resource[F, AsynchronousServerSocketChannel] =
-        Resource.eval(address.traverse(_.resolve[F])).flatMap { addr =>
+        Resource.eval(address.host.resolve[F]).flatMap { addr =>
           Resource
             .make(
               Async[F].delay(
@@ -98,8 +106,8 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
               Async[F].delay(
                 ch.bind(
                   new InetSocketAddress(
-                    addr.map(_.toInetAddress).orNull,
-                    port.map(_.value).getOrElse(0)
+                    if (addr.isWildcard) null else addr.toInetAddress,
+                    address.port.value
                   )
                 )
               )
@@ -152,9 +160,13 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
       }
 
       setup.map { sch =>
-        val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
-        val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
-        (localAddress, acceptIncoming(sch))
+        // val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
+        // val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
+        // (localAddress, acceptIncoming(sch))
+        new UnsealedBoundServer[F] {
+          def serverSocketInfo = SocketInfo.forAsync(sch)
+          def clients = acceptIncoming(sch)
+        }
       }
     }
   }

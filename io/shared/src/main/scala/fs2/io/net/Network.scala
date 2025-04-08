@@ -54,7 +54,9 @@ sealed trait Network[F[_]]
     with DatagramSocketGroup[F] {
 
   def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
+
   def bind(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, BoundServer[F]]
+
   def bindAndAccept(address: GenSocketAddress, options: List[SocketOption] = Nil): Stream[F, Socket[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
@@ -71,7 +73,7 @@ object Network extends NetworkCompanionPlatform {
 }
 
 sealed trait BoundServer[F[_]] {
-  def serverSocket: Socket[F]
+  def serverSocketInfo: SocketInfo[F]
   def clients: Stream[F, Socket[F]]
 }
 private[net] trait UnsealedBoundServer[F[_]] extends BoundServer[F]

@@ -125,6 +125,16 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           case None => fallback.serverResource(address, port, options)
         }
 
+      def serverBound(
+        address: SocketAddress[Host],
+        options: List[SocketOption]
+      ): Resource[F, BoundServer[F]] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) =>
+            new SelectingSocketGroup(selector).serverBound(address, options)
+          case None => fallback.serverBound(address, options)
+        }
+
       def openDatagramSocket(
           address: Option[Host],
           port: Option[Port],
@@ -176,6 +186,12 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
         globalSocketGroup.serverResource(address, port, options)
 
+      def serverBound(
+        address: SocketAddress[Host],
+        options: List[SocketOption]
+      ): Resource[F, BoundServer[F]] =
+        globalSocketGroup.serverBound(address, options)
+
       def openDatagramSocket(
           address: Option[Host],
           port: Option[Port],
@@ -200,9 +216,24 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       }
     }
 
-    def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, BoundServer[F]] = ???
+    def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, BoundServer[F]] = {
+      address match {
+        case sa: SocketAddress[_] =>
+          // val host = sa.host match {
+          //   case ip: IpAddress if ip.isWildcard => None
+          //   case other => Some(other)
+          // }
+          // val port = if (sa.port == Port.Wildcard) None else Some(sa.port)
+          serverBound(sa, options)
+        case ua: UnixSocketAddress =>
+          unixSockets.server(fs2.io.net.unixsocket.UnixSocketAddress(ua.path))
+          ???
+        case _ => ???
+      }
+    }
 
-    def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] = ???
+    def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] =
+      Stream.resource(bind(address, options)).flatMap(_.clients)
   }
 
 }

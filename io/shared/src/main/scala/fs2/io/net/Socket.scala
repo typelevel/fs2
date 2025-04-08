@@ -23,12 +23,12 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.file.FileHandle
 
 /** Provides the ability to read/write from a TCP socket in the effect `F`.
   */
-trait Socket[F[_]] {
+trait Socket[F[_]] extends SocketInfo[F] {
 
   /** Reads up to `maxBytes` from the peer.
     *
@@ -58,8 +58,8 @@ trait Socket[F[_]] {
   /** Asks for the remote address of the peer. */
   def remoteAddress: F[SocketAddress[IpAddress]]
 
-  /** Asks for the local address of the socket. */
-  def localAddress: F[SocketAddress[IpAddress]]
+  // TODO
+  def remoteAddressGen: F[GenSocketAddress]
 
   /** Writes `bytes` to the peer.
     *

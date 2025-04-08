@@ -27,10 +27,10 @@ import cats.effect.kernel.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.{Chunk, Stream}
 import fs2.io.file.{Files, Path}
-import fs2.io.net.Socket
+import fs2.io.net.{Socket, SocketInfo}
 import fs2.io.evalOnVirtualThreadIfAvailable
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
@@ -100,7 +100,10 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       readMutex: Mutex[F],
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends Socket.BufferedReads[F](readMutex) {
+      extends Socket.BufferedReads[F](readMutex) with SocketInfo.AsyncSocketInfo[F] {
+
+    protected def asyncInstance = F
+    protected def channel = ch
 
     def readChunk(buff: ByteBuffer): F[Int] =
       evalOnVirtualThreadIfAvailable(F.blocking(ch.read(buff)))
@@ -116,8 +119,12 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
       }
     }
 
-    def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+    override def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+
     def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+
+    def remoteAddressGen: F[GenSocketAddress] = ??? // TODO
+
     private def raiseIpAddressError[A]: F[A] =
       F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
 
