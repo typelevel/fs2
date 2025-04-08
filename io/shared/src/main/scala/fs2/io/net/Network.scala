@@ -51,7 +51,7 @@ sealed trait Network[F[_]]
     with SocketGroup[F]
     with DatagramSocketGroup[F] {
 
-  def tcp: TcpBuilder.NeedAddress[F]
+  def tcp: NeedAddress[F, TcpBuilder[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
     *
@@ -84,37 +84,35 @@ sealed trait TcpBuilder[F[_]] {
   def bindAndServe: Stream[F, Socket[F]]
 }
 
+sealed trait NeedAddress[F[_], Builder] {
+
+  def address(address: GenSocketAddress): Builder
+
+  def hostAndPort(host: Host, port: Port): Builder =
+    address(SocketAddress(host, port))
+
+  def port(port: Port): Builder =
+    hostAndPort(Ipv4Address.Wildcard, port)
+
+  def port(p: Int): Builder =
+    Port.fromInt(p) match {
+      case Some(pp) => port(pp)
+      case None => ??? // TODO
+    }
+
+  def hostAndEphemeralPort(host: Host): Builder =
+    hostAndPort(host, Port.Wildcard)
+
+  def ephemeralPort: Builder =
+    address(SocketAddress.Wildcard)
+
+  def unixSocket(path: fs2.io.file.Path): Builder =
+    address(UnixSocketAddress(path.toString))
+}
+
+private[net] trait UnsealedNeedAddress[F[_], Builder] extends NeedAddress[F, Builder]
+
 object TcpBuilder {
-  sealed trait NeedAddress[F[_]] {
-    protected def mkClient(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]]
-    
-    def address(address: GenSocketAddress): TcpBuilder[F] =
-      TcpBuilder[F](mkClient, address, Nil)
-
-    def hostAndPort(host: Host, port: Port): TcpBuilder[F] =
-      address(SocketAddress(host, port))
-
-    def port(port: Port): TcpBuilder[F] =
-      hostAndPort(Ipv4Address.Wildcard, port)
-
-    def port(p: Int): TcpBuilder[F] =
-      Port.fromInt(p) match {
-        case Some(pp) => port(pp)
-        case None => ??? // TODO
-      }
-
-    def hostAndEphemeralPort(host: Host): TcpBuilder[F] =
-      hostAndPort(host, Port.Wildcard)
-
-    def ephemeralPort: TcpBuilder[F] =
-      address(SocketAddress.Wildcard)
-
-    def unixSocket(path: fs2.io.file.Path): TcpBuilder[F] =
-      address(UnixSocketAddress(path.toString))
-  }
-
-  private[net] trait UnsealedNeedAddress[F[_]] extends NeedAddress[F]
-
   private[net] def apply[F[_]](
     mkClient: (GenSocketAddress, List[SocketOption]) => Resource[F, Socket[F]],
     address: GenSocketAddress,
