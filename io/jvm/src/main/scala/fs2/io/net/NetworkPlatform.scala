@@ -192,17 +192,17 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
     private def unixSockets = fs2.io.net.unixsocket.UnixSockets.forAsync[F]
 
-    def tcp: NeedAddress[F, TcpBuilder[F]] = new UnsealedNeedAddress[F, TcpBuilder[F]] {
-      def address(address: GenSocketAddress): TcpBuilder[F] = {
-        def mkClient(address: GenSocketAddress, options: List[SocketOption]) =
-          address match {
-            case sa: SocketAddress[_] => client(sa, options)
-            case ua: UnixSocketAddress => unixSockets.client(fs2.io.net.unixsocket.UnixSocketAddress(ua.path))
-            case _ => ???
-          }
-        TcpBuilder[F](mkClient, address, Nil)
+    def connect(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] = {
+      address match {
+        case sa: SocketAddress[_] => client(sa, options)
+        case ua: UnixSocketAddress => unixSockets.client(fs2.io.net.unixsocket.UnixSocketAddress(ua.path))
+        case _ => ???
       }
-   }
+    }
+
+    def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, BoundServer[F]] = ???
+
+    def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] = ???
   }
 
 }

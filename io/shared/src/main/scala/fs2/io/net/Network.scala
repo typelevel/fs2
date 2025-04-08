@@ -23,6 +23,8 @@ package fs2
 package io
 package net
 
+import cats.effect.Resource
+import com.comcast.ip4s.GenSocketAddress
 import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
@@ -51,7 +53,9 @@ sealed trait Network[F[_]]
     with SocketGroup[F]
     with DatagramSocketGroup[F] {
 
-  def tcp: NeedAddress[F, TcpBuilder[F]]
+  def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
+  def bind(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, BoundServer[F]]
+  def bindAndAccept(address: GenSocketAddress, options: List[SocketOption] = Nil): Stream[F, Socket[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
     *
@@ -66,65 +70,9 @@ object Network extends NetworkCompanionPlatform {
   def apply[F[_]](implicit F: Network[F]): F.type = F
 }
 
-import cats.effect.Resource
-import com.comcast.ip4s.*
-
 sealed trait BoundServer[F[_]] {
   def serverSocket: Socket[F]
   def clients: Stream[F, Socket[F]]
 }
 private[net] trait UnsealedBoundServer[F[_]] extends BoundServer[F]
 
-
-sealed trait TcpBuilder[F[_]] {
-  def withAddress(address: GenSocketAddress): TcpBuilder[F]
-  def withSocketOptions(options: List[SocketOption]): TcpBuilder[F]
-  def connect: Resource[F, Socket[F]]
-  def bind: Resource[F, BoundServer[F]]
-  def bindAndServe: Stream[F, Socket[F]]
-}
-
-sealed trait NeedAddress[F[_], Builder] {
-
-  def address(address: GenSocketAddress): Builder
-
-  def hostAndPort(host: Host, port: Port): Builder =
-    address(SocketAddress(host, port))
-
-  def port(port: Port): Builder =
-    hostAndPort(Ipv4Address.Wildcard, port)
-
-  def port(p: Int): Builder =
-    Port.fromInt(p) match {
-      case Some(pp) => port(pp)
-      case None => ??? // TODO
-    }
-
-  def hostAndEphemeralPort(host: Host): Builder =
-    hostAndPort(host, Port.Wildcard)
-
-  def ephemeralPort: Builder =
-    address(SocketAddress.Wildcard)
-
-  def unixSocket(path: fs2.io.file.Path): Builder =
-    address(UnixSocketAddress(path.toString))
-}
-
-private[net] trait UnsealedNeedAddress[F[_], Builder] extends NeedAddress[F, Builder]
-
-object TcpBuilder {
-  private[net] def apply[F[_]](
-    mkClient: (GenSocketAddress, List[SocketOption]) => Resource[F, Socket[F]],
-    address: GenSocketAddress,
-    options: List[SocketOption]
-  ): TcpBuilder[F] = new TcpBuilder[F] {
-    private def copy(address: GenSocketAddress = address, options: List[SocketOption] = options): TcpBuilder[F] =
-      apply[F](mkClient, address, options)
-    def withSocketOptions(options: List[SocketOption]) = copy(options = options)
-    def withAddress(address: GenSocketAddress) = copy(address = address)
-    def connect: Resource[F, Socket[F]] = mkClient(address, options)
-    def bind: Resource[F, BoundServer[F]]= ???
-    def bindAndServe: Stream[F, Socket[F]] = ??? //Stream.resource(bind).flatMap(_.clients) 
-  }
-
-}
