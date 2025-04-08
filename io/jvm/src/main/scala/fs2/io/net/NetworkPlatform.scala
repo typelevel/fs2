@@ -28,7 +28,7 @@ import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, GenSocketAddress, Host, IpAddress, Port, SocketAddress, UnixSocketAddress}
 
 import fs2.internal.ThreadFactories
 import fs2.io.net.tls.TLSContext
@@ -80,7 +80,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
   def forIO: Network[IO] = forLiftIO
 
   implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
-    new UnsealedNetwork[F] {
+    new AsyncNetwork[F] {
       private lazy val fallback = forAsync[F]
 
       private def tryGetSelector =
@@ -132,15 +132,13 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           protocolFamily: Option[ProtocolFamily]
       ): Resource[F, DatagramSocket[F]] =
         fallback.openDatagramSocket(address, port, options, protocolFamily)
-
-      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))
 
   def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
-    new UnsealedNetwork[F] {
+    new AsyncNetwork[F] {
       private lazy val globalSocketGroup = SocketGroup.unsafe[F](globalAcg)
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 
@@ -185,8 +183,23 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           protocolFamily: Option[ProtocolFamily]
       ): Resource[F, DatagramSocket[F]] =
         globalDatagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
-
-      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
     }
+
+
+  private abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends UnsealedNetwork[F] {
+
+    def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+
+    private def unixSockets = fs2.io.net.unixsocket.UnixSockets.forAsync[F]
+
+    def tcp: TcpBuilder.NeedAddress[F] = new TcpBuilder.UnsealedNeedAddress[F] {
+      def mkClient(address: GenSocketAddress, options: List[SocketOption]) =
+        address match {
+          case sa: SocketAddress[_] => client(sa, options)
+          case ua: UnixSocketAddress => unixSockets.client(fs2.io.net.unixsocket.UnixSocketAddress(ua.path))
+          case _ => ???
+        }
+    }
+  }
 
 }

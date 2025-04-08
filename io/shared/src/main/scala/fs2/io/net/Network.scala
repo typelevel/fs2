@@ -51,6 +51,8 @@ sealed trait Network[F[_]]
     with SocketGroup[F]
     with DatagramSocketGroup[F] {
 
+  def tcp: TcpBuilder.NeedAddress[F]
+
   /** Returns a builder for `TLSContext[F]` values.
     *
     * For example, `Network[IO].tlsContext.system` returns a `F[TLSContext[F]]`.
@@ -62,4 +64,69 @@ object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
+}
+
+import cats.effect.Resource
+import com.comcast.ip4s.*
+
+sealed trait BoundServer[F[_]] {
+  def serverSocket: Socket[F]
+  def clients: Stream[F, Socket[F]]
+}
+private[net] trait UnsealedBoundServer[F[_]] extends BoundServer[F]
+
+
+sealed trait TcpBuilder[F[_]] {
+  def withAddress(address: GenSocketAddress): TcpBuilder[F]
+  def withSocketOptions(options: List[SocketOption]): TcpBuilder[F]
+  def connect: Resource[F, Socket[F]]
+  def bind: Resource[F, BoundServer[F]]
+  def bindAndServe: Stream[F, Socket[F]]
+}
+
+object TcpBuilder {
+  sealed trait NeedAddress[F[_]] {
+    protected def mkClient(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]]
+    
+    def address(address: GenSocketAddress): TcpBuilder[F] =
+      TcpBuilder[F](mkClient, address, Nil)
+
+    def hostAndPort(host: Host, port: Port): TcpBuilder[F] =
+      address(SocketAddress(host, port))
+
+    def port(port: Port): TcpBuilder[F] =
+      hostAndPort(Ipv4Address.Wildcard, port)
+
+    def port(p: Int): TcpBuilder[F] =
+      Port.fromInt(p) match {
+        case Some(pp) => port(pp)
+        case None => ??? // TODO
+      }
+
+    def hostAndEphemeralPort(host: Host): TcpBuilder[F] =
+      hostAndPort(host, Port.Wildcard)
+
+    def ephemeralPort: TcpBuilder[F] =
+      address(SocketAddress.Wildcard)
+
+    def unixSocket(path: fs2.io.file.Path): TcpBuilder[F] =
+      address(UnixSocketAddress(path.toString))
+  }
+
+  private[net] trait UnsealedNeedAddress[F[_]] extends NeedAddress[F]
+
+  private[net] def apply[F[_]](
+    mkClient: (GenSocketAddress, List[SocketOption]) => Resource[F, Socket[F]],
+    address: GenSocketAddress,
+    options: List[SocketOption]
+  ): TcpBuilder[F] = new TcpBuilder[F] {
+    private def copy(address: GenSocketAddress = address, options: List[SocketOption] = options): TcpBuilder[F] =
+      apply[F](mkClient, address, options)
+    def withSocketOptions(options: List[SocketOption]) = copy(options = options)
+    def withAddress(address: GenSocketAddress) = copy(address = address)
+    def connect: Resource[F, Socket[F]] = mkClient(address, options)
+    def bind: Resource[F, BoundServer[F]]= ???
+    def bindAndServe: Stream[F, Socket[F]] = ??? //Stream.resource(bind).flatMap(_.clients) 
+  }
+
 }
