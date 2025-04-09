@@ -24,7 +24,7 @@ package io
 package net
 
 import cats.effect.{Async, Resource}
-import com.comcast.ip4s.GenSocketAddress
+import com.comcast.ip4s.{GenSocketAddress, Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
@@ -79,6 +79,32 @@ object Network extends NetworkCompanionPlatform {
       Stream.resource(bind(address, options)).flatMap(_.clients)
 
     override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+
+    // Implementations of deprecated operations
+    
+    override def client(
+        to: SocketAddress[Host],
+        options: List[SocketOption]
+    ): Resource[F, Socket[F]] = connect(to, options)
+
+    override def server(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[SocketOption]
+    ): Stream[F, Socket[F]] = Stream.resource(serverResource(address, port, options)).flatMap(_._2)
+
+    override def serverResource(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[SocketOption]
+    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+      serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
+        .flatMap(b => Resource.eval(b.socketInfo.localAddress).map(a => (a, b.clients)))
+
+    override def serverBound(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+    ): Resource[F, Bind[F]] = bind(address, options)
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

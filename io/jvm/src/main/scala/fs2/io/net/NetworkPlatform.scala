@@ -92,16 +92,18 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       private implicit def dns: Dns[F] = Dns.forAsync[F]
 
+      private def selecting[A](ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A], orElse: => Resource[F, A]): Resource[F, A] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) => ifSelecting(new SelectingIpSocketsProvider(selector))
+          case None => orElse
+        }
+
       def connect(
         address: GenSocketAddress,
         options: List[SocketOption]
       ): Resource[F, Socket[F]] =
         matchAddress(address,
-          sa =>
-            Resource.eval(tryGetSelector).flatMap {
-              case Some(selector) => new SelectingIpSocketsProvider(selector).connect(sa, options)
-              case None => fallback.connect(sa, options)
-            },
+          sa => selecting(_.connect(sa, options), fallback.connect(sa, options)),
           ua => ???)
 
       def bind(
@@ -109,11 +111,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         options: List[SocketOption]
       ): Resource[F, Bind[F]] =
         matchAddress(address,
-          sa =>
-            Resource.eval(tryGetSelector).flatMap {
-              case Some(selector) => new SelectingIpSocketsProvider(selector).bind(sa, options)
-              case None => fallback.bind(sa, options)
-            },
+          sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
           ua => ???)
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
@@ -134,45 +132,6 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           case Some(selector) => Resource.pure(new SelectingSocketGroup[F](selector))
           case None           => fallback.socketGroup(threadCount, threadFactory)
         }
-
-      def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] = Resource.eval(tryGetSelector).flatMap {
-        case Some(selector) => new SelectingSocketGroup(selector).client(to, options)
-        case None           => fallback.client(to, options)
-      }
-
-      def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] = Stream.eval(tryGetSelector).flatMap {
-        case Some(selector) => new SelectingSocketGroup(selector).server(address, port, options)
-        case None           => fallback.server(address, port, options)
-      }
-
-      def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) =>
-            new SelectingSocketGroup(selector).serverResource(address, port, options)
-          case None => fallback.serverResource(address, port, options)
-        }
-
-      def serverBound(
-        address: SocketAddress[Host],
-        options: List[SocketOption]
-      ): Resource[F, Bind[F]] =
-        Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) =>
-            new SelectingSocketGroup(selector).serverBound(address, options)
-          case None => fallback.serverBound(address, options)
-        }
-
     }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
@@ -225,30 +184,5 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
             )
           )(acg => F.delay(acg.shutdown()))
           .map(SocketGroup.unsafe[F](_))
-
-      def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] = ipSockets.connect(to, options)
-
-      def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] = Stream.resource(serverResource(address, port, options)).flatMap(_._2)
-
-      def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
-          .flatMap(b => Resource.eval(b.socketInfo.localAddress).map(a => (a, b.clients)))
-
-      def serverBound(
-        address: SocketAddress[Host],
-        options: List[SocketOption]
-      ): Resource[F, Bind[F]] =
-        ipSockets.bind(address, options)
     }
 }
