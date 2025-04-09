@@ -48,7 +48,11 @@ class ProcessSuite extends Fs2IoSuite {
   }
 
   test("stdout and stderr") {
-    ProcessBuilder("node", "-e", "console.log('good day stdout'); console.error('how do you do stderr')")
+    ProcessBuilder(
+      "node",
+      "-e",
+      "console.log('good day stdout'); console.error('how do you do stderr')"
+    )
       .withOutputConfig(ProcessOutputConfig())
       .spawn[IO]
       .use { p =>
@@ -72,7 +76,9 @@ class ProcessSuite extends Fs2IoSuite {
 
   test("merged stdout and stderr") {
     ProcessBuilder("node", "-e", "console.log('merged stdout'); console.error('merged stderr')")
-      .withOutputConfig(ProcessOutputConfig(stdout = StreamRedirect.Pipe, stderr = StreamRedirect.Pipe))
+      .withOutputConfig(
+        ProcessOutputConfig(stdout = StreamRedirect.Pipe, stderr = StreamRedirect.Pipe)
+      )
       .spawn[IO]
       .use { p =>
         p.stdout
@@ -89,8 +95,8 @@ class ProcessSuite extends Fs2IoSuite {
         .withOutputConfig(ProcessOutputConfig(stdout = StreamRedirect.File(path)))
         .spawn[IO]
         .use(_.exitValue)
-        .assertEquals(0) *> 
-      Files[IO].readUtf8(path).compile.string.assertEquals("file output test\n")
+        .assertEquals(0) *>
+        Files[IO].readUtf8(path).compile.string.assertEquals("file output test\n")
     }
   }
 
@@ -107,8 +113,14 @@ class ProcessSuite extends Fs2IoSuite {
       .withOutputConfig(ProcessOutputConfig(stdin = StreamRedirect.Pipe))
       .spawn[IO]
       .use { p =>
-        val input = Stream.emit("piped input test").through(fs2.text.utf8.encode).through(p.stdin).compile.drain
-        val output = p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals("piped input test")
+        val input = Stream
+          .emit("piped input test")
+          .through(fs2.text.utf8.encode)
+          .through(p.stdin)
+          .compile
+          .drain
+        val output =
+          p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals("piped input test")
         input *> output
       }
   }

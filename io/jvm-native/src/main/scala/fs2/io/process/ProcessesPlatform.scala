@@ -30,7 +30,6 @@ import fs2.io.CollectionCompat.*
 
 import java.lang.ProcessBuilder.Redirect
 
-
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
 
@@ -38,29 +37,29 @@ private[process] trait ProcessesCompanionPlatform {
       Resource
         .make {
           F.blocking {
-          val builder = new java.lang.ProcessBuilder((process.command :: process.args).asJava)
+            val builder = new java.lang.ProcessBuilder((process.command :: process.args).asJava)
 
-          process.workingDirectory.foreach { path =>
-            builder.directory(path.toNioPath.toFile)
-          }
+            process.workingDirectory.foreach { path =>
+              builder.directory(path.toNioPath.toFile)
+            }
 
-          val env = builder.environment()
-          if (!process.inheritEnv) env.clear()
-          process.extraEnv.foreach { case (k, v) =>
-            env.put(k, v)
-          }
+            val env = builder.environment()
+            if (!process.inheritEnv) env.clear()
+            process.extraEnv.foreach { case (k, v) =>
+              env.put(k, v)
+            }
 
-          process.outputConfig.stdin match {
+            process.outputConfig.stdin match {
               case StreamRedirect.Inherit => builder.redirectInput(Redirect.INHERIT)
-              case StreamRedirect.Discard  => builder.redirectInput(Redirect.DISCARD)
+              case StreamRedirect.Discard => builder.redirectInput(Redirect.DISCARD)
               case StreamRedirect.File(path) =>
                 builder.redirectInput(Redirect.from(path.toNioPath.toFile))
-              case StreamRedirect.Pipe => 
+              case StreamRedirect.Pipe =>
             }
 
             process.outputConfig.stdout match {
               case StreamRedirect.Inherit => builder.redirectOutput(Redirect.INHERIT)
-              case StreamRedirect.Discard  => builder.redirectOutput(Redirect.DISCARD)
+              case StreamRedirect.Discard => builder.redirectOutput(Redirect.DISCARD)
               case StreamRedirect.File(path) =>
                 builder.redirectOutput(Redirect.to(path.toNioPath.toFile))
               case StreamRedirect.Pipe =>
@@ -68,53 +67,53 @@ private[process] trait ProcessesCompanionPlatform {
 
             process.outputConfig.stderr match {
               case StreamRedirect.Inherit => builder.redirectError(Redirect.INHERIT)
-              case StreamRedirect.Discard  => builder.redirectError(Redirect.DISCARD)
+              case StreamRedirect.Discard => builder.redirectError(Redirect.DISCARD)
               case StreamRedirect.File(path) =>
                 builder.redirectError(Redirect.to(path.toNioPath.toFile))
-              case StreamRedirect.Pipe => 
+              case StreamRedirect.Pipe =>
             }
 
-          builder.start()
+            builder.start()
+          }
+        } { process =>
+          F.delay(process.isAlive())
+            .ifM(
+              evalOnVirtualThreadIfAvailable(
+                F.blocking {
+                  process.destroy()
+                  process.waitFor()
+                  ()
+                }
+              ),
+              F.unit
+            )
         }
-      } { process =>
-        F.delay(process.isAlive())
-          .ifM(
-            evalOnVirtualThreadIfAvailable(
-            F.blocking {
-              process.destroy()
-              process.waitFor()
-              ()
-            }
-            ),
-            F.unit
-          )
-      }
-      .map { process =>
-        new UnsealedProcess[F] {
-          def isAlive = F.delay(process.isAlive())
+        .map { process =>
+          new UnsealedProcess[F] {
+            def isAlive = F.delay(process.isAlive())
 
             def exitValue = isAlive.ifM(
               evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
               F.delay(process.exitValue())
             )
 
-          def stdin = writeOutputStreamCancelable(
-            F.delay(process.getOutputStream()),
-            F.blocking(process.destroy())
-          )
+            def stdin = writeOutputStreamCancelable(
+              F.delay(process.getOutputStream()),
+              F.blocking(process.destroy())
+            )
 
-          def stdout = readInputStreamCancelable(
-            F.delay(process.getInputStream()),
-            F.blocking(process.destroy()),
-            8192
-          )
+            def stdout = readInputStreamCancelable(
+              F.delay(process.getInputStream()),
+              F.blocking(process.destroy()),
+              8192
+            )
 
-          def stderr = readInputStreamCancelable(
-            F.delay(process.getErrorStream()),
-            F.blocking(process.destroy()),
-            8192
-          )
-        }
+            def stderr = readInputStreamCancelable(
+              F.delay(process.getErrorStream()),
+              F.blocking(process.destroy()),
+              8192
+            )
+          }
         }
   }
 }

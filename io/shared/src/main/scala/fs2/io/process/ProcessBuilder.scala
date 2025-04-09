@@ -74,14 +74,14 @@ sealed abstract class ProcessBuilder private {
   def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder
 
   /* @param mode The mode for handling stdin
-    */
-  def redirectInput(mode: StreamRedirect): ProcessBuilder = 
+   */
+  def redirectInput(mode: StreamRedirect): ProcessBuilder =
     withOutputConfig(outputConfig.copy(stdin = mode))
 
-  def redirectOutput(mode: StreamRedirect): ProcessBuilder = 
+  def redirectOutput(mode: StreamRedirect): ProcessBuilder =
     withOutputConfig(outputConfig.copy(stdout = mode))
 
-  def redirectError(mode: StreamRedirect): ProcessBuilder = 
+  def redirectError(mode: StreamRedirect): ProcessBuilder =
     withOutputConfig(outputConfig.copy(stderr = mode))
 
   /** Starts the process and returns a handle for interacting with it.
@@ -93,10 +93,10 @@ sealed abstract class ProcessBuilder private {
 
 sealed abstract class StreamRedirect
 object StreamRedirect {
-  case object Pipe extends StreamRedirect       
-  case object Inherit extends StreamRedirect   
-  case object Discard extends StreamRedirect    
-  final case class File(path: Path) extends StreamRedirect 
+  case object Pipe extends StreamRedirect
+  case object Inherit extends StreamRedirect
+  case object Discard extends StreamRedirect
+  final case class File(path: Path) extends StreamRedirect
 }
 
 final case class ProcessOutputConfig(
@@ -135,6 +135,7 @@ object ProcessBuilder {
 
     def withCurrentWorkingDirectory: ProcessBuilder = copy(workingDirectory = None)
 
-    def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder = copy(outputConfig = outputConfig)
+    def withOutputConfig(outputConfig: ProcessOutputConfig): ProcessBuilder =
+      copy(outputConfig = outputConfig)
   }
 }
