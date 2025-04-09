@@ -27,7 +27,7 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
-import com.comcast.ip4s.{Dns, Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousCloseException
@@ -36,11 +36,11 @@ import java.nio.channels.SelectionKey.OP_ACCEPT
 import java.nio.channels.SelectionKey.OP_CONNECT
 import java.nio.channels.SocketChannel
 
-private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(implicit
-    F: Async[F]
-) extends SocketGroup[F] {
+private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
+    F: Async[F], F2: LiftIO[F], F3: Dns[F]
+) extends IpSocketsProvider[F] {
 
-  def client(
+  def connect(
       to: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
@@ -73,32 +73,7 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
         configure *> connect *> make
       }
 
-  def server(
-      address: Option[Host],
-      port: Option[Port],
-      options: List[SocketOption]
-  ): Stream[F, Socket[F]] =
-    Stream
-      .resource(
-        serverResource(
-          address,
-          port,
-          options
-        )
-      )
-      .flatMap { case (_, clients) => clients }
-
-  def serverResource(
-      address: Option[Host],
-      port: Option[Port],
-      options: List[SocketOption]
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-    serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap { bound =>
-      bound.socketInfo.localAddress.map { case addr: SocketAddress[IpAddress] => (addr, bound.clients) }
-    }
-
-
-  def serverBound(
+  def bind(
       address: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Bind[F]] =

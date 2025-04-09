@@ -23,7 +23,7 @@ package fs2
 package io
 package net
 
-import cats.effect.Resource
+import cats.effect.{Async, Resource}
 import com.comcast.ip4s.GenSocketAddress
 import fs2.io.net.tls.TLSContext
 
@@ -55,7 +55,7 @@ sealed trait Network[F[_]]
 
   def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
-  def bind(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, BoundServer[F]]
+  def bind(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Bind[F]]
 
   def bindAndAccept(address: GenSocketAddress, options: List[SocketOption] = Nil): Stream[F, Socket[F]]
 
@@ -69,12 +69,18 @@ sealed trait Network[F[_]]
 object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
+  private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
+    
+    override def connect(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]]
+
+    override def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Bind[F]]
+
+    override def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] =
+      Stream.resource(bind(address, options)).flatMap(_.clients)
+
+    override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+  }
+
   def apply[F[_]](implicit F: Network[F]): F.type = F
 }
-
-sealed trait BoundServer[F[_]] {
-  def serverSocketInfo: SocketInfo[F]
-  def clients: Stream[F, Socket[F]]
-}
-private[net] trait UnsealedBoundServer[F[_]] extends BoundServer[F]
 

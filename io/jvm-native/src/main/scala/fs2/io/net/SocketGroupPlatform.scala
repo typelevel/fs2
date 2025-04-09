@@ -86,13 +86,13 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap { bound =>
-        bound.serverSocketInfo.localAddress.map { case addr: SocketAddress[IpAddress] => (addr, bound.clients) }
+        bound.socketInfo.localAddress.map { case addr: SocketAddress[IpAddress] => (addr, bound.clients) }
       }
 
     def serverBound(
       address: SocketAddress[Host],
       options: List[SocketOption]
-    ): Resource[F, BoundServer[F]] = {
+    ): Resource[F, Bind[F]] = {
 
       val setup: Resource[F, AsynchronousServerSocketChannel] =
         Resource.eval(address.host.resolve[F]).flatMap { addr =>
@@ -163,8 +163,8 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
         // val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
         // val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
         // (localAddress, acceptIncoming(sch))
-        new UnsealedBoundServer[F] {
-          def serverSocketInfo = SocketInfo.forAsync(sch)
+        new UnsealedBind[F] {
+          def socketInfo = SocketInfo.forAsync(sch)
           def clients = acceptIncoming(sch)
         }
       }

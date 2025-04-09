@@ -73,7 +73,7 @@ trait SocketGroup[F[_]] {
   def serverBound(
     address: SocketAddress[Host],
     options: List[SocketOption] = Nil
-  ): Resource[F, BoundServer[F]]
+  ): Resource[F, Bind[F]]
 }
 
 private[net] object SocketGroup extends SocketGroupCompanionPlatform {
