@@ -29,13 +29,11 @@ import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Dns, GenSocketAddress, Host, IpAddress, Ipv4Address, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{Dns, GenSocketAddress, Host, Port, SocketAddress, UnixSocketAddress}
 
 import fs2.internal.ThreadFactories
-import fs2.io.net.tls.TLSContext
 
 import java.net.ProtocolFamily
-import java.nio.channels.AsynchronousChannelGroup
 import java.util.concurrent.ThreadFactory
 
 private[net] trait NetworkPlatform[F[_]] {
@@ -50,6 +48,7 @@ private[net] trait NetworkPlatform[F[_]] {
     * @param threadCount number of threads to allocate in the fixed thread pool backing the NIO channel group
     * @param threadFactory factory used to create fixed threads
     */
+  @deprecated("3.13.0", "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead")
   def socketGroup(
       threadCount: Int = 1,
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-tcp", true)
@@ -104,7 +103,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Socket[F]] =
         matchAddress(address,
           sa => selecting(_.connect(sa, options), fallback.connect(sa, options)),
-          ua => fallback.connect(address, options))
+          ua => fallback.connect(ua, options))
 
       def bind(
         address: GenSocketAddress,
@@ -112,7 +111,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Bind[F]] =
         matchAddress(address,
           sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
-          ua => fallback.bind(address, options))
+          ua => fallback.bind(ua, options))
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         fallback.datagramSocketGroup(threadFactory)
@@ -127,9 +126,10 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       // Implementations of deprecated operations
 
+      @deprecated("3.13.0", "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead")
       def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
         Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) => Resource.pure(new SelectingSocketGroup[F](selector))
+          case Some(selector) => Resource.pure(SocketGroup.fromIpSockets(new SelectingIpSocketsProvider(selector)))
           case None           => fallback.socketGroup(threadCount, threadFactory)
         }
     }
@@ -176,14 +176,8 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       // Implementations of deprecated operations
 
-      // TODO adapt SocketGroup to IpSocketsProvider and make this a Resource.pure
       def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
-        Resource
-          .make(
-            F.delay(
-              AsynchronousChannelGroup.withFixedThreadPool(threadCount, threadFactory)
-            )
-          )(acg => F.delay(acg.shutdown()))
-          .map(SocketGroup.unsafe[F](_))
+        Resource.pure(SocketGroup.fromIpSockets(ipSockets))
     }
 }
+

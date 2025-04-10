@@ -41,9 +41,7 @@ import fs2.internal.ThreadFactories
 
 private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
   channelGroup: AsynchronousChannelGroup
-)(implicit F: Async[F]) extends IpSocketsProvider[F] {
-
-  private implicit val dns: Dns[F] = Dns.forAsync[F]
+)(implicit F: Async[F], F2: Dns[F]) extends IpSocketsProvider[F] {
 
   override def connect(
     address: SocketAddress[Host],
@@ -166,6 +164,9 @@ private[net] object AsynchronousChannelGroupIpSocketsProvider {
     ThreadFactories.named("fs2-global-tcp", true)
   )
 
-  def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] =
+  def forAsyncAndDns[F[_]: Async: Dns]: AsynchronousChannelGroupIpSocketsProvider[F] =
     new AsynchronousChannelGroupIpSocketsProvider[F](globalAcg)
+
+  def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] =
+    forAsyncAndDns(Async[F], Dns.forAsync[F])
 }

@@ -69,11 +69,6 @@ trait SocketGroup[F[_]] {
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
-
-  def serverBound(
-    address: SocketAddress[Host],
-    options: List[SocketOption] = Nil
-  ): Resource[F, Bind[F]]
 }
 
 private[net] object SocketGroup extends SocketGroupCompanionPlatform {

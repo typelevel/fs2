@@ -98,13 +98,8 @@ object Network extends NetworkCompanionPlatform {
         port: Option[Port],
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
+      bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
         .flatMap(b => Resource.eval(b.socketInfo.localAddress).map(a => (a, b.clients)))
-
-    override def serverBound(
-      address: SocketAddress[Host],
-      options: List[SocketOption]
-    ): Resource[F, Bind[F]] = bind(address, options)
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

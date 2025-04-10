@@ -23,152 +23,20 @@ package fs2
 package io
 package net
 
-import java.net.InetSocketAddress
-import java.nio.channels.{
-  AsynchronousCloseException,
-  AsynchronousServerSocketChannel,
-  AsynchronousSocketChannel,
-  CompletionHandler
-}
-import java.nio.channels.AsynchronousChannelGroup
 import cats.syntax.all._
 import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Dns, Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
 
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
-  private[fs2] def unsafe[F[_]: Async: Dns](
-      channelGroup: AsynchronousChannelGroup
-  ): SocketGroup[F] =
-    new AsyncSocketGroup[F](channelGroup)
 
-  private final class AsyncSocketGroup[F[_]: Async: Dns](channelGroup: AsynchronousChannelGroup)
-      extends AbstractAsyncSocketGroup[F] {
+  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] = new SocketGroup[F] {
+    def client(to: SocketAddress[Host], options: List[SocketOption]) =
+      ipSockets.connect(to, options)
 
-    def client(
-        to: SocketAddress[Host],
-        options: List[SocketOption]
-    ): Resource[F, Socket[F]] = {
-      def setup: Resource[F, AsynchronousSocketChannel] =
-        Resource
-          .make(
-            Async[F].delay(
-              AsynchronousSocketChannel.open(channelGroup)
-            )
-          )(ch => Async[F].delay(if (ch.isOpen) ch.close else ()))
-          .evalTap(ch => Async[F].delay(options.foreach(opt => ch.setOption(opt.key, opt.value))))
+    def server(address: Option[Host], port: Option[Port], options: List[SocketOption]): Stream[F, Socket[F]] =
+      Stream.resource(serverResource(address, port, options)).flatMap(_._2)
 
-      def connect(ch: AsynchronousSocketChannel): F[AsynchronousSocketChannel] =
-        to.resolve[F].flatMap { ip =>
-          Async[F].async[AsynchronousSocketChannel] { cb =>
-            Async[F]
-              .delay {
-                ch.connect(
-                  ip.toInetSocketAddress,
-                  null,
-                  new CompletionHandler[Void, Void] {
-                    def completed(result: Void, attachment: Void): Unit =
-                      cb(Right(ch))
-                    def failed(rsn: Throwable, attachment: Void): Unit =
-                      cb(Left(rsn))
-                  }
-                )
-              }
-              .as(Some(Async[F].delay(ch.close())))
-          }
-        }
-
-      setup.evalMap(ch => connect(ch) *> Socket.forAsync(ch))
-    }
-
-    def serverResource(
-        address: Option[Host],
-        port: Option[Port],
-        options: List[SocketOption]
-    ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      serverBound(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap { bound =>
-        bound.socketInfo.localAddress.map { case addr: SocketAddress[IpAddress] => (addr, bound.clients) }
-      }
-
-    def serverBound(
-      address: SocketAddress[Host],
-      options: List[SocketOption]
-    ): Resource[F, Bind[F]] = {
-
-      val setup: Resource[F, AsynchronousServerSocketChannel] =
-        Resource.eval(address.host.resolve[F]).flatMap { addr =>
-          Resource
-            .make(
-              Async[F].delay(
-                AsynchronousServerSocketChannel.open(channelGroup)
-              )
-            )(sch => Async[F].delay(if (sch.isOpen) sch.close()))
-            .evalTap(ch =>
-              Async[F].delay(
-                ch.bind(
-                  new InetSocketAddress(
-                    if (addr.isWildcard) null else addr.toInetAddress,
-                    address.port.value
-                  )
-                )
-              )
-            )
-        }
-
-      def acceptIncoming(
-          sch: AsynchronousServerSocketChannel
-      ): Stream[F, Socket[F]] = {
-        def go: Stream[F, Socket[F]] = {
-          def acceptChannel = Resource.makeFull[F, AsynchronousSocketChannel] { poll =>
-            poll {
-              Async[F].async[AsynchronousSocketChannel] { cb =>
-                Async[F]
-                  .delay {
-                    sch.accept(
-                      null,
-                      new CompletionHandler[AsynchronousSocketChannel, Void] {
-                        def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                          cb(Right(ch))
-                        def failed(rsn: Throwable, attachment: Void): Unit =
-                          cb(Left(rsn))
-                      }
-                    )
-                  }
-                  .as(Some(Async[F].delay(sch.close())))
-              }
-            }
-          }(ch => Async[F].delay(if (ch.isOpen) ch.close else ()))
-
-          def setOpts(ch: AsynchronousSocketChannel) =
-            Async[F].delay {
-              options.foreach(o => ch.setOption(o.key, o.value))
-            }
-
-          Stream.resource(acceptChannel.attempt).flatMap {
-            case Left(_)         => Stream.empty[F]
-            case Right(accepted) => Stream.eval(setOpts(accepted) *> Socket.forAsync(accepted))
-          } ++ go
-        }
-
-        go.handleErrorWith {
-          case err: AsynchronousCloseException =>
-            Stream.eval(Async[F].delay(sch.isOpen)).flatMap { isOpen =>
-              if (isOpen) Stream.raiseError[F](err)
-              else Stream.empty
-            }
-          case err => Stream.raiseError[F](err)
-        }
-      }
-
-      setup.map { sch =>
-        // val jLocalAddress = sch.getLocalAddress.asInstanceOf[java.net.InetSocketAddress]
-        // val localAddress = SocketAddress.fromInetSocketAddress(jLocalAddress)
-        // (localAddress, acceptIncoming(sch))
-        new UnsealedBind[F] {
-          def socketInfo = SocketInfo.forAsync(sch)
-          def clients = acceptIncoming(sch)
-        }
-      }
-    }
+    def serverResource(address: Option[Host], port: Option[Port], options: List[SocketOption]): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.socketInfo.localAddress.tupleRight(b.clients))
   }
-
 }
