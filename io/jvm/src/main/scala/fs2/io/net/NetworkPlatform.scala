@@ -108,7 +108,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       def bind(
         address: GenSocketAddress,
         options: List[SocketOption]
-      ): Resource[F, Bind[F]] =
+      ): Resource[F, ServerSocket[F]] =
         matchAddress(address,
           sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
           ua => fallback.bind(ua, options))
@@ -154,7 +154,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       def bind(
         address: GenSocketAddress,
         options: List[SocketOption]
-      ): Resource[F, Bind[F]] =
+      ): Resource[F, ServerSocket[F]] =
         matchAddress(address,
           sa => ipSockets.bind(sa, options),
           ua => unixSockets.bind(ua, options))

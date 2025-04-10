@@ -70,7 +70,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
     def bind(
         address: UnixSocketAddress,
         options: List[SocketOption]
-    ): Resource[F, Bind[F]] = {
+    ): Resource[F, ServerSocket[F]] = {
       var deleteIfExists: Boolean = false
       var deleteOnClose: Boolean = true
 
@@ -101,7 +101,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
               case Right(accepted) => Stream.eval(makeSocket(accepted))
             }
             .repeat
-        Bind(info, acceptIncoming)
+        ServerSocket(info, acceptIncoming)
       }
     }
   }

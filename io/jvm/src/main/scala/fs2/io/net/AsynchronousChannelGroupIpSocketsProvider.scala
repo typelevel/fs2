@@ -82,7 +82,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
   override def bind(
     address: SocketAddress[Host],
     options: List[SocketOption]
-  ): Resource[F, Bind[F]] = {
+  ): Resource[F, ServerSocket[F]] = {
     
 
     val setup: Resource[F, AsynchronousServerSocketChannel] =
@@ -149,7 +149,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
       }
     }
 
-    setup.map(sch => Bind(SocketInfo.forAsync(sch), acceptIncoming(sch)))
+    setup.map(sch => ServerSocket(SocketInfo.forAsync(sch), acceptIncoming(sch)))
   }
 }
 

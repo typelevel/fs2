@@ -23,20 +23,19 @@ package fs2
 package io
 package net
 
-import cats.syntax.all._
-import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
+private[net] trait ServerSocketCompanionPlatform {
+  private[net] def apply[F[_]](info: SocketInfo[F], accept: Stream[F, Socket[F]]): ServerSocket[F] = {
+    val accept0 = accept
+    new UnsealedServerSocket[F] {
+      def accept: Stream[F, Socket[F]] = accept0
 
-private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
+      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
+      def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
+      def supportedOptions = info.supportedOptions
 
-  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] = new SocketGroup[F] {
-    def client(to: SocketAddress[Host], options: List[SocketOption]) =
-      ipSockets.connect(to, options)
-
-    def server(address: Option[Host], port: Option[Port], options: List[SocketOption]): Stream[F, Socket[F]] =
-      Stream.resource(serverResource(address, port, options)).flatMap(_._2)
-
-    def serverResource(address: Option[Host], port: Option[Port], options: List[SocketOption]): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.localAddress.tupleRight(b.accept))
+      def localAddress = info.localAddress
+      def localAddressGen = info.localAddressGen
+    }
   }
 }
+

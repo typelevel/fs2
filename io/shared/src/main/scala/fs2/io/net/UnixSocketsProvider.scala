@@ -36,6 +36,6 @@ private[net] trait UnixSocketsProvider[F[_]] {
   def bind(
     address: UnixSocketAddress,
     options: List[SocketOption]
-  ): Resource[F, Bind[F]]}
+  ): Resource[F, ServerSocket[F]]}
 
 private[net] object UnixSocketsProvider extends UnixSocketsProviderCompanionPlatform

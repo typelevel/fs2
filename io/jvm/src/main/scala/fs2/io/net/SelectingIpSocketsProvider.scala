@@ -76,7 +76,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
   def bind(
       address: SocketAddress[Host],
       options: List[SocketOption]
-  ): Resource[F, Bind[F]] =
+  ): Resource[F, ServerSocket[F]] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
@@ -120,7 +120,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           )
         }
 
-        configure.as(Bind(SocketInfo.forAsync(serverCh), accept))
+        configure.as(ServerSocket(SocketInfo.forAsync(serverCh), accept))
       }
 
   private def remoteAddress(ch: SocketChannel) =

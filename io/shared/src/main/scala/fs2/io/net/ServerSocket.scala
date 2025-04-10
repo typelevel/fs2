@@ -25,29 +25,20 @@ package net
 
 /** Represents a bound TCP server socket.
  *
- * The socket can be inspected, e.g. for its bound port, via the `socketInfo` method.
  * Note some platforms do not support getting and setting socket options on server sockets
- * so take care when using `socketInfo`.
+ * so take care when using `getOption` and `setOption`.
  *
  * Client sockets can be accepted by pulling on the `accept` stream. A concurrent server
  * that is limited to `maxAccept` concurrent clients is accomplished by
  * `b.accept.map(handleClientSocket).parJoin(maxAccept)`.
  */
-sealed trait Bind[F[_]] {
-  /** Get information about the bound server socket. */
-  def socketInfo: SocketInfo[F]
+sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 
   /** Stream of client sockets; typically processed concurrently to allow concurrent clients. */
   def accept: Stream[F, Socket[F]]
 }
 
-object Bind {
-  private[net] def apply[F[_]](socketInfo: SocketInfo[F], accept: Stream[F, Socket[F]]): Bind[F] = {
-    val socketInfo0 = socketInfo
-    val accept0 = accept
-    new Bind[F] {
-      val socketInfo = socketInfo0
-      val accept = accept0
-    }
-  }
-}
+private[net] trait UnsealedServerSocket[F[_]] extends ServerSocket[F]
+
+object ServerSocket extends ServerSocketCompanionPlatform
+

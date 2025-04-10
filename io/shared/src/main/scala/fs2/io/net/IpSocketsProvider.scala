@@ -36,5 +36,5 @@ private[net] trait IpSocketsProvider[F[_]] {
   def bind(
     address: SocketAddress[Host],
     options: List[SocketOption]
-  ): Resource[F, Bind[F]]
+  ): Resource[F, ServerSocket[F]]
 }
