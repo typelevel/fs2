@@ -142,6 +142,6 @@ private final class FdPollingUnixSockets[F[_]: Files: LiftIO](implicit F: Async[
   }
 
   private def raiseIpAddressError[A]: F[A] =
-    F.raiseError(new UnsupportedOperationException("UnixSockets do not use IP addressing"))
+    F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
 
 }

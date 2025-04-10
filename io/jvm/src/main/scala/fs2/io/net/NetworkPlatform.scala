@@ -104,7 +104,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Socket[F]] =
         matchAddress(address,
           sa => selecting(_.connect(sa, options), fallback.connect(sa, options)),
-          ua => ???)
+          ua => fallback.connect(address, options))
 
       def bind(
         address: GenSocketAddress,
@@ -112,7 +112,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Bind[F]] =
         matchAddress(address,
           sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
-          ua => ???)
+          ua => fallback.bind(address, options))
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         fallback.datagramSocketGroup(threadFactory)
@@ -140,6 +140,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
   def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new AsyncNetwork[F] {
       private lazy val ipSockets = AsynchronousChannelGroupIpSocketsProvider.forAsync[F]
+      private lazy val unixSockets = UnixSocketsProvider.forAsync[F]
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 
       def connect(
@@ -148,7 +149,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Socket[F]] =
         matchAddress(address,
           sa => ipSockets.connect(sa, options),
-          ua => ???)
+          ua => unixSockets.connect(ua, options))
 
       def bind(
         address: GenSocketAddress,
@@ -156,7 +157,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, Bind[F]] =
         matchAddress(address,
           sa => ipSockets.bind(sa, options),
-          ua => ???)
+          ua => unixSockets.bind(ua, options))
 
       def openDatagramSocket(
           address: Option[Host],
