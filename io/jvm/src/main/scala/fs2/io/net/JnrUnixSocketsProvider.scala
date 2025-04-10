@@ -19,11 +19,17 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io
+package net
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, Resource}
 import cats.effect.syntax.all._
+
+import com.comcast.ip4s.UnixSocketAddress
+
 import fs2.io.file.Files
+
 import java.nio.channels.SocketChannel
 import jnr.unixsocket.{
   UnixServerSocketChannel,
@@ -31,7 +37,7 @@ import jnr.unixsocket.{
   UnixSocketChannel
 }
 
-object JnrUnixSockets {
+private[net] object JnrUnixSocketsProvider {
 
   lazy val supported: Boolean =
     try {
@@ -41,21 +47,22 @@ object JnrUnixSockets {
       case _: ClassNotFoundException => false
     }
 
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
-    new JnrUnixSocketsImpl[F]
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
+    new JnrUnixSocketsProvider[F]
 
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
     forAsyncAndFiles(F, Files.forAsync[F])
 }
 
-private[unixsocket] class JnrUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
+private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[F])
+    extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
+
   protected def openChannel(address: UnixSocketAddress) =
     Resource.make(F.blocking(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path))))(ch =>
       F.blocking(ch.close())
     )
 
-  protected def openServerChannel(address: UnixSocketAddress) =
+  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     Resource
       .make(F.blocking(UnixServerSocketChannel.open()))(ch => F.blocking(ch.close()))
       .evalTap { sch =>
@@ -63,9 +70,19 @@ private[unixsocket] class JnrUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
           .cancelable(F.blocking(sch.close()))
       }
       .map { sch =>
-        Resource.makeFull[F, SocketChannel] { poll =>
-          F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
-        }(ch => F.blocking(ch.close()))
+        def raiseOptionError[A]: F[A] = 
+          F.raiseError(new UnsupportedOperationException("JNR unix server sockets do not support socket options"))
+        val info: SocketInfo[F] = new SocketInfo[F] {
+          def supportedOptions = F.pure(Set.empty)
+          def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
+          def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
+          def localAddress = F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
+          def localAddressGen = F.pure(address)
+        }
+        info ->
+          Resource.makeFull[F, SocketChannel] { poll =>
+            F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
+          }(ch => F.blocking(ch.close()))
+            .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
       }
-
 }
