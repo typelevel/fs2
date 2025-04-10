@@ -25,6 +25,6 @@ package io.net
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  if (JdkUnixSocketsProvider.supported) testProvider("jdk")(JdkUnixSocketsProvider.forAsync[IO])
-  if (JnrUnixSocketsProvider.supported) testProvider("jnr")(JnrUnixSocketsProvider.forAsync[IO])
+  if (JdkUnixSocketsProvider.supported) testProvider("jdk", JdkUnixSocketsProvider.forAsync[IO])
+  if (JnrUnixSocketsProvider.supported) testProvider("jnr", JnrUnixSocketsProvider.forAsync[IO])
 }

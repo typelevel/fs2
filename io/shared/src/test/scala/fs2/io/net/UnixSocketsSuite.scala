@@ -29,7 +29,7 @@ import com.comcast.ip4s.UnixSocketAddress
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
-  def testProvider(provider: String)(implicit sockets: UnixSocketsProvider[IO]) =
+  protected def testProvider(provider: String, sockets: UnixSocketsProvider[IO]) =
     test(s"echoes - $provider") {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
