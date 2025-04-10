@@ -20,26 +20,27 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io.net
 
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import com.comcast.ip4s.UnixSocketAddress
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
-  def testProvider(provider: String)(implicit sockets: UnixSockets[IO]) =
+  def testProvider(provider: String)(implicit sockets: UnixSocketsProvider[IO]) =
     test(s"echoes - $provider") {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
-      val server = UnixSockets[IO]
-        .server(address)
+      val server = Stream.resource(sockets.bind(address, Nil))
+        .flatMap(_.clients)
         .map { client =>
           client.reads.through(client.writes)
         }
         .parJoinUnbounded
 
-      def client(msg: Chunk[Byte]) = UnixSockets[IO].client(address).use { server =>
+      def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { server =>
         server.write(msg) *> server.endOfOutput *> server.reads.compile
           .to(Chunk)
           .map(read => assertEquals(read, msg))

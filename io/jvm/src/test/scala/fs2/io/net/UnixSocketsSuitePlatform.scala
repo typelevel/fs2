@@ -20,11 +20,11 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io.net
 
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  if (JdkUnixSockets.supported) testProvider("jdk")(JdkUnixSockets.forAsync[IO])
-  if (JnrUnixSockets.supported) testProvider("jnr")(JnrUnixSockets.forAsync[IO])
+  if (JdkUnixSocketsProvider.supported) testProvider("jdk")(JdkUnixSocketsProvider.forAsync[IO])
+  if (JnrUnixSocketsProvider.supported) testProvider("jnr")(JnrUnixSocketsProvider.forAsync[IO])
 }
