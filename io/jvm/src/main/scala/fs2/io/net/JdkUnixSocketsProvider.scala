@@ -19,28 +19,33 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io
+package net
 
-import cats.effect.kernel.{Async, Resource}
+import cats.effect.{Async, Resource}
 import cats.effect.syntax.all._
+
+import com.comcast.ip4s.UnixSocketAddress
+
 import fs2.io.file.Files
-import fs2.io.evalOnVirtualThreadIfAvailable
+
 import java.net.{StandardProtocolFamily, UnixDomainSocketAddress}
 import java.nio.channels.{ServerSocketChannel, SocketChannel}
 
-object JdkUnixSockets {
+private[net] object JdkUnixSocketsProvider {
 
   def supported: Boolean = StandardProtocolFamily.values.size > 2
 
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] =
-    new JdkUnixSocketsImpl[F]
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
+    new JdkUnixSocketsProvider[F]
 
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
     forAsyncAndFiles(F, Files.forAsync[F])
 }
 
-private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
-    extends UnixSockets.AsyncUnixSockets[F] {
+private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
+    extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
   protected def openChannel(address: UnixSocketAddress) =
     evalOnVirtualThreadIfAvailable(
       Resource
@@ -53,7 +58,7 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
         }
     )
 
-  protected def openServerChannel(address: UnixSocketAddress) =
+  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     evalOnVirtualThreadIfAvailable(
       Resource
         .make(
@@ -64,10 +69,11 @@ private[unixsocket] class JdkUnixSocketsImpl[F[_]: Files](implicit F: Async[F])
             .cancelable(F.blocking(sch.close()))
         }
         .map { sch =>
-          Resource.makeFull[F, SocketChannel] { poll =>
-            poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
-          }(ch => F.blocking(ch.close()))
+          SocketInfo.forAsync(sch) ->
+            Resource.makeFull[F, SocketChannel] { poll =>
+              poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
+            }(ch => F.blocking(ch.close()))
+              .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
         }
     )
-
 }

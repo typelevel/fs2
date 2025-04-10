@@ -20,11 +20,25 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io
+package net
 
-import cats.effect.IO
+/** Represents a bound TCP server socket.
+ *
+ * Note some platforms do not support getting and setting socket options on server sockets
+ * so take care when using `getOption` and `setOption`.
+ *
+ * Client sockets can be accepted by pulling on the `accept` stream. A concurrent server
+ * that is limited to `maxAccept` concurrent clients is accomplished by
+ * `b.accept.map(handleClientSocket).parJoin(maxAccept)`.
+ */
+sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 
-trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  if (JdkUnixSockets.supported) testProvider("jdk")(JdkUnixSockets.forAsync[IO])
-  if (JnrUnixSockets.supported) testProvider("jnr")(JnrUnixSockets.forAsync[IO])
+  /** Stream of client sockets; typically processed concurrently to allow concurrent clients. */
+  def accept: Stream[F, Socket[F]]
 }
+
+private[net] trait UnsealedServerSocket[F[_]] extends ServerSocket[F]
+
+object ServerSocket extends ServerSocketCompanionPlatform
+

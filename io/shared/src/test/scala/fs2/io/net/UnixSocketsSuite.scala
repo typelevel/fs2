@@ -20,23 +20,37 @@
  */
 
 package fs2
-package io
-package net
+package io.net
 
-import cats.syntax.all._
-import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import scala.concurrent.duration._
 
-private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
+import cats.effect.IO
+import com.comcast.ip4s.UnixSocketAddress
 
-  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] = new SocketGroup[F] {
-    def client(to: SocketAddress[Host], options: List[SocketOption]) =
-      ipSockets.connect(to, options)
+class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
-    def server(address: Option[Host], port: Option[Port], options: List[SocketOption]): Stream[F, Socket[F]] =
-      Stream.resource(serverResource(address, port, options)).flatMap(_._2)
+  protected def testProvider(provider: String, sockets: UnixSocketsProvider[IO]) =
+    test(s"echoes - $provider") {
+      val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
-    def serverResource(address: Option[Host], port: Option[Port], options: List[SocketOption]): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]).tupleRight(b.accept))
-  }
+      val server = Stream.resource(sockets.bind(address, Nil))
+        .flatMap(_.accept)
+        .map { client =>
+          client.reads.through(client.writes)
+        }
+        .parJoinUnbounded
+
+      def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { server =>
+        server.write(msg) *> server.endOfOutput *> server.reads.compile
+          .to(Chunk)
+          .map(read => assertEquals(read, msg))
+      }
+
+      val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))
+
+      (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalMap(identity))
+        .concurrently(server)
+        .compile
+        .drain
+    }
 }

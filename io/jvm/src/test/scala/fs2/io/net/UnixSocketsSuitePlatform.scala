@@ -20,23 +20,11 @@
  */
 
 package fs2
-package io
-package net
+package io.net
 
-import cats.syntax.all._
-import cats.effect.kernel.{Async, Resource}
-import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import cats.effect.IO
 
-private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
-
-  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] = new SocketGroup[F] {
-    def client(to: SocketAddress[Host], options: List[SocketOption]) =
-      ipSockets.connect(to, options)
-
-    def server(address: Option[Host], port: Option[Port], options: List[SocketOption]): Stream[F, Socket[F]] =
-      Stream.resource(serverResource(address, port, options)).flatMap(_._2)
-
-    def serverResource(address: Option[Host], port: Option[Port], options: List[SocketOption]): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]).tupleRight(b.accept))
-  }
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  if (JdkUnixSocketsProvider.supported) testProvider("jdk", JdkUnixSocketsProvider.forAsync[IO])
+  if (JnrUnixSocketsProvider.supported) testProvider("jnr", JnrUnixSocketsProvider.forAsync[IO])
 }

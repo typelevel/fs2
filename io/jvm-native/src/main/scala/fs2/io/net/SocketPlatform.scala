@@ -23,7 +23,7 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import cats.effect.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
@@ -108,7 +108,10 @@ private[net] trait SocketCompanionPlatform {
       readMutex: Mutex[F],
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends BufferedReads[F](readMutex) {
+      extends BufferedReads[F](readMutex) with SocketInfo.AsyncSocketInfo[F] {
+
+    protected def asyncInstance = F
+    protected def channel = ch
 
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
@@ -139,10 +142,10 @@ private[net] trait SocketCompanionPlatform {
       }
     }
 
-    def localAddress: F[SocketAddress[IpAddress]] =
-      F.delay(
+    override def localAddress: F[SocketAddress[IpAddress]] =
+      asyncInstance.delay(
         SocketAddress.fromInetSocketAddress(
-          ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+          channel.getLocalAddress.asInstanceOf[InetSocketAddress]
         )
       )
 
@@ -152,6 +155,8 @@ private[net] trait SocketCompanionPlatform {
           ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
         )
       )
+
+    override def remoteAddressGen: F[GenSocketAddress] = ???
 
     def isOpen: F[Boolean] = F.delay(ch.isOpen)
 

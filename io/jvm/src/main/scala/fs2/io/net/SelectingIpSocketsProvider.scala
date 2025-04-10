@@ -27,11 +27,7 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
-import com.comcast.ip4s.Dns
-import com.comcast.ip4s.Host
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousCloseException
@@ -40,11 +36,11 @@ import java.nio.channels.SelectionKey.OP_ACCEPT
 import java.nio.channels.SelectionKey.OP_CONNECT
 import java.nio.channels.SocketChannel
 
-private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(implicit
-    F: Async[F]
-) extends SocketGroup[F] {
+private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
+    F: Async[F], F2: LiftIO[F], F3: Dns[F]
+) extends IpSocketsProvider[F] {
 
-  def client(
+  def connect(
       to: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
@@ -71,45 +67,28 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
         val make = SelectingSocket[F](
           selector,
           ch,
-          localAddress(ch),
           remoteAddress(ch)
         )
 
         configure *> connect *> make
       }
 
-  def server(
-      address: Option[Host],
-      port: Option[Port],
+  def bind(
+      address: SocketAddress[Host],
       options: List[SocketOption]
-  ): Stream[F, Socket[F]] =
-    Stream
-      .resource(
-        serverResource(
-          address,
-          port,
-          options
-        )
-      )
-      .flatMap { case (_, clients) => clients }
-
-  def serverResource(
-      address: Option[Host],
-      port: Option[Port],
-      options: List[SocketOption]
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+  ): Resource[F, ServerSocket[F]] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
       }
       .evalMap { serverCh =>
-        val configure = address.traverse(_.resolve).flatMap { ip =>
+        val configure = address.host.resolve.flatMap { addr =>
           F.delay {
             serverCh.configureBlocking(false)
             serverCh.bind(
               new InetSocketAddress(
-                ip.map(_.toInetAddress).orNull,
-                port.map(_.value).getOrElse(0)
+                if (addr.isWildcard) null else addr.toInetAddress,
+                address.port.value
               )
             )
           }
@@ -130,33 +109,19 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
             case ex                                                        => Stream.raiseError(ex)
           }
 
-        val clients = acceptLoop.evalMap { ch =>
+        val accept = acceptLoop.evalMap { ch =>
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
           } *> SelectingSocket[F](
             selector,
             ch,
-            localAddress(ch),
             remoteAddress(ch)
           )
         }
 
-        val socketAddress = F.delay {
-          SocketAddress.fromInetSocketAddress(
-            serverCh.getLocalAddress.asInstanceOf[InetSocketAddress]
-          )
-        }
-
-        configure *> socketAddress.tupleRight(clients)
+        configure.as(ServerSocket(SocketInfo.forAsync(serverCh), accept))
       }
-
-  private def localAddress(ch: SocketChannel) =
-    F.delay {
-      SocketAddress.fromInetSocketAddress(
-        ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-      )
-    }
 
   private def remoteAddress(ch: SocketChannel) =
     F.delay {
