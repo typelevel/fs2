@@ -23,14 +23,12 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import com.comcast.ip4s.GenSocketAddress
 
 trait SocketInfo[F[_]] {
 
   /** Asks for the local address of the socket. */
   def localAddressGen: F[GenSocketAddress]
-
-  def localAddress: F[SocketAddress[IpAddress]]
 
   def supportedOptions: F[Set[SocketOption.Key[_]]]
 

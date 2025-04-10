@@ -100,7 +100,7 @@ object Network extends NetworkCompanionPlatform {
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
-        .flatMap(b => Resource.eval(b.localAddress).tupleRight(b.accept))
+        .flatMap(b => Resource.eval(b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]])).tupleRight(b.accept))
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

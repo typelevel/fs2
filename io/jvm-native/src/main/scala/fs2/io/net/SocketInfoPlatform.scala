@@ -43,13 +43,6 @@ private[net] trait SocketInfoCompanionPlatform {
     implicit protected def asyncInstance: Async[F]
     protected def channel: NetworkChannel
 
-    override def localAddress: F[SocketAddress[IpAddress]] =
-      asyncInstance.delay(
-        SocketAddress.fromInetSocketAddress(
-          channel.getLocalAddress.asInstanceOf[InetSocketAddress]
-        )
-      )
-
     override def localAddressGen: F[GenSocketAddress] =
       asyncInstance.delay(
         channel.getLocalAddress match {

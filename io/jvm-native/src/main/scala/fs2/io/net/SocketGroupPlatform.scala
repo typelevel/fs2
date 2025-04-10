@@ -37,6 +37,6 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
       Stream.resource(serverResource(address, port, options)).flatMap(_._2)
 
     def serverResource(address: Option[Host], port: Option[Port], options: List[SocketOption]): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.localAddress.tupleRight(b.accept))
+      ipSockets.bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options).evalMap(b => b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]).tupleRight(b.accept))
   }
 }

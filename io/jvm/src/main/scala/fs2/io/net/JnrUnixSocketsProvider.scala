@@ -76,7 +76,6 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
           def supportedOptions = F.pure(Set.empty)
           def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
           def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
-          def localAddress = F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
           def localAddressGen = F.pure(address)
         }
         info ->

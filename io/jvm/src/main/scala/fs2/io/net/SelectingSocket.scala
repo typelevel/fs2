@@ -31,6 +31,7 @@ import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
+import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey.OP_READ
 import java.nio.channels.SelectionKey.OP_WRITE
@@ -47,6 +48,14 @@ private final class SelectingSocket[F[_]: LiftIO] private (
 
   protected def asyncInstance = F
   protected def channel = ch
+
+
+  override def localAddress: F[SocketAddress[IpAddress]] =
+    asyncInstance.delay(
+      SocketAddress.fromInetSocketAddress(
+        ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+      )
+    )
 
   def remoteAddressGen: F[GenSocketAddress] =
     remoteAddress.map(a => a: GenSocketAddress)

@@ -142,6 +142,13 @@ private[net] trait SocketCompanionPlatform {
       }
     }
 
+    override def localAddress: F[SocketAddress[IpAddress]] =
+      asyncInstance.delay(
+        SocketAddress.fromInetSocketAddress(
+          channel.getLocalAddress.asInstanceOf[InetSocketAddress]
+        )
+      )
+
     def remoteAddress: F[SocketAddress[IpAddress]] =
       F.delay(
         SocketAddress.fromInetSocketAddress(

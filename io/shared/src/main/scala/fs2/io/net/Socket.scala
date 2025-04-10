@@ -55,6 +55,8 @@ trait Socket[F[_]] extends SocketInfo[F] {
 
   def isOpen: F[Boolean]
 
+  def localAddress: F[SocketAddress[IpAddress]]
+
   /** Asks for the remote address of the peer. */
   def remoteAddress: F[SocketAddress[IpAddress]]
 

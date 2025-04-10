@@ -33,7 +33,6 @@ private[net] trait ServerSocketCompanionPlatform {
       def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
       def supportedOptions = info.supportedOptions
 
-      def localAddress = info.localAddress
       def localAddressGen = info.localAddressGen
     }
   }
