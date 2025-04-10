@@ -93,7 +93,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       }
 
       (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
-        val clients0 = 
+        val acceptIncoming = 
           Stream
             .resource(accept.attempt)
             .flatMap {
@@ -101,10 +101,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
               case Right(accepted) => Stream.eval(makeSocket(accepted))
             }
             .repeat
-        new UnsealedBind[F] {
-          def socketInfo = info
-          def clients = clients0
-        }
+        Bind(info, acceptIncoming)
       }
     }
   }

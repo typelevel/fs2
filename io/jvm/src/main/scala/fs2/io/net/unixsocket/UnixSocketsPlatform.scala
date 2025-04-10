@@ -60,6 +60,6 @@ private[unixsocket] trait UnixSocketsCompanionPlatform {
         delegate.bind(Ip4sUnixSocketAddress(address.path),
           List(SocketOption.unixServerSocketDeleteIfExists(deleteIfExists),
                SocketOption.unixServerSocketDeleteOnClose(deleteOnClose)))
-      ).flatMap(_.clients)
+      ).flatMap(_.accept)
   }
 }

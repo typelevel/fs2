@@ -23,9 +23,31 @@ package fs2
 package io
 package net
 
+/** Represents a bound TCP server socket.
+ *
+ * The socket can be inspected, e.g. for its bound port, via the `socketInfo` method.
+ * Note some platforms do not support getting and setting socket options on server sockets
+ * so take care when using `socketInfo`.
+ *
+ * Client sockets can be accepted by pulling on the `accept` stream. A concurrent server
+ * that is limited to `maxAccept` concurrent clients is accomplished by
+ * `b.accept.map(handleClientSocket).parJoin(maxAccept)`.
+ */
 sealed trait Bind[F[_]] {
+  /** Get information about the bound server socket. */
   def socketInfo: SocketInfo[F]
-  def clients: Stream[F, Socket[F]]
+
+  /** Stream of client sockets; typically processed concurrently to allow concurrent clients. */
+  def accept: Stream[F, Socket[F]]
 }
 
-private[net] trait UnsealedBind[F[_]] extends Bind[F]
+object Bind {
+  private[net] def apply[F[_]](socketInfo: SocketInfo[F], accept: Stream[F, Socket[F]]): Bind[F] = {
+    val socketInfo0 = socketInfo
+    val accept0 = accept
+    new Bind[F] {
+      val socketInfo = socketInfo0
+      val accept = accept0
+    }
+  }
+}

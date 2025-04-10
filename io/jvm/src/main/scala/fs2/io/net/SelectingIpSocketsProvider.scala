@@ -109,7 +109,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
             case ex                                                        => Stream.raiseError(ex)
           }
 
-        val clients0 = acceptLoop.evalMap { ch =>
+        val accept = acceptLoop.evalMap { ch =>
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
@@ -120,10 +120,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           )
         }
 
-        configure.as(new UnsealedBind[F] {
-          def socketInfo = SocketInfo.forAsync(serverCh)
-          def clients = clients0
-        })
+        configure.as(Bind(SocketInfo.forAsync(serverCh), accept))
       }
 
   private def remoteAddress(ch: SocketChannel) =

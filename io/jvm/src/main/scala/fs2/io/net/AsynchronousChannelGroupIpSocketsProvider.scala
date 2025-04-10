@@ -35,7 +35,7 @@ import java.nio.channels.AsynchronousChannelGroup
 
 import cats.syntax.all._
 import cats.effect.{Async, Resource}
-import com.comcast.ip4s.{Dns, Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
 import fs2.internal.ThreadFactories
 
@@ -149,12 +149,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
       }
     }
 
-    setup.map { sch =>
-      new UnsealedBind[F] {
-        def socketInfo = SocketInfo.forAsync(sch)
-        def clients = acceptIncoming(sch)
-      }
-    }
+    setup.map(sch => Bind(SocketInfo.forAsync(sch), acceptIncoming(sch)))
   }
 }
 

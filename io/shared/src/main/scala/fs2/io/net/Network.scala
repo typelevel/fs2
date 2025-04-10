@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.{Async, Resource}
+import cats.syntax.all.*
 import com.comcast.ip4s.{GenSocketAddress, Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import fs2.io.net.tls.TLSContext
 
@@ -76,7 +77,7 @@ object Network extends NetworkCompanionPlatform {
     override def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Bind[F]]
 
     override def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] =
-      Stream.resource(bind(address, options)).flatMap(_.clients)
+      Stream.resource(bind(address, options)).flatMap(_.accept)
 
     override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
 
@@ -99,7 +100,7 @@ object Network extends NetworkCompanionPlatform {
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
       bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
-        .flatMap(b => Resource.eval(b.socketInfo.localAddress).map(a => (a, b.clients)))
+        .flatMap(b => Resource.eval(b.socketInfo.localAddress).tupleRight(b.accept))
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
