@@ -28,7 +28,7 @@ import cats.effect.kernel.Resource
 import cats.syntax.all.*
 import fs2.io.CollectionCompat.*
 
-import java.lang
+import java.lang.ProcessBuilder.Redirect
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
@@ -37,7 +37,7 @@ private[process] trait ProcessesCompanionPlatform {
       Resource
         .make {
           F.blocking {
-            val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
+            val builder = new java.lang.ProcessBuilder((process.command :: process.args).asJava)
 
             process.workingDirectory.foreach { path =>
               builder.directory(path.toNioPath.toFile)
@@ -47,6 +47,30 @@ private[process] trait ProcessesCompanionPlatform {
             if (!process.inheritEnv) env.clear()
             process.extraEnv.foreach { case (k, v) =>
               env.put(k, v)
+            }
+
+            process.outputConfig.stdin match {
+              case StreamRedirect.Inherit => builder.redirectInput(Redirect.INHERIT)
+              case StreamRedirect.Discard => builder.redirectInput(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
+                builder.redirectInput(Redirect.from(path.toNioPath.toFile))
+              case StreamRedirect.Pipe =>
+            }
+
+            process.outputConfig.stdout match {
+              case StreamRedirect.Inherit => builder.redirectOutput(Redirect.INHERIT)
+              case StreamRedirect.Discard => builder.redirectOutput(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
+                builder.redirectOutput(Redirect.to(path.toNioPath.toFile))
+              case StreamRedirect.Pipe =>
+            }
+
+            process.outputConfig.stderr match {
+              case StreamRedirect.Inherit => builder.redirectError(Redirect.INHERIT)
+              case StreamRedirect.Discard => builder.redirectError(Redirect.DISCARD)
+              case StreamRedirect.File(path) =>
+                builder.redirectError(Redirect.to(path.toNioPath.toFile))
+              case StreamRedirect.Pipe =>
             }
 
             builder.start()
@@ -89,7 +113,6 @@ private[process] trait ProcessesCompanionPlatform {
               F.blocking(process.destroy()),
               8192
             )
-
           }
         }
   }
