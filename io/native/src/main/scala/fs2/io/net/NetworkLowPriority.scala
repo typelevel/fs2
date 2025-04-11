@@ -19,12 +19,15 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2.io.net
 
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
+import cats.effect.{Async, LiftIO}
 
-private[unixsocket] trait UnixSocketsCompanionPlatform {
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
-    new FdPollingUnixSockets[F]
+private[fs2] trait NetworkLowPriority { this: Network.type =>
+  @deprecated("Add Network constraint or use forAsync", "3.7.0")
+  implicit def implicitForAsync[F[_]: Async]: Network[F] =
+    Async[F] match {
+      case l: LiftIO[_] => forLiftIO(Async[F], l.asInstanceOf[LiftIO[F]])
+      case _ => throw new UnsupportedOperationException
+    }
 }

@@ -21,9 +21,12 @@
 
 package fs2.io.net.unixsocket
 
-import cats.effect.kernel.Resource
+import cats.effect.{Async, IO, LiftIO, Resource}
+
+import com.comcast.ip4s.{UnixSocketAddress => Ip4sUnixSocketAddress}
+
 import fs2.Stream
-import fs2.io.net.Socket
+import fs2.io.net.{Socket, SocketOption, UnixSocketsProvider}
 
 /** Capability of working with AF_UNIX sockets. */
 trait UnixSockets[F[_]] {
@@ -47,6 +50,30 @@ trait UnixSockets[F[_]] {
   ): Stream[F, Socket[F]]
 }
 
-object UnixSockets extends UnixSocketsCompanionPlatform {
+object UnixSockets {
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
+
+  def forIO: UnixSockets[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
+    new AsyncUnixSockets[F]
+
+  private class AsyncUnixSockets[F[_]: Async: LiftIO] extends UnixSockets[F] {
+
+    private val delegate = UnixSocketsProvider.forLiftIO[F]
+
+    def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
+      delegate.connect(Ip4sUnixSocketAddress(address.path), Nil)
+
+    def server(
+        address: UnixSocketAddress,
+        deleteIfExists: Boolean,
+        deleteOnClose: Boolean
+    ): Stream[F, Socket[F]] =
+      Stream.resource(
+        delegate.bind(Ip4sUnixSocketAddress(address.path),
+          List(SocketOption.unixServerSocketDeleteIfExists(deleteIfExists),
+               SocketOption.unixServerSocketDeleteOnClose(deleteOnClose)))
+      ).flatMap(_.accept)
+  }
 }

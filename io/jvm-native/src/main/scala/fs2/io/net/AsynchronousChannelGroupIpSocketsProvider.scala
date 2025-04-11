@@ -37,8 +37,6 @@ import cats.syntax.all._
 import cats.effect.{Async, Resource}
 import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
-import fs2.internal.ThreadFactories
-
 private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
   channelGroup: AsynchronousChannelGroup
 )(implicit F: Async[F], F2: Dns[F]) extends IpSocketsProvider[F] {
@@ -154,13 +152,9 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
 }
 
 private[net] object AsynchronousChannelGroupIpSocketsProvider {
-  private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
-    1,
-    ThreadFactories.named("fs2-global-tcp", true)
-  )
 
   def forAsyncAndDns[F[_]: Async: Dns]: AsynchronousChannelGroupIpSocketsProvider[F] =
-    new AsynchronousChannelGroupIpSocketsProvider[F](globalAcg)
+    new AsynchronousChannelGroupIpSocketsProvider[F](null)
 
   def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] =
     forAsyncAndDns(Async[F], Dns.forAsync[F])

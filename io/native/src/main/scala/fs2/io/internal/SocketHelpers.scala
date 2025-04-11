@@ -34,6 +34,7 @@ import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.arpa.inet._
+import scala.scalanative.posix.errno.ENOPROTOOPT
 import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
@@ -65,6 +66,52 @@ private[io] object SocketHelpers {
         (if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit) *>
           (if (LinktimeInfo.isMac) setNoSigPipe(fd) else F.unit)
       }
+
+  def getOption[F[_]: Sync, A](fd: CInt, name: SocketOption[A]): F[Option[A]] = (name match {
+    case StandardSocketOptions.SO_SNDBUF =>
+      getOptionInt(fd, SO_SNDBUF)
+    case StandardSocketOptions.SO_RCVBUF =>
+      getOptionInt(fd, SO_RCVBUF)
+    case StandardSocketOptions.SO_REUSEADDR =>
+      getOptionInt(fd, SO_REUSEADDR)
+    case StandardSocketOptions.SO_REUSEPORT =>
+      getOptionBool(fd, SO_REUSEPORT)
+    case StandardSocketOptions.SO_KEEPALIVE =>
+      getOptionBool(fd, SO_KEEPALIVE)
+    case StandardSocketOptions.TCP_NODELAY =>
+      getTcpOptionBool(fd, TCP_NODELAY)
+    case _ => Sync[F].pure(None)
+  }).asInstanceOf[F[Option[A]]]
+
+  def getOptionBool[F[_]: Sync](fd: CInt, option: CInt): F[Option[Boolean]] =
+    getOptionInt(fd, option).map(_.map(v => if (v == 0) false else true))
+
+  def getOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
+    getOptionImpl(fd, SOL_SOCKET, option)
+
+  def getTcpOptionBool[F[_]: Sync](fd: CInt, option: CInt): F[Option[Boolean]] =
+    getTcpOptionInt(fd, option).map(_.map(v => if (v == 0) false else true))
+
+  def getTcpOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
+    getOptionImpl(fd, IPPROTO_TCP /* aka SOL_TCP */, option)
+
+  def getOptionImpl[F[_]](fd: CInt, level: CInt, option: CInt)(implicit
+      F: Sync[F]
+  ): F[Option[Int]] =
+    F.delay {
+      val ptr = stackalloc[CInt]()
+      val szPtr = stackalloc[UInt]()
+      val ret = guardMask(
+        getsockopt(
+          fd,
+          level,
+          option,
+          ptr.asInstanceOf[Ptr[Byte]],
+          szPtr
+        )
+      )(_ == ENOPROTOOPT)
+      if (ret == ENOPROTOOPT) None else Some(!ptr)
+    }
 
   // macOS-only
   def setNoSigPipe[F[_]: Sync](fd: CInt): F[Unit] =

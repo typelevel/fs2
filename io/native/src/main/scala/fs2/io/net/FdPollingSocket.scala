@@ -22,16 +22,11 @@
 package fs2
 package io.net
 
-import cats.effect.FileDescriptorPollHandle
-import cats.effect.IO
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.effect.{Async, FileDescriptorPollHandle, IO, LiftIO, Resource}
 import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.internal.NativeUtil._
-import fs2.io.internal.ResizableBuffer
+import fs2.io.internal.{ResizableBuffer, SocketHelpers}
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.errno._
@@ -51,6 +46,9 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
     extends Socket[F] {
+
+  def localAddressGen = localAddress.map(a => a: GenSocketAddress)
+  def remoteAddressGen = remoteAddress.map(a => a: GenSocketAddress)
 
   def endOfInput: F[Unit] = shutdownF(0)
   def endOfOutput: F[Unit] = shutdownF(1)
@@ -119,6 +117,13 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
 
   def writes: Pipe[F, Byte, Nothing] = _.chunks.foreach(write(_))
 
+  def getOption[A](key: SocketOption.Key[A]) =
+    SocketHelpers.getOption[F, A](fd, key)
+
+  def setOption[A](key: SocketOption.Key[A], value: A) =
+    SocketHelpers.setOption(fd, key, value)
+
+  def supportedOptions = ???
 }
 
 private object FdPollingSocket {

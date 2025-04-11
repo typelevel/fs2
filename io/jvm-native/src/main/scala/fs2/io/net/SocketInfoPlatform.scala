@@ -23,7 +23,7 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, SocketAddress}
 import cats.effect.Async
 
 import java.net.InetSocketAddress

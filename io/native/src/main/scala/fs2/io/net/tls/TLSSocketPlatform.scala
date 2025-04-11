@@ -24,12 +24,10 @@ package io
 package net
 package tls
 
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -90,8 +88,23 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
 
+      def localAddressGen: F[GenSocketAddress] =
+        socket.localAddressGen
+
       def remoteAddress: F[SocketAddress[IpAddress]] =
         socket.remoteAddress
+
+      def remoteAddressGen: F[GenSocketAddress] =
+        socket.remoteAddressGen
+
+      def supportedOptions: F[Set[SocketOption.Key[_]]] =
+        socket.supportedOptions
+
+      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
+        socket.getOption(key)
+
+      def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
+        socket.setOption(key, value)
 
       def session: F[SSLSession] = connection.session
 
