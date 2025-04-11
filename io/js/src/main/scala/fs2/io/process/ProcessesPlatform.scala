@@ -38,32 +38,32 @@ private[process] trait ProcessesCompanionPlatform {
         F.async_[(Process[F], F[Unit])] { cb =>
           val spawnOptions = new facade.child_process.SpawnOptions {
             cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-            env = (if (process.inheritEnv)
-                        (facade.process.env ++ process.extraEnv).toJSDictionary
-                      else
-                        process.extraEnv.toJSDictionary)
+            env =
+              if (process.inheritEnv)
+                (facade.process.env ++ process.extraEnv).toJSDictionary
+              else
+                process.extraEnv.toJSDictionary
           }
 
-          
           val stdinOpt = process.outputConfig.stdin match {
-            case StreamRedirect.Inherit => "inherit"
-            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe => // Default behaviour
+            case StreamRedirect.Pipe       => // Default behaviour
           }
-          
+
           val stdoutOpt = process.outputConfig.stdout match {
-            case StreamRedirect.Inherit => "inherit"
-            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe => // Default behaviour
+            case StreamRedirect.Pipe       => // Default behaviour
           }
-          
+
           val stderrOpt = process.outputConfig.stderr match {
-            case StreamRedirect.Inherit => "inherit"
-            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe => // Default behaviour
+            case StreamRedirect.Pipe       => // Default behaviour
           }
 
           spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt).asInstanceOf[js.Any]
@@ -73,7 +73,7 @@ private[process] trait ProcessesCompanionPlatform {
             process.args.toJSArray,
             spawnOptions
           )
-          
+
           val fs2Process = new UnsealedProcess[F] {
 
             def isAlive: F[Boolean] = F.delay {
