@@ -46,26 +46,23 @@ private[process] trait ProcessesCompanionPlatform {
 
           
           val stdinOpt = process.outputConfig.stdin match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) => 
-            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Inherit => "inherit"
+            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.File(path) => path.toString
             case StreamRedirect.Pipe => // Default behaviour
           }
           
           val stdoutOpt = process.outputConfig.stdout match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) => 
-            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Inherit => "inherit"
+            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.File(path) => path.toString
             case StreamRedirect.Pipe => // Default behaviour
           }
           
           val stderrOpt = process.outputConfig.stderr match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) => 
-            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Inherit => "inherit"
+            case StreamRedirect.Discard => "ignore"
+            case StreamRedirect.File(path) => path.toString
             case StreamRedirect.Pipe => // Default behaviour
           }
 
