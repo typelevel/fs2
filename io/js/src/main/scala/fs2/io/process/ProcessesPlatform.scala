@@ -37,43 +37,46 @@ private[process] trait ProcessesCompanionPlatform {
       Resource {
         F.async_[(Process[F], F[Unit])] { cb =>
           val spawnOptions = new facade.child_process.SpawnOptions {
-            "cwd" -> process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-            "env" -> (if (process.inheritEnv)
+            cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+            env = (if (process.inheritEnv)
                         (facade.process.env ++ process.extraEnv).toJSDictionary
                       else
                         process.extraEnv.toJSDictionary)
           }
 
+          
+          val stdinOpt = process.outputConfig.stdin match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) => 
+            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => // Default behaviour
+          }
+          
+          val stdoutOpt = process.outputConfig.stdout match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) => 
+            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => // Default behaviour
+          }
+          
+          val stderrOpt = process.outputConfig.stderr match {
+            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
+            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
+            case StreamRedirect.File(path) => 
+            spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
+            case StreamRedirect.Pipe => // Default behaviour
+          }
+
+          spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt).asInstanceOf[js.Any]
+
           val childProcess = facade.child_process.spawn(
             process.command,
             process.args.toJSArray,
-            spawnOptions.asInstanceOf[facade.child_process.SpawnOptions]
+            spawnOptions
           )
-
-          process.outputConfig.stdin match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) =>
-              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
-            case StreamRedirect.Pipe => // Default behaviour
-          }
-
-          process.outputConfig.stdout match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) =>
-              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
-            case StreamRedirect.Pipe => // Default behaviour
-          }
-
-          process.outputConfig.stderr match {
-            case StreamRedirect.Inherit => spawnOptions.stdio = "inherit".asInstanceOf[js.Any]
-            case StreamRedirect.Discard => spawnOptions.stdio = "ignore".asInstanceOf[js.Any]
-            case StreamRedirect.File(path) =>
-              spawnOptions.stdio = js.Array(path.toString, "pipe", "pipe")
-            case StreamRedirect.Pipe => // Default behaviour
-          }
-
+          
           val fs2Process = new UnsealedProcess[F] {
 
             def isAlive: F[Boolean] = F.delay {
