@@ -101,9 +101,9 @@ private[process] trait ProcessesCompanionPlatform {
 
             def stderr = unsafeReadReadable(childProcess.stderr)
 
-            def mergedOutput: Stream[F, Byte] = 
-            stdout.merge(stderr)
-            
+            def mergedOutput: Stream[F, Byte] =
+              stdout.merge(stderr)
+
           }
 
           val finalize = F.asyncCheckAttempt[Unit] { cb =>
