@@ -49,21 +49,21 @@ private[process] trait ProcessesCompanionPlatform {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => "pipe"
-            case StreamRedirect.Pipe => 
+            case StreamRedirect.Pipe       =>
           }
 
           val stdoutOpt: js.Any = process.outputConfig.stdout match {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => "pipe"
-            case StreamRedirect.Pipe => 
+            case StreamRedirect.Pipe       =>
           }
 
           val stderrOpt: js.Any = process.outputConfig.stderr match {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
             case StreamRedirect.File(path) => "pipe"
-            case StreamRedirect.Pipe => 
+            case StreamRedirect.Pipe       =>
           }
 
           spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt)
