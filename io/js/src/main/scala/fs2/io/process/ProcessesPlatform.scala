@@ -45,28 +45,28 @@ private[process] trait ProcessesCompanionPlatform {
                 process.extraEnv.toJSDictionary
           }
 
-          val stdinOpt = process.outputConfig.stdin match {
+          val stdinOpt: js.Any = process.outputConfig.stdin match {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
-            case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe       => // Default behaviour
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       => "pipe"
           }
 
-          val stdoutOpt = process.outputConfig.stdout match {
+          val stdoutOpt: js.Any = process.outputConfig.stdout match {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
-            case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe       => // Default behaviour
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       => "pipe"
           }
 
-          val stderrOpt = process.outputConfig.stderr match {
+          val stderrOpt: js.Any = process.outputConfig.stderr match {
             case StreamRedirect.Inherit    => "inherit"
             case StreamRedirect.Discard    => "ignore"
-            case StreamRedirect.File(path) => path.toString
-            case StreamRedirect.Pipe       => // Default behaviour
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       => "pipe"
           }
 
-          spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt).asInstanceOf[js.Any]
+          spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt)
 
           val childProcess = facade.child_process.spawn(
             process.command,
@@ -97,9 +97,17 @@ private[process] trait ProcessesCompanionPlatform {
 
             def stdin = writeWritable(F.delay(childProcess.stdin))
 
-            def stdout = unsafeReadReadable(childProcess.stdout)
+            def stdout =
+              if (process.outputConfig.stdout == StreamRedirect.Pipe)
+                unsafeReadReadable(childProcess.stdout)
+              else
+                Stream.empty
 
-            def stderr = unsafeReadReadable(childProcess.stderr)
+            def stderr =
+              if (process.outputConfig.stderr == StreamRedirect.Pipe)
+                unsafeReadReadable(childProcess.stderr)
+              else
+                Stream.empty
 
             def mergedOutput: Stream[F, Byte] =
               stdout.merge(stderr)
