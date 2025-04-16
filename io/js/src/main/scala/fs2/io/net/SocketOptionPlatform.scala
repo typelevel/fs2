@@ -86,7 +86,7 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
     override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
       Sync[F].pure(None)
   }
- 
+
   object UnixServerSocketDeleteOnClose extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](
         sock: facade.net.Socket,

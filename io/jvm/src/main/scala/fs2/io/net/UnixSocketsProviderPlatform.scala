@@ -93,7 +93,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       }
 
       (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
-        val acceptIncoming = 
+        val acceptIncoming =
           Stream
             .resource(accept.attempt)
             .flatMap {
@@ -118,7 +118,8 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       readMutex: Mutex[F],
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends Socket.BufferedReads[F](readMutex) with SocketInfo.AsyncSocketInfo[F] {
+      extends Socket.BufferedReads[F](readMutex)
+      with SocketInfo.AsyncSocketInfo[F] {
 
     protected def asyncInstance = F
     protected def channel = ch

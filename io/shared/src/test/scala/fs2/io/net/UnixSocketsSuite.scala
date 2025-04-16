@@ -33,7 +33,8 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
     test(s"echoes - $provider") {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
-      val server = Stream.resource(sockets.bind(address, Nil))
+      val server = Stream
+        .resource(sockets.bind(address, Nil))
         .flatMap(_.accept)
         .map { client =>
           client.reads.through(client.writes)

@@ -23,6 +23,4 @@ package fs2
 package io
 package net
 
-trait DatagramSocketGroup[F[_]] {
-}
-
+trait DatagramSocketGroup[F[_]] {}

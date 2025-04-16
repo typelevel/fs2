@@ -114,7 +114,9 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
                           guard(accept(fd, addr, len))
 
                       if (clientFd >= 0) {
-                        val address = SocketHelpers.toSocketAddress(addr, if (ipv4) AF_INET else AF_INET6).asInstanceOf[SocketAddress[IpAddress]]
+                        val address = SocketHelpers
+                          .toSocketAddress(addr, if (ipv4) AF_INET else AF_INET6)
+                          .asInstanceOf[SocketAddress[IpAddress]]
                         Right((address, clientFd))
                       } else
                         Left(())

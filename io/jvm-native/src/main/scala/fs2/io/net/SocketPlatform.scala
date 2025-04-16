@@ -108,7 +108,8 @@ private[net] trait SocketCompanionPlatform {
       readMutex: Mutex[F],
       writeMutex: Mutex[F]
   )(implicit F: Async[F])
-      extends BufferedReads[F](readMutex) with SocketInfo.AsyncSocketInfo[F] {
+      extends BufferedReads[F](readMutex)
+      with SocketInfo.AsyncSocketInfo[F] {
 
     protected def asyncInstance = F
     protected def channel = ch

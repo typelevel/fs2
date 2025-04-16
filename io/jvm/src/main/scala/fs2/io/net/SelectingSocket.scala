@@ -44,11 +44,11 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     writeMutex: Mutex[F],
     val remoteAddress: F[SocketAddress[IpAddress]]
 )(implicit F: Async[F])
-    extends Socket.BufferedReads(readMutex) with SocketInfo.AsyncSocketInfo[F] {
+    extends Socket.BufferedReads(readMutex)
+    with SocketInfo.AsyncSocketInfo[F] {
 
   protected def asyncInstance = F
   protected def channel = ch
-
 
   override def localAddress: F[SocketAddress[IpAddress]] =
     asyncInstance.delay(

@@ -56,9 +56,15 @@ sealed trait Network[F[_]]
 
   def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
-  def bind(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, ServerSocket[F]]
+  def bind(
+      address: GenSocketAddress,
+      options: List[SocketOption] = Nil
+  ): Resource[F, ServerSocket[F]]
 
-  def bindAndAccept(address: GenSocketAddress, options: List[SocketOption] = Nil): Stream[F, Socket[F]]
+  def bindAndAccept(
+      address: GenSocketAddress,
+      options: List[SocketOption] = Nil
+  ): Stream[F, Socket[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
     *
@@ -71,18 +77,27 @@ object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
-    
-    override def connect(address: GenSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]]
 
-    override def bind(address: GenSocketAddress, options: List[SocketOption]): Resource[F, ServerSocket[F]]
+    override def connect(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+    ): Resource[F, Socket[F]]
 
-    override def bindAndAccept(address: GenSocketAddress, options: List[SocketOption]): Stream[F, Socket[F]] =
+    override def bind(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+    ): Resource[F, ServerSocket[F]]
+
+    override def bindAndAccept(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+    ): Stream[F, Socket[F]] =
       Stream.resource(bind(address, options)).flatMap(_.accept)
 
     override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
 
     // Implementations of deprecated operations
-    
+
     override def client(
         to: SocketAddress[Host],
         options: List[SocketOption]
@@ -99,10 +114,16 @@ object Network extends NetworkCompanionPlatform {
         port: Option[Port],
         options: List[SocketOption]
     ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-      bind(SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)), options)
-        .flatMap(b => Resource.eval(b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]])).tupleRight(b.accept))
+      bind(
+        SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
+        options
+      )
+        .flatMap(b =>
+          Resource
+            .eval(b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]))
+            .tupleRight(b.accept)
+        )
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F
 }
-

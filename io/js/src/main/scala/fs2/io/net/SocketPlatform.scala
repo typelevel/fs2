@@ -100,7 +100,7 @@ private[net] trait SocketCompanionPlatform {
     override def remoteAddressGen: F[GenSocketAddress] =
       ???
 
-    override def supportedOptions: F[Set[SocketOption.Key[_]]] =
+    override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       ???
 
     override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =

@@ -23,7 +23,15 @@ package fs2.io.internal
 
 import cats.effect.{Resource, Sync}
 import cats.syntax.all._
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, Ipv4Address, Ipv6Address, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{
+  GenSocketAddress,
+  IpAddress,
+  Ipv4Address,
+  Ipv6Address,
+  Port,
+  SocketAddress,
+  UnixSocketAddress
+}
 
 import java.net.SocketOption
 import java.net.StandardSocketOptions
@@ -208,7 +216,7 @@ private[io] object SocketHelpers {
   ): F[SocketAddress[IpAddress]] =
     getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6).map {
       case a: SocketAddress[IpAddress] @unchecked => a
-      case _ => throw new IllegalArgumentException
+      case _                                      => throw new IllegalArgumentException
     }
 
   def getLocalAddressGen[F[_]](fd: Int, domain: CInt)(implicit
@@ -320,7 +328,8 @@ private[io] object SocketHelpers {
     // FIXME: Scala Native 0.4 doesn't support getsconame for unix sockets; after upgrading to 0.5,
     // this can be simplified to just allocate a sockaddr_un
     val (addr, lenValue) = // allocate enough for unix socket address
-      if (domain == AF_UNIX) (stackalloc[sockaddr_un]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_un].toUInt)
+      if (domain == AF_UNIX)
+        (stackalloc[sockaddr_un]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_un].toUInt)
       else (stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_in6].toUInt)
 
     val len = stackalloc[socklen_t]()

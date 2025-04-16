@@ -70,9 +70,10 @@ private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
         }
         .map { sch =>
           SocketInfo.forAsync(sch) ->
-            Resource.makeFull[F, SocketChannel] { poll =>
-              poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
-            }(ch => F.blocking(ch.close()))
+            Resource
+              .makeFull[F, SocketChannel] { poll =>
+                poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
+              }(ch => F.blocking(ch.close()))
               .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
         }
     )

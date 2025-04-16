@@ -24,14 +24,14 @@ package io
 package net
 
 /** Represents a bound TCP server socket.
- *
- * Note some platforms do not support getting and setting socket options on server sockets
- * so take care when using `getOption` and `setOption`.
- *
- * Client sockets can be accepted by pulling on the `accept` stream. A concurrent server
- * that is limited to `maxAccept` concurrent clients is accomplished by
- * `b.accept.map(handleClientSocket).parJoin(maxAccept)`.
- */
+  *
+  * Note some platforms do not support getting and setting socket options on server sockets
+  * so take care when using `getOption` and `setOption`.
+  *
+  * Client sockets can be accepted by pulling on the `accept` stream. A concurrent server
+  * that is limited to `maxAccept` concurrent clients is accomplished by
+  * `b.accept.map(handleClientSocket).parJoin(maxAccept)`.
+  */
 sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 
   /** Stream of client sockets; typically processed concurrently to allow concurrent clients. */
@@ -39,7 +39,7 @@ sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 }
 
 object ServerSocket {
- 
+
   def apply[F[_]](info: SocketInfo[F], accept: Stream[F, Socket[F]]): ServerSocket[F] = {
     val accept0 = accept
     new ServerSocket[F] {
@@ -51,4 +51,3 @@ object ServerSocket {
     }
   }
 }
-

@@ -30,7 +30,7 @@ trait SocketInfo[F[_]] {
   /** Asks for the local address of the socket. */
   def localAddressGen: F[GenSocketAddress]
 
-  def supportedOptions: F[Set[SocketOption.Key[_]]]
+  def supportedOptions: F[Set[SocketOption.Key[?]]]
 
   def getOption[A](key: SocketOption.Key[A]): F[Option[A]]
 
@@ -38,4 +38,3 @@ trait SocketInfo[F[_]] {
 }
 
 object SocketInfo extends SocketInfoCompanionPlatform
-

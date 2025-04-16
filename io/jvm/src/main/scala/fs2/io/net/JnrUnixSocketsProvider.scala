@@ -70,8 +70,12 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
           .cancelable(F.blocking(sch.close()))
       }
       .map { sch =>
-        def raiseOptionError[A]: F[A] = 
-          F.raiseError(new UnsupportedOperationException("JNR unix server sockets do not support socket options"))
+        def raiseOptionError[A]: F[A] =
+          F.raiseError(
+            new UnsupportedOperationException(
+              "JNR unix server sockets do not support socket options"
+            )
+          )
         val info: SocketInfo[F] = new SocketInfo[F] {
           def supportedOptions = F.pure(Set.empty)
           def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
@@ -79,9 +83,10 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
           def localAddressGen = F.pure(address)
         }
         info ->
-          Resource.makeFull[F, SocketChannel] { poll =>
-            F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
-          }(ch => F.blocking(ch.close()))
+          Resource
+            .makeFull[F, SocketChannel] { poll =>
+              F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
+            }(ch => F.blocking(ch.close()))
             .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
       }
 }

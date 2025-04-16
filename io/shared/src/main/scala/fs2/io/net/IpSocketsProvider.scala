@@ -29,15 +29,14 @@ import com.comcast.ip4s.{Host, SocketAddress}
 private[net] trait IpSocketsProvider[F[_]] {
 
   def connect(
-    address: SocketAddress[Host],
-    options: List[SocketOption]
+      address: SocketAddress[Host],
+      options: List[SocketOption]
   ): Resource[F, Socket[F]]
 
   def bind(
-    address: SocketAddress[Host],
-    options: List[SocketOption]
+      address: SocketAddress[Host],
+      options: List[SocketOption]
   ): Resource[F, ServerSocket[F]]
 }
 
 private[net] object IpSocketsProvider extends IpSocketsProviderCompanionPlatform
-

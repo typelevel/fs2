@@ -97,7 +97,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def remoteAddressGen: F[GenSocketAddress] =
         socket.remoteAddressGen
 
-      def supportedOptions: F[Set[SocketOption.Key[_]]] =
+      def supportedOptions: F[Set[SocketOption.Key[?]]] =
         socket.supportedOptions
 
       def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =

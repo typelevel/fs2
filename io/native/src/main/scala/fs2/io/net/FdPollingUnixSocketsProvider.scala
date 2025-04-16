@@ -45,29 +45,35 @@ import scala.scalanative.unsigned._
 private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F: Async[F])
     extends UnixSocketsProvider[F] {
 
-  def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] = for {
-    poller <- Resource.eval(fileDescriptorPoller[F])
-    fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
-    _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
-    handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
-    _ <- Resource.eval {
-      handle
-        .pollWriteRec(false) { connected =>
-          if (connected) SocketHelpers.checkSocketError[IO](fd).as(Either.unit)
-          else
-            IO {
-              toSockaddrUn(address.path) { addr =>
-                if (guard(uconnect(fd, addr, sizeof[sockaddr_un].toUInt)) < 0)
-                  Left(true) // we will be connected when unblocked
-                else
-                  Either.unit[Boolean]
+  def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
+    for {
+      poller <- Resource.eval(fileDescriptorPoller[F])
+      fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
+      _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
+      handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
+      _ <- Resource.eval {
+        handle
+          .pollWriteRec(false) { connected =>
+            if (connected) SocketHelpers.checkSocketError[IO](fd).as(Either.unit)
+            else
+              IO {
+                toSockaddrUn(address.path) { addr =>
+                  if (guard(uconnect(fd, addr, sizeof[sockaddr_un].toUInt)) < 0)
+                    Left(true) // we will be connected when unblocked
+                  else
+                    Either.unit[Boolean]
+                }
               }
-            }
-        }
-        .to
-    }
-    socket <- FdPollingSocket[F](fd, handle, SocketHelpers.getLocalAddressGen(fd, AF_UNIX), SocketHelpers.getRemoteAddressGen(fd, AF_UNIX))
-  } yield socket
+          }
+          .to
+      }
+      socket <- FdPollingSocket[F](
+        fd,
+        handle,
+        SocketHelpers.getLocalAddressGen(fd, AF_UNIX),
+        SocketHelpers.getRemoteAddressGen(fd, AF_UNIX)
+      )
+    } yield socket
 
   def bind(
       address: UnixSocketAddress,
@@ -102,7 +108,6 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
 
       fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
 
-
       handle <- poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
       _ <- Resource.eval {
         F.delay {
@@ -112,45 +117,56 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
 
       info = new SocketInfo[F] {
         def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
-        def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
+        def setOption[A](key: SocketOption.Key[A], value: A) =
+          SocketHelpers.setOption(fd, key, value)
         def supportedOptions = ???
         def localAddressGen = SocketHelpers.getLocalAddressGen(fd, AF_UNIX)
       }
 
-      clients = Stream.resource {
-        val accepted = for {
-          fd <- Resource.makeFull[F, Int] { poll =>
-            poll {
-              handle
-                .pollReadRec(()) { _ =>
-                  IO {
-                    val clientFd =
-                      if (LinktimeInfo.isLinux)
-                        guard(accept4(fd, null, null, SOCK_NONBLOCK))
+      clients = Stream
+        .resource {
+          val accepted = for {
+            fd <- Resource.makeFull[F, Int] { poll =>
+              poll {
+                handle
+                  .pollReadRec(()) { _ =>
+                    IO {
+                      val clientFd =
+                        if (LinktimeInfo.isLinux)
+                          guard(accept4(fd, null, null, SOCK_NONBLOCK))
+                        else
+                          guard(accept(fd, null, null))
+
+                      if (clientFd >= 0)
+                        Right(clientFd)
                       else
-                        guard(accept(fd, null, null))
-
-                    if (clientFd >= 0)
-                      Right(clientFd)
-                    else
-                      Left(())
+                        Left(())
+                    }
                   }
-                }
-                .to
-            }
-          }(fd => F.delay(guard_(close(fd))))
-          _ <-
-            if (!LinktimeInfo.isLinux)
-              Resource.eval(setNonBlocking(fd))
-            else Resource.unit[F]
+                  .to
+              }
+            }(fd => F.delay(guard_(close(fd))))
+            _ <-
+              if (!LinktimeInfo.isLinux)
+                Resource.eval(setNonBlocking(fd))
+              else Resource.unit[F]
 
-          _ <- Resource.eval(filteredOptions.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
-          handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
-          socket <- FdPollingSocket[F](fd, handle, SocketHelpers.getLocalAddressGen(fd, AF_UNIX), SocketHelpers.getRemoteAddressGen(fd, AF_UNIX))
-        } yield socket
+            _ <- Resource.eval(
+              filteredOptions.traverse(so => SocketHelpers.setOption(fd, so.key, so.value))
+            )
+            handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
+            socket <- FdPollingSocket[F](
+              fd,
+              handle,
+              SocketHelpers.getLocalAddressGen(fd, AF_UNIX),
+              SocketHelpers.getRemoteAddressGen(fd, AF_UNIX)
+            )
+          } yield socket
 
-        accepted.attempt.map(_.toOption)
-      }.repeat.unNone
+          accepted.attempt.map(_.toOption)
+        }
+        .repeat
+        .unNone
 
     } yield ServerSocket(info, clients)
   }

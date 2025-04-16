@@ -39,11 +39,18 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
   // TODO pull up
   import cats.ApplicativeThrow
-  private def matchAddress[F[_]: ApplicativeThrow, A](address: GenSocketAddress, ifIp: SocketAddress[Host] => F[A], ifUnix: UnixSocketAddress => F[A]): F[A] =
+  private def matchAddress[F[_]: ApplicativeThrow, A](
+      address: GenSocketAddress,
+      ifIp: SocketAddress[Host] => F[A],
+      ifUnix: UnixSocketAddress => F[A]
+  ): F[A] =
     address match {
       case sa: SocketAddress[Host] => ifIp(sa)
-      case ua: UnixSocketAddress => ifUnix(ua)
-      case other => ApplicativeThrow[F].raiseError(new UnsupportedOperationException(s"Unsupported address type: $other"))
+      case ua: UnixSocketAddress   => ifUnix(ua)
+      case other =>
+        ApplicativeThrow[F].raiseError(
+          new UnsupportedOperationException(s"Unsupported address type: $other")
+        )
     }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
@@ -54,20 +61,24 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       private lazy val datagramSocketGroup = DatagramSocketGroup.forAsync[F]
 
       override def connect(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, Socket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => ipSockets.connect(sa, options),
-          ua => unixSockets.connect(ua, options))
+          ua => unixSockets.connect(ua, options)
+        )
 
       override def bind(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, ServerSocket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => ipSockets.bind(sa, options),
-          ua => unixSockets.bind(ua, options))
+          ua => unixSockets.bind(ua, options)
+        )
 
       override def openDatagramSocket(
           address: Option[Host],

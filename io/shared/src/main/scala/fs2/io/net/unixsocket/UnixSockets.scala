@@ -72,10 +72,16 @@ object UnixSockets {
         deleteIfExists: Boolean,
         deleteOnClose: Boolean
     ): Stream[F, Socket[F]] =
-      Stream.resource(
-        delegate.bind(Ip4sUnixSocketAddress(address.path),
-          List(SocketOption.unixServerSocketDeleteIfExists(deleteIfExists),
-               SocketOption.unixServerSocketDeleteOnClose(deleteOnClose)))
-      ).flatMap(_.accept)
+      Stream
+        .resource(
+          delegate.bind(
+            Ip4sUnixSocketAddress(address.path),
+            List(
+              SocketOption.unixServerSocketDeleteIfExists(deleteIfExists),
+              SocketOption.unixServerSocketDeleteOnClose(deleteOnClose)
+            )
+          )
+        )
+        .flatMap(_.accept)
   }
 }

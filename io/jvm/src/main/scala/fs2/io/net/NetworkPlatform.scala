@@ -48,7 +48,10 @@ private[net] trait NetworkPlatform[F[_]] {
     * @param threadCount number of threads to allocate in the fixed thread pool backing the NIO channel group
     * @param threadFactory factory used to create fixed threads
     */
-  @deprecated("3.13.0", "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead")
+  @deprecated(
+    "3.13.0",
+    "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead"
+  )
   def socketGroup(
       threadCount: Int = 1,
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-tcp", true)
@@ -73,11 +76,18 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
 
-  private def matchAddress[F[_]: ApplicativeThrow, A](address: GenSocketAddress, ifIp: SocketAddress[Host] => F[A], ifUnix: UnixSocketAddress => F[A]): F[A] =
+  private def matchAddress[F[_]: ApplicativeThrow, A](
+      address: GenSocketAddress,
+      ifIp: SocketAddress[Host] => F[A],
+      ifUnix: UnixSocketAddress => F[A]
+  ): F[A] =
     address match {
       case sa: SocketAddress[Host] => ifIp(sa)
-      case ua: UnixSocketAddress => ifUnix(ua)
-      case other => ApplicativeThrow[F].raiseError(new UnsupportedOperationException(s"Unsupported address type: $other"))
+      case ua: UnixSocketAddress   => ifUnix(ua)
+      case other =>
+        ApplicativeThrow[F].raiseError(
+          new UnsupportedOperationException(s"Unsupported address type: $other")
+        )
     }
 
   def forIO: Network[IO] = forLiftIO
@@ -91,27 +101,34 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       private implicit def dns: Dns[F] = Dns.forAsync[F]
 
-      private def selecting[A](ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A], orElse: => Resource[F, A]): Resource[F, A] =
+      private def selecting[A](
+          ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A],
+          orElse: => Resource[F, A]
+      ): Resource[F, A] =
         Resource.eval(tryGetSelector).flatMap {
           case Some(selector) => ifSelecting(new SelectingIpSocketsProvider(selector))
-          case None => orElse
+          case None           => orElse
         }
 
       def connect(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, Socket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => selecting(_.connect(sa, options), fallback.connect(sa, options)),
-          ua => fallback.connect(ua, options))
+          ua => fallback.connect(ua, options)
+        )
 
       def bind(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, ServerSocket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
-          ua => fallback.bind(ua, options))
+          ua => fallback.bind(ua, options)
+        )
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         fallback.datagramSocketGroup(threadFactory)
@@ -126,11 +143,15 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       // Implementations of deprecated operations
 
-      @deprecated("3.13.0", "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead")
+      @deprecated(
+        "3.13.0",
+        "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead"
+      )
       def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
         Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) => Resource.pure(SocketGroup.fromIpSockets(new SelectingIpSocketsProvider(selector)))
-          case None           => fallback.socketGroup(threadCount, threadFactory)
+          case Some(selector) =>
+            Resource.pure(SocketGroup.fromIpSockets(new SelectingIpSocketsProvider(selector)))
+          case None => fallback.socketGroup(threadCount, threadFactory)
         }
     }
 
@@ -144,20 +165,24 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 
       def connect(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, Socket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => ipSockets.connect(sa, options),
-          ua => unixSockets.connect(ua, options))
+          ua => unixSockets.connect(ua, options)
+        )
 
       def bind(
-        address: GenSocketAddress,
-        options: List[SocketOption]
+          address: GenSocketAddress,
+          options: List[SocketOption]
       ): Resource[F, ServerSocket[F]] =
-        matchAddress(address,
+        matchAddress(
+          address,
           sa => ipSockets.bind(sa, options),
-          ua => unixSockets.bind(ua, options))
+          ua => unixSockets.bind(ua, options)
+        )
 
       def openDatagramSocket(
           address: Option[Host],
@@ -180,4 +205,3 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         Resource.pure(SocketGroup.fromIpSockets(ipSockets))
     }
 }
-

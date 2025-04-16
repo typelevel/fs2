@@ -29,13 +29,14 @@ import com.comcast.ip4s.UnixSocketAddress
 private[net] trait UnixSocketsProvider[F[_]] {
 
   def connect(
-    address: UnixSocketAddress,
-    options: List[SocketOption]
+      address: UnixSocketAddress,
+      options: List[SocketOption]
   ): Resource[F, Socket[F]]
 
   def bind(
-    address: UnixSocketAddress,
-    options: List[SocketOption]
-  ): Resource[F, ServerSocket[F]]}
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]]
+}
 
 private[net] object UnixSocketsProvider extends UnixSocketsProviderCompanionPlatform

@@ -51,16 +51,16 @@ private[net] trait SocketInfoCompanionPlatform {
         }
       )
 
-    override def supportedOptions: F[Set[SocketOption.Key[_]]] =
+    override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       asyncInstance.delay {
         channel.supportedOptions.asScala.toSet
       }
 
     override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
       asyncInstance.delay {
-        try {
+        try
           Some(channel.getOption(key))
-        } catch {
+        catch {
           case _: UnsupportedOperationException => None
         }
       }
@@ -73,4 +73,3 @@ private[net] trait SocketInfoCompanionPlatform {
   }
 
 }
-

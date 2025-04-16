@@ -36,7 +36,6 @@ private[net] trait SocketInfoCompanionPlatform {
     }
   }
 
-
   private[net] trait AsyncSocketInfo[F[_]] extends SocketInfo[F] {
 
     implicit protected def asyncInstance: Async[F]
@@ -45,7 +44,7 @@ private[net] trait SocketInfoCompanionPlatform {
 
     override def localAddressGen: F[GenSocketAddress] = ???
 
-    override def supportedOptions: F[Set[SocketOption.Key[_]]] = ???
+    override def supportedOptions: F[Set[SocketOption.Key[?]]] = ???
 
     override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
       key.get(sock)

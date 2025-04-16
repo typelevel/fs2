@@ -62,12 +62,12 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
             .registerOneTimeListener[F, js.Error]("error") { error =>
               cb(Left(js.JavaScriptException(error)))
             } <* F.delay {
-              to match {
-                case Left(addr) =>
-                  sock.connect(addr.port.value, addr.host.toString, () => cb(Right(())))
-                case Right(addr) =>
-                  sock.connect(addr.path, () => cb(Right(())))
-              }
+            to match {
+              case Left(addr) =>
+                sock.connect(addr.port.value, addr.host.toString, () => cb(Right(())))
+              case Right(addr) =>
+                sock.connect(addr.path, () => cb(Right(())))
+            }
           }
         }
         .toResource
@@ -112,7 +112,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
                 else
                   server.listen(addr.port.value, addr.host.toString, () => cb(Right(())))
               case Right(addr) =>
-                  server.listen(addr.path, () => cb(Right(())))
+                server.listen(addr.path, () => cb(Right(())))
             }
           }
         }

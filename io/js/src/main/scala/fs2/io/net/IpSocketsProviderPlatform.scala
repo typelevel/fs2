@@ -34,20 +34,20 @@ private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.
   private def forAsyncAndDns[F[_]: Async: Dns]: IpSocketsProvider[F] =
     new AsyncSocketsProvider[F] with IpSocketsProvider[F] {
 
-    override def connect(
-        address: SocketAddress[Host],
-        options: List[SocketOption]
-    ): Resource[F, Socket[F]] =
-      Resource.eval(address.host.resolve[F]).flatMap { ip =>
-        connectIpOrUnix(Left(SocketAddress(ip, address.port)), options)
-      }
+      override def connect(
+          address: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] =
+        Resource.eval(address.host.resolve[F]).flatMap { ip =>
+          connectIpOrUnix(Left(SocketAddress(ip, address.port)), options)
+        }
 
-    override def bind(
-        address: SocketAddress[Host],
-        options: List[SocketOption]
-    ): Resource[F, ServerSocket[F]] =
-      Resource.eval(address.host.resolve[F]).flatMap { ip =>
-        bindIpOrUnix(Left(SocketAddress(ip, address.port)), options)
-      }
-  }
+      override def bind(
+          address: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, ServerSocket[F]] =
+        Resource.eval(address.host.resolve[F]).flatMap { ip =>
+          bindIpOrUnix(Left(SocketAddress(ip, address.port)), options)
+        }
+    }
 }

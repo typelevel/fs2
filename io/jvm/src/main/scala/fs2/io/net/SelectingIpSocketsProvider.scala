@@ -37,7 +37,9 @@ import java.nio.channels.SelectionKey.OP_CONNECT
 import java.nio.channels.SocketChannel
 
 private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
-    F: Async[F], F2: LiftIO[F], F3: Dns[F]
+    F: Async[F],
+    F2: LiftIO[F],
+    F3: Dns[F]
 ) extends IpSocketsProvider[F] {
 
   def connect(

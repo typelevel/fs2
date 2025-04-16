@@ -23,7 +23,6 @@ package fs2
 package io
 package net
 
-
 import java.net.InetSocketAddress
 import java.nio.channels.{
   AsynchronousCloseException,
@@ -38,14 +37,15 @@ import cats.effect.{Async, Resource}
 import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
 private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
-  channelGroup: AsynchronousChannelGroup
-)(implicit F: Async[F], F2: Dns[F]) extends IpSocketsProvider[F] {
+    channelGroup: AsynchronousChannelGroup
+)(implicit F: Async[F], F2: Dns[F])
+    extends IpSocketsProvider[F] {
 
   override def connect(
-    address: SocketAddress[Host],
-    options: List[SocketOption]
+      address: SocketAddress[Host],
+      options: List[SocketOption]
   ): Resource[F, Socket[F]] = {
-    
+
     def setup: Resource[F, AsynchronousSocketChannel] =
       Resource
         .make(
@@ -59,29 +59,27 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
       address.resolve[F].flatMap { ip =>
         F.async[AsynchronousSocketChannel] { cb =>
           F.delay {
-              ch.connect(
-                ip.toInetSocketAddress,
-                null,
-                new CompletionHandler[Void, Void] {
-                  def completed(result: Void, attachment: Void): Unit =
-                    cb(Right(ch))
-                  def failed(rsn: Throwable, attachment: Void): Unit =
-                    cb(Left(rsn))
-                }
-              )
-            }
-            .as(Some(F.delay(ch.close())))
+            ch.connect(
+              ip.toInetSocketAddress,
+              null,
+              new CompletionHandler[Void, Void] {
+                def completed(result: Void, attachment: Void): Unit =
+                  cb(Right(ch))
+                def failed(rsn: Throwable, attachment: Void): Unit =
+                  cb(Left(rsn))
+              }
+            )
+          }.as(Some(F.delay(ch.close())))
         }
       }
 
     setup.evalMap(ch => connect(ch) *> Socket.forAsync(ch))
- }
+  }
 
   override def bind(
-    address: SocketAddress[Host],
-    options: List[SocketOption]
+      address: SocketAddress[Host],
+      options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    
 
     val setup: Resource[F, AsynchronousServerSocketChannel] =
       Resource.eval(address.host.resolve[F]).flatMap { addr =>
@@ -111,17 +109,16 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
           poll {
             F.async[AsynchronousSocketChannel] { cb =>
               F.delay {
-                  sch.accept(
-                    null,
-                    new CompletionHandler[AsynchronousSocketChannel, Void] {
-                      def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
-                        cb(Right(ch))
-                      def failed(rsn: Throwable, attachment: Void): Unit =
-                        cb(Left(rsn))
-                    }
-                  )
-                }
-                .as(Some(F.delay(sch.close())))
+                sch.accept(
+                  null,
+                  new CompletionHandler[AsynchronousSocketChannel, Void] {
+                    def completed(ch: AsynchronousSocketChannel, attachment: Void): Unit =
+                      cb(Right(ch))
+                    def failed(rsn: Throwable, attachment: Void): Unit =
+                      cb(Left(rsn))
+                  }
+                )
+              }.as(Some(F.delay(sch.close())))
             }
           }
         }(ch => F.delay(if (ch.isOpen) ch.close else ()))

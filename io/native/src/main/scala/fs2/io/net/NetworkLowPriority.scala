@@ -27,7 +27,7 @@ private[fs2] trait NetworkLowPriority { this: Network.type =>
   @deprecated("Add Network constraint or use forAsync", "3.7.0")
   implicit def implicitForAsync[F[_]: Async]: Network[F] =
     Async[F] match {
-      case l: LiftIO[_] => forLiftIO(Async[F], l.asInstanceOf[LiftIO[F]])
-      case _ => throw new UnsupportedOperationException
+      case l: LiftIO[?] => forLiftIO(Async[F], l.asInstanceOf[LiftIO[F]])
+      case _            => throw new UnsupportedOperationException
     }
 }

@@ -36,7 +36,10 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
   private def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
     new AsyncSocketsProvider[F] with UnixSocketsProvider[F] {
 
-      override def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
+      override def connect(
+          address: UnixSocketAddress,
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] =
         connectIpOrUnix(Right(address), options)
 
       override def bind(
@@ -59,7 +62,9 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
 
         val delete = Resource.make(
           if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else Async[F].unit
-        )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else Async[F].unit)
+        )(_ =>
+          if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else Async[F].unit
+        )
 
         delete *> bindIpOrUnix(Right(address), filteredOptions)
       }
