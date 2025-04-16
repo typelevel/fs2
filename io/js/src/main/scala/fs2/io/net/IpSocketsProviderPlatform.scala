@@ -24,115 +24,30 @@ package io
 package net
 
 import cats.effect.{Async, Resource}
-import cats.effect.std.Dispatcher
-import cats.effect.syntax.all._
-import cats.syntax.all._
-import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress, UnixSocketAddress}
-import fs2.concurrent.Channel
-import fs2.io.internal.facade
-
-import scala.scalajs.js
+import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
 private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
 
   private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
-    new AsyncIpSocketsProvider[F]()(implicitly, Dns.forAsync[F])
+    forAsyncAndDns[F](implicitly, Dns.forAsync)
 
-  private[net] final class AsyncIpSocketsProvider[F[_]](implicit F: Async[F], F2: Dns[F])
-      extends IpSocketsProvider[F] {
-
-    private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
-      options.traverse_(option => option.key.set(socket, option.value))
+  private def forAsyncAndDns[F[_]: Async: Dns]: IpSocketsProvider[F] =
+    new AsyncSocketsProvider[F] with IpSocketsProvider[F] {
 
     override def connect(
-        to: SocketAddress[Host],
+        address: SocketAddress[Host],
         options: List[SocketOption]
     ): Resource[F, Socket[F]] =
-      (for {
-        sock <- Resource
-          .make(
-            F.delay(
-              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
-            )
-          )(sock =>
-            F.delay {
-              if (!sock.destroyed)
-                sock.destroy()
-            }
-          )
-          .evalTap(setSocketOptions(options))
-        socket <- Socket.forAsync(sock)
-        _ <- F
-          .async[Unit] { cb =>
-            sock
-              .registerOneTimeListener[F, js.Error]("error") { error =>
-                cb(Left(js.JavaScriptException(error)))
-              } <* F.delay {
-              sock.connect(to.port.value, to.host.toString, () => cb(Right(())))
-            }
-          }
-          .toResource
-      } yield socket).adaptError { case IOException(ex) => ex }
+      Resource.eval(address.host.resolve[F]).flatMap { ip =>
+        connectIpOrUnix(Left(SocketAddress(ip, address.port)), options)
+      }
 
     override def bind(
         address: SocketAddress[Host],
         options: List[SocketOption]
     ): Resource[F, ServerSocket[F]] =
-      (for {
-        dispatcher <- Dispatcher.sequential[F]
-        channel <- Channel.unbounded[F, facade.net.Socket].toResource
-        server <- Resource.make(
-          F
-            .delay(
-              facade.net.createServer(
-                new facade.net.ServerOptions {
-                  pauseOnConnect = true
-                  allowHalfOpen = true
-                },
-                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
-              )
-            )
-        )(server =>
-          F.async[Unit] { cb =>
-            if (server.listening)
-              F.delay(server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))) *>
-                channel.close.as(None)
-            else
-              F.delay(cb(Right(()))).as(None)
-          }
-        )
-        ip <- Resource.eval(address.host.resolve[F])
-        _ <- F
-          .async[Unit] { cb =>
-            server.registerOneTimeListener[F, js.Error]("error") { e =>
-              cb(Left(js.JavaScriptException(e)))
-            } <* F.delay {
-              if (ip.isWildcard)
-                server.listen(address.port.value, () => cb(Right(())))
-              else
-                server.listen(address.port.value, ip.toString, () => cb(Right(())))
-            }
-          }
-          .toResource
-        info = new SocketInfo[F] {
-          def localAddressGen = F.delay {
-            val address = server.address()
-            if (address.port ne null)
-              SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
-            else
-              UnixSocketAddress(address.path)
-          }
-
-          def getOption[A](key: SocketOption.Key[A]) =
-            F.raiseError(new UnsupportedOperationException)
-          def setOption[A](key: SocketOption.Key[A], value: A) =
-            F.raiseError(new UnsupportedOperationException)
-          def supportedOptions =
-            F.raiseError(new UnsupportedOperationException)
-        }
-        sockets = channel.stream
-          .evalTap(setSocketOptions(options))
-          .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
-      } yield ServerSocket(info, sockets)).adaptError { case IOException(ex) => ex }
+      Resource.eval(address.host.resolve[F]).flatMap { ip =>
+        bindIpOrUnix(Left(SocketAddress(ip, address.port)), options)
+      }
   }
 }

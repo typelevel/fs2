@@ -23,57 +23,21 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, IO, LiftIO, Resource}
-import cats.effect.std.Dispatcher
+import cats.effect.{Async, Resource}
 import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
-import fs2.concurrent.Channel
 import fs2.io.file.{Files, Path}
-import fs2.io.internal.facade
-
-import scala.scalajs.js
 
 private[net] trait UnixSocketsProviderCompanionPlatform {
-  def forIO: UnixSocketsProvider[IO] = forLiftIO
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSocketsProvider[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
-  }
+  private[net] def forAsync[F[_]: Async]: UnixSocketsProvider[F] =
+    forAsyncAndFiles(implicitly, Files.forAsync[F])
 
-  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
-    forAsyncAndFiles(Files.forAsync(F), F)
-
-  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSocketsProvider[F] =
-    new UnixSocketsProvider[F] {
-
-      private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
-        options.traverse_(option => option.key.set(socket, option.value))
+  private def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
+    new AsyncSocketsProvider[F] with UnixSocketsProvider[F] {
 
       override def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
-        (Resource
-          .make(
-            F.delay(
-              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
-            )
-          )(socket =>
-            F.delay {
-              if (!socket.destroyed)
-                socket.destroy()
-            }
-          )
-          .evalTap(setSocketOptions(options))
-          .evalTap { socket =>
-            F.async[Unit] { cb =>
-              socket
-                .registerOneTimeListener[F, js.Error]("error") { error =>
-                  cb(Left(js.JavaScriptException(error)))
-                } <* F.delay {
-                  socket.connect(address.path, () => cb(Right(())))
-                }
-            }
-          }
-          .flatMap(Socket.forAsync[F])).adaptError { case IOException(ex) => ex }
+        connectIpOrUnix(Right(address), options)
 
       override def bind(
           address: UnixSocketAddress,
@@ -83,7 +47,6 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
         var deleteIfExists: Boolean = false
         var deleteOnClose: Boolean = true
 
-        // TODO use options
         val filteredOptions = options.filter { opt =>
           if (opt.key == SocketOption.UnixServerSocketDeleteIfExists) {
             deleteIfExists = opt.value.asInstanceOf[Boolean]
@@ -94,56 +57,11 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
           } else true
         }
 
-        for {
-          dispatcher <- Dispatcher.sequential[F]
-          channel <- Resource.eval(Channel.unbounded[F, facade.net.Socket])
-          server <- Resource.make(
-            F.delay {
-              facade.net.createServer(
-                new facade.net.ServerOptions {
-                  pauseOnConnect = true
-                  allowHalfOpen = true
-                },
-                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
-              )
-            }
-          )(server =>
-            F.async_[Unit] { cb =>
-              if (server.listening) {
-                server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
-                ()
-              } else
-                cb(Right(()))
-            }
-          )
+        val delete = Resource.make(
+          if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else Async[F].unit
+        )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else Async[F].unit)
 
-          _ <- Resource.make(
-            if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else F.unit
-          )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else F.unit)
-
-          _ <- Resource.eval(
-            F.async[Unit] { cb =>
-              server.registerOneTimeListener[F, js.Error]("error") { e =>
-                cb(Left(js.JavaScriptException(e)))
-              } <* F.delay(server.listen(address.path, () => cb(Right(()))))
-            }
-          )
-
-          info = new SocketInfo[F] {
-            def localAddressGen = F.delay { UnixSocketAddress(address.path) }
-            def getOption[A](key: SocketOption.Key[A]) =
-              F.raiseError(new UnsupportedOperationException)
-            def setOption[A](key: SocketOption.Key[A], value: A) =
-              F.raiseError(new UnsupportedOperationException)
-            def supportedOptions =
-              F.raiseError(new UnsupportedOperationException)
-          }
-          accept = channel.stream
-            .evalTap(setSocketOptions(filteredOptions))
-            .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
-        } yield ServerSocket(info, accept)
+        delete *> bindIpOrUnix(Right(address), filteredOptions)
       }
-
     }
-
 }
