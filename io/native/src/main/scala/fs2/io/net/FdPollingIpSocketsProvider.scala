@@ -72,8 +72,8 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
     socket <- FdPollingSocket[F](
       fd,
       handle,
-      SocketHelpers.getLocalAddress(fd, ipv4),
-      F.pure(address)
+      SocketHelpers.getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6),
+      SocketHelpers.getRemoteAddressGen(fd, if (ipv4) AF_INET else AF_INET6)
     )
   } yield socket
 
@@ -106,7 +106,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
               handle
                 .pollReadRec(()) { _ =>
                   IO {
-                    SocketHelpers.allocateSockaddr { (addr, len) =>
+                    SocketHelpers.allocateSockaddr(if (ipv4) AF_INET else AF_INET6) { (addr, len) =>
                       val clientFd =
                         if (LinktimeInfo.isLinux)
                           guard(accept4(fd, addr, len, SOCK_NONBLOCK))
@@ -114,7 +114,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
                           guard(accept(fd, addr, len))
 
                       if (clientFd >= 0) {
-                        val address = SocketHelpers.toSocketAddress(addr, ipv4)
+                        val address = SocketHelpers.toSocketAddress(addr, if (ipv4) AF_INET else AF_INET6).asInstanceOf[SocketAddress[IpAddress]]
                         Right((address, clientFd))
                       } else
                         Left(())
@@ -133,8 +133,8 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
           socket <- FdPollingSocket[F](
             fd,
             handle,
-            SocketHelpers.getLocalAddress(fd, ipv4),
-            F.pure(address)
+            SocketHelpers.getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6),
+            SocketHelpers.getRemoteAddressGen(fd, if (ipv4) AF_INET else AF_INET6)
           )
         } yield socket
 
@@ -147,7 +147,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
       def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
       def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
       def supportedOptions = ???
-      def localAddressGen = SocketHelpers.getLocalAddress[F](fd, ipv4).map(a => a: GenSocketAddress)
+      def localAddressGen = SocketHelpers.getLocalAddressGen[F](fd, if (ipv4) AF_INET else AF_INET6)
     }
 
   } yield ServerSocket(info, sockets)

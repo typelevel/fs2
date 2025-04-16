@@ -38,3 +38,6 @@ private[net] trait IpSocketsProvider[F[_]] {
     options: List[SocketOption]
   ): Resource[F, ServerSocket[F]]
 }
+
+private[net] object IpSocketsProvider extends IpSocketsProviderCompanionPlatform
+

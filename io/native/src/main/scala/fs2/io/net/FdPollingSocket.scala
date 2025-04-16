@@ -42,13 +42,19 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     handle: FileDescriptorPollHandle,
     readBuffer: ResizableBuffer[F],
     val isOpen: F[Boolean],
-    val localAddress: F[SocketAddress[IpAddress]],
-    val remoteAddress: F[SocketAddress[IpAddress]]
+    val localAddressGen: F[GenSocketAddress],
+    val remoteAddressGen: F[GenSocketAddress]
 )(implicit F: Async[F])
     extends Socket[F] {
 
-  def localAddressGen = localAddress.map(a => a: GenSocketAddress)
-  def remoteAddressGen = remoteAddress.map(a => a: GenSocketAddress)
+  def localAddress = downcastAddress(localAddressGen)
+  def remoteAddress = downcastAddress(remoteAddressGen)
+
+  private def downcastAddress(address: F[GenSocketAddress]): F[SocketAddress[IpAddress]] =
+    address.flatMap {
+      case a: SocketAddress[IpAddress] @unchecked => F.pure(a)
+      case _ => F.raiseError(new UnsupportedOperationException("invalid address type"))
+    }
 
   def endOfInput: F[Unit] = shutdownF(0)
   def endOfOutput: F[Unit] = shutdownF(1)
@@ -132,10 +138,10 @@ private object FdPollingSocket {
   def apply[F[_]: LiftIO](
       fd: Int,
       handle: FileDescriptorPollHandle,
-      localAddress: F[SocketAddress[IpAddress]],
-      remoteAddress: F[SocketAddress[IpAddress]]
+      localAddressGen: F[GenSocketAddress],
+      remoteAddressGen: F[GenSocketAddress]
   )(implicit F: Async[F]): Resource[F, Socket[F]] = for {
     buffer <- ResizableBuffer(DefaultReadSize)
     isOpen <- Resource.make(F.ref(true))(_.set(false))
-  } yield new FdPollingSocket(fd, handle, buffer, isOpen.get, localAddress, remoteAddress)
+  } yield new FdPollingSocket(fd, handle, buffer, isOpen.get, localAddressGen, remoteAddressGen)
 }

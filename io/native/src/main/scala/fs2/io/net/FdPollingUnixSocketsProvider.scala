@@ -45,8 +45,6 @@ import scala.scalanative.unsigned._
 private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F: Async[F])
     extends UnixSocketsProvider[F] {
 
-  // TODO socket options
-
   def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
     fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
@@ -68,7 +66,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         }
         .to
     }
-    socket <- FdPollingSocket[F](fd, handle, raiseIpAddressError, raiseIpAddressError)
+    socket <- FdPollingSocket[F](fd, handle, SocketHelpers.getLocalAddressGen(fd, AF_UNIX), SocketHelpers.getRemoteAddressGen(fd, AF_UNIX))
   } yield socket
 
   def bind(
@@ -104,6 +102,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
 
       fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
 
+
       handle <- poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
       _ <- Resource.eval {
         F.delay {
@@ -115,7 +114,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
         def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
         def supportedOptions = ???
-        def localAddressGen = ???
+        def localAddressGen = SocketHelpers.getLocalAddressGen(fd, AF_UNIX)
       }
 
       clients = Stream.resource {
@@ -147,7 +146,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
 
           _ <- Resource.eval(filteredOptions.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
           handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
-          socket <- FdPollingSocket[F](fd, handle, raiseIpAddressError, raiseIpAddressError)
+          socket <- FdPollingSocket[F](fd, handle, SocketHelpers.getLocalAddressGen(fd, AF_UNIX), SocketHelpers.getRemoteAddressGen(fd, AF_UNIX))
         } yield socket
 
         accepted.attempt.map(_.toOption)
@@ -167,7 +166,4 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
 
     f(addr.asInstanceOf[Ptr[sockaddr]])
   }
-
-  private def raiseIpAddressError[A]: F[A] =
-    F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
 }

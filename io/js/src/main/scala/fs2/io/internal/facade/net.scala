@@ -59,6 +59,7 @@ private[io] object net {
   trait ServerAddress extends js.Object {
     def address: String = js.native
     def port: Int = js.native
+    def path: String = js.native
   }
 
   trait ServerOptions extends js.Object {
@@ -109,6 +110,8 @@ private[io] object net {
     def setNoDelay(noDelay: Boolean): Socket = js.native
 
     def setTimeout(timeout: Double): Socket = js.native
+
+    def timeout: Double = js.native
 
   }
 

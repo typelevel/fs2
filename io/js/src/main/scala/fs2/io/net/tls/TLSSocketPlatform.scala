@@ -71,6 +71,11 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
   ) extends Socket.AsyncSocket[F](sock, readStream)
       with UnsealedTLSSocket[F] {
     override def localAddress = underlying.localAddress
+    override def localAddressGen = underlying.localAddressGen
     override def remoteAddress = underlying.remoteAddress
+    override def remoteAddressGen = underlying.remoteAddressGen
+    override def getOption[A](key: SocketOption.Key[A]) = underlying.getOption(key)
+    override def setOption[A](key: SocketOption.Key[A], value: A) = underlying.setOption(key, value)
+    override def supportedOptions = underlying.supportedOptions
   }
 }

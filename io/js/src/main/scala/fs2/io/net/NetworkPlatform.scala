@@ -23,14 +23,8 @@ package fs2
 package io
 package net
 
-import cats.effect.IO
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
-import com.comcast.ip4s.Host
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import cats.effect.{Async, IO, LiftIO, Resource}
+import com.comcast.ip4s.{GenSocketAddress, Host, Port, SocketAddress, UnixSocketAddress}
 import fs2.io.net.tls.TLSContext
 
 private[net] trait NetworkPlatform[F[_]]
@@ -43,31 +37,37 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
     forAsync
   }
 
-  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
-    new UnsealedNetwork[F] {
+  // TODO pull up
+  import cats.ApplicativeThrow
+  private def matchAddress[F[_]: ApplicativeThrow, A](address: GenSocketAddress, ifIp: SocketAddress[Host] => F[A], ifUnix: UnixSocketAddress => F[A]): F[A] =
+    address match {
+      case sa: SocketAddress[Host] => ifIp(sa)
+      case ua: UnixSocketAddress => ifUnix(ua)
+      case other => ApplicativeThrow[F].raiseError(new UnsupportedOperationException(s"Unsupported address type: $other"))
+    }
 
-      private lazy val socketGroup = SocketGroup.forAsync[F]
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+    new AsyncNetwork[F] {
+
+      private lazy val ipSockets = IpSocketsProvider.forAsync[F]
+      private lazy val unixSockets = UnixSocketsProvider.forAsync[F]
       private lazy val datagramSocketGroup = DatagramSocketGroup.forAsync[F]
 
-      override def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
+      override def connect(
+        address: GenSocketAddress,
+        options: List[SocketOption]
       ): Resource[F, Socket[F]] =
-        socketGroup.client(to, options)
+        matchAddress(address,
+          sa => ipSockets.connect(sa, options),
+          ua => unixSockets.connect(ua, options))
 
-      override def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] =
-        socketGroup.server(address, port, options)
-
-      override def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        socketGroup.serverResource(address, port, options)
+      override def bind(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+      ): Resource[F, ServerSocket[F]] =
+        matchAddress(address,
+          sa => ipSockets.bind(sa, options),
+          ua => unixSockets.bind(ua, options))
 
       override def openDatagramSocket(
           address: Option[Host],

@@ -23,18 +23,34 @@ package fs2
 package io
 package net
 
-private[net] trait ServerSocketCompanionPlatform {
-  private[net] def apply[F[_]](info: SocketInfo[F], accept: Stream[F, Socket[F]]): ServerSocket[F] = {
-    val accept0 = accept
-    new UnsealedServerSocket[F] {
-      def accept: Stream[F, Socket[F]] = accept0
+import com.comcast.ip4s.{GenSocketAddress, SocketAddress}
+import cats.effect.Async
+import fs2.io.internal.facade
 
-      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
-      def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
-      def supportedOptions = info.supportedOptions
-
-      def localAddressGen = info.localAddressGen
+private[net] trait SocketInfoCompanionPlatform {
+  private[net] def forAsync[F[_]](sock: facade.net.Socket)(implicit F: Async[F]): SocketInfo[F] = {
+    val sock0 = sock
+    new AsyncSocketInfo[F] {
+      def asyncInstance = F
+      def sock: facade.net.Socket = sock0
     }
   }
-}
 
+
+  private[net] trait AsyncSocketInfo[F[_]] extends SocketInfo[F] {
+
+    implicit protected def asyncInstance: Async[F]
+
+    protected def sock: facade.net.Socket
+
+    override def localAddressGen: F[GenSocketAddress] = ???
+
+    override def supportedOptions: F[Set[SocketOption.Key[_]]] = ???
+
+    override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
+      key.get(sock)
+
+    override def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
+      key.set(sock, value)
+  }
+}

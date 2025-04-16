@@ -21,14 +21,9 @@
 
 package fs2.io.internal
 
-import cats.effect.kernel.Resource
-import cats.effect.kernel.Sync
+import cats.effect.{Resource, Sync}
 import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Ipv4Address
-import com.comcast.ip4s.Ipv6Address
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, Ipv4Address, Ipv6Address, Port, SocketAddress, UnixSocketAddress}
 
 import java.net.SocketOption
 import java.net.StandardSocketOptions
@@ -47,6 +42,8 @@ import NativeUtil._
 import netinetin._
 import netinetinOps._
 import syssocket._
+import sysun._
+import sysunOps._
 
 private[io] object SocketHelpers {
 
@@ -101,6 +98,7 @@ private[io] object SocketHelpers {
     F.delay {
       val ptr = stackalloc[CInt]()
       val szPtr = stackalloc[UInt]()
+      !szPtr = sizeof[CInt].toUInt
       val ret = guardMask(
         getsockopt(
           fd,
@@ -208,9 +206,26 @@ private[io] object SocketHelpers {
   def getLocalAddress[F[_]](fd: Int, ipv4: Boolean)(implicit
       F: Sync[F]
   ): F[SocketAddress[IpAddress]] =
+    getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6).map {
+      case a: SocketAddress[IpAddress] @unchecked => a
+      case _ => throw new IllegalArgumentException
+    }
+
+  def getLocalAddressGen[F[_]](fd: Int, domain: CInt)(implicit
+      F: Sync[F]
+  ): F[GenSocketAddress] =
     F.delay {
-      SocketHelpers.toSocketAddress(ipv4) { (addr, len) =>
+      SocketHelpers.toSocketAddress(domain) { (addr, len) =>
         guard_(getsockname(fd, addr, len))
+      }
+    }
+
+  def getRemoteAddressGen[F[_]](fd: Int, domain: CInt)(implicit
+      F: Sync[F]
+  ): F[GenSocketAddress] =
+    F.delay {
+      SocketHelpers.toSocketAddress(domain) { (addr, len) =>
+        guard_(getpeername(fd, addr, len))
       }
     }
 
@@ -299,29 +314,32 @@ private[io] object SocketHelpers {
     }
   }
 
-  def allocateSockaddr[A](
+  def allocateSockaddr[A](domain: CInt)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => A
   ): A = {
-    val addr = // allocate enough for an IPv6
-      stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]]
+    // FIXME: Scala Native 0.4 doesn't support getsconame for unix sockets; after upgrading to 0.5,
+    // this can be simplified to just allocate a sockaddr_un
+    val (addr, lenValue) = // allocate enough for unix socket address
+      if (domain == AF_UNIX) (stackalloc[sockaddr_un]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_un].toUInt)
+      else (stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_in6].toUInt)
+
     val len = stackalloc[socklen_t]()
-    !len = sizeof[sockaddr_in6].toUInt
-
+    !len = lenValue
     f(addr, len)
   }
 
-  def toSocketAddress[A](ipv4: Boolean)(
+  def toSocketAddress[A](domain: CInt)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => Unit
-  ): SocketAddress[IpAddress] = allocateSockaddr { (addr, len) =>
+  ): GenSocketAddress = allocateSockaddr(domain) { (addr, len) =>
     f(addr, len)
-    toSocketAddress(addr, ipv4)
+    toSocketAddress(addr, domain)
   }
 
-  def toSocketAddress(addr: Ptr[sockaddr], ipv4: Boolean): SocketAddress[IpAddress] =
-    if (ipv4)
-      toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
-    else
-      toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
+  def toSocketAddress(addr: Ptr[sockaddr], domain: CInt): GenSocketAddress =
+    if (domain == AF_INET) toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
+    else if (domain == AF_INET6) toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
+    else if (domain == AF_UNIX) toUnixSocketAddress(addr.asInstanceOf[Ptr[sockaddr_un]])
+    else throw new UnsupportedOperationException
 
   private[this] def toIpv4SocketAddress(addr: Ptr[sockaddr_in]): SocketAddress[Ipv4Address] = {
     val port = Port.fromInt(ntohs(addr.sin_port).toInt).get
@@ -344,5 +362,10 @@ private[io] object SocketHelpers {
       addr
     }.get
     SocketAddress(host, port)
+  }
+
+  private[this] def toUnixSocketAddress(addr: Ptr[sockaddr_un]): UnixSocketAddress = {
+    val path = fromCString(addr.sun_path.asInstanceOf[CString])
+    UnixSocketAddress(path)
   }
 }

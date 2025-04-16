@@ -38,7 +38,17 @@ sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
   def accept: Stream[F, Socket[F]]
 }
 
-private[net] trait UnsealedServerSocket[F[_]] extends ServerSocket[F]
-
-object ServerSocket extends ServerSocketCompanionPlatform
+object ServerSocket {
+ 
+  def apply[F[_]](info: SocketInfo[F], accept: Stream[F, Socket[F]]): ServerSocket[F] = {
+    val accept0 = accept
+    new ServerSocket[F] {
+      def accept: Stream[F, Socket[F]] = accept0
+      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
+      def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
+      def supportedOptions = info.supportedOptions
+      def localAddressGen = info.localAddressGen
+    }
+  }
+}
 

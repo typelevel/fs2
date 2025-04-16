@@ -20,10 +20,10 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io.net
 
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("node.js")(UnixSockets.forAsync[IO])
+  testProvider("node.js", UnixSocketsProvider.forAsync[IO])
 }

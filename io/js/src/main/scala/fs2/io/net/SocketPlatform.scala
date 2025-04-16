@@ -23,16 +23,11 @@ package fs2
 package io
 package net
 
-import cats.data.Kleisli
-import cats.data.OptionT
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.data.{Kleisli, OptionT}
+import cats.effect.{Async, Resource}
 import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
-import fs2.io.internal.SuspendedStream
-import fs2.io.internal.facade
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, Port, SocketAddress}
+import fs2.io.internal.{facade, SuspendedStream}
 
 private[net] trait SocketCompanionPlatform {
 
@@ -87,17 +82,32 @@ private[net] trait SocketCompanionPlatform {
 
     override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
+    override def localAddress: F[SocketAddress[IpAddress]] =
+      for {
+        ip <- F.delay(sock.localAddress.toOption.flatMap(IpAddress.fromString).get)
+        port <- F.delay(sock.localPort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
+      } yield SocketAddress(ip, port)
+
+    override def localAddressGen: F[GenSocketAddress] =
+      ???
+
     override def remoteAddress: F[SocketAddress[IpAddress]] =
       for {
         ip <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
         port <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
       } yield SocketAddress(ip, port)
 
-    override def localAddress: F[SocketAddress[IpAddress]] =
-      for {
-        ip <- F.delay(sock.localAddress.toOption.flatMap(IpAddress.fromString).get)
-        port <- F.delay(sock.localPort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(ip, port)
+    override def remoteAddressGen: F[GenSocketAddress] =
+      ???
+
+    override def supportedOptions: F[Set[SocketOption.Key[_]]] =
+      ???
+
+    override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
+      key.get(sock)
+
+    override def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
+      key.set(sock, value)
 
     override def write(bytes: Chunk[Byte]): F[Unit] =
       Stream.chunk(bytes).through(writes).compile.drain

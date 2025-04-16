@@ -24,11 +24,12 @@ package fs2.io.net
 import cats.effect.kernel.Sync
 import fs2.io.internal.facade
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration._
 
 private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   sealed trait Key[A] {
     private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: A): F[Unit]
+    private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[A]]
   }
 
   private object Encoding extends Key[String] {
@@ -37,6 +38,8 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setEncoding(value)
         ()
       }
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[String]] =
+      Sync[F].raiseError(new UnsupportedOperationException)
   }
 
   private object KeepAlive extends Key[Boolean] {
@@ -45,6 +48,8 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setKeepAlive(value)
         ()
       }
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
+      Sync[F].raiseError(new UnsupportedOperationException)
   }
 
   private object NoDelay extends Key[Boolean] {
@@ -53,6 +58,9 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setNoDelay(value)
         ()
       }
+
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
+      Sync[F].raiseError(new UnsupportedOperationException)
   }
 
   private object Timeout extends Key[FiniteDuration] {
@@ -64,11 +72,36 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setTimeout(value.toMillis.toDouble)
         ()
       }
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[FiniteDuration]] =
+      Sync[F].delay {
+        Some(sock.timeout.toLong.millis)
+      }
+  }
+
+  object UnixServerSocketDeleteIfExists extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](
+        sock: facade.net.Socket,
+        value: Boolean
+    ): F[Unit] = Sync[F].unit
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
+      Sync[F].pure(None)
+  }
+ 
+  object UnixServerSocketDeleteOnClose extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](
+        sock: facade.net.Socket,
+        value: Boolean
+    ): F[Unit] = Sync[F].unit
+    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
+      Sync[F].pure(None)
   }
 
   def encoding(value: String): SocketOption = apply(Encoding, value)
   def keepAlive(value: Boolean): SocketOption = apply(KeepAlive, value)
   def noDelay(value: Boolean): SocketOption = apply(NoDelay, value)
   def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)
-
+  def unixServerSocketDeleteIfExists(value: Boolean): SocketOption =
+    apply(UnixServerSocketDeleteIfExists, value)
+  def unixServerSocketDeleteOnClose(value: Boolean): SocketOption =
+    apply(UnixServerSocketDeleteOnClose, value)
 }
