@@ -55,14 +55,12 @@ object UnixSockets {
 
   def forIO: UnixSockets[IO] = forLiftIO
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
-    val _ = LiftIO[F]
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
     new AsyncUnixSockets[F]
-  }
 
-  private class AsyncUnixSockets[F[_]: Async] extends UnixSockets[F] {
+  private class AsyncUnixSockets[F[_]: Async: LiftIO] extends UnixSockets[F] {
 
-    private val delegate = UnixSocketsProvider.forAsync[F]
+    private val delegate = UnixSocketsProvider.forLiftIO[F]
 
     def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
       delegate.connect(Ip4sUnixSocketAddress(address.path), Nil)

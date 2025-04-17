@@ -23,33 +23,10 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.GenSocketAddress
 import cats.effect.Async
-import fs2.io.internal.facade
 
-private[net] trait SocketInfoCompanionPlatform {
-  private[net] def forAsync[F[_]](sock: facade.net.Socket)(implicit F: Async[F]): SocketInfo[F] = {
-    val sock0 = sock
-    new AsyncSocketInfo[F] {
-      def asyncInstance = F
-      def sock: facade.net.Socket = sock0
-    }
-  }
+private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
 
-  private[net] trait AsyncSocketInfo[F[_]] extends SocketInfo[F] {
-
-    implicit protected def asyncInstance: Async[F]
-
-    protected def sock: facade.net.Socket
-
-    override def localAddressGen: F[GenSocketAddress] = ???
-
-    override def supportedOptions: F[Set[SocketOption.Key[?]]] = ???
-
-    override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
-      key.get(sock)
-
-    override def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
-      key.set(sock, value)
-  }
+  private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
+    AsynchronousChannelGroupIpSocketsProvider.forAsync[F]
 }

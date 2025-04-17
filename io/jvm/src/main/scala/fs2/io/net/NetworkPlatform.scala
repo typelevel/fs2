@@ -160,7 +160,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
   def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
     new AsyncNetwork[F] {
-      private lazy val ipSockets = AsynchronousChannelGroupIpSocketsProvider.forAsync[F]
+      private lazy val ipSockets = IpSocketsProvider.forAsync[F]
       private lazy val unixSockets = UnixSocketsProvider.forAsync[F]
       private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 

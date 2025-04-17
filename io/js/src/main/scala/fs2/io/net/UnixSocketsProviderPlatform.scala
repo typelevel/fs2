@@ -23,12 +23,17 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, Resource}
+import cats.effect.{Async, LiftIO, Resource}
 import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
 import fs2.io.file.{Files, Path}
 
 private[net] trait UnixSocketsProviderCompanionPlatform {
+
+  private[net] def forLiftIO[F[_]: Async: LiftIO]: UnixSocketsProvider[F] = {
+    val _ = LiftIO[F]
+    forAsync[F]
+  }
 
   private[net] def forAsync[F[_]: Async]: UnixSocketsProvider[F] =
     forAsyncAndFiles(implicitly, Files.forAsync[F])
