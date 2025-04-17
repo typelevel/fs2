@@ -23,10 +23,9 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{GenSocketAddress, SocketAddress}
+import com.comcast.ip4s.GenSocketAddress
 import cats.effect.Async
 
-import java.net.InetSocketAddress
 import java.nio.channels.NetworkChannel
 
 import scala.jdk.CollectionConverters.*
@@ -44,12 +43,7 @@ private[net] trait SocketInfoCompanionPlatform {
     protected def channel: NetworkChannel
 
     override def localAddressGen: F[GenSocketAddress] =
-      asyncInstance.delay(
-        channel.getLocalAddress match {
-          case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
-          // TODO handle unix sockets
-        }
-      )
+      asyncInstance.delay(SocketAddressHelpers.toGenSocketAddress(channel.getLocalAddress))
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       asyncInstance.delay {

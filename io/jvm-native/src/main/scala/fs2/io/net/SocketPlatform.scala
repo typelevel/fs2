@@ -124,7 +124,7 @@ private[net] trait SocketCompanionPlatform {
         F.delay(Some(endOfInput.voidError))
       }
 
-    def write(bytes: Chunk[Byte]): F[Unit] = {
+    override def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
         F.async[Int] { cb =>
           ch.write(
@@ -150,23 +150,24 @@ private[net] trait SocketCompanionPlatform {
         )
       )
 
-    def remoteAddress: F[SocketAddress[IpAddress]] =
+    override def remoteAddress: F[SocketAddress[IpAddress]] =
       F.delay(
         SocketAddress.fromInetSocketAddress(
           ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
         )
       )
 
-    override def remoteAddressGen: F[GenSocketAddress] = ???
+    override def remoteAddressGen: F[GenSocketAddress] =
+      F.delay(SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress))
 
-    def isOpen: F[Boolean] = F.delay(ch.isOpen)
+    override def isOpen: F[Boolean] = F.delay(ch.isOpen)
 
-    def endOfOutput: F[Unit] =
+    override def endOfOutput: F[Unit] =
       F.delay {
         ch.shutdownOutput(); ()
       }
 
-    def endOfInput: F[Unit] =
+    override def endOfInput: F[Unit] =
       F.delay {
         ch.shutdownInput(); ()
       }
