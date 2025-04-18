@@ -25,21 +25,22 @@ package net
 
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Async, Resource}
-import cats.syntax.all._
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.internal.{facade, SuspendedStream}
 
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
-      sock: facade.net.Socket
+      sock: facade.net.Socket,
+      localAddressGen: F[GenSocketAddress],
+      remoteAddressGen: F[GenSocketAddress]
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     suspendReadableAndRead(
       destroyIfNotEnded = false,
       destroyIfCanceled = false
     )(sock.asInstanceOf[Readable])
       .flatMap { case (_, stream) =>
-        SuspendedStream(stream).map(new AsyncSocket(sock, _))
+        SuspendedStream(stream).map(new AsyncSocket(sock, _, localAddressGen, remoteAddressGen))
       }
       .onFinalize {
         F.delay {
@@ -50,7 +51,9 @@ private[net] trait SocketCompanionPlatform {
 
   private[net] class AsyncSocket[F[_]](
       sock: facade.net.Socket,
-      readStream: SuspendedStream[F, Byte]
+      readStream: SuspendedStream[F, Byte],
+      localAddressGen0: F[GenSocketAddress],
+      remoteAddressGen0: F[GenSocketAddress]
   )(implicit F: Async[F])
       extends Socket[F] {
 
@@ -85,24 +88,12 @@ private[net] trait SocketCompanionPlatform {
     override def localAddress: F[SocketAddress[IpAddress]] =
       SocketInfo.downcastAddress(localAddressGen)
 
-    override def localAddressGen: F[GenSocketAddress] = F.delay {
-      val address = sock.address()
-      if (address.port ne null)
-        SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
-      else
-        UnixSocketAddress(address.path)
-    }
+    override def localAddressGen = localAddressGen0
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
       SocketInfo.downcastAddress(remoteAddressGen)
 
-    override def remoteAddressGen: F[GenSocketAddress] = F.delay {
-      val address = sock.remoteAddress()
-      if (address.port ne null)
-        SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
-      else
-        UnixSocketAddress(address.path)
-    }
+    override def remoteAddressGen = remoteAddressGen0
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       ???

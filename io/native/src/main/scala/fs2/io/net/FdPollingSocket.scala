@@ -24,7 +24,7 @@ package io.net
 
 import cats.effect.{Async, FileDescriptorPollHandle, IO, LiftIO, Resource}
 import cats.syntax.all._
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import com.comcast.ip4s.GenSocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.{ResizableBuffer, SocketHelpers}
 

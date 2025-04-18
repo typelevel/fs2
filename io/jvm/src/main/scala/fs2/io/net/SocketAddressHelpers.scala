@@ -3,12 +3,12 @@ package io
 package net
 
 import com.comcast.ip4s.{GenSocketAddress, SocketAddress, UnixSocketAddress}
-import java.net.{InetSocketAddress, UnixDomainSocketAddress}
+import java.net.{SocketAddress => JSocketAddress, InetSocketAddress, UnixDomainSocketAddress}
 import jnr.unixsocket.{UnixSocketAddress => JnrUnixSocketAddress}
 
 private[net] object SocketAddressHelpers {
 
-  def toGenSocketAddress(address: java.net.SocketAddress): GenSocketAddress =
+  def toGenSocketAddress(address: JSocketAddress): GenSocketAddress =
     address match {
       case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
       case _ =>

@@ -29,7 +29,7 @@ import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
 trait SocketInfo[F[_]] {
 
-  /** Asks for the local address of the socket. */
+  /** Asks for the local address of this socket. Like `localAddress` but supports unix sockets as well. */
   def localAddressGen: F[GenSocketAddress]
 
   def supportedOptions: F[Set[SocketOption.Key[?]]]
@@ -40,9 +40,7 @@ trait SocketInfo[F[_]] {
 }
 
 object SocketInfo extends SocketInfoCompanionPlatform {
-  private[net] def downcastAddress[F[_]: MonadThrow](
-      address: F[GenSocketAddress]
-  ): F[SocketAddress[IpAddress]] =
+  private[net] def downcastAddress[F[_]: MonadThrow](address: F[GenSocketAddress]): F[SocketAddress[IpAddress]] =
     address.flatMap {
       case a: SocketAddress[IpAddress] @unchecked => MonadThrow[F].pure(a)
       case _ => MonadThrow[F].raiseError(new UnsupportedOperationException("invalid address type"))

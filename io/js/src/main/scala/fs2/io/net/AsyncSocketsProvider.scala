@@ -27,7 +27,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{IpAddress, GenSocketAddress, Port, SocketAddress, UnixSocketAddress}
 import fs2.concurrent.Channel
 import fs2.io.internal.facade
 
@@ -55,7 +55,21 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           }
         )
         .evalTap(setSocketOptions(options))
-      socket <- Socket.forAsync(sock)
+      localAddressGen = F.delay {
+        (to match {
+          case Left(_) =>
+            SocketAddress(IpAddress.fromString(sock.localAddress.get).get, Port.fromInt(sock.localPort.get).get)
+          case Right(_) => UnixSocketAddress("")
+        }): GenSocketAddress
+      }
+      remoteAddressGen = F.delay {
+        (to match {
+          case Left(_) =>
+            SocketAddress(IpAddress.fromString(sock.remoteAddress.get).get, Port.fromInt(sock.remotePort.get).get)
+          case Right(addr) => addr
+        }): GenSocketAddress
+      }
+      socket <- Socket.forAsync(sock, localAddressGen, remoteAddressGen)
       _ <- F
         .async[Unit] { cb =>
           sock
@@ -119,11 +133,12 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
         .toResource
       info = new SocketInfo[F] {
         def localAddressGen = F.delay {
-          val address = server.address()
-          if (address.port ne null)
-            SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
-          else
-            UnixSocketAddress(address.path)
+          address match {
+            case Left(_) =>
+              val addr = server.address().get
+              SocketAddress(IpAddress.fromString(addr.address).get, Port.fromInt(addr.port).get)
+            case Right(addr) => addr
+          }
         }
 
         def getOption[A](key: SocketOption.Key[A]) =
@@ -135,6 +150,22 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
       }
       sockets = channel.stream
         .evalTap(setSocketOptions(options))
-        .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+        .flatMap { sock =>
+          val localAddressGen = F.delay {
+            (address match {
+              case Left(_) =>
+                SocketAddress(IpAddress.fromString(sock.localAddress.get).get, Port.fromInt(sock.localPort.get).get)
+              case Right(addr) => addr
+            }): GenSocketAddress
+          }
+          val remoteAddressGen = F.delay {
+            (address match {
+              case Left(_) => 
+                SocketAddress(IpAddress.fromString(sock.remoteAddress.get).get, Port.fromInt(sock.remotePort.get).get)
+              case Right(_) => UnixSocketAddress("")
+            }): GenSocketAddress
+          }
+          Stream.resource(Socket.forAsync(sock, localAddressGen, remoteAddressGen))
+        }
     } yield ServerSocket(info, sockets)).adaptError { case IOException(ex) => ex }
 }

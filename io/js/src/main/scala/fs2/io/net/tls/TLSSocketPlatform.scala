@@ -28,6 +28,7 @@ import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.effect.syntax.all._
 import cats.syntax.all._
+import com.comcast.ip4s.GenSocketAddress
 import fs2.io.internal.facade
 import fs2.io.internal.SuspendedStream
 import scodec.bits.ByteVector
@@ -67,8 +68,8 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       readStream: SuspendedStream[F, Byte],
       underlying: Socket[F],
       val session: F[SSLSession],
-      val applicationProtocol: F[String]
-  ) extends Socket.AsyncSocket[F](sock, readStream)
+      val applicationProtocol: F[String],
+  ) extends Socket.AsyncSocket[F](sock, readStream, Async[F].delay(sys.error("unused")), Async[F].delay(sys.error("unused")))
       with UnsealedTLSSocket[F] {
     override def localAddress = underlying.localAddress
     override def localAddressGen = underlying.localAddressGen

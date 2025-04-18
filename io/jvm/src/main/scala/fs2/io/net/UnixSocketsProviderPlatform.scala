@@ -65,7 +65,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
     ): Resource[F, (SocketInfo[F], Resource[F, SocketChannel])]
 
     def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
-      openChannel(address).evalMap(makeSocket[F](_))
+      openChannel(address).evalMap(makeSocket[F](_, UnixSocketAddress(""), address))
 
     def bind(
         address: UnixSocketAddress,
@@ -98,7 +98,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
             .resource(accept.attempt)
             .flatMap {
               case Left(_)         => Stream.empty[F]
-              case Right(accepted) => Stream.eval(makeSocket(accepted))
+              case Right(accepted) => Stream.eval(makeSocket(accepted, address, UnixSocketAddress("")))
             }
             .repeat
         ServerSocket(info, acceptIncoming)
@@ -107,16 +107,20 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
   }
 
   private def makeSocket[F[_]: Async](
-      ch: SocketChannel
+      ch: SocketChannel,
+      localAddress: UnixSocketAddress,
+      remoteAddress: UnixSocketAddress
   ): F[Socket[F]] =
     (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
-      new AsyncSocket[F](ch, readMutex, writeMutex)
+      new AsyncSocket[F](ch, readMutex, writeMutex, localAddress, remoteAddress)
     }
 
   private final class AsyncSocket[F[_]](
       ch: SocketChannel,
       readMutex: Mutex[F],
-      writeMutex: Mutex[F]
+      writeMutex: Mutex[F],
+      localAddress0: UnixSocketAddress,
+      remoteAddress0: UnixSocketAddress
   )(implicit F: Async[F])
       extends Socket.BufferedReads[F](readMutex)
       with SocketInfo.AsyncSocketInfo[F] {
@@ -138,15 +142,18 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       }
     }
 
-    override def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
-
-    def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
-
-    def remoteAddressGen: F[GenSocketAddress] =
-      asyncInstance.delay(SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress))
-
     private def raiseIpAddressError[A]: F[A] =
       F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
+
+    override def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+
+    override def localAddressGen: F[GenSocketAddress] =
+      F.pure(localAddress0)
+
+    override def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
+
+    override def remoteAddressGen: F[GenSocketAddress] =
+      F.pure(remoteAddress0)
 
     def isOpen: F[Boolean] = evalOnVirtualThreadIfAvailable(F.blocking(ch.isOpen()))
     def close: F[Unit] = evalOnVirtualThreadIfAvailable(F.blocking(ch.close()))

@@ -32,8 +32,6 @@ import com.comcast.ip4s.{
   Dns,
   GenSocketAddress,
   Host,
-  IpAddress,
-  Port,
   SocketAddress,
   UnixSocketAddress
 }

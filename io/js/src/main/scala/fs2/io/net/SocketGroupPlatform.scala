@@ -28,12 +28,13 @@ import cats.effect.kernel.Resource
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Host, GenSocketAddress, IpAddress, Port, SocketAddress, UnixSocketAddress}
 import fs2.concurrent.Channel
 import fs2.io.internal.facade
 
 import scala.scalajs.js
 
+// TODO replace this implementation with delegation to IpSocketsProvider
 private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
 
   private[net] def forAsync[F[_]: Async]: SocketGroup[F] = new AsyncSocketGroup[F]
@@ -61,7 +62,14 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
             }
           )
           .evalTap(setSocketOptions(options))
-        socket <- Socket.forAsync(sock)
+
+         localAddressGen = F.delay {
+           UnixSocketAddress("TODO3 - LOCAL"): GenSocketAddress
+         }
+         remoteAddressGen = F.delay {
+           UnixSocketAddress("TODO3 - REMOTE"): GenSocketAddress
+         }
+         socket <- Socket.forAsync(sock, localAddressGen, remoteAddressGen)
         _ <- F
           .async[Unit] { cb =>
             sock
@@ -119,12 +127,20 @@ private[net] trait SocketGroupCompanionPlatform { self: SocketGroup.type =>
           }
           .toResource
         ipAddress <- F.delay {
-          val info = server.address()
+          val info = server.address().asInstanceOf[facade.net.BoundAddress]
           SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port).get)
         }.toResource
         sockets = channel.stream
           .evalTap(setSocketOptions(options))
-          .flatMap(sock => Stream.resource(Socket.forAsync(sock)))
+          .flatMap { sock =>
+              val localAddressGen = F.delay {
+                UnixSocketAddress("TODO - ACCEPT - LOCAL"): GenSocketAddress
+              }
+              val remoteAddressGen = F.delay {
+                UnixSocketAddress("TODO - ACCEPT - REMOTE"): GenSocketAddress
+              }
+            Stream.resource(Socket.forAsync(sock, localAddressGen, remoteAddressGen))
+          }
       } yield (ipAddress, sockets)).adaptError { case IOException(ex) => ex }
 
   }

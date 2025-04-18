@@ -41,7 +41,7 @@ private[io] object net {
   @js.native
   trait Server extends EventEmitter {
 
-    def address(): ServerAddress = js.native
+    def address(): js.UndefOr[BoundAddress] = js.native
 
     def listening: Boolean = js.native
 
@@ -56,10 +56,9 @@ private[io] object net {
   }
 
   @js.native
-  trait ServerAddress extends js.Object {
+  trait BoundAddress extends js.Object {
     def address: String = js.native
     def port: Int = js.native
-    def path: String = js.native
   }
 
   trait ServerOptions extends js.Object {
@@ -100,6 +99,8 @@ private[io] object net {
     def remoteAddress: js.UndefOr[String] = js.native
 
     def remotePort: js.UndefOr[Int] = js.native
+
+    def remoteFamily: js.UndefOr[String] = js.native
 
     def end(): Socket = js.native
 

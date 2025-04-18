@@ -35,14 +35,23 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
       val server = Stream
         .resource(sockets.bind(address, Nil))
-        .flatMap(_.accept)
-        .map { client =>
-          client.reads.through(client.writes)
+        .flatMap(ss =>
+          Stream.exec(ss.localAddressGen.flatMap(a => IO.println("Server Local: " + a))) ++
+          ss.accept
+        )
+        // TODO
+        // .flatMap(_.accept)
+        .map { socket =>
+          Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Local: " + a))) ++
+          Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
+          socket.reads.through(socket.writes)
         }
         .parJoinUnbounded
 
-      def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { server =>
-        server.write(msg) *> server.endOfOutput *> server.reads.compile
+      def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { socket =>
+        socket.localAddressGen.flatMap(a => IO.println("Client Local: " + a)) *>
+        socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a)) *>
+        socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
           .to(Chunk)
           .map(read => assertEquals(read, msg))
       }
