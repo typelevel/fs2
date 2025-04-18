@@ -83,22 +83,26 @@ private[net] trait SocketCompanionPlatform {
     override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      for {
-        ip <- F.delay(sock.localAddress.toOption.flatMap(IpAddress.fromString).get)
-        port <- F.delay(sock.localPort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(ip, port)
+      SocketInfo.downcastAddress(localAddressGen)
 
-    override def localAddressGen: F[GenSocketAddress] =
-      ???
+    override def localAddressGen: F[GenSocketAddress] = F.delay {
+      val address = sock.address()
+      if (address.port ne null)
+        SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
+      else
+        UnixSocketAddress(address.path)
+    }
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      for {
-        ip <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
-        port <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(ip, port)
+      SocketInfo.downcastAddress(remoteAddressGen)
 
-    override def remoteAddressGen: F[GenSocketAddress] =
-      ???
+    override def remoteAddressGen: F[GenSocketAddress] = F.delay {
+      val address = sock.remoteAddress()
+      if (address.port ne null)
+        SocketAddress(IpAddress.fromString(address.address).get, Port.fromInt(address.port).get)
+      else
+        UnixSocketAddress(address.path)
+    }
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       ???

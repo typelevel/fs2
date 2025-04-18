@@ -47,14 +47,8 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
 )(implicit F: Async[F])
     extends Socket[F] {
 
-  def localAddress = downcastAddress(localAddressGen)
-  def remoteAddress = downcastAddress(remoteAddressGen)
-
-  private def downcastAddress(address: F[GenSocketAddress]): F[SocketAddress[IpAddress]] =
-    address.flatMap {
-      case a: SocketAddress[IpAddress] @unchecked => F.pure(a)
-      case _ => F.raiseError(new UnsupportedOperationException("invalid address type"))
-    }
+  def localAddress = SocketInfo.downcastAddress(localAddressGen)
+  def remoteAddress = SocketInfo.downcastAddress(remoteAddressGen)
 
   def endOfInput: F[Unit] = shutdownF(0)
   def endOfOutput: F[Unit] = shutdownF(1)

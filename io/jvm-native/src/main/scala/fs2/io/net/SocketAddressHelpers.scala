@@ -8,7 +8,7 @@ import jnr.unixsocket.{UnixSocketAddress => JnrUnixSocketAddress}
 
 private[net] object SocketAddressHelpers {
 
-  def toGenSocketAddress(address: java.net.SocketAddress): GenSocketAddress = {
+  def toGenSocketAddress(address: java.net.SocketAddress): GenSocketAddress =
     address match {
       case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
       case _ =>
@@ -18,5 +18,4 @@ private[net] object SocketAddressHelpers {
           UnixSocketAddress(address.asInstanceOf[JnrUnixSocketAddress].path)
         } else throw new IllegalArgumentException("Unsupported address type: " + address)
     }
-  }
 }

@@ -142,7 +142,8 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
 
     def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
 
-    def remoteAddressGen: F[GenSocketAddress] = ??? // TODO
+    def remoteAddressGen: F[GenSocketAddress] =
+      asyncInstance.delay(SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress))
 
     private def raiseIpAddressError[A]: F[A] =
       F.raiseError(new UnsupportedOperationException("Unix sockets do not use IP addressing"))
