@@ -146,13 +146,16 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
             case Right(addr) => addr
           }
         }
-
-        def getOption[A](key: SocketOption.Key[A]) =
-          F.raiseError(new UnsupportedOperationException)
-        def setOption[A](key: SocketOption.Key[A], value: A) =
-          F.raiseError(new UnsupportedOperationException)
-        def supportedOptions =
-          F.raiseError(new UnsupportedOperationException)
+        def localAddress = SocketInfo.downcastAddress(localAddressGen)
+        private def raiseOptionError[A]: F[A] =
+          F.raiseError(
+            new UnsupportedOperationException(
+              "Node.js server sockets do not support socket options"
+            )
+          )
+        def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
+        def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
+        def supportedOptions = raiseOptionError
       }
       sockets = channel.stream
         .evalTap(setSocketOptions(options))

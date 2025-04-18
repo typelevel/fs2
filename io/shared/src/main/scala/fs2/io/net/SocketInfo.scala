@@ -32,6 +32,8 @@ trait SocketInfo[F[_]] {
   /** Asks for the local address of this socket. Like `localAddress` but supports unix sockets as well. */
   def localAddressGen: F[GenSocketAddress]
 
+  def localAddress: F[SocketAddress[IpAddress]]
+
   def supportedOptions: F[Set[SocketOption.Key[?]]]
 
   def getOption[A](key: SocketOption.Key[A]): F[Option[A]]

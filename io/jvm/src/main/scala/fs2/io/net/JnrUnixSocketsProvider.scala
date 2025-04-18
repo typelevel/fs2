@@ -77,10 +77,12 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
             )
           )
         val info: SocketInfo[F] = new SocketInfo[F] {
-          def supportedOptions = F.pure(Set.empty)
-          def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
-          def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
-          def localAddressGen = F.pure(address)
+          override def supportedOptions = F.pure(Set.empty)
+          override def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
+          override def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
+          override def localAddressGen = F.pure(address)
+          override def localAddress =
+            SocketInfo.downcastAddress(localAddressGen)
         }
         info ->
           Resource

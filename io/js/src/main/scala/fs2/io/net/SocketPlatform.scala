@@ -96,7 +96,16 @@ private[net] trait SocketCompanionPlatform {
     override def remoteAddressGen = remoteAddressGen0
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
-      ???
+      F.pure(
+        Set(
+          SocketOption.Encoding,
+          SocketOption.KeepAlive,
+          SocketOption.NoDelay,
+          SocketOption.Timeout,
+          SocketOption.UnixServerSocketDeleteIfExists,
+          SocketOption.UnixServerSocketDeleteOnClose
+        )
+      )
 
     override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
       key.get(sock)

@@ -45,6 +45,9 @@ private[net] trait SocketInfoCompanionPlatform {
     override def localAddressGen: F[GenSocketAddress] =
       asyncInstance.delay(SocketAddressHelpers.toGenSocketAddress(channel.getLocalAddress))
 
+    override def localAddress =
+      SocketInfo.downcastAddress(localAddressGen)
+
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       asyncInstance.delay {
         channel.supportedOptions.asScala.toSet

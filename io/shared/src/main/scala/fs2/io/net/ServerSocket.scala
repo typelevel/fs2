@@ -43,11 +43,12 @@ object ServerSocket {
   def apply[F[_]](info: SocketInfo[F], accept: Stream[F, Socket[F]]): ServerSocket[F] = {
     val accept0 = accept
     new ServerSocket[F] {
-      def accept: Stream[F, Socket[F]] = accept0
-      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
-      def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
-      def supportedOptions = info.supportedOptions
-      def localAddressGen = info.localAddressGen
+      override def accept: Stream[F, Socket[F]] = accept0
+      override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
+      override def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
+      override def supportedOptions = info.supportedOptions
+      override def localAddressGen = info.localAddressGen
+      override def localAddress = info.localAddress
     }
   }
 }
