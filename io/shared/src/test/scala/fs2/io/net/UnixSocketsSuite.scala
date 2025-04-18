@@ -25,35 +25,27 @@ package io.net
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
-  protected def testProvider(provider: String, sockets: UnixSocketsProvider[IO]) =
+  protected def testProvider(provider: String, sockets: UnixSocketsProvider[IO]) = {
     test(s"echoes - $provider") {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
       val server = Stream
         .resource(sockets.bind(address, Nil))
-        .flatMap(ss =>
-          Stream.exec(ss.localAddressGen.flatMap(a => IO.println("Server Local: " + a))) ++
-            ss.accept
-        )
-        // TODO
-        // .flatMap(_.accept)
+        .flatMap(_.accept)
         .map { socket =>
-          Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Local: " + a))) ++
-            Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
-            socket.reads.through(socket.writes)
+          socket.reads.through(socket.writes)
         }
         .parJoinUnbounded
 
       def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { socket =>
-        socket.localAddressGen.flatMap(a => IO.println("Client Local: " + a)) *>
-          socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a)) *>
-          socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
-            .to(Chunk)
-            .map(read => assertEquals(read, msg))
+        socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
+          .to(Chunk)
+          .map(read => assertEquals(read, msg))
       }
 
       val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))
@@ -63,4 +55,42 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
         .compile
         .drain
     }
+
+    test(s"addresses - $provider") {
+      val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
+
+      val server = Stream
+        .resource(sockets.bind(address, Nil))
+        .flatMap(ss =>
+          Stream.exec(ss.localAddressGen.map { local =>
+            assertEquals(local, address)
+          }) ++ ss.accept
+        )
+        .map { socket =>
+          Stream.exec((socket.localAddressGen, socket.remoteAddressGen).mapN {
+            case (local, remote) =>
+              assertEquals(local, address)
+              assertEquals(remote, UnixSocketAddress(""))
+          }) ++
+            socket.reads.through(socket.writes)
+        }
+        .parJoinUnbounded
+
+      val msg = Chunk.array("Hello, world".getBytes)
+      val client = Stream.resource(sockets.connect(address, Nil).evalMap { socket =>
+        (socket.localAddressGen, socket.remoteAddressGen).mapN { case (local, remote) =>
+          assertEquals(local, UnixSocketAddress(""))
+          assertEquals(remote, address)
+        } *>
+          socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
+            .to(Chunk)
+            .map(read => assertEquals(read, msg))
+      })
+
+      (Stream.sleep_[IO](1.second) ++ client)
+        .concurrently(server)
+        .compile
+        .drain
+    }
+  }
 }
