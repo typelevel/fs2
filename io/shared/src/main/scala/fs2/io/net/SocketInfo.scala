@@ -40,7 +40,9 @@ trait SocketInfo[F[_]] {
 }
 
 object SocketInfo extends SocketInfoCompanionPlatform {
-  private[net] def downcastAddress[F[_]: MonadThrow](address: F[GenSocketAddress]): F[SocketAddress[IpAddress]] =
+  private[net] def downcastAddress[F[_]: MonadThrow](
+      address: F[GenSocketAddress]
+  ): F[SocketAddress[IpAddress]] =
     address.flatMap {
       case a: SocketAddress[IpAddress] @unchecked => MonadThrow[F].pure(a)
       case _ => MonadThrow[F].raiseError(new UnsupportedOperationException("invalid address type"))

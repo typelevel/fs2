@@ -58,14 +58,20 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
       localAddressGen = F.delay {
         (to match {
           case Left(_) =>
-            SocketAddress(IpAddress.fromString(sock.localAddress.get).get, Port.fromInt(sock.localPort.get).get)
+            SocketAddress(
+              IpAddress.fromString(sock.localAddress.get).get,
+              Port.fromInt(sock.localPort.get).get
+            )
           case Right(_) => UnixSocketAddress("")
         }): GenSocketAddress
       }
       remoteAddressGen = F.delay {
         (to match {
           case Left(_) =>
-            SocketAddress(IpAddress.fromString(sock.remoteAddress.get).get, Port.fromInt(sock.remotePort.get).get)
+            SocketAddress(
+              IpAddress.fromString(sock.remoteAddress.get).get,
+              Port.fromInt(sock.remotePort.get).get
+            )
           case Right(addr) => addr
         }): GenSocketAddress
       }
@@ -154,14 +160,20 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           val localAddressGen = F.delay {
             (address match {
               case Left(_) =>
-                SocketAddress(IpAddress.fromString(sock.localAddress.get).get, Port.fromInt(sock.localPort.get).get)
+                SocketAddress(
+                  IpAddress.fromString(sock.localAddress.get).get,
+                  Port.fromInt(sock.localPort.get).get
+                )
               case Right(addr) => addr
             }): GenSocketAddress
           }
           val remoteAddressGen = F.delay {
             (address match {
-              case Left(_) => 
-                SocketAddress(IpAddress.fromString(sock.remoteAddress.get).get, Port.fromInt(sock.remotePort.get).get)
+              case Left(_) =>
+                SocketAddress(
+                  IpAddress.fromString(sock.remoteAddress.get).get,
+                  Port.fromInt(sock.remotePort.get).get
+                )
               case Right(_) => UnixSocketAddress("")
             }): GenSocketAddress
           }

@@ -68,8 +68,13 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       readStream: SuspendedStream[F, Byte],
       underlying: Socket[F],
       val session: F[SSLSession],
-      val applicationProtocol: F[String],
-  ) extends Socket.AsyncSocket[F](sock, readStream, Async[F].delay(sys.error("unused")), Async[F].delay(sys.error("unused")))
+      val applicationProtocol: F[String]
+  ) extends Socket.AsyncSocket[F](
+        sock,
+        readStream,
+        Async[F].delay(sys.error("unused")),
+        Async[F].delay(sys.error("unused"))
+      )
       with UnsealedTLSSocket[F] {
     override def localAddress = underlying.localAddress
     override def localAddressGen = underlying.localAddressGen

@@ -37,23 +37,23 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
         .resource(sockets.bind(address, Nil))
         .flatMap(ss =>
           Stream.exec(ss.localAddressGen.flatMap(a => IO.println("Server Local: " + a))) ++
-          ss.accept
+            ss.accept
         )
         // TODO
         // .flatMap(_.accept)
         .map { socket =>
           Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Local: " + a))) ++
-          Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
-          socket.reads.through(socket.writes)
+            Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
+            socket.reads.through(socket.writes)
         }
         .parJoinUnbounded
 
       def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { socket =>
         socket.localAddressGen.flatMap(a => IO.println("Client Local: " + a)) *>
-        socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a)) *>
-        socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
-          .to(Chunk)
-          .map(read => assertEquals(read, msg))
+          socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a)) *>
+          socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
+            .to(Chunk)
+            .map(read => assertEquals(read, msg))
       }
 
       val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))

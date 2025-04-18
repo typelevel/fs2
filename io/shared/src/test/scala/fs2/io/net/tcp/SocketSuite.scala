@@ -55,21 +55,23 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .flatMap { case (server, clients) =>
           val echoServer = server.map { socket =>
             Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Local: " + a))) ++
-            Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
-            socket.reads
-              .through(socket.writes)
-              .onFinalize(socket.endOfOutput)
+              Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
+              socket.reads
+                .through(socket.writes)
+                .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 
           val msgClients = clients
             .take(clientCount)
             .map { socket =>
               Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Client Local: " + a))) ++
-              Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a))) ++
-              Stream
-                .chunk(message)
-                .through(socket.writes)
-                .onFinalize(socket.endOfOutput) ++
+                Stream.exec(
+                  socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a))
+                ) ++
+                Stream
+                  .chunk(message)
+                  .through(socket.writes)
+                  .onFinalize(socket.endOfOutput) ++
                 socket.reads.chunks
                   .map(bytes => new String(bytes.toArray))
             }

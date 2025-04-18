@@ -28,13 +28,7 @@ import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{
-  Dns,
-  GenSocketAddress,
-  Host,
-  SocketAddress,
-  UnixSocketAddress
-}
+import com.comcast.ip4s.{Dns, GenSocketAddress, Host, SocketAddress, UnixSocketAddress}
 
 private[net] trait NetworkPlatform[F[_]]
 

@@ -97,8 +97,9 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
           Stream
             .resource(accept.attempt)
             .flatMap {
-              case Left(_)         => Stream.empty[F]
-              case Right(accepted) => Stream.eval(makeSocket(accepted, address, UnixSocketAddress("")))
+              case Left(_) => Stream.empty[F]
+              case Right(accepted) =>
+                Stream.eval(makeSocket(accepted, address, UnixSocketAddress("")))
             }
             .repeat
         ServerSocket(info, acceptIncoming)
