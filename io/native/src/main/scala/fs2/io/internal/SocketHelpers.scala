@@ -75,14 +75,16 @@ private[io] object SocketHelpers {
   // TODO: Support other options (e.g. extended options?)
 
   def supportedOptions[F[_]: Sync]: F[Set[SocketOption[?]]] =
-    Sync[F].pure(Set(
-      StandardSocketOptions.SO_SNDBUF,
-      StandardSocketOptions.SO_RCVBUF,
-      StandardSocketOptions.SO_REUSEADDR,
-      StandardSocketOptions.SO_REUSEPORT,
-      StandardSocketOptions.SO_KEEPALIVE,
-      StandardSocketOptions.TCP_NODELAY
-    ))
+    Sync[F].pure(
+      Set(
+        StandardSocketOptions.SO_SNDBUF,
+        StandardSocketOptions.SO_RCVBUF,
+        StandardSocketOptions.SO_REUSEADDR,
+        StandardSocketOptions.SO_REUSEPORT,
+        StandardSocketOptions.SO_KEEPALIVE,
+        StandardSocketOptions.TCP_NODELAY
+      )
+    )
 
   def getOption[F[_]: Sync, A](fd: CInt, name: SocketOption[A]): F[Option[A]] = (name match {
     case StandardSocketOptions.SO_SNDBUF =>
