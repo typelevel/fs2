@@ -123,7 +123,7 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
   def setOption[A](key: SocketOption.Key[A], value: A) =
     SocketHelpers.setOption(fd, key, value)
 
-  def supportedOptions = ???
+  def supportedOptions = SocketHelpers.supportedOptions
 }
 
 private object FdPollingSocket {

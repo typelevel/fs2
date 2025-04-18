@@ -119,8 +119,9 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
         def setOption[A](key: SocketOption.Key[A], value: A) =
           SocketHelpers.setOption(fd, key, value)
-        def supportedOptions = ???
+        def supportedOptions = SocketHelpers.supportedOptions
         def localAddressGen = SocketHelpers.getLocalAddressGen(fd, AF_UNIX)
+        def localAddress = SocketInfo.downcastAddress(localAddressGen)
       }
 
       clients = Stream

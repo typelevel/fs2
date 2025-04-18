@@ -72,6 +72,18 @@ private[io] object SocketHelpers {
           (if (LinktimeInfo.isMac) setNoSigPipe(fd) else F.unit)
       }
 
+  // TODO: Support other options (e.g. extended options?)
+
+  def supportedOptions[F[_]: Sync]: F[Set[SocketOption[?]]] =
+    Sync[F].pure(Set(
+      StandardSocketOptions.SO_SNDBUF,
+      StandardSocketOptions.SO_RCVBUF,
+      StandardSocketOptions.SO_REUSEADDR,
+      StandardSocketOptions.SO_REUSEPORT,
+      StandardSocketOptions.SO_KEEPALIVE,
+      StandardSocketOptions.TCP_NODELAY
+    ))
+
   def getOption[F[_]: Sync, A](fd: CInt, name: SocketOption[A]): F[Option[A]] = (name match {
     case StandardSocketOptions.SO_SNDBUF =>
       getOptionInt(fd, SO_SNDBUF)

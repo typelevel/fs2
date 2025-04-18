@@ -155,7 +155,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           )
         def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
         def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
-        def supportedOptions = raiseOptionError
+        def supportedOptions = F.pure(Set.empty)
       }
       sockets = channel.stream
         .evalTap(setSocketOptions(options))
