@@ -22,7 +22,6 @@
 package fs2
 package io
 package net
-package tcp
 
 import cats.effect.IO
 import com.comcast.ip4s._
@@ -36,14 +35,16 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
   val timeout = 30.seconds
 
   val setup = for {
-    serverSetup <- Network[IO].serverResource(address = Some(ip"127.0.0.1"))
-    (bindAddress, server) = serverSetup
+    serverSocket <- Network[IO].bind(address = SocketAddress(ip"127.0.0.1", Port.Wildcard))
     clients = Stream
-      .resource(
-        Network[IO].client(bindAddress, options = setupOptionsPlatform)
-      )
+      .eval(serverSocket.localAddressGen)
+      .flatMap { localAddress =>
+        Stream.resource(
+          Network[IO].connect(localAddress, options = setupOptionsPlatform)
+        )
+      }
       .repeat
-  } yield server -> clients
+  } yield serverSocket.accept -> clients
 
   group("tcp") {
     test("echo requests - each concurrent client gets back what it sent") {
@@ -54,24 +55,18 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .resource(setup)
         .flatMap { case (server, clients) =>
           val echoServer = server.map { socket =>
-            Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Local: " + a))) ++
-              Stream.exec(socket.remoteAddressGen.flatMap(a => IO.println("Remote: " + a))) ++
-              socket.reads
-                .through(socket.writes)
-                .onFinalize(socket.endOfOutput)
+            socket.reads
+              .through(socket.writes)
+              .onFinalize(socket.endOfOutput)
           }.parJoinUnbounded
 
           val msgClients = clients
             .take(clientCount)
             .map { socket =>
-              Stream.exec(socket.localAddressGen.flatMap(a => IO.println("Client Local: " + a))) ++
-                Stream.exec(
-                  socket.remoteAddressGen.flatMap(a => IO.println("Client Remote: " + a))
-                ) ++
-                Stream
-                  .chunk(message)
-                  .through(socket.writes)
-                  .onFinalize(socket.endOfOutput) ++
+              Stream
+                .chunk(message)
+                .through(socket.writes)
+                .onFinalize(socket.endOfOutput) ++
                 socket.reads.chunks
                   .map(bytes => new String(bytes.toArray))
             }
@@ -161,7 +156,6 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
               assertEquals(clientRemote, serverLocal)
               assertEquals(clientLocal, serverRemote)
           }
-
         }
         .compile
         .drain
@@ -291,6 +285,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
       }
     }
+
     test("sendFile - sends data from file to socket from the offset") {
       val content = "Hello, world!"
       val offset = 7L

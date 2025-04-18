@@ -19,11 +19,16 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.tcp
+package fs2.io.net
 
 trait SocketSuitePlatform {
 
-  val setupOptionsPlatform = Nil
-  val optionsPlatform = Nil
+  val setupOptionsPlatform = List(SocketOption.sendBufferSize(10000))
+  val optionsPlatform = List(
+    SocketOption.receiveBufferSize(1024),
+    SocketOption.reuseAddress(true),
+    SocketOption.reusePort(true),
+    SocketOption.sendBufferSize(1024)
+  )
 
 }
