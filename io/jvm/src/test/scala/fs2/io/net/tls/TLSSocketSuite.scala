@@ -43,7 +43,7 @@ class TLSSocketSuite extends TLSSuite {
       def googleSetup(protocol: String) =
         for {
           tlsContext <- Resource.eval(Network[IO].tlsContext.system)
-          socket <- Network[IO].client(SocketAddress(host"google.com", port"443"))
+          socket <- Network[IO].connect(SocketAddress(host"google.com", port"443"))
           tlsSocket <- tlsContext
             .clientBuilder(socket)
             .withParameters(
@@ -130,10 +130,10 @@ class TLSSocketSuite extends TLSSuite {
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
-        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-        (serverAddress, server) = addressAndConnections
-        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
-      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+        serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        serverAddress <- Resource.eval(serverSocket.localAddressGen)
+        client <- Network[IO].connect(serverAddress).flatMap(tlsContext.client(_))
+      } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)
@@ -158,10 +158,10 @@ class TLSSocketSuite extends TLSSuite {
 
       val setup = for {
         tlsContext <- Resource.eval(Network[IO].tlsContext.system)
-        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-        (serverAddress, server) = addressAndConnections
-        client <- Network[IO].client(serverAddress).flatMap(tlsContext.client(_))
-      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+        serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        serverAddress <- Resource.eval(serverSocket.localAddressGen)
+        client <- Network[IO].connect(serverAddress).flatMap(tlsContext.client(_))
+      } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)
@@ -188,10 +188,10 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         clientContext <- Resource.eval(TLSContext.Builder.forAsync[IO].insecure)
         tlsContext <- Resource.eval(testTlsContext)
-        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
-        (serverAddress, server) = addressAndConnections
+        serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client <- Network[IO]
-          .client(serverAddress)
+          .connect(serverAddress)
           .flatMap(s =>
             clientContext
               .clientBuilder(s)
@@ -200,7 +200,7 @@ class TLSSocketSuite extends TLSSuite {
               ) // makes test fail if using X509TrustManager, passes if using X509ExtendedTrustManager
               .build
           )
-      } yield server.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+      } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
         .resource(setup)
