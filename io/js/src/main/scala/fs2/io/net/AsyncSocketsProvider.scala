@@ -146,7 +146,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
             case Right(addr) => addr
           }
         }
-        def localAddress = SocketInfo.downcastAddress(localAddressGen)
+        def localAddress = localAddressGen.map(_.asIpUnsafe)
         private def raiseOptionError[A]: F[A] =
           F.raiseError(
             new UnsupportedOperationException(
@@ -182,5 +182,6 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           }
           Stream.resource(Socket.forAsync(sock, localAddressGen, remoteAddressGen))
         }
-    } yield ServerSocket(info, sockets)).adaptError { case IOException(ex) => ex }
+      serverSocket <- Resource.eval(ServerSocket(info, sockets))
+    } yield serverSocket).adaptError { case IOException(ex) => ex }
 }

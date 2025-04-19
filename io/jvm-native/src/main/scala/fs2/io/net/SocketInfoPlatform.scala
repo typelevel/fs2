@@ -25,6 +25,7 @@ package net
 
 import com.comcast.ip4s.GenSocketAddress
 import cats.effect.Async
+import cats.syntax.all._
 
 import java.nio.channels.NetworkChannel
 
@@ -46,7 +47,7 @@ private[net] trait SocketInfoCompanionPlatform {
       asyncInstance.delay(SocketAddressHelpers.toGenSocketAddress(channel.getLocalAddress))
 
     override def localAddress =
-      SocketInfo.downcastAddress(localAddressGen)
+      localAddressGen.map(_.asIpUnsafe)
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       asyncInstance.delay {

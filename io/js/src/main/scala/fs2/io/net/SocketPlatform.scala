@@ -25,6 +25,7 @@ package net
 
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Async, Resource}
+import cats.syntax.all._
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.internal.{facade, SuspendedStream}
 
@@ -86,12 +87,12 @@ private[net] trait SocketCompanionPlatform {
     override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      SocketInfo.downcastAddress(localAddressGen)
+      localAddressGen.map(_.asIpUnsafe)
 
     override def localAddressGen = localAddressGen0
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      SocketInfo.downcastAddress(remoteAddressGen)
+      remoteAddressGen.map(_.asIpUnsafe)
 
     override def remoteAddressGen = remoteAddressGen0
 

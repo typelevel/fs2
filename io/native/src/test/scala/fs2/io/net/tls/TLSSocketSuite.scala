@@ -26,7 +26,7 @@ package tls
 
 import scala.concurrent.duration._
 
-import cats.effect.{IO, Resource}
+import cats.effect.IO
 import cats.syntax.all._
 import com.comcast.ip4s._
 
@@ -108,9 +108,8 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         tlsContext <- testTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client = Network[IO]
-          .connect(serverAddress)
+          .connect(serverSocket.boundAddress)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -142,9 +141,8 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         tlsContext <- testTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client = Network[IO]
-          .connect(serverAddress)
+          .connect(serverSocket.boundAddress)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -176,9 +174,8 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         tlsContext <- Network[IO].tlsContext.systemResource
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client = Network[IO]
-          .connect(serverAddress)
+          .connect(serverSocket.boundAddress)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -212,9 +209,8 @@ class TLSSocketSuite extends TLSSuite {
         serverContext <- testTlsContext
         clientContext <- testClientTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client = Network[IO]
-          .connect(serverAddress)
+          .connect(serverSocket.boundAddress)
           .flatMap(
             clientContext
               .clientBuilder(_)
@@ -256,9 +252,8 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         tlsContext <- testTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
         client = Network[IO]
-          .connect(serverAddress)
+          .connect(serverSocket.boundAddress)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -299,8 +294,7 @@ class TLSSocketSuite extends TLSSuite {
         clientContext <- Network[IO].tlsContext.insecureResource
         tlsContext <- testTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
-        client = Network[IO].connect(serverAddress).flatMap(clientContext.client(_))
+        client = Network[IO].connect(serverSocket.boundAddress).flatMap(clientContext.client(_))
       } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       Stream
@@ -328,8 +322,7 @@ class TLSSocketSuite extends TLSSuite {
       val setup = for {
         tlsContext <- testTlsContext
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        serverAddress <- Resource.eval(serverSocket.localAddressGen)
-        client = Network[IO].connect(serverAddress).flatMap(tlsContext.client(_))
+        client = Network[IO].connect(serverSocket.boundAddress).flatMap(tlsContext.client(_))
       } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
 
       val echo = Stream

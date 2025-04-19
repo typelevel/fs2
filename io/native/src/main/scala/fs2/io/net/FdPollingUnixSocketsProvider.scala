@@ -121,7 +121,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
           SocketHelpers.setOption(fd, key, value)
         def supportedOptions = SocketHelpers.supportedOptions
         def localAddressGen = SocketHelpers.getLocalAddressGen(fd, AF_UNIX)
-        def localAddress = SocketInfo.downcastAddress(localAddressGen)
+        def localAddress = localAddressGen.map(_.asIpUnsafe)
       }
 
       clients = Stream
@@ -169,7 +169,8 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         .repeat
         .unNone
 
-    } yield ServerSocket(info, clients)
+      serverSocket <- Resource.eval(ServerSocket(info, clients))
+    } yield serverSocket
   }
 
   private def toSockaddrUn[A](path: String)(f: Ptr[sockaddr] => A): A = {

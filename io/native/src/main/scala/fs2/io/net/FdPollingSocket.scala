@@ -47,8 +47,8 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
 )(implicit F: Async[F])
     extends Socket[F] {
 
-  def localAddress = SocketInfo.downcastAddress(localAddressGen)
-  def remoteAddress = SocketInfo.downcastAddress(remoteAddressGen)
+  def localAddress = localAddressGen.map(_.asIpUnsafe)
+  def remoteAddress = remoteAddressGen.map(_.asIpUnsafe)
 
   def endOfInput: F[Unit] = shutdownF(0)
   def endOfOutput: F[Unit] = shutdownF(1)

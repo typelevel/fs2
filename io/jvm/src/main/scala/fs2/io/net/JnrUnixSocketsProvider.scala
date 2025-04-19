@@ -23,6 +23,7 @@ package fs2
 package io
 package net
 
+import cats.syntax.all._
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all._
 
@@ -81,8 +82,7 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
           override def getOption[A](key: SocketOption.Key[A]) = raiseOptionError
           override def setOption[A](key: SocketOption.Key[A], value: A) = raiseOptionError
           override def localAddressGen = F.pure(address)
-          override def localAddress =
-            SocketInfo.downcastAddress(localAddressGen)
+          override def localAddress = localAddressGen.map(_.asIpUnsafe)
         }
         info ->
           Resource

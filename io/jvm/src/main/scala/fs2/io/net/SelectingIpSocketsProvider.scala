@@ -83,11 +83,11 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
       }
-      .evalMap { serverCh =>
+      .evalMap { sch =>
         val configure = address.host.resolve.flatMap { addr =>
           F.delay {
-            serverCh.configureBlocking(false)
-            serverCh.bind(
+            sch.configureBlocking(false)
+            sch.bind(
               new InetSocketAddress(
                 if (addr.isWildcard) null else addr.toInetAddress,
                 address.port.value
@@ -99,8 +99,8 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
         def acceptLoop: Stream[F, SocketChannel] = Stream
           .bracketFull[F, SocketChannel] { poll =>
             def go: F[SocketChannel] =
-              F.delay(serverCh.accept()).flatMap {
-                case null => poll(selector.select(serverCh, OP_ACCEPT).to) *> go
+              F.delay(sch.accept()).flatMap {
+                case null => poll(selector.select(sch, OP_ACCEPT).to) *> go
                 case ch   => F.pure(ch)
               }
             go
@@ -122,7 +122,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           )
         }
 
-        configure.as(ServerSocket(SocketInfo.forAsync(serverCh), accept))
+        configure *> ServerSocket(SocketInfo.forAsync(sch), accept)
       }
 
   private def remoteAddress(ch: SocketChannel) =

@@ -150,9 +150,9 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
       def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
       def supportedOptions = SocketHelpers.supportedOptions
       def localAddressGen = SocketHelpers.getLocalAddressGen[F](fd, if (ipv4) AF_INET else AF_INET6)
-      def localAddress = SocketInfo.downcastAddress(localAddressGen)
+      def localAddress = localAddressGen.map(_.asIpUnsafe)
     }
-
-  } yield ServerSocket(info, sockets)
+    serverSocket <- Resource.eval(ServerSocket(info, sockets))
+  } yield serverSocket
 
 }

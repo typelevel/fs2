@@ -92,7 +92,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
         Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
       }
 
-      (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
+      (delete *> openServerChannel(address, filteredOptions)).evalMap { case (info, accept) =>
         val acceptIncoming =
           Stream
             .resource(accept.attempt)

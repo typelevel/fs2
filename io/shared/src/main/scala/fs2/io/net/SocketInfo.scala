@@ -23,8 +23,6 @@ package fs2
 package io
 package net
 
-import cats.MonadThrow
-import cats.syntax.all._
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
 trait SocketInfo[F[_]] {
@@ -41,12 +39,4 @@ trait SocketInfo[F[_]] {
   def setOption[A](key: SocketOption.Key[A], value: A): F[Unit]
 }
 
-object SocketInfo extends SocketInfoCompanionPlatform {
-  private[net] def downcastAddress[F[_]: MonadThrow](
-      address: F[GenSocketAddress]
-  ): F[SocketAddress[IpAddress]] =
-    address.flatMap {
-      case a: SocketAddress[IpAddress] @unchecked => MonadThrow[F].pure(a)
-      case _ => MonadThrow[F].raiseError(new UnsupportedOperationException("invalid address type"))
-    }
-}
+object SocketInfo extends SocketInfoCompanionPlatform
