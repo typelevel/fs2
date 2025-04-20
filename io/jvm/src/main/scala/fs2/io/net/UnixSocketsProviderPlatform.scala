@@ -28,7 +28,7 @@ import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 import cats.syntax.all._
 
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{IpAddress, SocketAddress, UnixSocketAddress}
 
 import fs2.io.file.{Files, FileHandle, Path, SyncFileHandle}
 
@@ -92,7 +92,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
         Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
       }
 
-      (delete *> openServerChannel(address, filteredOptions)).evalMap { case (info, accept) =>
+      (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
         val acceptIncoming =
           Stream
             .resource(accept.attempt)
@@ -120,8 +120,8 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       ch: SocketChannel,
       readMutex: Mutex[F],
       writeMutex: Mutex[F],
-      localAddress0: UnixSocketAddress,
-      remoteAddress0: UnixSocketAddress
+      override val address: UnixSocketAddress,
+      val peerAddress: UnixSocketAddress
   )(implicit F: Async[F])
       extends Socket.BufferedReads[F](readMutex)
       with SocketInfo.AsyncSocketInfo[F] {
@@ -148,13 +148,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
 
     override def localAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
 
-    override def localAddressGen: F[GenSocketAddress] =
-      F.pure(localAddress0)
-
     override def remoteAddress: F[SocketAddress[IpAddress]] = raiseIpAddressError
-
-    override def remoteAddressGen: F[GenSocketAddress] =
-      F.pure(remoteAddress0)
 
     def isOpen: F[Boolean] = evalOnVirtualThreadIfAvailable(F.blocking(ch.isOpen()))
     def close: F[Unit] = evalOnVirtualThreadIfAvailable(F.blocking(ch.close()))

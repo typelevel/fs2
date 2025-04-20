@@ -23,8 +23,6 @@ package fs2
 package io
 package net
 
-import cats.Functor
-import cats.syntax.all._
 import com.comcast.ip4s.GenSocketAddress
 
 /** Represents a bound TCP server socket.
@@ -38,8 +36,7 @@ import com.comcast.ip4s.GenSocketAddress
   */
 sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 
-  /** Address this socket is bound to. */
-  def boundAddress: GenSocketAddress
+  def address: GenSocketAddress
 
   /** Stream of client sockets; typically processed concurrently to allow concurrent clients. */
   def accept: Stream[F, Socket[F]]
@@ -48,26 +45,16 @@ sealed trait ServerSocket[F[_]] extends SocketInfo[F] {
 object ServerSocket {
 
   private[net] def apply[F[_]](
-      boundAddress: GenSocketAddress,
       info: SocketInfo[F],
       accept: Stream[F, Socket[F]]
   ): ServerSocket[F] = {
-    val boundAddress0 = boundAddress
     val accept0 = accept
     new ServerSocket[F] {
-      override def boundAddress = boundAddress0
       override def accept: Stream[F, Socket[F]] = accept0
+      override def address = info.address
       override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] = info.getOption(key)
       override def setOption[A](key: SocketOption.Key[A], value: A) = info.setOption(key, value)
       override def supportedOptions = info.supportedOptions
-      override def localAddressGen = info.localAddressGen
-      override def localAddress = info.localAddress
     }
   }
-
-  private[net] def apply[F[_]: Functor](
-      info: SocketInfo[F],
-      accept: Stream[F, Socket[F]]
-  ): F[ServerSocket[F]] =
-    info.localAddressGen.map(boundAddress => apply(boundAddress, info, accept))
 }

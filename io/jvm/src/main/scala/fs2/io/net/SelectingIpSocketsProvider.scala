@@ -27,7 +27,7 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
 import cats.syntax.all._
-import com.comcast.ip4s.{Dns, Host, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, SocketAddress}
 
 import java.net.InetSocketAddress
 import java.nio.channels.AsynchronousCloseException
@@ -66,11 +66,18 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           }
         }
 
-        val make = SelectingSocket[F](
-          selector,
-          ch,
-          remoteAddress(ch)
-        )
+        val make = F
+          .delay {
+            localAddress(ch) -> remoteAddress(ch)
+          }
+          .flatMap { case (addr, peerAddr) =>
+            SelectingSocket[F](
+              selector,
+              ch,
+              addr,
+              peerAddr
+            )
+          }
 
         configure *> connect *> make
       }
@@ -118,18 +125,22 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           } *> SelectingSocket[F](
             selector,
             ch,
+            localAddress(ch),
             remoteAddress(ch)
           )
         }
 
-        configure *> ServerSocket(SocketInfo.forAsync(sch), accept)
+        configure *> F.delay(ServerSocket(SocketInfo.forAsync(sch), accept))
       }
 
-  private def remoteAddress(ch: SocketChannel) =
-    F.delay {
-      SocketAddress.fromInetSocketAddress(
-        ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-      )
-    }
+  private def localAddress(ch: SocketChannel): SocketAddress[IpAddress] =
+    SocketAddress.fromInetSocketAddress(
+      ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+    )
+
+  private def remoteAddress(ch: SocketChannel): SocketAddress[IpAddress] =
+    SocketAddress.fromInetSocketAddress(
+      ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
+    )
 
 }

@@ -71,14 +71,14 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
   ) extends Socket.AsyncSocket[F](
         sock,
         readStream,
-        Async[F].delay(sys.error("unused")),
-        Async[F].delay(sys.error("unused"))
+        underlying.address,
+        underlying.peerAddress
       )
       with UnsealedTLSSocket[F] {
+    @deprecated("3.13.0", "Use address instead")
     override def localAddress = underlying.localAddress
-    override def localAddressGen = underlying.localAddressGen
+    @deprecated("3.13.0", "Use peerAddress instead")
     override def remoteAddress = underlying.remoteAddress
-    override def remoteAddressGen = underlying.remoteAddressGen
     override def getOption[A](key: SocketOption.Key[A]) = underlying.getOption(key)
     override def setOption[A](key: SocketOption.Key[A], value: A) = underlying.setOption(key, value)
     override def supportedOptions = underlying.supportedOptions

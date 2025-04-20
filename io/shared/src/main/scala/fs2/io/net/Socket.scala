@@ -55,14 +55,20 @@ trait Socket[F[_]] extends SocketInfo[F] {
 
   def isOpen: F[Boolean]
 
-  /** Asks for the local address of this socket. */
+  @deprecated(
+    "3.13.0",
+    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+  )
   def localAddress: F[SocketAddress[IpAddress]]
 
-  /** Asks for the remote address of the peer. */
+  @deprecated(
+    "3.13.0",
+    "Use peerAddress instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+  )
   def remoteAddress: F[SocketAddress[IpAddress]]
 
-  /** Asks for the remote address of the peer. Like `remoteAddress` but supports unix sockets as well. */
-  def remoteAddressGen: F[GenSocketAddress]
+  /** Gets the remote address of this socket. */
+  def peerAddress: GenSocketAddress
 
   /** Writes `bytes` to the peer.
     *

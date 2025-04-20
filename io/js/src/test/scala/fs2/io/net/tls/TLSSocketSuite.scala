@@ -112,7 +112,7 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(testTlsContext(true))
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -151,7 +151,7 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(Network[IO].tlsContext.system)
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -191,7 +191,7 @@ class TLSSocketSuite extends TLSSuite {
         clientContext <- Resource.eval(testTlsContext(false))
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(
             clientContext
               .clientBuilder(_)
@@ -238,7 +238,7 @@ class TLSSocketSuite extends TLSSuite {
           tlsContext <- Resource.eval(testTlsContext(true, Some(protocol)))
           serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
           client = Network[IO]
-            .connect(serverSocket.boundAddress)
+            .connect(serverSocket.address)
             .flatMap(
               tlsContext
                 .clientBuilder(_)
@@ -293,7 +293,7 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(testTlsContext(true))
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(s =>
             clientContext
               .clientBuilder(s)
@@ -328,7 +328,7 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(testTlsContext(true))
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(s =>
             clientContext
               .clientBuilder(s)
@@ -360,7 +360,7 @@ class TLSSocketSuite extends TLSSuite {
         tlsContext <- Resource.eval(testTlsContext(true))
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
         client = Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .flatMap(
             tlsContext
               .clientBuilder(_)
@@ -376,13 +376,13 @@ class TLSSocketSuite extends TLSSuite {
       Stream
         .resource(setup)
         .flatMap { case (server, clientSocket) =>
-          val serverSocketAddresses = server.evalMap { socket =>
-            socket.localAddress.product(socket.remoteAddress)
+          val serverSocketAddresses = server.map { socket =>
+            socket.address -> socket.peerAddress
           }
 
           val clientSocketAddresses =
-            Stream.resource(clientSocket).evalMap { socket =>
-              socket.localAddress.product(socket.remoteAddress)
+            Stream.resource(clientSocket).map { socket =>
+              socket.address -> socket.peerAddress
             }
 
           serverSocketAddresses.parZip(clientSocketAddresses).map {

@@ -23,19 +23,21 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import com.comcast.ip4s.GenSocketAddress
 
+/** Information about a connected socket. Super trait of both [[ServerSocket]] and [[Socket]]. */
 trait SocketInfo[F[_]] {
 
-  /** Asks for the local address of this socket. Like `localAddress` but supports unix sockets as well. */
-  def localAddressGen: F[GenSocketAddress]
+  /** Local address of this socket. */
+  def address: GenSocketAddress
 
-  def localAddress: F[SocketAddress[IpAddress]]
-
+  /** Gets the set of options that may be used with `setOption`. Note some options may not support `getOption`. */
   def supportedOptions: F[Set[SocketOption.Key[?]]]
 
+  /** Gets the value of the specified option, if defined. */
   def getOption[A](key: SocketOption.Key[A]): F[Option[A]]
 
+  /** Sets the specified option to the supplied value. */
   def setOption[A](key: SocketOption.Key[A], value: A): F[Unit]
 }
 

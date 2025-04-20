@@ -88,17 +88,19 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def endOfInput: F[Unit] =
         socket.endOfInput
 
+      @deprecated("3.13.0", "Use address instead")
       def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
 
-      def localAddressGen: F[GenSocketAddress] =
-        socket.localAddressGen
-
+      @deprecated("3.13.0", "Use peerAddress instead")
       def remoteAddress: F[SocketAddress[IpAddress]] =
         socket.remoteAddress
 
-      def remoteAddressGen: F[GenSocketAddress] =
-        socket.remoteAddressGen
+      def address: GenSocketAddress =
+        socket.address
+
+      def peerAddress: GenSocketAddress =
+        socket.peerAddress
 
       def supportedOptions: F[Set[SocketOption.Key[?]]] =
         socket.supportedOptions

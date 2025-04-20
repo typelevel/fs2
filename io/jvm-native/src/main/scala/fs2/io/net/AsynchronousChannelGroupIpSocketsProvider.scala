@@ -144,7 +144,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
       }
     }
 
-    setup.evalMap(sch => ServerSocket(SocketInfo.forAsync(sch), acceptIncoming(sch)))
+    setup.map(sch => ServerSocket(SocketInfo.forAsync(sch), acceptIncoming(sch)))
   }
 }
 

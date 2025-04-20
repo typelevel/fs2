@@ -42,13 +42,13 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     handle: FileDescriptorPollHandle,
     readBuffer: ResizableBuffer[F],
     val isOpen: F[Boolean],
-    val localAddressGen: F[GenSocketAddress],
-    val remoteAddressGen: F[GenSocketAddress]
+    val address: GenSocketAddress,
+    val peerAddress: GenSocketAddress
 )(implicit F: Async[F])
     extends Socket[F] {
 
-  def localAddress = localAddressGen.map(_.asIpUnsafe)
-  def remoteAddress = remoteAddressGen.map(_.asIpUnsafe)
+  def localAddress = F.pure(address.asIpUnsafe)
+  def remoteAddress = F.pure(peerAddress.asIpUnsafe)
 
   def endOfInput: F[Unit] = shutdownF(0)
   def endOfOutput: F[Unit] = shutdownF(1)
@@ -132,10 +132,10 @@ private object FdPollingSocket {
   def apply[F[_]: LiftIO](
       fd: Int,
       handle: FileDescriptorPollHandle,
-      localAddressGen: F[GenSocketAddress],
-      remoteAddressGen: F[GenSocketAddress]
+      address: GenSocketAddress,
+      peerAddress: GenSocketAddress
   )(implicit F: Async[F]): Resource[F, Socket[F]] = for {
     buffer <- ResizableBuffer(DefaultReadSize)
     isOpen <- Resource.make(F.ref(true))(_.set(false))
-  } yield new FdPollingSocket(fd, handle, buffer, isOpen.get, localAddressGen, remoteAddressGen)
+  } yield new FdPollingSocket(fd, handle, buffer, isOpen.get, address, peerAddress)
 }

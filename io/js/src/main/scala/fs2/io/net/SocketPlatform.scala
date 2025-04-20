@@ -25,7 +25,6 @@ package net
 
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{Async, Resource}
-import cats.syntax.all._
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.internal.{facade, SuspendedStream}
 
@@ -33,15 +32,15 @@ private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
       sock: facade.net.Socket,
-      localAddressGen: F[GenSocketAddress],
-      remoteAddressGen: F[GenSocketAddress]
+      address: GenSocketAddress,
+      peerAddress: GenSocketAddress
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     suspendReadableAndRead(
       destroyIfNotEnded = false,
       destroyIfCanceled = false
     )(sock.asInstanceOf[Readable])
       .flatMap { case (_, stream) =>
-        SuspendedStream(stream).map(new AsyncSocket(sock, _, localAddressGen, remoteAddressGen))
+        SuspendedStream(stream).map(new AsyncSocket(sock, _, address, peerAddress))
       }
       .onFinalize {
         F.delay {
@@ -53,8 +52,8 @@ private[net] trait SocketCompanionPlatform {
   private[net] class AsyncSocket[F[_]](
       sock: facade.net.Socket,
       readStream: SuspendedStream[F, Byte],
-      localAddressGen0: F[GenSocketAddress],
-      remoteAddressGen0: F[GenSocketAddress]
+      val address: GenSocketAddress,
+      val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
       extends Socket[F] {
 
@@ -87,14 +86,10 @@ private[net] trait SocketCompanionPlatform {
     override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      localAddressGen.map(_.asIpUnsafe)
-
-    override def localAddressGen = localAddressGen0
+      F.delay(address.asIpUnsafe)
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      remoteAddressGen.map(_.asIpUnsafe)
-
-    override def remoteAddressGen = remoteAddressGen0
+      F.delay(peerAddress.asIpUnsafe)
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       F.pure(

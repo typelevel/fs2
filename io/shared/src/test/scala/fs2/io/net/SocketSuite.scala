@@ -39,7 +39,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     clients =
       Stream
         .resource(
-          Network[IO].connect(serverSocket.boundAddress, options = setupOptionsPlatform)
+          Network[IO].connect(serverSocket.address, options = setupOptionsPlatform)
         )
         .repeat
   } yield serverSocket.accept -> clients
@@ -139,14 +139,14 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .resource(setup)
         .flatMap { case (server, clients) =>
           val serverSocketAddresses = server.evalMap { socket =>
-            socket.endOfOutput *> socket.localAddress.product(socket.remoteAddress)
+            socket.endOfOutput.as(socket.address -> socket.peerAddress)
           }
 
           val clientSocketAddresses =
             clients
               .take(1)
               .evalMap { socket =>
-                socket.endOfOutput *> socket.localAddress.product(socket.remoteAddress)
+                socket.endOfOutput.as(socket.address -> socket.peerAddress)
               }
 
           serverSocketAddresses.parZip(clientSocketAddresses).map {
@@ -163,7 +163,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       val connectionRefused = for {
         port <- Network[IO]
           .bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-          .use(serverSocket => IO.pure(serverSocket.boundAddress.asIpUnsafe.port))
+          .use(serverSocket => IO.pure(serverSocket.address.asIpUnsafe.port))
         _ <- Network[IO]
           .connect(SocketAddress(host"localhost", port))
           .use_
@@ -173,7 +173,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       val addressAlreadyInUse =
         Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard)).use { serverSocket =>
           Network[IO]
-            .bind(serverSocket.boundAddress)
+            .bind(serverSocket.address)
             .use_
             .interceptMessage[BindException]("Address already in use")
         }
@@ -200,7 +200,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       ) ++ optionsPlatform
       val setup = for {
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard), opts)
-        client <- Network[IO].connect(serverSocket.boundAddress, opts)
+        client <- Network[IO].connect(serverSocket.address, opts)
       } yield (serverSocket.accept, client)
 
       val msg = "hello"
@@ -228,7 +228,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     test("read after timed out read") {
       val setup = for {
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        client <- Network[IO].connect(serverSocket.boundAddress)
+        client <- Network[IO].connect(serverSocket.address)
       } yield (serverSocket.accept, client)
       Stream
         .resource(setup)
@@ -250,7 +250,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
     test("can shutdown a socket that's pending a read") {
       Network[IO].bind(SocketAddress.Wildcard).use { serverSocket =>
-        Network[IO].connect(serverSocket.boundAddress).use { _ =>
+        Network[IO].connect(serverSocket.address).use { _ =>
           serverSocket.accept.head.flatMap(_.reads).compile.drain.timeout(2.seconds).recover {
             case _: TimeoutException => ()
           }
@@ -261,7 +261,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     test("accepted socket closes timely") {
       Network[IO].bind(SocketAddress.Wildcard).use { serverSocket =>
         serverSocket.accept.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
-          Network[IO].connect(serverSocket.boundAddress).use { client =>
+          Network[IO].connect(serverSocket.address).use { client =>
             client.read(1).assertEquals(None)
           }
         }
@@ -271,7 +271,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     test("endOfOutput / endOfInput ignores ENOTCONN") {
       Network[IO].bind(SocketAddress.Wildcard).use { serverSocket =>
         Network[IO]
-          .connect(serverSocket.boundAddress)
+          .connect(serverSocket.address)
           .surround(IO.sleep(100.millis))
           .background
           .surround {
@@ -305,7 +305,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           .drain
           .toResource
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        client <- Network[IO].connect(serverSocket.boundAddress)
+        client <- Network[IO].connect(serverSocket.address)
       } yield (tempFile, serverSocket.accept, client)
 
       Stream

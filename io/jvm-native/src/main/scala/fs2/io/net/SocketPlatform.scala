@@ -28,7 +28,6 @@ import cats.effect.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
 
-import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
 
@@ -37,7 +36,12 @@ private[net] trait SocketCompanionPlatform {
       ch: AsynchronousSocketChannel
   ): F[Socket[F]] =
     (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
-      new AsyncSocket[F](ch, readMutex, writeMutex)
+      new AsyncSocket[F](
+        ch,
+        readMutex,
+        writeMutex,
+        SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress)
+      )
     }
 
   private[net] abstract class BufferedReads[F[_]](
@@ -106,7 +110,8 @@ private[net] trait SocketCompanionPlatform {
   private final class AsyncSocket[F[_]](
       ch: AsynchronousSocketChannel,
       readMutex: Mutex[F],
-      writeMutex: Mutex[F]
+      writeMutex: Mutex[F],
+      val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
       extends BufferedReads[F](readMutex)
       with SocketInfo.AsyncSocketInfo[F] {
@@ -144,21 +149,10 @@ private[net] trait SocketCompanionPlatform {
     }
 
     override def localAddress: F[SocketAddress[IpAddress]] =
-      asyncInstance.delay(
-        SocketAddress.fromInetSocketAddress(
-          channel.getLocalAddress.asInstanceOf[InetSocketAddress]
-        )
-      )
+      asyncInstance.pure(address.asIpUnsafe)
 
     override def remoteAddress: F[SocketAddress[IpAddress]] =
-      F.delay(
-        SocketAddress.fromInetSocketAddress(
-          ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-        )
-      )
-
-    override def remoteAddressGen: F[GenSocketAddress] =
-      F.delay(SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress))
+      asyncInstance.pure(peerAddress.asIpUnsafe)
 
     override def isOpen: F[Boolean] = F.delay(ch.isOpen)
 

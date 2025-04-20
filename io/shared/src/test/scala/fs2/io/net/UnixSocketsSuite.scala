@@ -25,7 +25,6 @@ package io.net
 import scala.concurrent.duration._
 
 import cats.effect.IO
-import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
@@ -61,30 +60,24 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
 
       val server = Stream
         .resource(sockets.bind(address, Nil))
-        .flatMap(ss =>
-          Stream.exec(ss.localAddressGen.map { local =>
-            assertEquals(local, address)
-          }) ++ ss.accept
-        )
+        .flatMap { ss =>
+          assertEquals(ss.address, address)
+          ss.accept
+        }
         .map { socket =>
-          Stream.exec((socket.localAddressGen, socket.remoteAddressGen).mapN {
-            case (local, remote) =>
-              assertEquals(local, address)
-              assertEquals(remote, UnixSocketAddress(""))
-          }) ++
-            socket.reads.through(socket.writes)
+          assertEquals(socket.address, address)
+          assertEquals(socket.peerAddress, UnixSocketAddress(""))
+          socket.reads.through(socket.writes)
         }
         .parJoinUnbounded
 
       val msg = Chunk.array("Hello, world".getBytes)
       val client = Stream.resource(sockets.connect(address, Nil).evalMap { socket =>
-        (socket.localAddressGen, socket.remoteAddressGen).mapN { case (local, remote) =>
-          assertEquals(local, UnixSocketAddress(""))
-          assertEquals(remote, address)
-        } *>
-          socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
-            .to(Chunk)
-            .map(read => assertEquals(read, msg))
+        assertEquals(socket.address, UnixSocketAddress(""))
+        assertEquals(socket.peerAddress, address)
+        socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
+          .to(Chunk)
+          .map(read => assertEquals(read, msg))
       })
 
       (Stream.sleep_[IO](1.second) ++ client)

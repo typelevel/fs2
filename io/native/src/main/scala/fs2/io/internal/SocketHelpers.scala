@@ -225,30 +225,14 @@ private[io] object SocketHelpers {
       throw errnoToThrowable(!optval)
   }
 
-  def getLocalAddress[F[_]](fd: Int, ipv4: Boolean)(implicit
-      F: Sync[F]
-  ): F[SocketAddress[IpAddress]] =
-    getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6).map {
-      case a: SocketAddress[IpAddress] @unchecked => a
-      case _                                      => throw new IllegalArgumentException
+  def getAddress(fd: Int, domain: CInt): GenSocketAddress =
+    SocketHelpers.toSocketAddress(domain) { (addr, len) =>
+      guard_(getsockname(fd, addr, len))
     }
 
-  def getLocalAddressGen[F[_]](fd: Int, domain: CInt)(implicit
-      F: Sync[F]
-  ): F[GenSocketAddress] =
-    F.delay {
-      SocketHelpers.toSocketAddress(domain) { (addr, len) =>
-        guard_(getsockname(fd, addr, len))
-      }
-    }
-
-  def getRemoteAddressGen[F[_]](fd: Int, domain: CInt)(implicit
-      F: Sync[F]
-  ): F[GenSocketAddress] =
-    F.delay {
-      SocketHelpers.toSocketAddress(domain) { (addr, len) =>
-        guard_(getpeername(fd, addr, len))
-      }
+  def getPeerAddress(fd: Int, domain: CInt): GenSocketAddress =
+    SocketHelpers.toSocketAddress(domain) { (addr, len) =>
+      guard_(getpeername(fd, addr, len))
     }
 
   def toSockaddr[A](

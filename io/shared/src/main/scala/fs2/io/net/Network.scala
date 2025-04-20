@@ -24,7 +24,6 @@ package io
 package net
 
 import cats.effect.{Async, Resource}
-import cats.syntax.all.*
 import com.comcast.ip4s.{GenSocketAddress, Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import fs2.io.net.tls.TLSContext
 
@@ -118,11 +117,7 @@ object Network extends NetworkCompanionPlatform {
         SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
         options
       )
-        .flatMap(b =>
-          Resource
-            .eval(b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]))
-            .tupleRight(b.accept)
-        )
+        .map(ss => ss.address.asIpUnsafe -> ss.accept)
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

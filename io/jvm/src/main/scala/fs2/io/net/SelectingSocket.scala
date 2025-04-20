@@ -29,9 +29,8 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import com.comcast.ip4s.{IpAddress, SocketAddress}
 
-import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey.OP_READ
 import java.nio.channels.SelectionKey.OP_WRITE
@@ -42,7 +41,8 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     ch: SocketChannel,
     readMutex: Mutex[F],
     writeMutex: Mutex[F],
-    val remoteAddress: F[SocketAddress[IpAddress]]
+    override val address: SocketAddress[IpAddress],
+    val peerAddress: SocketAddress[IpAddress]
 )(implicit F: Async[F])
     extends Socket.BufferedReads(readMutex)
     with SocketInfo.AsyncSocketInfo[F] {
@@ -51,14 +51,10 @@ private final class SelectingSocket[F[_]: LiftIO] private (
   protected def channel = ch
 
   override def localAddress: F[SocketAddress[IpAddress]] =
-    asyncInstance.delay(
-      SocketAddress.fromInetSocketAddress(
-        ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-      )
-    )
+    asyncInstance.pure(address)
 
-  def remoteAddressGen: F[GenSocketAddress] =
-    remoteAddress.map(a => a: GenSocketAddress)
+  override def remoteAddress: F[SocketAddress[IpAddress]] =
+    asyncInstance.pure(peerAddress)
 
   protected def readChunk(buf: ByteBuffer): F[Int] =
     F.delay(ch.read(buf)).flatMap { readed =>
@@ -125,7 +121,8 @@ private object SelectingSocket {
   def apply[F[_]: LiftIO](
       selector: Selector,
       ch: SocketChannel,
-      remoteAddress: F[SocketAddress[IpAddress]]
+      address: SocketAddress[IpAddress],
+      remoteAddress: SocketAddress[IpAddress]
   )(implicit F: Async[F]): F[Socket[F]] =
     (Mutex[F], Mutex[F]).flatMapN { (readMutex, writeMutex) =>
       F.delay {
@@ -134,6 +131,7 @@ private object SelectingSocket {
           ch,
           readMutex,
           writeMutex,
+          address,
           remoteAddress
         )
       }

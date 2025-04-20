@@ -24,7 +24,6 @@ package io
 package net
 
 import cats.effect.kernel.Resource
-import cats.syntax.all._
 import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import cats.effect.kernel.Async
 
@@ -99,8 +98,6 @@ private[net] object SocketGroup {
             SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
             options
           )
-          .evalMap(b =>
-            b.localAddressGen.map(_.asInstanceOf[SocketAddress[IpAddress]]).tupleRight(b.accept)
-          )
+          .map(ss => ss.address.asIpUnsafe -> ss.accept)
     }
 }

@@ -72,8 +72,8 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
     socket <- FdPollingSocket[F](
       fd,
       handle,
-      SocketHelpers.getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6),
-      SocketHelpers.getRemoteAddressGen(fd, if (ipv4) AF_INET else AF_INET6)
+      SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6),
+      SocketHelpers.getPeerAddress(fd, if (ipv4) AF_INET else AF_INET6)
     )
   } yield socket
 
@@ -135,8 +135,8 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
           socket <- FdPollingSocket[F](
             fd,
             handle,
-            SocketHelpers.getLocalAddressGen(fd, if (ipv4) AF_INET else AF_INET6),
-            SocketHelpers.getRemoteAddressGen(fd, if (ipv4) AF_INET else AF_INET6)
+            SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6),
+            SocketHelpers.getPeerAddress(fd, if (ipv4) AF_INET else AF_INET6)
           )
         } yield socket
 
@@ -149,10 +149,8 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
       def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
       def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
       def supportedOptions = SocketHelpers.supportedOptions
-      def localAddressGen = SocketHelpers.getLocalAddressGen[F](fd, if (ipv4) AF_INET else AF_INET6)
-      def localAddress = localAddressGen.map(_.asIpUnsafe)
+      val address = SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6)
     }
-    serverSocket <- Resource.eval(ServerSocket(info, sockets))
-  } yield serverSocket
+  } yield ServerSocket(info, sockets)
 
 }
