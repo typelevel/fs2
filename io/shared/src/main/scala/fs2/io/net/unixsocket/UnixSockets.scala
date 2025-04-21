@@ -29,10 +29,12 @@ import fs2.Stream
 import fs2.io.net.{Socket, SocketOption, UnixSocketsProvider}
 
 /** Capability of working with AF_UNIX sockets. */
+@deprecated("Use client, bind, bindAndAccept on Network[F] instead", "3.13.0")
 trait UnixSockets[F[_]] {
 
   /** Returns a resource which opens a unix socket to the specified path.
     */
+  @deprecated("Use Network[F].connect(address) instead", "3.13.0")
   def client(address: UnixSocketAddress): Resource[F, Socket[F]]
 
   /** Listens to the specified path for connections and emits a `Socket` for each connection.
@@ -43,6 +45,7 @@ trait UnixSockets[F[_]] {
     *
     * By default, the path is deleted when the server closes. To override this, pass `deleteOnClose = false`.
     */
+  @deprecated("Use Network[F].bind(address) instead", "3.13.0")
   def server(
       address: UnixSocketAddress,
       deleteIfExists: Boolean = false,
@@ -51,8 +54,10 @@ trait UnixSockets[F[_]] {
 }
 
 object UnixSockets extends UnixSocketsCompanionPlatform {
+  @deprecated("Use Network[F] instead", "3.13.0")
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
 
+  @deprecated("Use Network[F] instead", "3.13.0")
   protected class AsyncUnixSockets[F[_]: Async](delegate: UnixSocketsProvider[F])
       extends UnixSockets[F] {
 

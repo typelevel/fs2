@@ -27,6 +27,7 @@ package unixsocket
 import cats.effect.{Async, LiftIO}
 
 private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
+  @deprecated("Use Network instead", "3.13.0")
   implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
     new AsyncUnixSockets(new FdPollingUnixSocketsProvider[F])
 }
