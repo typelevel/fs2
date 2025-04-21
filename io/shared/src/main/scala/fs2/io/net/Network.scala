@@ -51,11 +51,7 @@ import fs2.io.net.tls.TLSContext
   * In this example, the `F[_]` parameter to `send` requires the `Network` constraint instead
   * of requiring the much more powerful `Async` constraint.
   *
-  * The `Network` instance has a set of global resources used for managing sockets. Alternatively,
-  * use the `socketGroup` and `datagramSocketGroup` operations to manage the lifecycle of underlying
-  * resources.
-  *
-  * An instance of `Network` is available for any effect `F` which has an `Async[F]` instance.
+  * An instance of `Network` is available for any effect `F` which has a `LiftIO[F]` instance.
   */
 sealed trait Network[F[_]]
     extends NetworkPlatform[F]
