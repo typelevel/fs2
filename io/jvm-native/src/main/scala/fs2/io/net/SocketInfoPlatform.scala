@@ -37,13 +37,10 @@ private[net] trait SocketInfoCompanionPlatform {
       def channel = ch
     }
 
-  private[net] trait AsyncSocketInfo[F[_]] extends SocketInfo[F] {
+  private[net] trait OptionsSupport[F[_]] extends SocketInfo[F] {
 
     implicit protected def asyncInstance: Async[F]
     protected def channel: NetworkChannel
-
-    override val address: GenSocketAddress =
-      SocketAddressHelpers.toGenSocketAddress(channel.getLocalAddress)
 
     override def supportedOptions: F[Set[SocketOption.Key[?]]] =
       asyncInstance.delay {
@@ -66,4 +63,8 @@ private[net] trait SocketInfoCompanionPlatform {
       }
   }
 
+  private[net] trait AsyncSocketInfo[F[_]] extends OptionsSupport[F] {
+    override val address: GenSocketAddress =
+      SocketAddressHelpers.toGenSocketAddress(channel.getLocalAddress)
+  }
 }

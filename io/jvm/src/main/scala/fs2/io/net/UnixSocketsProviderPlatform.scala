@@ -124,7 +124,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
       val peerAddress: UnixSocketAddress
   )(implicit F: Async[F])
       extends Socket.BufferedReads[F](readMutex)
-      with SocketInfo.AsyncSocketInfo[F] {
+      with SocketInfo.OptionsSupport[F] {
 
     protected def asyncInstance = F
     protected def channel = ch
