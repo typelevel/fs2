@@ -22,26 +22,24 @@
 package fs2
 package io
 package net
+package unixsocket
 
-import cats.effect.{Async, LiftIO}
+import cats.effect.{Async, IO, LiftIO}
+import fs2.io.file.Files
 
-import com.comcast.ip4s.Dns
+private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
+  def forIO: UnixSockets[IO] = forLiftIO
 
-private[net] trait NetworkPlatform[F[_]]
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
 
-private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
+  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
+    forAsyncAndFiles(Files.forAsync(F), F)
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
-    new AsyncProviderBasedNetwork[F] {
-      protected def mkIpSocketsProvider =
-        new FdPollingIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
-      protected def mkUnixSocketsProvider = new FdPollingUnixSocketsProvider[F]
-      protected def mkDatagramSocketGroup = throw new UnsupportedOperationException
-    }
-
-  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
-    forAsyncAndDns(F, Dns.forAsync(F))
-
-  def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
-    throw new UnsupportedOperationException("must use forLiftIO instead of forAsync/forAsyncAndDns")
+  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] = {
+    val _ = Files[F]
+    new AsyncUnixSockets(UnixSocketsProvider.forAsync)
+  }
 }

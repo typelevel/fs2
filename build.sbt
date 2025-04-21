@@ -272,7 +272,55 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[MissingTypesProblem](
     "fs2.interop.flow.StreamSubscriber$State$WaitingOnUpstream$"
-  )
+  ),
+  // Network refactor: #3563
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.connect"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bind"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bindAndAccept"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.address"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.peerAddress"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.address"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.supportedOptions"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.getOption"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.setOption"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.SocketCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AbstractAsyncSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroupCompanionPlatform"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.SocketGroupCompanionPlatform$AsyncSocketGroup"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.address"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSSocket.supportedOptions"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.getOption"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.setOption"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSockets$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSocketsImpl"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSockets$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSocketsImpl"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform$AsyncSocket"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform$AsyncUnixSockets"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.SelectingSocket.apply"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SelectingSocketGroup"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.Socket.forAsync"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.SocketOptionCompanionPlatform#Key.get"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.Network.openDatagramSocket"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.FdPollingSocket.apply"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.FdPollingSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.FdPollingUnixSockets")
 )
 
 lazy val root = tlCrossRootProject

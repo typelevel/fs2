@@ -22,26 +22,11 @@
 package fs2
 package io
 package net
+package unixsocket
 
 import cats.effect.{Async, LiftIO}
 
-import com.comcast.ip4s.Dns
-
-private[net] trait NetworkPlatform[F[_]]
-
-private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
-
-  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
-    new AsyncProviderBasedNetwork[F] {
-      protected def mkIpSocketsProvider =
-        new FdPollingIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
-      protected def mkUnixSocketsProvider = new FdPollingUnixSocketsProvider[F]
-      protected def mkDatagramSocketGroup = throw new UnsupportedOperationException
-    }
-
-  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
-    forAsyncAndDns(F, Dns.forAsync(F))
-
-  def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
-    throw new UnsupportedOperationException("must use forLiftIO instead of forAsync/forAsyncAndDns")
+private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
+    new AsyncUnixSockets(new FdPollingUnixSocketsProvider[F])
 }

@@ -21,7 +21,7 @@
 
 package fs2.io.net.unixsocket
 
-import cats.effect.{Async, IO, LiftIO, Resource}
+import cats.effect.{Async, Resource}
 
 import com.comcast.ip4s.{UnixSocketAddress => Ip4sUnixSocketAddress}
 
@@ -50,17 +50,11 @@ trait UnixSockets[F[_]] {
   ): Stream[F, Socket[F]]
 }
 
-object UnixSockets {
+object UnixSockets extends UnixSocketsCompanionPlatform {
   def apply[F[_]](implicit F: UnixSockets[F]): UnixSockets[F] = F
 
-  def forIO: UnixSockets[IO] = forLiftIO
-
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
-    new AsyncUnixSockets[F]
-
-  private class AsyncUnixSockets[F[_]: Async: LiftIO] extends UnixSockets[F] {
-
-    private val delegate = UnixSocketsProvider.forLiftIO[F]
+  protected class AsyncUnixSockets[F[_]: Async](delegate: UnixSocketsProvider[F])
+      extends UnixSockets[F] {
 
     def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
       delegate.connect(Ip4sUnixSocketAddress(address.path), Nil)
