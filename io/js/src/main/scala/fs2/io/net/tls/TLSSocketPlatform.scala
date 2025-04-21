@@ -75,10 +75,6 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         underlying.peerAddress
       )
       with UnsealedTLSSocket[F] {
-    @deprecated("3.13.0", "Use address instead")
-    override def localAddress = underlying.localAddress
-    @deprecated("3.13.0", "Use peerAddress instead")
-    override def remoteAddress = underlying.remoteAddress
     override def getOption[A](key: SocketOption.Key[A]) = underlying.getOption(key)
     override def setOption[A](key: SocketOption.Key[A], value: A) = underlying.setOption(key, value)
     override def supportedOptions = underlying.supportedOptions

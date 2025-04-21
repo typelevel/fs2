@@ -24,7 +24,7 @@ package io
 package net
 
 import cats.effect.IO
-import com.comcast.ip4s._
+import com.comcast.ip4s.{UnknownHostException => Ip4sUnknownHostException, _}
 
 import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
@@ -183,7 +183,7 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .use_
         .attempt
         .map {
-          case Left(ex: UnknownHostException) =>
+          case Left(ex: Ip4sUnknownHostException) =>
             assert(
               ex.getMessage == "not.example.com: Name or service not known" || ex.getMessage == "not.example.com: nodename nor servname provided, or not known"
             )
