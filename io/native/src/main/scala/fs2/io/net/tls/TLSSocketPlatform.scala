@@ -112,6 +112,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
       def applicationProtocol: F[String] = connection.applicationProtocol
 
+      @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
       def isOpen: F[Boolean] = socket.isOpen
     }
 }

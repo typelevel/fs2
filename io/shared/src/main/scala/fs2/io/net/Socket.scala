@@ -30,6 +30,9 @@ import fs2.io.file.FileHandle
   */
 trait Socket[F[_]] extends SocketInfo[F] {
 
+  /** Gets the remote address of this socket. */
+  def peerAddress: GenSocketAddress
+
   /** Reads up to `maxBytes` from the peer.
     *
     * Returns `None` if the "end of stream" is reached, indicating there will be no more bytes sent.
@@ -50,25 +53,8 @@ trait Socket[F[_]] extends SocketInfo[F] {
     */
   def endOfInput: F[Unit]
 
-  /** Indicates to peer, we are done writing. * */
+  /** Indicates to peer that we are done writing. * */
   def endOfOutput: F[Unit]
-
-  def isOpen: F[Boolean]
-
-  @deprecated(
-    "3.13.0",
-    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
-  )
-  def localAddress: F[SocketAddress[IpAddress]]
-
-  @deprecated(
-    "3.13.0",
-    "Use peerAddress instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
-  )
-  def remoteAddress: F[SocketAddress[IpAddress]]
-
-  /** Gets the remote address of this socket. */
-  def peerAddress: GenSocketAddress
 
   /** Writes `bytes` to the peer.
     *
@@ -107,6 +93,23 @@ trait Socket[F[_]] extends SocketInfo[F] {
 
     go(offset, count).through(writes)
   }
+
+  // Deprecated members
+
+  @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
+  def isOpen: F[Boolean]
+
+  @deprecated(
+    "3.13.0",
+    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+  )
+  def localAddress: F[SocketAddress[IpAddress]]
+
+  @deprecated(
+    "3.13.0",
+    "Use peerAddress instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+  )
+  def remoteAddress: F[SocketAddress[IpAddress]]
 }
 
 object Socket extends SocketCompanionPlatform
