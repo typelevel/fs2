@@ -60,12 +60,18 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
               .select(ch, SelectionKey.OP_CONNECT)
               .to
               .untilM_(F.delay(ch.finishConnect()))
-              .unlessA(connected) *> SelectingSocket[F](
-              selector,
-              ch,
-              localAddress(ch),
-              remoteAddress(ch)
-            )
+              .unlessA(connected) *> F
+              .delay {
+                localAddress(ch) -> remoteAddress(ch)
+              }
+              .flatMap { case (addr, peerAddr) =>
+                SelectingSocket[F](
+                  selector,
+                  ch,
+                  addr,
+                  peerAddr
+                )
+              }
           }
         }
 
