@@ -28,7 +28,7 @@ import cats.effect.Async
 
 import java.nio.channels.NetworkChannel
 
-import scala.jdk.CollectionConverters.*
+import CollectionCompat.*
 
 private[net] trait SocketInfoCompanionPlatform {
   private[net] def forAsync[F[_]](ch: NetworkChannel)(implicit F: Async[F]): SocketInfo[F] =
