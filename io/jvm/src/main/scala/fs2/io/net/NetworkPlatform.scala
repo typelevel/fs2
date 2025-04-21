@@ -23,13 +23,12 @@ package fs2
 package io
 package net
 
-import cats.ApplicativeThrow
 import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Dns, GenSocketAddress, Host, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{Dns, GenSocketAddress, Host, Port}
 
 import fs2.internal.ThreadFactories
 
@@ -75,22 +74,6 @@ private[net] trait NetworkPlatform[F[_]] {
 private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
-
-  private def matchAddress[F[_]: ApplicativeThrow, A](
-      address: GenSocketAddress,
-      ifIp: SocketAddress[Host] => F[A],
-      ifUnix: UnixSocketAddress => F[A]
-  ): F[A] =
-    address match {
-      case sa: SocketAddress[Host] => ifIp(sa)
-      case ua: UnixSocketAddress   => ifUnix(ua)
-      case other =>
-        ApplicativeThrow[F].raiseError(
-          new UnsupportedOperationException(s"Unsupported address type: $other")
-        )
-    }
-
-  def forIO: Network[IO] = forLiftIO
 
   implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
     new AsyncNetwork[F] {
@@ -159,38 +142,10 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
     forAsyncAndDns(F, Dns.forAsync(F))
 
   def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
-    new AsyncNetwork[F] {
-      private lazy val ipSockets = IpSocketsProvider.forAsync[F]
-      private lazy val unixSockets = UnixSocketsProvider.forAsync[F]
-      private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
-
-      def connect(
-          address: GenSocketAddress,
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] =
-        matchAddress(
-          address,
-          sa => ipSockets.connect(sa, options),
-          ua => unixSockets.connect(ua, options)
-        )
-
-      def bind(
-          address: GenSocketAddress,
-          options: List[SocketOption]
-      ): Resource[F, ServerSocket[F]] =
-        matchAddress(
-          address,
-          sa => ipSockets.bind(sa, options),
-          ua => unixSockets.bind(ua, options)
-        )
-
-      def openDatagramSocket(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption],
-          protocolFamily: Option[ProtocolFamily]
-      ): Resource[F, DatagramSocket[F]] =
-        globalDatagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
+    new AsyncProviderBasedNetwork[F] {
+      protected def mkIpSocketsProvider = IpSocketsProvider.forAsync[F]
+      protected def mkUnixSocketsProvider = UnixSocketsProvider.forAsync[F]
+      protected def mkDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         Resource

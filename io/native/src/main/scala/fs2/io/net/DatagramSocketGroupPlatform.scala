@@ -23,4 +23,6 @@ package fs2
 package io
 package net
 
-trait DatagramSocketGroup[F[_]] {}
+private[net] trait DatagramSocketGroupCompanionPlatform {
+  type ProtocolFamily = java.net.ProtocolFamily
+}

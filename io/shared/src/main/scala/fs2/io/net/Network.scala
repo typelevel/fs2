@@ -23,8 +23,17 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, Resource}
-import com.comcast.ip4s.{GenSocketAddress, Host, IpAddress, Ipv4Address, Port, SocketAddress}
+import cats.ApplicativeThrow
+import cats.effect.{Async, IO, Resource}
+import com.comcast.ip4s.{
+  GenSocketAddress,
+  Host,
+  IpAddress,
+  Ipv4Address,
+  Port,
+  SocketAddress,
+  UnixSocketAddress
+}
 import fs2.io.net.tls.TLSContext
 
 /** Provides the ability to work with TCP, UDP, and TLS.
@@ -73,6 +82,8 @@ sealed trait Network[F[_]]
 }
 
 object Network extends NetworkCompanionPlatform {
+  def forIO: Network[IO] = forLiftIO
+
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
@@ -94,6 +105,20 @@ object Network extends NetworkCompanionPlatform {
       Stream.resource(bind(address, options)).flatMap(_.accept)
 
     override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+
+    protected def matchAddress[G[_]: ApplicativeThrow, A](
+        address: GenSocketAddress,
+        ifIp: SocketAddress[Host] => G[A],
+        ifUnix: UnixSocketAddress => G[A]
+    ): G[A] =
+      address match {
+        case sa: SocketAddress[Host] => ifIp(sa)
+        case ua: UnixSocketAddress   => ifUnix(ua)
+        case other =>
+          ApplicativeThrow[G].raiseError(
+            new UnsupportedOperationException(s"Unsupported address type: $other")
+          )
+      }
 
     // Implementations of deprecated operations
 
@@ -118,6 +143,46 @@ object Network extends NetworkCompanionPlatform {
         options
       )
         .map(ss => ss.address.asIpUnsafe -> ss.accept)
+  }
+
+  private[fs2] abstract class AsyncProviderBasedNetwork[F[_]](implicit F: Async[F])
+      extends AsyncNetwork[F] {
+    protected def mkIpSocketsProvider: IpSocketsProvider[F]
+    protected def mkUnixSocketsProvider: UnixSocketsProvider[F]
+    protected def mkDatagramSocketGroup: DatagramSocketGroup[F]
+
+    protected lazy val ipSockets: IpSocketsProvider[F] = mkIpSocketsProvider
+    protected lazy val unixSockets: UnixSocketsProvider[F] = mkUnixSocketsProvider
+    protected lazy val datagramSocketGroup: DatagramSocketGroup[F] = mkDatagramSocketGroup
+
+    override def connect(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+    ): Resource[F, Socket[F]] =
+      matchAddress(
+        address,
+        sa => ipSockets.connect(sa, options),
+        ua => unixSockets.connect(ua, options)
+      )
+
+    override def bind(
+        address: GenSocketAddress,
+        options: List[SocketOption]
+    ): Resource[F, ServerSocket[F]] =
+      matchAddress(
+        address,
+        sa => ipSockets.bind(sa, options),
+        ua => unixSockets.bind(ua, options)
+      )
+
+    override def openDatagramSocket(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[DatagramSocketOption],
+        protocolFamily: Option[DatagramSocketGroup.ProtocolFamily]
+    ): Resource[F, DatagramSocket[F]] =
+      datagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
+
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

@@ -23,19 +23,19 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, LiftIO}
+import com.comcast.ip4s.IpAddress
 
-import com.comcast.ip4s.Dns
+private[net] trait DatagramSocketPlatform[F[_]] {
+  private[net] trait GroupMembershipPlatform {
 
-private[net] trait NetworkPlatform[F[_]]
+    /** Blocks datagrams from the specified source address. */
+    def block(source: IpAddress): F[Unit]
 
-private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
+    /** Unblocks datagrams from the specified source address. */
+    def unblock(source: IpAddress): F[Unit]
+  }
+}
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
-    new AsyncProviderBasedNetwork[F] {
-      protected def mkIpSocketsProvider =
-        new FdPollingIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
-      protected def mkUnixSocketsProvider = new FdPollingUnixSocketsProvider[F]
-      protected def mkDatagramSocketGroup = throw new UnsupportedOperationException
-    }
+private[net] trait DatagramSocketCompanionPlatform {
+  type NetworkInterface = java.net.NetworkInterface
 }

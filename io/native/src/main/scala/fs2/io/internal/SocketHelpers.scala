@@ -323,7 +323,7 @@ private[io] object SocketHelpers {
   def allocateSockaddr[A](domain: CInt)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => A
   ): A = {
-    // FIXME: Scala Native 0.4 doesn't support getsconame for unix sockets; after upgrading to 0.5,
+    // FIXME: Scala Native 0.4 doesn't support getsockname for unix sockets; after upgrading to 0.5,
     // this can be simplified to just allocate a sockaddr_un
     val (addr, lenValue) = // allocate enough for unix socket address
       if (domain == AF_UNIX)
