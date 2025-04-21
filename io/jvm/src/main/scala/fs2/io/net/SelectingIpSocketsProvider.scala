@@ -22,19 +22,17 @@
 package fs2
 package io.net
 
-import cats.effect.LiftIO
-import cats.effect.Selector
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
 import com.comcast.ip4s.{Dns, Host, IpAddress, SocketAddress}
 
 import java.net.InetSocketAddress
-import java.nio.channels.AsynchronousCloseException
-import java.nio.channels.ClosedChannelException
-import java.nio.channels.SelectionKey.OP_ACCEPT
-import java.nio.channels.SelectionKey.OP_CONNECT
-import java.nio.channels.SocketChannel
+import java.nio.channels.{
+  AsynchronousCloseException,
+  ClosedChannelException,
+  SelectionKey,
+  SocketChannel
+}
 
 private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
     F: Async[F],
@@ -59,27 +57,19 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
         val connect = to.resolve.flatMap { ip =>
           F.delay(ch.connect(ip.toInetSocketAddress)).flatMap { connected =>
             selector
-              .select(ch, OP_CONNECT)
+              .select(ch, SelectionKey.OP_CONNECT)
               .to
               .untilM_(F.delay(ch.finishConnect()))
-              .unlessA(connected)
+              .unlessA(connected) *> SelectingSocket[F](
+              selector,
+              ch,
+              localAddress(ch),
+              remoteAddress(ch)
+            )
           }
         }
 
-        val make = F
-          .delay {
-            localAddress(ch) -> remoteAddress(ch)
-          }
-          .flatMap { case (addr, peerAddr) =>
-            SelectingSocket[F](
-              selector,
-              ch,
-              addr,
-              peerAddr
-            )
-          }
-
-        configure *> connect *> make
+        configure *> connect
       }
 
   def bind(
@@ -107,7 +97,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           .bracketFull[F, SocketChannel] { poll =>
             def go: F[SocketChannel] =
               F.delay(sch.accept()).flatMap {
-                case null => poll(selector.select(sch, OP_ACCEPT).to) *> go
+                case null => poll(selector.select(sch, SelectionKey.OP_ACCEPT).to) *> go
                 case ch   => F.pure(ch)
               }
             go
@@ -122,12 +112,15 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
-          } *> SelectingSocket[F](
-            selector,
-            ch,
-            localAddress(ch),
-            remoteAddress(ch)
-          )
+            localAddress(ch) -> remoteAddress(ch)
+          }.flatMap { case (addr, peerAddr) =>
+            SelectingSocket[F](
+              selector,
+              ch,
+              addr,
+              peerAddr
+            )
+          }
         }
 
         configure *> F.delay(ServerSocket(SocketInfo.forAsync(sch), accept))
