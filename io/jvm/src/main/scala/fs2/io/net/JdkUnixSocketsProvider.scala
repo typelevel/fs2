@@ -23,6 +23,7 @@ package fs2
 package io
 package net
 
+import cats.syntax.all._
 import cats.effect.{Async, Resource}
 import cats.effect.syntax.all._
 
@@ -46,7 +47,7 @@ private[net] object JdkUnixSocketsProvider {
 
 private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
     extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
-  protected def openChannel(address: UnixSocketAddress) =
+  protected def openChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     evalOnVirtualThreadIfAvailable(
       Resource
         .make(
@@ -54,7 +55,8 @@ private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
         )(ch => F.blocking(ch.close()))
         .evalTap { ch =>
           F.blocking(ch.connect(UnixDomainSocketAddress.of(address.path)))
-            .cancelable(F.blocking(ch.close()))
+            .cancelable(F.blocking(ch.close())) *>
+            F.delay(options.foreach(o => ch.setOption(o.key, o.value)))
         }
     )
 

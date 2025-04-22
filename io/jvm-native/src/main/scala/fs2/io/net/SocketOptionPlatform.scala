@@ -97,4 +97,6 @@ private[net] trait SocketOptionCompanionPlatform {
   }
   def unixServerSocketDeleteOnClose(value: Boolean): SocketOption =
     boolean(UnixServerSocketDeleteOnClose, value)
+
+  // TODO SO_PEERCRED
 }

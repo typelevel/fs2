@@ -57,10 +57,12 @@ private[net] object JnrUnixSocketsProvider {
 private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[F])
     extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
 
-  protected def openChannel(address: UnixSocketAddress) =
-    Resource.make(F.blocking(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path))))(ch =>
-      F.blocking(ch.close())
-    )
+  protected def openChannel(address: UnixSocketAddress, options: List[SocketOption]) =
+    Resource
+      .make(F.blocking(UnixSocketChannel.open(new JnrUnixSocketAddress(address.path))))(ch =>
+        F.blocking(ch.close())
+      )
+      .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
 
   protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     Resource

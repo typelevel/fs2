@@ -57,7 +57,10 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
   abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
       extends UnixSocketsProvider[F] {
 
-    protected def openChannel(address: UnixSocketAddress): Resource[F, SocketChannel]
+    protected def openChannel(
+        address: UnixSocketAddress,
+        options: List[SocketOption]
+    ): Resource[F, SocketChannel]
 
     protected def openServerChannel(
         address: UnixSocketAddress,
@@ -65,7 +68,7 @@ private[net] trait UnixSocketsProviderCompanionPlatform {
     ): Resource[F, (SocketInfo[F], Resource[F, SocketChannel])]
 
     def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
-      openChannel(address).evalMap(makeSocket[F](_, UnixSocketAddress(""), address))
+      openChannel(address, options).evalMap(makeSocket[F](_, UnixSocketAddress(""), address))
 
     def bind(
         address: UnixSocketAddress,
