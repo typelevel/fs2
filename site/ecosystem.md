@@ -46,6 +46,7 @@ If you have a project you'd like to include in this list, either [click here](ht
 * [fs2-throttler](https://github.com/kovstas/fs2-throttler): Throttling for fs2 based on the token bucket algorithm.
 * [fs2-zk](https://github.com/Spinoco/fs2-zk): Simple Apache Zookeeper bindings for fs2.
 * [http4s](http://http4s.org/): Minimal, idiomatic Scala interface for HTTP services using fs2.
+* [ldbc](https://github.com/takapi327/ldbc): Pure functional JDBC layer with Cats Effect 3 and Scala 3.
 * [Lepus](https://lepus.hnaderi.dev/): Purely functional, non-blocking RabbitMQ client for Scala, Scala.js and Scala Native (with complete support for AMQP 0.9.1 + RabbitMQ extensions)
 * [mongo4cats](https://github.com/Kirill5k/mongo4cats): Mongo DB Scala client wrapper for Cats Effect & FS2.
 * [mongosaur](https://gitlab.com/lJoublanc/mongosaur): fs2-based MongoDB driver.
