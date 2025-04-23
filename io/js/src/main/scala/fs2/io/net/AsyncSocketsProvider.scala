@@ -125,7 +125,9 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           } <* F.delay {
             address match {
               case Left(addr) =>
-                if (addr.host.isInstanceOf[IpAddress] && addr.host.asInstanceOf[IpAddress].isWildcard)
+                if (
+                  addr.host.isInstanceOf[IpAddress] && addr.host.asInstanceOf[IpAddress].isWildcard
+                )
                   server.listen(addr.port.value, () => cb(Right(())))
                 else
                   server.listen(addr.port.value, addr.host.toString, () => cb(Right(())))
