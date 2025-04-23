@@ -27,7 +27,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress, UnixSocketAddress}
 import fs2.concurrent.Channel
 import fs2.io.internal.facade
 
@@ -39,7 +39,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
     options.traverse_(option => option.key.set(socket, option.value))
 
   protected def connectIpOrUnix(
-      to: Either[SocketAddress[IpAddress], UnixSocketAddress],
+      to: Either[SocketAddress[Host], UnixSocketAddress],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
     (for {
@@ -92,7 +92,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
     } yield socket).adaptError { case IOException(ex) => ex }
 
   protected def bindIpOrUnix(
-      address: Either[SocketAddress[IpAddress], UnixSocketAddress],
+      address: Either[SocketAddress[Host], UnixSocketAddress],
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] =
     (for {
@@ -125,7 +125,7 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           } <* F.delay {
             address match {
               case Left(addr) =>
-                if (addr.host.isWildcard)
+                if (addr.host.isInstanceOf[IpAddress] && addr.host.asInstanceOf[IpAddress].isWildcard)
                   server.listen(addr.port.value, () => cb(Right(())))
                 else
                   server.listen(addr.port.value, addr.host.toString, () => cb(Right(())))

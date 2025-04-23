@@ -24,30 +24,23 @@ package io
 package net
 
 import cats.effect.{Async, Resource}
-import com.comcast.ip4s.{Dns, Host, SocketAddress}
+import com.comcast.ip4s.{Host, SocketAddress}
 
 private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
 
   private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
-    forAsyncAndDns[F](implicitly, Dns.forAsync)
-
-  private def forAsyncAndDns[F[_]: Async: Dns]: IpSocketsProvider[F] =
     new AsyncSocketsProvider[F] with IpSocketsProvider[F] {
 
       override def connect(
           address: SocketAddress[Host],
           options: List[SocketOption]
       ): Resource[F, Socket[F]] =
-        Resource.eval(address.host.resolve[F]).flatMap { ip =>
-          connectIpOrUnix(Left(SocketAddress(ip, address.port)), options)
-        }
+        connectIpOrUnix(Left(address), options)
 
       override def bind(
           address: SocketAddress[Host],
           options: List[SocketOption]
       ): Resource[F, ServerSocket[F]] =
-        Resource.eval(address.host.resolve[F]).flatMap { ip =>
-          bindIpOrUnix(Left(SocketAddress(ip, address.port)), options)
-        }
+        bindIpOrUnix(Left(address), options)
     }
 }
