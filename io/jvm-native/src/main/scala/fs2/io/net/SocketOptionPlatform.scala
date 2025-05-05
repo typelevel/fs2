@@ -72,7 +72,8 @@ private[net] trait SocketOptionCompanionPlatform {
   def reuseAddress(value: Boolean): SocketOption =
     boolean(ReuseAddress, value)
 
-  val ReusePort = StandardSocketOptions.SO_REUSEPORT
+  // Note: this option was added in Java 9 so lazily load it to avoid failure on Java 8
+  lazy val ReusePort = StandardSocketOptions.SO_REUSEPORT
   def reusePort(value: Boolean): SocketOption =
     boolean(ReusePort, value)
 
@@ -97,6 +98,4 @@ private[net] trait SocketOptionCompanionPlatform {
   }
   def unixServerSocketDeleteOnClose(value: Boolean): SocketOption =
     boolean(UnixServerSocketDeleteOnClose, value)
-
-  // TODO SO_PEERCRED
 }
