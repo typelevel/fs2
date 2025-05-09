@@ -446,7 +446,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   /** Outputs chunks of size `n`.
     *
     * Chunks from the source stream are split as necessary.
-    * If `allowFewer` is true, the last chunk that is emitted may have less than `n` elements.
+    * If `allowFewer` is true, the last chunk that is emitted, upon completion of the stream, may have fewer than `n` elements.
     *
     * Note: the emitted chunk may be a composite chunk (i.e., an instance of `Chunk.Queue`) and
     * hence may not have O(1) lookup by index. Consider calling `.map(_.compact)` if indexed
