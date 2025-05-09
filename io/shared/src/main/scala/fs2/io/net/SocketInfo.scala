@@ -23,14 +23,22 @@ package fs2
 package io
 package net
 
-import fs2.io.net.tls.TLSContext
+import com.comcast.ip4s.GenSocketAddress
 
-sealed trait Network[F[_]] extends NetworkPlatform[F] with SocketGroup[F] {
-  def tlsContext: TLSContext.Builder[F]
+/** Information about a connected socket. Super trait of both [[ServerSocket]] and [[Socket]]. */
+trait SocketInfo[F[_]] {
+
+  /** Local address of this socket. */
+  def address: GenSocketAddress
+
+  /** Gets the set of options that may be used with `setOption`. Note some options may not support `getOption`. */
+  def supportedOptions: F[Set[SocketOption.Key[?]]]
+
+  /** Gets the value of the specified option, if defined. */
+  def getOption[A](key: SocketOption.Key[A]): F[Option[A]]
+
+  /** Sets the specified option to the supplied value. */
+  def setOption[A](key: SocketOption.Key[A], value: A): F[Unit]
 }
 
-object Network extends NetworkCompanionPlatform {
-  private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
-
-  def apply[F[_]](implicit F: Network[F]): F.type = F
-}
+object SocketInfo extends SocketInfoCompanionPlatform

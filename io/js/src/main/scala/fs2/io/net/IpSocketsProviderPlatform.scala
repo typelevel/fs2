@@ -20,36 +20,27 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io
+package net
 
-import scala.concurrent.duration._
+import cats.effect.{Async, Resource}
+import com.comcast.ip4s.{Host, SocketAddress}
 
-import cats.effect.IO
+private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
 
-class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
+  private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
+    new AsyncSocketsProvider[F] with IpSocketsProvider[F] {
 
-  def testProvider(provider: String)(implicit sockets: UnixSockets[IO]) =
-    test(s"echoes - $provider") {
-      val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
+      override def connect(
+          address: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] =
+        connectIpOrUnix(Left(address), options)
 
-      val server = UnixSockets[IO]
-        .server(address)
-        .map { client =>
-          client.reads.through(client.writes)
-        }
-        .parJoinUnbounded
-
-      def client(msg: Chunk[Byte]) = UnixSockets[IO].client(address).use { server =>
-        server.write(msg) *> server.endOfOutput *> server.reads.compile
-          .to(Chunk)
-          .map(read => assertEquals(read, msg))
-      }
-
-      val clients = (0 until 100).map(b => client(Chunk.singleton(b.toByte)))
-
-      (Stream.sleep_[IO](1.second) ++ Stream.emits(clients).evalMap(identity))
-        .concurrently(server)
-        .compile
-        .drain
+      override def bind(
+          address: SocketAddress[Host],
+          options: List[SocketOption]
+      ): Resource[F, ServerSocket[F]] =
+        bindIpOrUnix(Left(address), options)
     }
 }

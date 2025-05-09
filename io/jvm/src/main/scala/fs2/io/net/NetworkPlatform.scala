@@ -28,13 +28,11 @@ import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.{Async, Resource}
 
-import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Dns, GenSocketAddress, Host, Port}
 
 import fs2.internal.ThreadFactories
-import fs2.io.net.tls.TLSContext
 
 import java.net.ProtocolFamily
-import java.nio.channels.AsynchronousChannelGroup
 import java.util.concurrent.ThreadFactory
 
 private[net] trait NetworkPlatform[F[_]] {
@@ -49,6 +47,10 @@ private[net] trait NetworkPlatform[F[_]] {
     * @param threadCount number of threads to allocate in the fixed thread pool backing the NIO channel group
     * @param threadFactory factory used to create fixed threads
     */
+  @deprecated(
+    "3.13.0",
+    "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead"
+  )
   def socketGroup(
       threadCount: Int = 1,
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-tcp", true)
@@ -70,17 +72,11 @@ private[net] trait NetworkPlatform[F[_]] {
 }
 
 private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
-  private lazy val globalAcg = AsynchronousChannelGroup.withFixedThreadPool(
-    1,
-    ThreadFactories.named("fs2-global-tcp", true)
-  )
   private lazy val globalAdsg =
     AsynchronousDatagramSocketGroup.unsafe(ThreadFactories.named("fs2-global-udp", true))
 
-  def forIO: Network[IO] = forLiftIO
-
   implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] =
-    new UnsealedNetwork[F] {
+    new AsyncNetwork[F] {
       private lazy val fallback = forAsync[F]
 
       private def tryGetSelector =
@@ -88,42 +84,37 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
 
       private implicit def dns: Dns[F] = Dns.forAsync[F]
 
-      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
+      private def selecting[A](
+          ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A],
+          orElse: => Resource[F, A]
+      ): Resource[F, A] =
         Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) => Resource.pure(new SelectingSocketGroup[F](selector))
-          case None           => fallback.socketGroup(threadCount, threadFactory)
+          case Some(selector) => ifSelecting(new SelectingIpSocketsProvider(selector))
+          case None           => orElse
         }
+
+      def connect(
+          address: GenSocketAddress,
+          options: List[SocketOption]
+      ): Resource[F, Socket[F]] =
+        matchAddress(
+          address,
+          sa => selecting(_.connect(sa, options), fallback.connect(sa, options)),
+          ua => fallback.connect(ua, options)
+        )
+
+      def bind(
+          address: GenSocketAddress,
+          options: List[SocketOption]
+      ): Resource[F, ServerSocket[F]] =
+        matchAddress(
+          address,
+          sa => selecting(_.bind(sa, options), fallback.bind(sa, options)),
+          ua => fallback.bind(ua, options)
+        )
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         fallback.datagramSocketGroup(threadFactory)
-
-      def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] = Resource.eval(tryGetSelector).flatMap {
-        case Some(selector) => new SelectingSocketGroup(selector).client(to, options)
-        case None           => fallback.client(to, options)
-      }
-
-      def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] = Stream.eval(tryGetSelector).flatMap {
-        case Some(selector) => new SelectingSocketGroup(selector).server(address, port, options)
-        case None           => fallback.server(address, port, options)
-      }
-
-      def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) =>
-            new SelectingSocketGroup(selector).serverResource(address, port, options)
-          case None => fallback.serverResource(address, port, options)
-        }
 
       def openDatagramSocket(
           address: Option[Host],
@@ -133,25 +124,28 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       ): Resource[F, DatagramSocket[F]] =
         fallback.openDatagramSocket(address, port, options, protocolFamily)
 
-      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+      // Implementations of deprecated operations
+
+      @deprecated(
+        "3.13.0",
+        "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead"
+      )
+      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) =>
+            Resource.pure(SocketGroup.fromIpSockets(new SelectingIpSocketsProvider(selector)))
+          case None => fallback.socketGroup(threadCount, threadFactory)
+        }
     }
 
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))
 
   def forAsyncAndDns[F[_]](implicit F: Async[F], dns: Dns[F]): Network[F] =
-    new UnsealedNetwork[F] {
-      private lazy val globalSocketGroup = SocketGroup.unsafe[F](globalAcg)
-      private lazy val globalDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
-
-      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
-        Resource
-          .make(
-            F.delay(
-              AsynchronousChannelGroup.withFixedThreadPool(threadCount, threadFactory)
-            )
-          )(acg => F.delay(acg.shutdown()))
-          .map(SocketGroup.unsafe[F](_))
+    new AsyncProviderBasedNetwork[F] {
+      protected def mkIpSocketsProvider = IpSocketsProvider.forAsync[F]
+      protected def mkUnixSocketsProvider = UnixSocketsProvider.forAsync[F]
+      protected def mkDatagramSocketGroup = DatagramSocketGroup.unsafe[F](globalAdsg)
 
       def datagramSocketGroup(threadFactory: ThreadFactory): Resource[F, DatagramSocketGroup[F]] =
         Resource
@@ -160,33 +154,9 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           )
           .map(DatagramSocketGroup.unsafe[F](_))
 
-      def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] = globalSocketGroup.client(to, options)
+      // Implementations of deprecated operations
 
-      def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] = globalSocketGroup.server(address, port, options)
-
-      def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        globalSocketGroup.serverResource(address, port, options)
-
-      def openDatagramSocket(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption],
-          protocolFamily: Option[ProtocolFamily]
-      ): Resource[F, DatagramSocket[F]] =
-        globalDatagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
-
-      def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync[F]
+      def socketGroup(threadCount: Int, threadFactory: ThreadFactory): Resource[F, SocketGroup[F]] =
+        Resource.pure(SocketGroup.fromIpSockets(ipSockets))
     }
-
 }

@@ -19,18 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.tcp
+package fs2
+package io.net
 
-import fs2.io.net.SocketOption
+import cats.effect.IO
 
-trait SocketSuitePlatform {
-
-  val setupOptionsPlatform = List(SocketOption.sendBufferSize(10000))
-  val optionsPlatform = List(
-    SocketOption.receiveBufferSize(1024),
-    SocketOption.reuseAddress(true),
-    SocketOption.reusePort(true),
-    SocketOption.sendBufferSize(1024)
-  )
-
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  testProvider("native", UnixSocketsProvider.forLiftIO[IO])
 }

@@ -20,30 +20,11 @@
  */
 
 package fs2
-package io
-package net
-package unixsocket
+package io.net
 
-import cats.effect.{Async, IO, LiftIO}
-import fs2.io.file.Files
+import cats.effect.IO
 
-private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
-  @deprecated("Use Network instead", "3.13.0")
-  def forIO: UnixSockets[IO] = forLiftIO
-
-  @deprecated("Use Network instead", "3.13.0")
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
-  }
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] = {
-    val _ = Files[F]
-    new AsyncUnixSockets(UnixSocketsProvider.forAsync)
-  }
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    forAsyncAndFiles(F, Files.forAsync(F))
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  if (JdkUnixSocketsProvider.supported) testProvider("jdk", JdkUnixSocketsProvider.forAsync[IO])
+  if (JnrUnixSocketsProvider.supported) testProvider("jnr", JnrUnixSocketsProvider.forAsync[IO])
 }

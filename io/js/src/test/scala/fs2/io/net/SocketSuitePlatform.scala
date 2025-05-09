@@ -19,11 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2
-package io.net.unixsocket
+package fs2.io.net
 
-import cats.effect.IO
+trait SocketSuitePlatform {
 
-trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("node.js")(UnixSockets.forAsync[IO])
+  val setupOptionsPlatform = Nil
+  val optionsPlatform = Nil
+
 }

@@ -33,7 +33,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console: Network]: F[Unit] =
-  Network[F].client(SocketAddress(host"localhost", port"5555")).use { socket =>
+  Network[F].connect(SocketAddress(host"localhost", port"5555")).use { socket =>
     socket.write(Chunk.array("Hello, world!".getBytes)) >>
       socket.read(8192).flatMap { response =>
         Console[F].println(s"Response: $response")
@@ -41,9 +41,9 @@ def client[F[_]: MonadCancelThrow: Console: Network]: F[Unit] =
   }
 ```
 
-To open a socket that's connected to `localhost:5555`, we use the `client` method on the `Network` capability. The `Network` capability provides the runtime environment for the sockets it creates.
+To open a socket that's connected to `localhost:5555`, we use the `connect` method on the `Network` capability. The `Network` capability provides the runtime environment for the sockets it creates.
 
-The `Network[F].client` method returns a `Resource[F, Socket[F]]` which automatically closes the socket after the resource has been used. To write data to the socket, we call `socket.write`, which takes a `Chunk[Byte]` and returns an `F[Unit]`. Once the write completes, we do a single read from the socket via `socket.read`, passing the maximum amount of bytes we want to read. The returns an `F[Option[Chunk[Byte]]]` -- `None` if the socket reaches end of input and `Some` if the read produced a chunk. Finally, we print the response to the console.
+The `Network[F].connect` method returns a `Resource[F, Socket[F]]` which automatically closes the socket after the resource has been used. To write data to the socket, we call `socket.write`, which takes a `Chunk[Byte]` and returns an `F[Unit]`. Once the write completes, we do a single read from the socket via `socket.read`, passing the maximum amount of bytes we want to read. The returns an `F[Option[Chunk[Byte]]]` -- `None` if the socket reaches end of input and `Some` if the read produced a chunk. Finally, we print the response to the console.
 
 Note we aren't doing any binary message framing or packetization in this example. Hence, it's very possible for the single read to only receive a portion of the original message -- perhaps just the bytes for `"Hello, w"`. We can use FS2 streams to simplify this. The `Socket` trait defines stream operations  -- `writes` and `reads`. We could rewrite this example using the stream operations like so:
 
@@ -56,7 +56,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
-  Stream.resource(Network[F].client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
+  Stream.resource(Network[F].connect(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
       .through(text.utf8.encode)
       .through(socket.writes) ++
@@ -76,7 +76,7 @@ This program won't end until the server side closes the socket or indicates ther
 
 ```scala mdoc:nest
 def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
-  Stream.resource(Network[F].client(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
+  Stream.resource(Network[F].connect(SocketAddress(host"localhost", port"5555"))).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8.encode)
@@ -95,23 +95,23 @@ To update the write side, we added `.interleave(Stream.constant("\n"))` before d
 
 #### Handling Connection Errors
 
-If a TCP connection cannot be established, `socketGroup.client` fails with a `java.net.ConnectException`. To automatically attempt a reconnection, we can handle the `ConnectException` and try connecting again.
+If a TCP connection cannot be established, `connect` fails with a `fs2.io.net.ConnectException`. To automatically attempt a reconnection, we can handle the `ConnectException` and try connecting again.
 
 ```scala mdoc:nest
 import scala.concurrent.duration._
 import cats.effect.Temporal
-import fs2.io.net.Socket
-import java.net.ConnectException
+import fs2.io.net.{ConnectException, Socket}
 
-def connect[F[_]: Temporal: Network](address: SocketAddress[Host]): Stream[F, Socket[F]] =
-  Stream.resource(Network[F].client(address))
+def retryingConnect[F[_]: Temporal: Network](address: SocketAddress[Host]): Stream[F, Socket[F]] =
+  Stream.resource(Network[F].connect(address))
     .handleErrorWith {
       case _: ConnectException =>
-        connect(address).delayBy(5.seconds)
+        retryingConnect(address).delayBy(5.seconds)
+      case other => Stream.raiseError(other)
     }
 
 def client[F[_]: Temporal: Console: Network]: Stream[F, Unit] =
-  connect(SocketAddress(host"localhost", port"5555")).flatMap { socket =>
+  retryingConnect(SocketAddress(host"localhost", port"5555")).flatMap { socket =>
     Stream("Hello, world!")
       .interleave(Stream.constant("\n"))
       .through(text.utf8.encode)
@@ -126,7 +126,7 @@ def client[F[_]: Temporal: Console: Network]: Stream[F, Unit] =
   }
 ```
 
-We've extracted the `Network[IO].client` call in to a new method called `connect`. The connect method attempts to create a client and handles the `ConnectException`. Upon encountering the exception, we call `connect` recursively after a 5 second delay. Because we are using `delayBy`, we needed to add a `Temporal` constraint to `F`. This same pattern could be used for more advanced retry strategies -- e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on `Socket` can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.
+We've extracted the `Network[IO].connect` call in to a new method called `retryingConnect`. The `retryingConnect` method attempts to create a client and handles the `ConnectException`. Upon encountering the exception, we call `retryingConnect` recursively after a 5 second delay. Because we are using `delayBy`, we needed to add a `Temporal` constraint to `F`. This same pattern could be used for more advanced retry strategies -- e.g., exponential delays and failing after a fixed number of attempts. Streams that call methods on `Socket` can fail with exceptions due to loss of the underlying TCP connection. Such exceptions can be handled in a similar manner.
 
 ### Servers
 
@@ -136,18 +136,20 @@ Now let's implement a server application that communicates with the client app w
 import cats.effect.Concurrent
 
 def echoServer[F[_]: Concurrent: Network]: F[Unit] =
-  Network[F].server(port = Some(port"5555")).map { client =>
-    client.reads
-      .through(text.utf8.decode)
-      .through(text.lines)
-      .interleave(Stream.constant("\n"))
-      .through(text.utf8.encode)
-      .through(client.writes)
-      .handleErrorWith(_ => Stream.empty) // handle errors of client sockets
+  Stream.resource(Network[F].bind(SocketAddress.port(port"5555"))).map { serverSocket =>
+    serverSocket.accept.map { clientSocket =>
+      clientSocket.reads
+        .through(text.utf8.decode)
+        .through(text.lines)
+        .interleave(Stream.constant("\n"))
+        .through(text.utf8.encode)
+        .through(clientSocket.writes)
+        .handleErrorWith(_ => Stream.empty) // handle errors of client sockets
+    }
   }.parJoin(100).compile.drain
 ```
 
-We start with a call to `Network[IO].server` which returns a value of an interesting type -- `Stream[F, Socket[F]]`. This is an infinite stream of client sockets -- each time a client connects to the server, a `Socket[F]` is emitted, allowing interaction with that client. The lifetime of the client socket is managed by the overall stream -- e.g. flat mapping over a socket will keep that socket open until the returned inner stream completes, at which point, the client socket is closed and any underlying resources are returned to the runtime environment.
+We start with a call to `Network[IO].bind` which returns a value of type `Resource[F, ServerSocket[F]]`. The `ServerSocket` type defines an `accept` method of type `Stream[F, Socket[F]]`. This is an infinite stream of client sockets -- each time a client connects to the server, a `Socket[F]` is emitted, allowing interaction with that client. The lifetime of the client socket is managed by the overall stream -- e.g. flat mapping over a socket will keep that socket open until the returned inner stream completes, at which point, the client socket is closed and any underlying resources are returned to the runtime environment.
 
 We map over this infinite stream of clients and provide the logic for handling an individual client. In this case,
 we read from the client socket, UTF-8 decode the received bytes, extract individual lines, and then write each line back to the client. This logic is implemented as a single `Stream[F, Unit]`.
@@ -156,7 +158,7 @@ Since we mapped over the infinite client stream, we end up with a `Stream[F, Str
 
 In joining all these streams together, be prudent to handle errors in the client streams.
 
-The pattern of `Network[F].server(address).map(handleClient).parJoin(maxConcurrentClients)` is very common when working with server sockets.
+The pattern of `Network[F].bind(address).map(ss => handleClient(ss.accept)).parJoin(maxConcurrentClients)` is very common when working with server sockets.
 
 A simpler echo server could be implemented with this core logic:
 
@@ -234,7 +236,7 @@ import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console: Network](
   tlsContext: TLSContext[F]): Stream[F, Unit] = {
-  Stream.resource(Network[F].client(SocketAddress(host"localhost", port"5555"))).flatMap { underlyingSocket =>
+  Stream.resource(Network[F].connect(SocketAddress(host"localhost", port"5555"))).flatMap { underlyingSocket =>
     Stream.resource(tlsContext.client(underlyingSocket)).flatMap { socket =>
       Stream("Hello, world!")
         .interleave(Stream.constant("\n"))
@@ -263,10 +265,10 @@ import fs2.io.net.tls.{TLSParameters, TLSSocket}
 import cats.effect.Resource
 import javax.net.ssl.SNIHostName
 
-def tlsClientWithSni[F[_]: MonadCancelThrow: Network](
+def tlsClientWithSni[F[_]: Network](
   tlsContext: TLSContext[F],
   address: SocketAddress[Host]): Resource[F, TLSSocket[F]] =
-  Network[F].client(address).flatMap { underlyingSocket =>
+  Network[F].connect(address).flatMap { underlyingSocket =>
     tlsContext.clientBuilder(
       underlyingSocket
     ).withParameters(
@@ -291,7 +293,7 @@ def debug[F[_]: MonadCancelThrow: Network](
     tlsContext: TLSContext[F],
     address: SocketAddress[Host]
 ): F[String] =
-  Network[F].client(address).use { underlyingSocket =>
+  Network[F].connect(address).use { underlyingSocket =>
     tlsContext
       .clientBuilder(underlyingSocket)
       .withParameters(
@@ -316,13 +318,15 @@ The `fs2.io.file` package provides support for working with files. The README ex
 
 ```scala mdoc
 import cats.effect.Concurrent
-import fs2.{hash, text}
+import fs2.text
+import fs2.hashing.{Hashing, HashAlgorithm}
 import fs2.io.file.{Files, Path}
 
-def writeDigest[F[_]: Files: Concurrent](path: Path): F[Path] = {
+def writeDigest[F[_]: Files: Hashing: Concurrent](path: Path): F[Path] = {
   val target = Path(path.toString + ".sha256")
   Files[F].readAll(path)
-    .through(hash.sha256)
+    .through(Hashing[F].hash(HashAlgorithm.SHA256))
+    .flatMap(h => Stream.chunk(h.bytes))
     .through(text.hex.encode)
     .through(text.utf8.encode)
     .through(Files[F].writeAll(target))

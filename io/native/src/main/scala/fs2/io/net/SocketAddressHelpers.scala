@@ -19,11 +19,18 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.tcp
+package fs2
+package io
+package net
 
-trait SocketSuitePlatform {
+import com.comcast.ip4s.{GenSocketAddress, SocketAddress}
+import java.net.{SocketAddress => JSocketAddress, InetSocketAddress}
 
-  val setupOptionsPlatform = Nil
-  val optionsPlatform = Nil
+private[net] object SocketAddressHelpers {
 
+  def toGenSocketAddress(address: JSocketAddress): GenSocketAddress =
+    address match {
+      case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
+      case _ => throw new IllegalArgumentException("Unsupported address type: " + address)
+    }
 }

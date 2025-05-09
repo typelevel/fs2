@@ -31,7 +31,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.SocketHelpers
-import fs2.io.internal.syssocket._
+import fs2.io.internal.syssocket.{connect => sconnect, bind => sbind, _}
 
 import scala.scalanative.libc.errno._
 import scala.scalanative.meta.LinktimeInfo
@@ -39,10 +39,10 @@ import scala.scalanative.posix.errno._
 import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
 import scala.scalanative.posix.unistd._
 
-private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F])
-    extends SocketGroup[F] {
+private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: Async[F])
+    extends IpSocketsProvider[F] {
 
-  def client(to: SocketAddress[Host], options: List[SocketOption]): Resource[F, Socket[F]] = for {
+  def connect(to: SocketAddress[Host], options: List[SocketOption]): Resource[F, Socket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
     address <- Resource.eval(to.resolve)
     ipv4 = address.host.isInstanceOf[Ipv4Address]
@@ -56,7 +56,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
           else
             IO {
               SocketHelpers.toSockaddr(address) { (addr, len) =>
-                if (connect(fd, addr, len) < 0) {
+                if (sconnect(fd, addr, len) < 0) {
                   val e = errno
                   if (e == EINPROGRESS)
                     Left(true) // we will be connected when we unblock
@@ -72,34 +72,26 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
     socket <- FdPollingSocket[F](
       fd,
       handle,
-      SocketHelpers.getLocalAddress(fd, ipv4),
-      F.pure(address)
+      SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6),
+      SocketHelpers.getPeerAddress(fd, if (ipv4) AF_INET else AF_INET6)
     )
   } yield socket
 
-  def server(
-      address: Option[Host],
-      port: Option[Port],
+  def bind(
+      address: SocketAddress[Host],
       options: List[SocketOption]
-  ): Stream[F, Socket[F]] =
-    Stream.resource(serverResource(address, port, options)).flatMap(_._2)
-
-  def serverResource(
-      address: Option[Host],
-      port: Option[Port],
-      options: List[SocketOption]
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = for {
+  ): Resource[F, ServerSocket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
-    address <- Resource.eval(address.fold(IpAddress.loopback)(_.resolve))
-    ipv4 = address.isInstanceOf[Ipv4Address]
+    resolvedHost <- Resource.eval(address.host.resolve)
+    ipv4 = resolvedHost.isInstanceOf[Ipv4Address]
     fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_STREAM)
     handle <- poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
 
     _ <- Resource.eval {
       val bindF = F.delay {
-        val socketAddress = SocketAddress(address, port.getOrElse(port"0"))
-        SocketHelpers.toSockaddr(socketAddress) { (addr, len) =>
-          guard_(bind(fd, addr, len))
+        val resolvedAddress = SocketAddress(resolvedHost, address.port)
+        SocketHelpers.toSockaddr(resolvedAddress) { (addr, len) =>
+          guard_(sbind(fd, addr, len))
         }
       }
 
@@ -114,7 +106,7 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
               handle
                 .pollReadRec(()) { _ =>
                   IO {
-                    SocketHelpers.allocateSockaddr { (addr, len) =>
+                    SocketHelpers.allocateSockaddr(if (ipv4) AF_INET else AF_INET6) { (addr, len) =>
                       val clientFd =
                         if (LinktimeInfo.isLinux)
                           guard(accept4(fd, addr, len, SOCK_NONBLOCK))
@@ -122,7 +114,9 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
                           guard(accept(fd, addr, len))
 
                       if (clientFd >= 0) {
-                        val address = SocketHelpers.toSocketAddress(addr, ipv4)
+                        val address = SocketHelpers
+                          .toSocketAddress(addr, if (ipv4) AF_INET else AF_INET6)
+                          .asInstanceOf[SocketAddress[IpAddress]]
                         Right((address, clientFd))
                       } else
                         Left(())
@@ -141,8 +135,8 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
           socket <- FdPollingSocket[F](
             fd,
             handle,
-            SocketHelpers.getLocalAddress(fd, ipv4),
-            F.pure(address)
+            SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6),
+            SocketHelpers.getPeerAddress(fd, if (ipv4) AF_INET else AF_INET6)
           )
         } yield socket
 
@@ -151,7 +145,12 @@ private final class FdPollingSocketGroup[F[_]: Dns: LiftIO](implicit F: Async[F]
       .repeat
       .unNone
 
-    serverAddress <- Resource.eval(SocketHelpers.getLocalAddress(fd, ipv4))
-  } yield (serverAddress, sockets)
+    info = new SocketInfo[F] {
+      def getOption[A](key: SocketOption.Key[A]) = SocketHelpers.getOption(fd, key)
+      def setOption[A](key: SocketOption.Key[A], value: A) = SocketHelpers.setOption(fd, key, value)
+      def supportedOptions = SocketHelpers.supportedOptions
+      val address = SocketHelpers.getAddress(fd, if (ipv4) AF_INET else AF_INET6)
+    }
+  } yield ServerSocket(info, sockets)
 
 }

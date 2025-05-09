@@ -22,28 +22,21 @@
 package fs2
 package io
 package net
-package unixsocket
 
-import cats.effect.{Async, IO, LiftIO}
-import fs2.io.file.Files
+import com.comcast.ip4s.{GenSocketAddress, SocketAddress, UnixSocketAddress}
+import java.net.{SocketAddress => JSocketAddress, InetSocketAddress, UnixDomainSocketAddress}
+import jnr.unixsocket.{UnixSocketAddress => JnrUnixSocketAddress}
 
-private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
-  @deprecated("Use Network instead", "3.13.0")
-  def forIO: UnixSockets[IO] = forLiftIO
+private[net] object SocketAddressHelpers {
 
-  @deprecated("Use Network instead", "3.13.0")
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
-  }
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] = {
-    val _ = Files[F]
-    new AsyncUnixSockets(UnixSocketsProvider.forAsync)
-  }
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    forAsyncAndFiles(F, Files.forAsync(F))
+  def toGenSocketAddress(address: JSocketAddress): GenSocketAddress =
+    address match {
+      case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
+      case _ =>
+        if (JdkUnixSocketsProvider.supported && address.isInstanceOf[UnixDomainSocketAddress]) {
+          UnixSocketAddress(address.asInstanceOf[UnixDomainSocketAddress].getPath.toString)
+        } else if (JnrUnixSocketsProvider.supported && address.isInstanceOf[JnrUnixSocketAddress]) {
+          UnixSocketAddress(address.asInstanceOf[JnrUnixSocketAddress].path)
+        } else throw new IllegalArgumentException("Unsupported address type: " + address)
+    }
 }

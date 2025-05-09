@@ -24,7 +24,7 @@ package io
 package net
 
 import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
+import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
 import cats.effect.kernel.Async
 
 /** Supports creation of client and server TCP sockets that all share
@@ -39,6 +39,7 @@ trait SocketGroup[F[_]] {
     * @param to      address of remote server
     * @param options socket options to apply to the underlying socket
     */
+  @deprecated("3.13.0", "Use Network[F].connect instead")
   def client(
       to: SocketAddress[Host],
       options: List[SocketOption] = List.empty
@@ -54,6 +55,7 @@ trait SocketGroup[F[_]] {
     * @param port               port to bind
     * @param options socket options to apply to the underlying socket
     */
+  @deprecated("3.13.0", "Use Network[F].bindAndAccept instead")
   def server(
       address: Option[Host] = None,
       port: Option[Port] = None,
@@ -64,6 +66,7 @@ trait SocketGroup[F[_]] {
     *
     * Make sure to handle errors in the client socket Streams.
     */
+  @deprecated("3.13.0", "Use Network[F].bind instead")
   def serverResource(
       address: Option[Host] = None,
       port: Option[Port] = None,
@@ -71,23 +74,30 @@ trait SocketGroup[F[_]] {
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
 }
 
-private[net] object SocketGroup extends SocketGroupCompanionPlatform {
+private[net] object SocketGroup {
 
-  private[net] abstract class AbstractAsyncSocketGroup[F[_]: Async] extends SocketGroup[F] {
-    def server(
-        address: Option[Host],
-        port: Option[Port],
-        options: List[SocketOption]
-    ): Stream[F, Socket[F]] =
-      Stream
-        .resource(
-          serverResource(
-            address,
-            port,
+  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] =
+    new SocketGroup[F] {
+      def client(to: SocketAddress[Host], options: List[SocketOption]) =
+        ipSockets.connect(to, options)
+
+      def server(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Stream[F, Socket[F]] =
+        Stream.resource(serverResource(address, port, options)).flatMap(_._2)
+
+      def serverResource(
+          address: Option[Host],
+          port: Option[Port],
+          options: List[SocketOption]
+      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+        ipSockets
+          .bind(
+            SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
             options
           )
-        )
-        .flatMap { case (_, clients) => clients }
-  }
-
+          .map(ss => ss.address.asIpUnsafe -> ss.accept)
+    }
 }
