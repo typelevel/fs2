@@ -321,20 +321,30 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.FdPollingSocket.apply"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.FdPollingSocketGroup"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.FdPollingUnixSockets"),
-  ProblemFilters.exclude[IncompatibleResultTypeProblem]("fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.remote"),
-  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.this"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem](
+    "fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.remote"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.this"
+  ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.address"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.supportedOptions"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.DatagramSocket.supportedOptions"
+  ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.getOption"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.setOption"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.readGen"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.connect"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.disconnect"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.write"),
-  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.DatagramSocketGroupCompanionPlatform$AsyncDatagramSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.DatagramSocketGroupCompanionPlatform$AsyncDatagramSocketGroup"
+  ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bindDatagramSocket"),
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.SocketOptionCompanionPlatform#Key.fs2$io$net$SocketOptionCompanionPlatform$Key$$$outer"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.SocketOptionCompanionPlatform#Key.fs2$io$net$SocketOptionCompanionPlatform$Key$$$outer"
+  )
 )
 
 lazy val root = tlCrossRootProject
