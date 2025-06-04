@@ -23,11 +23,17 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, Ipv4Address, Port, SocketAddress}
 
 /** A single datagram to send to the specified remote address or received from the specified address.
   *
   * @param remote   remote party to send/receive datagram to/from
   * @param bytes    data to send/receive
   */
-final case class Datagram(remote: SocketAddress[IpAddress], bytes: Chunk[Byte])
+final case class Datagram(remote: SocketAddress[IpAddress], bytes: Chunk[Byte]) {
+  def toGenDatagram: GenDatagram = GenDatagram(remote, bytes)
+}
+
+final case class GenDatagram(remote: GenSocketAddress, bytes: Chunk[Byte]) {
+  def toDatagram: Datagram = Datagram(SocketAddress(Ipv4Address.Wildcard, Port.Wildcard), bytes)
+}

@@ -28,7 +28,7 @@ import cats.syntax.all._
 
 import com.comcast.ip4s.UnixSocketAddress
 
-import fs2.io.file.{Files, Path}
+import fs2.io.file.Files
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.SocketHelpers
 import fs2.io.internal.syssocket.{connect => uconnect, bind => ubind, _}
@@ -45,7 +45,10 @@ import scala.scalanative.unsigned._
 private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F: Async[F])
     extends UnixSocketsProvider[F] {
 
-  def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
+  override def connectUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]] =
     for {
       poller <- Resource.eval(fileDescriptorPoller[F])
       fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
@@ -75,31 +78,12 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       )
     } yield socket
 
-  def bind(
+  override def bindUnix(
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
 
-    var deleteIfExists: Boolean = false
-    var deleteOnClose: Boolean = true
-
-    val filteredOptions = options.filter { opt =>
-      opt.key match {
-        case SocketOption.UnixServerSocketDeleteIfExists =>
-          deleteIfExists = opt.value.asInstanceOf[java.lang.Boolean]
-          false
-        case SocketOption.UnixServerSocketDeleteOnClose =>
-          deleteOnClose = opt.value.asInstanceOf[java.lang.Boolean]
-          false
-        case _ => true
-      }
-    }
-
-    val delete = Resource.make {
-      Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists)
-    } { _ =>
-      Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
-    }
+    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
 
     for {
       poller <- Resource.eval(fileDescriptorPoller[F])

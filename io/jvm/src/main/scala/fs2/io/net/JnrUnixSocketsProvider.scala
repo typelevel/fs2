@@ -47,15 +47,12 @@ private[net] object JnrUnixSocketsProvider {
       case _: ClassNotFoundException => false
     }
 
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
+  def forAsyncAndFiles[F[_]](implicit F: Async[F], F2: Files[F]): UnixSocketsProvider[F] =
     new JnrUnixSocketsProvider[F]
-
-  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
-    forAsyncAndFiles(F, Files.forAsync[F])
 }
 
 private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[F])
-    extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
+    extends AsyncUnixSocketsProvider[F] {
 
   protected def openChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     Resource

@@ -34,10 +34,13 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
     forAsync
   }
 
-  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] = {
+    val omni = new AsyncSocketsProvider[F]
     new AsyncProviderBasedNetwork[F] {
-      protected def mkIpSocketsProvider = IpSocketsProvider.forAsync[F]
-      protected def mkUnixSocketsProvider = UnixSocketsProvider.forAsync[F]
-      protected def mkDatagramSocketGroup = DatagramSocketGroup.forAsync[F]
+      protected def mkIpSocketsProvider = omni
+      protected def mkUnixSocketsProvider = omni
+      protected def mkIpDatagramSocketsProvider = omni
+      protected def mkUnixDatagramSocketsProvider = omni
     }
+  }
 }

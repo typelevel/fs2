@@ -23,92 +23,63 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, IO, LiftIO, Resource}
+import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 import cats.syntax.all._
 
 import com.comcast.ip4s.{IpAddress, SocketAddress, UnixSocketAddress}
 
-import fs2.io.file.{Files, FileHandle, Path, SyncFileHandle}
+import fs2.io.file.{Files, FileHandle, SyncFileHandle}
 
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 
-private[net] trait UnixSocketsProviderCompanionPlatform {
-  def forIO: UnixSocketsProvider[IO] = forLiftIO
+private[net] abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
+    extends UnixSocketsProvider[F] {
 
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSocketsProvider[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
-  }
+  protected def openChannel(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, SocketChannel]
 
-  def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
-    if (JdkUnixSocketsProvider.supported) JdkUnixSocketsProvider.forAsyncAndFiles
-    else if (JnrUnixSocketsProvider.supported) JnrUnixSocketsProvider.forAsyncAndFiles
-    else
-      throw new UnsupportedOperationException(
-        """Must either run on JDK 16+ or have "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
-      )
+  protected def openServerChannel(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, (SocketInfo[F], Resource[F, SocketChannel])]
 
-  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
-    forAsyncAndFiles(F, Files.forAsync(F))
+  override def connectUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]] =
+    openChannel(address, options).evalMap(
+      AsyncUnixSocketsProvider.makeSocket[F](_, UnixSocketAddress(""), address)
+    )
 
-  abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
-      extends UnixSocketsProvider[F] {
+  override def bindUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]] = {
+    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
 
-    protected def openChannel(
-        address: UnixSocketAddress,
-        options: List[SocketOption]
-    ): Resource[F, SocketChannel]
-
-    protected def openServerChannel(
-        address: UnixSocketAddress,
-        options: List[SocketOption]
-    ): Resource[F, (SocketInfo[F], Resource[F, SocketChannel])]
-
-    def connect(address: UnixSocketAddress, options: List[SocketOption]): Resource[F, Socket[F]] =
-      openChannel(address, options).evalMap(makeSocket[F](_, UnixSocketAddress(""), address))
-
-    def bind(
-        address: UnixSocketAddress,
-        options: List[SocketOption]
-    ): Resource[F, ServerSocket[F]] = {
-      var deleteIfExists: Boolean = false
-      var deleteOnClose: Boolean = true
-
-      val filteredOptions = options.filter { opt =>
-        opt.key match {
-          case SocketOption.UnixServerSocketDeleteIfExists =>
-            deleteIfExists = opt.value.asInstanceOf[java.lang.Boolean]
-            false
-          case SocketOption.UnixServerSocketDeleteOnClose =>
-            deleteOnClose = opt.value.asInstanceOf[java.lang.Boolean]
-            false
-          case _ => true
-        }
-      }
-
-      val delete = Resource.make {
-        Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists)
-      } { _ =>
-        Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
-      }
-
-      (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
-        val acceptIncoming =
-          Stream
-            .resource(accept.attempt)
-            .flatMap {
-              case Left(_) => Stream.empty[F]
-              case Right(accepted) =>
-                Stream.eval(makeSocket(accepted, address, UnixSocketAddress("")))
-            }
-            .repeat
-        ServerSocket(info, acceptIncoming)
-      }
+    (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
+      val acceptIncoming =
+        Stream
+          .resource(accept.attempt)
+          .flatMap {
+            case Left(_) => Stream.empty[F]
+            case Right(accepted) =>
+              Stream.eval(
+                AsyncUnixSocketsProvider.makeSocket(accepted, address, UnixSocketAddress(""))
+              )
+          }
+          .repeat
+      ServerSocket(info, acceptIncoming)
     }
   }
+}
+
+private[net] object AsyncUnixSocketsProvider {
 
   private def makeSocket[F[_]: Async](
       ch: SocketChannel,

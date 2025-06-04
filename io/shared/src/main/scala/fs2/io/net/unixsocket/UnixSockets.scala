@@ -62,7 +62,7 @@ object UnixSockets extends UnixSocketsCompanionPlatform {
       extends UnixSockets[F] {
 
     def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
-      delegate.connect(Ip4sUnixSocketAddress(address.path), Nil)
+      delegate.connectUnix(Ip4sUnixSocketAddress(address.path), Nil)
 
     def server(
         address: UnixSocketAddress,
@@ -71,11 +71,11 @@ object UnixSockets extends UnixSocketsCompanionPlatform {
     ): Stream[F, Socket[F]] =
       Stream
         .resource(
-          delegate.bind(
+          delegate.bindUnix(
             Ip4sUnixSocketAddress(address.path),
             List(
-              SocketOption.unixServerSocketDeleteIfExists(deleteIfExists),
-              SocketOption.unixServerSocketDeleteOnClose(deleteOnClose)
+              SocketOption.unixSocketDeleteIfExists(deleteIfExists),
+              SocketOption.unixSocketDeleteOnClose(deleteOnClose)
             )
           )
         )

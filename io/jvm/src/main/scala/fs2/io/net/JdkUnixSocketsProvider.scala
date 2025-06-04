@@ -46,7 +46,7 @@ private[net] object JdkUnixSocketsProvider {
 }
 
 private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
-    extends UnixSocketsProvider.AsyncUnixSocketsProvider[F] {
+    extends AsyncUnixSocketsProvider[F] {
   protected def openChannel(address: UnixSocketAddress, options: List[SocketOption]) =
     evalOnVirtualThreadIfAvailable(
       Resource

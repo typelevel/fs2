@@ -21,11 +21,15 @@
 
 package fs2.io.net
 
-/** Specifies a socket option on a TCP/UDP socket.
+import cats.Applicative
+import cats.effect.Resource
+import cats.syntax.all.*
+import com.comcast.ip4s.UnixSocketAddress
+import fs2.io.file.{Files, Path}
+
+/** Specifies a socket option on a socket.
   *
-  * The companion provides methods for creating a socket option from each of the
-  * JDK `java.net.StandardSocketOptions` as well as the ability to construct arbitrary
-  * additional options. See the docs on `StandardSocketOptions` for details on each.
+  * The companion provides methods for creating various socket options.
   */
 sealed trait SocketOption {
   type Value
@@ -38,5 +42,33 @@ object SocketOption extends SocketOptionCompanionPlatform {
     type Value = A
     val key = key0
     val value = value0
+  }
+
+  private[net] def extractUnixSocketDeletes[F[_]: Applicative: Files](
+      options: List[SocketOption],
+      address: UnixSocketAddress
+  ): (List[SocketOption], Resource[F, Unit]) = {
+    var deleteIfExists: Boolean = false
+    var deleteOnClose: Boolean = true
+
+    val filteredOptions = options.filter { opt =>
+      if (opt.key == SocketOption.UnixSocketDeleteIfExists) {
+        deleteIfExists = opt.value.asInstanceOf[Boolean]
+        false
+      } else if (opt.key == SocketOption.UnixSocketDeleteOnClose) {
+        deleteOnClose = opt.value.asInstanceOf[Boolean]
+        false
+      } else {
+        true
+      }
+    }
+
+    val delete = Resource.make {
+      Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists)
+    } { _ =>
+      Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
+    }
+
+    (filteredOptions, delete)
   }
 }

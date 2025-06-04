@@ -27,13 +27,61 @@ import cats.effect.{Async, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress, UnixSocketAddress}
+import com.comcast.ip4s.{Dns, Host, IpAddress, Port, SocketAddress, UnixSocketAddress}
 import fs2.concurrent.Channel
+import fs2.io.file.Files
 import fs2.io.internal.facade
 
 import scala.scalajs.js
 
-private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
+private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
+    extends IpSocketsProvider[F]
+    with UnixSocketsProvider[F]
+    with IpDatagramSocketsProvider[F]
+    with UnixDatagramSocketsProvider[F] {
+
+  implicit private val dnsInstance: Dns[F] = Dns.forAsync[F]
+  implicit protected val filesInstance: Files[F] = Files.forAsync[F]
+
+  override def connectIp(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]] =
+    connectIpOrUnix(Left(address), options)
+
+  override def bindIp(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]] =
+    bindIpOrUnix(Left(address), options)
+
+  override def connectUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]] =
+    connectIpOrUnix(Right(address), options)
+
+  override def bindUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]] = {
+    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    delete *> bindIpOrUnix(Right(address), filteredOptions)
+  }
+
+  override def bindDatagramSocket(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]] =
+    bindDatagramSocketIpOrUnix(Left(address), options)
+
+  override def bindDatagramSocket(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]] = {
+    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    delete *> bindDatagramSocketIpOrUnix(Right(address), filteredOptions)
+  }
 
   private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
     options.traverse_(option => option.key.set(socket, option.value))
@@ -178,4 +226,45 @@ private[net] abstract class AsyncSocketsProvider[F[_]](implicit F: Async[F]) {
           Stream.resource(Socket.forAsync(sock, address, peerAddress))
         }
     } yield ServerSocket(info, sockets)).adaptError { case IOException(ex) => ex }
+
+  protected def bindDatagramSocketIpOrUnix(
+      address: Either[SocketAddress[Host], UnixSocketAddress],
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]] =
+    address match {
+      case Right(_) =>
+        Resource.eval(
+          new UnsupportedOperationException(
+            "Node.js does not support unix datagram sockets"
+          ).raiseError
+        )
+      case Left(sa) =>
+        for {
+          ip <- Resource.eval(sa.host.resolve)
+          protocolFamily = ip.fold(_ => "udp4", _ => "udp6")
+          sock <- F
+            .delay(facade.dgram.createSocket(protocolFamily))
+            .toResource
+          _ <- F
+            .async_[Unit] { cb =>
+              val errorListener: js.Function1[js.Error, Unit] = { error =>
+                cb(Left(js.JavaScriptException(error)))
+              }
+              sock.once[js.Error]("error", errorListener)
+              val options = new facade.dgram.BindOptions {}
+              if (!ip.isWildcard) options.address = ip.toString
+              options.port = sa.port.value
+              sock.bind(
+                options,
+                { () =>
+                  sock.removeListener("error", errorListener)
+                  cb(Right(()))
+                }
+              )
+            }
+            .toResource
+          _ <- Resource.eval(options.traverse_(option => option.key.set(sock, option.value)))
+          socket <- DatagramSocket.forAsync[F](sock)
+        } yield socket
+    }
 }

@@ -23,11 +23,13 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, LiftIO}
-import com.comcast.ip4s.Dns
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, SocketAddress}
 
-private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
+private[net] trait IpDatagramSocketsProvider[F[_]] {
 
-  private[net] def forLiftIO[F[_]: Async: LiftIO]: IpSocketsProvider[F] =
-    new FdPollingIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
+  def bindDatagramSocket(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]]
 }

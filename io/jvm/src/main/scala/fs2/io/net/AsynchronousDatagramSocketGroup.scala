@@ -48,7 +48,8 @@ private[net] trait AsynchronousDatagramSocketGroup {
   ): () => Unit
   def write(
       ctx: Context,
-      datagram: Datagram,
+      bytes: Chunk[Byte],
+      address: Option[InetSocketAddress],
       cb: Option[Throwable] => Unit
   ): () => Unit
   def close(ctx: Context): Unit
@@ -60,7 +61,7 @@ private[net] object AsynchronousDatagramSocketGroup {
    * Used to avoid copying between Chunk[Byte] and ByteBuffer during writes within the selector thread,
    * as it can be expensive depending on particular implementation of Chunk.
    */
-  private class WriterDatagram(val remote: InetSocketAddress, val bytes: ByteBuffer)
+  private class WriterDatagram(val remote: Option[InetSocketAddress], val bytes: ByteBuffer)
 
   def unsafe(threadFactory: ThreadFactory): AsynchronousDatagramSocketGroup =
     new AsynchronousDatagramSocketGroup {
@@ -218,13 +219,14 @@ private[net] object AsynchronousDatagramSocketGroup {
 
       override def write(
           key: SelectionKey,
-          datagram: Datagram,
+          bytes: Chunk[Byte],
+          remote: Option[InetSocketAddress],
           cb: Option[Throwable] => Unit
       ): () => Unit = {
         val writerId = ids.getAndIncrement()
         val writerDatagram = {
-          val bytes = {
-            val srcBytes = datagram.bytes.toArraySlice
+          val bytes0 = {
+            val srcBytes = bytes.toArraySlice
             if (srcBytes.size == srcBytes.values.size) srcBytes.values
             else {
               val destBytes = new Array[Byte](srcBytes.size)
@@ -232,7 +234,7 @@ private[net] object AsynchronousDatagramSocketGroup {
               destBytes
             }
           }
-          new WriterDatagram(datagram.remote.toInetSocketAddress, ByteBuffer.wrap(bytes))
+          new WriterDatagram(remote, ByteBuffer.wrap(bytes0))
         }
         val attachment = key.attachment.asInstanceOf[Attachment]
         onSelectorThread {
@@ -259,7 +261,11 @@ private[net] object AsynchronousDatagramSocketGroup {
           cb: Option[Throwable] => Unit
       ): Boolean =
         try {
-          val sent = channel.send(datagram.bytes, datagram.remote)
+          val remote = datagram.remote
+          val sent = remote match {
+            case Some(addr) => channel.send(datagram.bytes, addr)
+            case None       => channel.write(datagram.bytes)
+          }
           if (sent > 0) {
             cb(None)
             true

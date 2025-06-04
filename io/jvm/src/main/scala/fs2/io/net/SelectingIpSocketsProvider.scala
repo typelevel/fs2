@@ -40,7 +40,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
     F3: Dns[F]
 ) extends IpSocketsProvider[F] {
 
-  def connect(
+  override def connectIp(
       to: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
@@ -78,7 +78,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
         configure *> connect
       }
 
-  def bind(
+  override def bindIp(
       address: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] =
@@ -141,5 +141,4 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
     SocketAddress.fromInetSocketAddress(
       ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
     )
-
 }

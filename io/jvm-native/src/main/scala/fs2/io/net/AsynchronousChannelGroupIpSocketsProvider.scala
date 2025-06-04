@@ -41,7 +41,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
 )(implicit F: Async[F], F2: Dns[F])
     extends IpSocketsProvider[F] {
 
-  override def connect(
+  override def connectIp(
       address: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] = {
@@ -76,7 +76,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
     setup.evalMap(ch => connect(ch) *> Socket.forAsync(ch))
   }
 
-  override def bind(
+  override def bindIp(
       address: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
@@ -146,13 +146,13 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
 
     setup.map(sch => ServerSocket(SocketInfo.forAsync(sch), acceptIncoming(sch)))
   }
+
 }
 
 private[net] object AsynchronousChannelGroupIpSocketsProvider {
 
-  def forAsyncAndDns[F[_]: Async: Dns]: AsynchronousChannelGroupIpSocketsProvider[F] =
+  def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] = {
+    implicit val dnsInstance = Dns.forAsync[F]
     new AsynchronousChannelGroupIpSocketsProvider[F](null)
-
-  def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] =
-    forAsyncAndDns(Async[F], Dns.forAsync[F])
+  }
 }

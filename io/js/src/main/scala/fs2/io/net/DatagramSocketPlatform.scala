@@ -32,6 +32,7 @@ import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
 import com.comcast.ip4s.AnySourceMulticastJoin
+import com.comcast.ip4s.GenSocketAddress
 import com.comcast.ip4s.IpAddress
 import com.comcast.ip4s.MulticastJoin
 import com.comcast.ip4s.Port
@@ -73,7 +74,7 @@ private[net] trait DatagramSocketCompanionPlatform {
       _ <- sock.registerListener[F, js.Error]("error", dispatcher) { e =>
         error.complete(js.JavaScriptException(e)).void
       }
-      socket <- Resource.make(F.pure(new AsyncDatagramSocket(sock, queue, error)))(_ =>
+      socket <- Resource.make(F.delay(new AsyncDatagramSocket(sock, queue, error)))(_ =>
         F.async_[Unit](cb => sock.close(() => cb(Right(()))))
       )
     } yield socket
@@ -86,30 +87,58 @@ private[net] trait DatagramSocketCompanionPlatform {
       F: Async[F]
   ) extends DatagramSocket[F] {
 
+    override def connect(address: GenSocketAddress) =
+      F.async_[Unit] { cb =>
+        val addr = address.asIpUnsafe
+        sock.connect(
+          addr.port.value,
+          addr.host.toString,
+          err => err.toOption.fold(cb(Right(())))(err => cb(Left(js.JavaScriptException(err))))
+        )
+      }
+
+    override def disconnect =
+      F.delay(sock.disconnect())
+
     override def read: F[Datagram] = EitherT(
       queue.take.race(error.get.flatMap(F.raiseError[Datagram]))
     ).merge
+
+    override def readGen: F[GenDatagram] = read.map(_.toGenDatagram)
 
     override def reads: Stream[F, Datagram] = Stream
       .fromQueueUnterminated(queue)
       .concurrently(Stream.eval(error.get.flatMap(F.raiseError[Datagram])))
 
-    override def write(datagram: Datagram): F[Unit] = F.async_ { cb =>
+    override def write(bytes: Chunk[Byte]) = F.async_ { cb =>
       sock.send(
-        datagram.bytes.toUint8Array,
-        datagram.remote.port.value,
-        datagram.remote.host.toString,
+        bytes.toUint8Array,
         err => Option(err).fold(cb(Right(())))(err => cb(Left(js.JavaScriptException(err))))
       )
     }
 
+    override def write(bytes: Chunk[Byte], address: GenSocketAddress) = F.async_ { cb =>
+      val addr = address.asIpUnsafe
+      sock.send(
+        bytes.toUint8Array,
+        addr.port.value,
+        addr.host.toString,
+        err => Option(err).fold(cb(Right(())))(err => cb(Left(js.JavaScriptException(err))))
+      )
+    }
+
+    override def write(datagram: Datagram): F[Unit] =
+      write(datagram.bytes, datagram.remote)
+
     override def writes: Pipe[F, Datagram, Nothing] = _.foreach(write)
 
+    override val address: GenSocketAddress = {
+      val info = sock.address()
+      SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port.toInt).get)
+    }
+
     override def localAddress: F[SocketAddress[IpAddress]] =
-      F.delay {
-        val info = sock.address()
-        SocketAddress(IpAddress.fromString(info.address).get, Port.fromInt(info.port.toInt).get)
-      }
+      F.pure(address.asIpUnsafe)
 
     override def join(
         join: MulticastJoin[IpAddress],
@@ -135,5 +164,23 @@ private[net] trait DatagramSocketCompanionPlatform {
         }
       })
 
+    override def getOption[A](key: SocketOption.Key[A]) =
+      key.get(sock)
+
+    override def setOption[A](key: SocketOption.Key[A], value: A) =
+      key.set(sock, value)
+
+    override def supportedOptions =
+      F.pure(
+        Set(
+          SocketOption.MulticastInterface,
+          SocketOption.MulticastLoop,
+          SocketOption.MulticastTtl,
+          SocketOption.Broadcast,
+          SocketOption.ReceiveBufferSize,
+          SocketOption.SendBufferSize,
+          SocketOption.Ttl
+        )
+      )
   }
 }

@@ -23,9 +23,24 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, LiftIO}
+import cats.effect.{Async, IO, LiftIO}
+import fs2.io.file.Files
 
-private[net] trait UnixSocketsProviderCompanionPlatform {
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSocketsProvider[F] =
-    new FdPollingUnixSocketsProvider[F]
+private[net] object AutoDetectingUnixDatagramSocketsProvider {
+  def forIO: UnixDatagramSocketsProvider[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixDatagramSocketsProvider[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
+
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixDatagramSocketsProvider[F] =
+    if (JnrUnixSocketsProvider.supported) JnrUnixDatagramSocketsProvider.forAsyncAndFiles
+    else
+      throw new UnsupportedOperationException(
+        """Unix datagram sockets only supported by having "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
+      )
+
+  def forAsync[F[_]](implicit F: Async[F]): UnixDatagramSocketsProvider[F] =
+    forAsyncAndFiles(F, Files.forAsync(F))
 }

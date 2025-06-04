@@ -23,24 +23,13 @@ package fs2
 package io
 package net
 
-import cats.effect.{Async, Resource}
-import com.comcast.ip4s.{Host, SocketAddress}
+import cats.effect.Resource
+import com.comcast.ip4s.UnixSocketAddress
 
-private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
+private[net] trait UnixDatagramSocketsProvider[F[_]] {
 
-  private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
-    new AsyncSocketsProvider[F] with IpSocketsProvider[F] {
-
-      override def connect(
-          address: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] =
-        connectIpOrUnix(Left(address), options)
-
-      override def bind(
-          address: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, ServerSocket[F]] =
-        bindIpOrUnix(Left(address), options)
-    }
+  def bindDatagramSocket(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]]
 }

@@ -61,14 +61,24 @@ sealed trait Network[F[_]]
   def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
   def bind(
-      address: GenSocketAddress,
+      address: GenSocketAddress = SocketAddress.Wildcard,
       options: List[SocketOption] = Nil
   ): Resource[F, ServerSocket[F]]
 
   def bindAndAccept(
-      address: GenSocketAddress,
+      address: GenSocketAddress = SocketAddress.Wildcard,
       options: List[SocketOption] = Nil
   ): Stream[F, Socket[F]]
+
+  /** Creates a datagram socket bound to the specified address.
+    *
+    * @param address              address to bind to
+    * @param options              socket options to apply to the underlying socket
+    */
+  def bindDatagramSocket(
+      address: GenSocketAddress = SocketAddress.Wildcard,
+      options: List[SocketOption] = Nil
+  ): Resource[F, DatagramSocket[F]]
 
   /** Returns a builder for `TLSContext[F]` values.
     *
@@ -139,17 +149,31 @@ object Network extends NetworkCompanionPlatform {
         options
       )
         .map(ss => ss.address.asIpUnsafe -> ss.accept)
+
+    override def openDatagramSocket(
+        address: Option[Host],
+        port: Option[Port],
+        options: List[DatagramSocketOption],
+        protocolFamily: Option[DatagramSocketGroup.ProtocolFamily]
+    ): Resource[F, DatagramSocket[F]] =
+      bindDatagramSocket(
+        SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
+        Nil /* TODO convert options */
+      )
   }
 
   private[fs2] abstract class AsyncProviderBasedNetwork[F[_]](implicit F: Async[F])
       extends AsyncNetwork[F] {
     protected def mkIpSocketsProvider: IpSocketsProvider[F]
     protected def mkUnixSocketsProvider: UnixSocketsProvider[F]
-    protected def mkDatagramSocketGroup: DatagramSocketGroup[F]
+    protected def mkIpDatagramSocketsProvider: IpDatagramSocketsProvider[F]
+    protected def mkUnixDatagramSocketsProvider: UnixDatagramSocketsProvider[F]
 
     protected lazy val ipSockets: IpSocketsProvider[F] = mkIpSocketsProvider
     protected lazy val unixSockets: UnixSocketsProvider[F] = mkUnixSocketsProvider
-    protected lazy val datagramSocketGroup: DatagramSocketGroup[F] = mkDatagramSocketGroup
+    protected lazy val ipDatagramSockets: IpDatagramSocketsProvider[F] = mkIpDatagramSocketsProvider
+    protected lazy val unixDatagramSockets: UnixDatagramSocketsProvider[F] =
+      mkUnixDatagramSocketsProvider
 
     override def connect(
         address: GenSocketAddress,
@@ -157,8 +181,8 @@ object Network extends NetworkCompanionPlatform {
     ): Resource[F, Socket[F]] =
       matchAddress(
         address,
-        sa => ipSockets.connect(sa, options),
-        ua => unixSockets.connect(ua, options)
+        sa => ipSockets.connectIp(sa, options),
+        ua => unixSockets.connectUnix(ua, options)
       )
 
     override def bind(
@@ -167,18 +191,19 @@ object Network extends NetworkCompanionPlatform {
     ): Resource[F, ServerSocket[F]] =
       matchAddress(
         address,
-        sa => ipSockets.bind(sa, options),
-        ua => unixSockets.bind(ua, options)
+        sa => ipSockets.bindIp(sa, options),
+        ua => unixSockets.bindUnix(ua, options)
       )
 
-    override def openDatagramSocket(
-        address: Option[Host],
-        port: Option[Port],
-        options: List[DatagramSocketOption],
-        protocolFamily: Option[DatagramSocketGroup.ProtocolFamily]
+    override def bindDatagramSocket(
+        address: GenSocketAddress,
+        options: List[SocketOption] = Nil
     ): Resource[F, DatagramSocket[F]] =
-      datagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
-
+      matchAddress(
+        address,
+        sa => ipDatagramSockets.bindDatagramSocket(sa, options),
+        ua => unixDatagramSockets.bindDatagramSocket(ua, options)
+      )
   }
 
   def apply[F[_]](implicit F: Network[F]): F.type = F

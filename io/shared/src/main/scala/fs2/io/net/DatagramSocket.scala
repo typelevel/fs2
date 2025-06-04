@@ -29,6 +29,23 @@ import com.comcast.ip4s._
   */
 trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
 
+  /** Local address of this socket. */
+  def address: GenSocketAddress
+
+  /** Gets the set of options that may be used with `setOption`. Note some options may not support `getOption`. */
+  def supportedOptions: F[Set[SocketOption.Key[?]]]
+
+  /** Gets the value of the specified option, if defined. */
+  def getOption[A](key: SocketOption.Key[A]): F[Option[A]]
+
+  /** Sets the specified option to the supplied value. */
+  def setOption[A](key: SocketOption.Key[A], value: A): F[Unit]
+
+  def readGen: F[GenDatagram]
+
+  def connect(address: GenSocketAddress): F[Unit]
+  def disconnect: F[Unit]
+
   /** Reads a single datagram from this udp socket.
     */
   def read: F[Datagram]
@@ -46,13 +63,25 @@ trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
     *
     * @param datagram datagram to write
     */
-  def write(datagram: Datagram): F[Unit]
+  def write(datagram: Datagram): F[Unit] =
+    write(datagram.bytes, datagram.remote)
+
+  def write(datagram: GenDatagram): F[Unit] =
+    write(datagram.bytes, datagram.remote)
+
+  def write(bytes: Chunk[Byte]): F[Unit]
+
+  def write(bytes: Chunk[Byte], address: GenSocketAddress): F[Unit]
 
   /** Writes supplied datagrams to this udp socket.
     */
   def writes: Pipe[F, Datagram, Nothing]
 
   /** Returns the local address of this udp socket. */
+  @deprecated(
+    "3.13.0",
+    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+  )
   def localAddress: F[SocketAddress[IpAddress]]
 
   /** Joins a multicast group on a specific network interface.

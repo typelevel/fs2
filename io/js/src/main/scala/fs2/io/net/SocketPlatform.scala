@@ -98,8 +98,8 @@ private[net] trait SocketCompanionPlatform {
           SocketOption.KeepAlive,
           SocketOption.NoDelay,
           SocketOption.Timeout,
-          SocketOption.UnixServerSocketDeleteIfExists,
-          SocketOption.UnixServerSocketDeleteOnClose
+          SocketOption.UnixSocketDeleteIfExists,
+          SocketOption.UnixSocketDeleteOnClose
         )
       )
 

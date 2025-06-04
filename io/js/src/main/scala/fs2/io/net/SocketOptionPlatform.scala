@@ -24,12 +24,26 @@ package fs2.io.net
 import cats.effect.kernel.Sync
 import fs2.io.internal.facade
 
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   sealed trait Key[A] {
-    private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: A): F[Unit]
-    private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[A]]
+    @nowarn
+    private[net] def set[F[_]: Sync](sock: facade.net.Socket, value: A): F[Unit] =
+      Sync[F].raiseError(new UnsupportedOperationException("option does not support TCP"))
+
+    @nowarn
+    private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[A]] =
+      unsupportedGet
+
+    @nowarn
+    private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: A): F[Unit] =
+      Sync[F].raiseError(new UnsupportedOperationException("option does not support UDP"))
+
+    @nowarn
+    private[net] def get[F[_]: Sync](sock: facade.dgram.Socket): F[Option[A]] =
+      unsupportedGet
   }
 
   private def unsupportedGet[F[_]: Sync, A]: F[A] =
@@ -41,8 +55,6 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setEncoding(value)
         ()
       }
-    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[String]] =
-      unsupportedGet
   }
   def encoding(value: String): SocketOption = apply(Encoding, value)
 
@@ -52,8 +64,6 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setKeepAlive(value)
         ()
       }
-    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
-      unsupportedGet
   }
   def keepAlive(value: Boolean): SocketOption = apply(KeepAlive, value)
 
@@ -63,9 +73,6 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
         sock.setNoDelay(value)
         ()
       }
-
-    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
-      unsupportedGet
   }
   def noDelay(value: Boolean): SocketOption = apply(NoDelay, value)
 
@@ -85,25 +92,78 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   }
   def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)
 
-  object UnixServerSocketDeleteIfExists extends Key[Boolean] {
+  object UnixSocketDeleteIfExists extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](
         sock: facade.net.Socket,
         value: Boolean
     ): F[Unit] = Sync[F].unit
-    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
-      unsupportedGet
   }
-  def unixServerSocketDeleteIfExists(value: Boolean): SocketOption =
-    apply(UnixServerSocketDeleteIfExists, value)
+  def unixSocketDeleteIfExists(value: Boolean): SocketOption =
+    apply(UnixSocketDeleteIfExists, value)
 
-  object UnixServerSocketDeleteOnClose extends Key[Boolean] {
+  object UnixSocketDeleteOnClose extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](
         sock: facade.net.Socket,
         value: Boolean
     ): F[Unit] = Sync[F].unit
-    override private[net] def get[F[_]: Sync](sock: facade.net.Socket): F[Option[Boolean]] =
-      unsupportedGet
   }
-  def unixServerSocketDeleteOnClose(value: Boolean): SocketOption =
-    apply(UnixServerSocketDeleteOnClose, value)
+  def unixSocketDeleteOnClose(value: Boolean): SocketOption =
+    apply(UnixSocketDeleteOnClose, value)
+
+  // Datagram options
+
+  object Broadcast extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay(sock.setBroadcast(value))
+  }
+  def broadcast(value: Boolean): SocketOption = apply(Broadcast, value)
+
+  object MulticastInterface extends Key[String] {
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
+      Sync[F].delay(sock.setMulticastInterface(value))
+  }
+  def multicastInterface(value: String): SocketOption = apply(MulticastInterface, value)
+
+  object MulticastLoop extends Key[Boolean] {
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
+      Sync[F].delay {
+        sock.setMulticastLoopback(value)
+        ()
+      }
+  }
+  def multicastLoop(value: Boolean): SocketOption = apply(MulticastLoop, value)
+
+  object MulticastTtl extends Key[Int] {
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay {
+        sock.setMulticastTTL(value)
+        ()
+      }
+  }
+  def multicastTtl(value: Int): SocketOption = apply(MulticastTtl, value)
+
+  object ReceiveBufferSize extends Key[Int] {
+    override private[net] def get[F[_]: Sync](sock: facade.dgram.Socket) =
+      Sync[F].delay(Some(sock.getRecvBufferSize))
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay(sock.setRecvBufferSize(value))
+  }
+  def receiveBufferSize(value: Int): SocketOption = apply(ReceiveBufferSize, value)
+
+  object SendBufferSize extends Key[Int] {
+    override private[net] def get[F[_]: Sync](sock: facade.dgram.Socket) =
+      Sync[F].delay(Some(sock.getSendBufferSize))
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay(sock.setSendBufferSize(value))
+  }
+  def sendBufferSize(value: Int): SocketOption = apply(SendBufferSize, value)
+
+  object Ttl extends Key[Int] {
+    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
+      Sync[F].delay {
+        sock.setTTL(value)
+        ()
+      }
+  }
+  def ttl(value: Int): SocketOption = apply(Ttl, value)
 }

@@ -40,7 +40,7 @@ private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type 
   @deprecated("Use Network instead", "3.13.0")
   def forAsyncAndFiles[F[_]: Async: Files]: UnixSockets[F] = {
     val _ = Files[F]
-    new AsyncUnixSockets(UnixSocketsProvider.forAsync)
+    new AsyncUnixSockets(AutoDetectingUnixSocketsProvider.forAsync)
   }
 
   @deprecated("Use Network instead", "3.13.0")

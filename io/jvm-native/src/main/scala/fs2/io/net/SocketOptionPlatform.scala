@@ -85,17 +85,17 @@ private[net] trait SocketOptionCompanionPlatform {
   def noDelay(value: Boolean): SocketOption =
     boolean(NoDelay, value)
 
-  val UnixServerSocketDeleteIfExists: Key[JBoolean] = new Key[JBoolean] {
+  val UnixSocketDeleteIfExists: Key[JBoolean] = new Key[JBoolean] {
     def name() = "FS2_UNIX_DELETE_IF_EXISTS"
     def `type`() = classOf[JBoolean]
   }
-  def unixServerSocketDeleteIfExists(value: JBoolean): SocketOption =
-    boolean(UnixServerSocketDeleteIfExists, value)
+  def unixSocketDeleteIfExists(value: JBoolean): SocketOption =
+    boolean(UnixSocketDeleteIfExists, value)
 
-  val UnixServerSocketDeleteOnClose: Key[JBoolean] = new Key[JBoolean] {
+  val UnixSocketDeleteOnClose: Key[JBoolean] = new Key[JBoolean] {
     def name() = "FS2_UNIX_DELETE_ON_CLOSE"
     def `type`() = classOf[JBoolean]
   }
-  def unixServerSocketDeleteOnClose(value: Boolean): SocketOption =
-    boolean(UnixServerSocketDeleteOnClose, value)
+  def unixSocketDeleteOnClose(value: Boolean): SocketOption =
+    boolean(UnixSocketDeleteOnClose, value)
 }

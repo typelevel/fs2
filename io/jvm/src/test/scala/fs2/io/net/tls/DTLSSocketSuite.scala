@@ -35,16 +35,14 @@ class DTLSSocketSuite extends TLSSuite {
       val msg = Chunk.array("Hello, world!".getBytes)
 
       def address(s: DatagramSocket[IO]) =
-        Resource
-          .eval(s.localAddress)
-          .map(a => SocketAddress(ip"127.0.0.1", a.port))
+        SocketAddress(ip"127.0.0.1", s.address.asIpUnsafe.port)
 
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
-        serverSocket <- Network[IO].openDatagramSocket()
-        serverAddress <- address(serverSocket)
-        clientSocket <- Network[IO].openDatagramSocket()
-        clientAddress <- address(clientSocket)
+        serverSocket <- Network[IO].bindDatagramSocket()
+        serverAddress = address(serverSocket)
+        clientSocket <- Network[IO].bindDatagramSocket()
+        clientAddress = address(clientSocket)
         tlsServerSocket <- tlsContext
           .dtlsServerBuilder(serverSocket, clientAddress)
           .withLogger(logger)

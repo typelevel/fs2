@@ -34,14 +34,14 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
       val server = Stream
-        .resource(sockets.bind(address, Nil))
+        .resource(sockets.bindUnix(address, Nil))
         .flatMap(_.accept)
         .map { socket =>
           socket.reads.through(socket.writes)
         }
         .parJoinUnbounded
 
-      def client(msg: Chunk[Byte]) = sockets.connect(address, Nil).use { socket =>
+      def client(msg: Chunk[Byte]) = sockets.connectUnix(address, Nil).use { socket =>
         socket.write(msg) *> socket.endOfOutput *> socket.reads.compile
           .to(Chunk)
           .map(read => assertEquals(read, msg))
@@ -59,7 +59,7 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
       val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
 
       val server = Stream
-        .resource(sockets.bind(address, Nil))
+        .resource(sockets.bindUnix(address, Nil))
         .flatMap { ss =>
           assertEquals(ss.address, address)
           ss.accept
@@ -72,7 +72,7 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
         .parJoinUnbounded
 
       val msg = Chunk.array("Hello, world".getBytes)
-      val client = Stream.resource(sockets.connect(address, Nil).evalMap { socket =>
+      val client = Stream.resource(sockets.connectUnix(address, Nil).evalMap { socket =>
         assertEquals(socket.address, UnixSocketAddress(""))
         assertEquals(socket.peerAddress, address)
         socket.write(msg) *> socket.endOfOutput *> socket.reads.compile

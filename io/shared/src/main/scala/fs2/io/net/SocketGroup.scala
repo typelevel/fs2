@@ -24,8 +24,7 @@ package io
 package net
 
 import cats.effect.kernel.Resource
-import com.comcast.ip4s.{Host, IpAddress, Ipv4Address, Port, SocketAddress}
-import cats.effect.kernel.Async
+import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
 
 /** Supports creation of client and server TCP sockets that all share
   * an underlying non-blocking channel group.
@@ -72,32 +71,4 @@ trait SocketGroup[F[_]] {
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
-}
-
-private[net] object SocketGroup {
-
-  def fromIpSockets[F[_]: Async](ipSockets: IpSocketsProvider[F]): SocketGroup[F] =
-    new SocketGroup[F] {
-      def client(to: SocketAddress[Host], options: List[SocketOption]) =
-        ipSockets.connect(to, options)
-
-      def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] =
-        Stream.resource(serverResource(address, port, options)).flatMap(_._2)
-
-      def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        ipSockets
-          .bind(
-            SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
-            options
-          )
-          .map(ss => ss.address.asIpUnsafe -> ss.accept)
-    }
 }

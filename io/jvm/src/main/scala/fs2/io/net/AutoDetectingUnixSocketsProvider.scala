@@ -23,10 +23,26 @@ package fs2
 package io
 package net
 
-import cats.effect.Async
+import cats.effect.{Async, IO, LiftIO}
 
-private[net] trait IpSocketsProviderCompanionPlatform { self: IpSocketsProvider.type =>
+import fs2.io.file.Files
 
-  private[net] def forAsync[F[_]: Async]: IpSocketsProvider[F] =
-    AsynchronousChannelGroupIpSocketsProvider.forAsync[F]
+private[net] object AutoDetectingUnixSocketsProvider {
+  def forIO: UnixSocketsProvider[IO] = forLiftIO
+
+  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSocketsProvider[F] = {
+    val _ = LiftIO[F]
+    forAsyncAndFiles
+  }
+
+  def forAsyncAndFiles[F[_]: Async: Files]: UnixSocketsProvider[F] =
+    if (JdkUnixSocketsProvider.supported) JdkUnixSocketsProvider.forAsyncAndFiles
+    else if (JnrUnixSocketsProvider.supported) JnrUnixSocketsProvider.forAsyncAndFiles
+    else
+      throw new UnsupportedOperationException(
+        """Must either run on JDK 16+ or have "com.github.jnr" % "jnr-unixsocket" % <version> on the classpath"""
+      )
+
+  def forAsync[F[_]](implicit F: Async[F]): UnixSocketsProvider[F] =
+    forAsyncAndFiles(F, Files.forAsync(F))
 }

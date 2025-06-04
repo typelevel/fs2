@@ -42,7 +42,10 @@ import scala.scalanative.posix.unistd._
 private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: Async[F])
     extends IpSocketsProvider[F] {
 
-  def connect(to: SocketAddress[Host], options: List[SocketOption]): Resource[F, Socket[F]] = for {
+  override def connectIp(
+      to: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
     address <- Resource.eval(to.resolve)
     ipv4 = address.host.isInstanceOf[Ipv4Address]
@@ -77,7 +80,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
     )
   } yield socket
 
-  def bind(
+  override def bindIp(
       address: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = for {
