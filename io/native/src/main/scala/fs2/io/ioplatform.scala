@@ -60,36 +60,7 @@ private[fs2] trait ioplatform extends iojvmnative {
   /** Stream of bytes read asynchronously from standard input. */
   def stdin[F[_]: Async: LiftIO](bufSize: Int): Stream[F, Byte] =
     if (LinktimeInfo.isLinux || LinktimeInfo.isMac)
-      Stream
-        .resource {
-          Resource
-            .eval {
-              setNonBlocking(STDIN_FILENO) *> fileDescriptorPoller[F]
-            }
-            .flatMap { poller =>
-              poller.registerFileDescriptor(STDIN_FILENO, true, false).mapK(LiftIO.liftK)
-            }
-        }
-        .flatMap { handle =>
-          Stream.repeatEval {
-            handle
-              .pollReadRec(()) { _ =>
-                IO {
-                  val buf = new Array[Byte](bufSize)
-                  val readed = guard(read(STDIN_FILENO, buf.atUnsafe(0), bufSize.toUSize))
-                  if (readed > 0)
-                    Right(Some(Chunk.array(buf, 0, readed)))
-                  else if (readed == 0)
-                    Right(None)
-                  else
-                    Left(())
-                }
-              }
-              .to
-          }
-        }
-        .unNoneTerminate
-        .unchunks
+      readFd(STDIN_FILENO, bufSize)
     else
       readInputStream(Sync[F].blocking(System.in), bufSize, false)
 
@@ -107,7 +78,39 @@ private[fs2] trait ioplatform extends iojvmnative {
     else
       writeOutputStream(Sync[F].blocking(System.err), false)
 
-  private[this] def writeFd[F[_]: Async: LiftIO](fd: Int): Pipe[F, Byte, Nothing] = in =>
+  private[fs2] def readFd[F[_]: Async: LiftIO](fd: Int, bufSize: Int): Stream[F, Byte] =
+    Stream
+      .resource {
+        Resource
+          .eval {
+            setNonBlocking(STDIN_FILENO) *> fileDescriptorPoller[F]
+          }
+          .flatMap { poller =>
+            poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
+          }
+      }
+      .flatMap { handle =>
+        Stream.repeatEval {
+          handle
+            .pollReadRec(()) { _ =>
+              IO {
+                val buf = new Array[Byte](bufSize)
+                val readed = guard(read(STDIN_FILENO, buf.atUnsafe(0), bufSize.toUSize))
+                if (readed > 0)
+                  Right(Some(Chunk.array(buf, 0, readed)))
+                else if (readed == 0)
+                  Right(None)
+                else
+                  Left(())
+              }
+            }
+            .to
+        }
+      }
+      .unNoneTerminate
+      .unchunks
+
+  private[fs2] def writeFd[F[_]: Async: LiftIO](fd: Int): Pipe[F, Byte, Nothing] = in =>
     Stream
       .resource {
         Resource
