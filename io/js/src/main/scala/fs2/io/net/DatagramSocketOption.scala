@@ -64,7 +64,7 @@ object DatagramSocketOption {
       Sync[F].delay(sock.setMulticastInterface(value))
   }
 
-  object MulticastLoop extends Key[Boolean] {
+  object MulticastLoopback extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
       Sync[F].delay {
         sock.setMulticastLoopback(value)
@@ -104,7 +104,7 @@ object DatagramSocketOption {
 
   def broadcast(value: Boolean): DatagramSocketOption = apply(Broadcast, value)
   def multicastInterface(value: String): DatagramSocketOption = apply(MulticastInterface, value)
-  def multicastLoopback(value: Boolean): DatagramSocketOption = apply(MulticastLoop, value)
+  def multicastLoopback(value: Boolean): DatagramSocketOption = apply(MulticastLoopback, value)
   def multicastTtl(value: Int): DatagramSocketOption = apply(MulticastTtl, value)
   def receiveBufferSize(value: Int): DatagramSocketOption = apply(ReceiveBufferSize, value)
   def sendBufferSize(value: Int): DatagramSocketOption = apply(SendBufferSize, value)
