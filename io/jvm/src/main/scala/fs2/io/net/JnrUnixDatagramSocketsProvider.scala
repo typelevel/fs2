@@ -60,6 +60,8 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] = {
     val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    // TODO use filtered options
+    val _ = filteredOptions
 
     delete *> Resource
       .make(F.blocking(UnixDatagramChannel.open()))(ch => F.blocking(ch.close()))
