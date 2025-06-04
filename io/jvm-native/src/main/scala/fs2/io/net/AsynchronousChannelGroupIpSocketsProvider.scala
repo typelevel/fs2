@@ -152,7 +152,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
 private[net] object AsynchronousChannelGroupIpSocketsProvider {
 
   def forAsync[F[_]: Async]: AsynchronousChannelGroupIpSocketsProvider[F] = {
-    implicit val dnsInstance = Dns.forAsync[F]
+    implicit val dnsInstance: Dns[F] = Dns.forAsync[F]
     new AsynchronousChannelGroupIpSocketsProvider[F](null)
   }
 }
