@@ -25,5 +25,5 @@ package io.net
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("node.js", UnixSocketsProvider.forAsync[IO])
+  testProvider("node.js", new AsyncSocketsProvider[IO])
 }

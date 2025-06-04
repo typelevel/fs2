@@ -25,5 +25,5 @@ package io.net
 import cats.effect.IO
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("native", UnixSocketsProvider.forLiftIO[IO])
+  testProvider("native", new FdPollingUnixSocketsProvider[IO])
 }
