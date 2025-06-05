@@ -63,7 +63,9 @@ class UnixDatagramSuite extends Fs2Suite {
           .flatMap { serverSocket =>
             println(s"Bound server socket: " + serverSocket)
             // val server = Stream.repeatEval(serverSocket.readGen).foreach(serverSocket.write)
-            val server = Stream.repeatEval(serverSocket.readGen).foreach { p => println(s"Server got: $p"); serverSocket.write(p) }
+            val server = Stream.repeatEval(serverSocket.readGen).foreach { p =>
+              println(s"Server got: $p"); serverSocket.write(p)
+            }
             val client =
               Stream.resource(Network[IO].bindDatagramSocket(clientAddress, opts)).evalMap {
                 clientSocket =>

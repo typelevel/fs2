@@ -35,6 +35,8 @@ import fs2.io.file.Files
 import java.nio.{Buffer, ByteBuffer}
 import jnr.unixsocket.{UnixDatagramChannel, UnixSocketAddress => JnrUnixSocketAddress}
 
+import CollectionCompat.*
+
 private[net] object JnrUnixDatagramSocketsProvider {
 
   lazy val supported: Boolean =
@@ -60,8 +62,6 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] = {
     val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
-    // TODO use filtered options
-    val _ = filteredOptions
 
     delete *> Resource
       .make(F.blocking(UnixDatagramChannel.open()))(ch => F.blocking(ch.close()))
@@ -69,6 +69,7 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
         F.blocking(ch.bind(new JnrUnixSocketAddress(address.path)))
           .cancelable(F.blocking(ch.close()))
       }
+      .evalTap(ch => F.delay(filteredOptions.foreach(o => ch.setOption(o.key, o.value))))
       .evalMap { ch =>
         Mutex[F].map(ch -> _)
       }
@@ -80,7 +81,9 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
           override val address = address0
           override def localAddress = F.delay(address.asIpUnsafe)
 
-          override def supportedOptions = ???
+          override def supportedOptions =
+            F.delay(ch.supportedOptions.asScala.toSet)
+
           override def getOption[A](key: SocketOption.Key[A]) = ???
           override def setOption[A](key: SocketOption.Key[A], value: A) = ???
 
