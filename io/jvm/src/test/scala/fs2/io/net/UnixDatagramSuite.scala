@@ -61,7 +61,7 @@ class UnixDatagramSuite extends Fs2Suite {
         Stream
           .resource(Network[IO].bindDatagramSocket(serverAddress, opts))
           .flatMap { serverSocket =>
-            println(s"Bound server socket: " + serverSocket)
+            println(s"Bound server socket: " + serverSocket.address)
             // val server = Stream.repeatEval(serverSocket.readGen).foreach(serverSocket.write)
             val server = Stream.repeatEval(serverSocket.readGen).foreach { p =>
               println(s"Server got: $p"); serverSocket.write(p)
@@ -69,7 +69,7 @@ class UnixDatagramSuite extends Fs2Suite {
             val client =
               Stream.resource(Network[IO].bindDatagramSocket(clientAddress, opts)).evalMap {
                 clientSocket =>
-                  println(s"Bound client socket: " + clientSocket)
+                  println(s"Bound client socket: " + clientSocket.address)
                   sendAndReceive(clientSocket, msg, serverAddress)
               }
             client.concurrently(server)
@@ -82,6 +82,7 @@ class UnixDatagramSuite extends Fs2Suite {
   }
 
   test("echo connected") {
+    println("----------------")
     val msg = Chunk.array("Hello, world!".getBytes)
     Stream
       .resource((tempUnixSocketAddress, tempUnixSocketAddress).tupled)

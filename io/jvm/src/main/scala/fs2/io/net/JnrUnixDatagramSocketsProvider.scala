@@ -76,7 +76,7 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
       .map { case (ch, readMutex) =>
         val address0 = address
         new DatagramSocket[F] {
-          private val readBuffer = ByteBuffer.allocate(65535)
+          private val readBuffer = ByteBuffer.allocate(1 << 16)
 
           override val address = address0
           override def localAddress = F.delay(address.asIpUnsafe)
@@ -84,8 +84,17 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
           override def supportedOptions =
             F.delay(ch.supportedOptions.asScala.toSet)
 
-          override def getOption[A](key: SocketOption.Key[A]) = ???
-          override def setOption[A](key: SocketOption.Key[A], value: A) = ???
+          override def getOption[A](key: SocketOption.Key[A]) =
+            F.delay {
+              try
+                Some(ch.getOption(key))
+              catch {
+                case _: UnsupportedOperationException => None
+              }
+            }
+
+          override def setOption[A](key: SocketOption.Key[A], value: A) =
+            F.delay(ch.setOption(key, value)).void
 
           private def withUnixSocketAddress[A](
               address: GenSocketAddress
@@ -119,7 +128,9 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
 
           override def readGen = readMutex.lock.surround {
             blockingAndCloseIfCanceled {
+              println("- READING from " + address)
               val clientAddress = ch.receive(readBuffer)
+              println("-- success " + clientAddress)
               val read = readBuffer.position()
               val result =
                 if (read == 0) Chunk.empty
