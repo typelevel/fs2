@@ -80,7 +80,7 @@ private[fs2] trait ioplatform extends iojvmnative {
       .resource {
         Resource
           .eval {
-            setNonBlocking(STDIN_FILENO) *> fileDescriptorPoller[F]
+            setNonBlocking(fd) *> fileDescriptorPoller[F]
           }
           .flatMap { poller =>
             poller.registerFileDescriptor(fd, true, false).mapK(LiftIO.liftK)
@@ -92,7 +92,7 @@ private[fs2] trait ioplatform extends iojvmnative {
             .pollReadRec(()) { _ =>
               IO {
                 val buf = new Array[Byte](bufSize)
-                val readed = guard(read(STDIN_FILENO, buf.atUnsafe(0), bufSize.toULong))
+                val readed = guard(read(fd, buf.atUnsafe(0), bufSize.toULong))
                 if (readed > 0)
                   Right(Some(Chunk.array(buf, 0, readed)))
                 else if (readed == 0)
