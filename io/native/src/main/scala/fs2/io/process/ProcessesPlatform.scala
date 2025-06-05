@@ -88,7 +88,7 @@ private[process] trait ProcessesCompanionPlatform {
           val stderrPipe = stackalloc[CInt](2)
 
           if (pipe(stdinPipe) != 0 || pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
-            F.raiseError(new RuntimeException("Failed to create stdin pipe"))
+            throw new RuntimeException("Failed to create pipes")
           }
 
           val fileActions = stackalloc[posix_spawn_file_actions_t]()
@@ -96,15 +96,12 @@ private[process] trait ProcessesCompanionPlatform {
 
           posix_spawn_file_actions_adddup2(fileActions, stdinPipe(0), STDIN_FILENO)
           posix_spawn_file_actions_addclose(fileActions, stdinPipe(1))
-          posix_spawn_file_actions_addclose(fileActions, stdinPipe(0))
 
           posix_spawn_file_actions_adddup2(fileActions, stdoutPipe(1), STDOUT_FILENO)
           posix_spawn_file_actions_addclose(fileActions, stdoutPipe(0))
-          posix_spawn_file_actions_addclose(fileActions, stdoutPipe(1))
 
           posix_spawn_file_actions_adddup2(fileActions, stderrPipe(1), STDERR_FILENO)
           posix_spawn_file_actions_addclose(fileActions, stderrPipe(0))
-          posix_spawn_file_actions_addclose(fileActions, stderrPipe(1))
 
           val pid = stackalloc[pid_t]()
           val result = posix_spawnp(
