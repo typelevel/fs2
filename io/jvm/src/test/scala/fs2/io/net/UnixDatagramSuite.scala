@@ -29,6 +29,7 @@ import cats.syntax.all._
 import com.comcast.ip4s._
 
 import scala.concurrent.duration._
+import scala.util.Properties
 
 import fs2.io.file.Files
 
@@ -53,6 +54,7 @@ class UnixDatagramSuite extends Fs2Suite {
   val tempUnixSocketAddress = Files[IO].tempFile.map(f => UnixSocketAddress(f.toString))
 
   test("echo one") {
+    assume(!Properties.isLinux) // https://github.com/jnr/jnr-unixsocket/pull/107
     val msg = Chunk.array("Hello, world!".getBytes)
     Stream
       .resource((tempUnixSocketAddress, tempUnixSocketAddress).tupled)
@@ -61,17 +63,11 @@ class UnixDatagramSuite extends Fs2Suite {
         Stream
           .resource(Network[IO].bindDatagramSocket(serverAddress, opts))
           .flatMap { serverSocket =>
-            println(s"Bound server socket: " + serverSocket.address)
-            // val server = Stream.repeatEval(serverSocket.readGen).foreach(serverSocket.write)
-            val server = Stream.repeatEval(serverSocket.readGen).foreach { p =>
-              println(s"Server got: $p"); serverSocket.write(p)
-            }
+            val server = Stream.repeatEval(serverSocket.readGen).foreach(serverSocket.write)
             val client =
               Stream.resource(Network[IO].bindDatagramSocket(clientAddress, opts)).evalMap {
                 clientSocket =>
-                  println(s"Bound client socket: " + clientSocket.address)
                   sendAndReceive(clientSocket, msg, serverAddress)
-                    .flatTap(_ => IO.println("client done"))
               }
             client.concurrently(server)
           }
@@ -83,7 +79,7 @@ class UnixDatagramSuite extends Fs2Suite {
   }
 
   test("echo connected") {
-    println("----------------")
+    assume(!Properties.isLinux) // https://github.com/jnr/jnr-unixsocket/pull/107
     val msg = Chunk.array("Hello, world!".getBytes)
     Stream
       .resource((tempUnixSocketAddress, tempUnixSocketAddress).tupled)

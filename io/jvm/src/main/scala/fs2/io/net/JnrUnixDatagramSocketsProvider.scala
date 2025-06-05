@@ -128,9 +128,7 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
 
           override def readGen = readMutex.lock.surround {
             blockingAndCloseIfCanceled {
-              println("- READING from " + address)
               val clientAddress = ch.receive(readBuffer)
-              println("-- success " + clientAddress)
               val read = readBuffer.position()
               val result =
                 if (read == 0) Chunk.empty
