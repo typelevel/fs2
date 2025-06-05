@@ -36,10 +36,13 @@ import scala.scalanative.posix.unistd.*
 import scala.scalanative.posix.spawn.*
 import scala.scalanative.posix.signal.*
 import java.io.IOException
+import scala.concurrent.duration.*
 import cats.effect.LiftIO
 import cats.effect.IO
+import org.typelevel.scalaccompat.annotation._
 
 @extern
+@nowarn212("cat=unused")
 object SyscallBindings {
   def syscall(number: CLong, arg1: CLong, arg2: CLong): CLong = extern
 }
@@ -92,22 +95,19 @@ private[process] trait ProcessesCompanionPlatform {
           posix_spawn_file_actions_init(fileActions)
 
           posix_spawn_file_actions_adddup2(fileActions, stdinPipe(0), STDIN_FILENO)
-          posix_spawn_file_actions_adddup2(fileActions, stdoutPipe(1), STDOUT_FILENO)
-          posix_spawn_file_actions_adddup2(fileActions, stderrPipe(1), STDERR_FILENO)
-
           posix_spawn_file_actions_addclose(fileActions, stdinPipe(1))
+          posix_spawn_file_actions_addclose(fileActions, stdinPipe(0))
+
+          posix_spawn_file_actions_adddup2(fileActions, stdoutPipe(1), STDOUT_FILENO)
           posix_spawn_file_actions_addclose(fileActions, stdoutPipe(0))
+          posix_spawn_file_actions_addclose(fileActions, stdoutPipe(1))
+
+          posix_spawn_file_actions_adddup2(fileActions, stderrPipe(1), STDERR_FILENO)
           posix_spawn_file_actions_addclose(fileActions, stderrPipe(0))
+          posix_spawn_file_actions_addclose(fileActions, stderrPipe(1))
 
           val pid = stackalloc[pid_t]()
-          println("hi")
-          println("argv(0): " + fromCString(argv(0)))
-          var i = 0
-          while (argv(i) != null) {
-            println(s"  argv($i): " + fromCString(argv(i)))
-            i += 1
-          }
-          val result = posix_spawn(
+          val result = posix_spawnp(
             pid,
             argv(0),
             fileActions,
@@ -145,7 +145,7 @@ private[process] trait ProcessesCompanionPlatform {
           F.delay(kill(proc.pid, SIGKILL)) *>
           F.blocking {
             val status = stackalloc[CInt]()
-            val r = waitpid(proc.pid, status, 0)
+            val r = waitpid(proc.pid, status, WNOHANG)
             if (r < 0 && errno.errno != ECHILD)
               F.raiseError(new RuntimeException(s"waitpid failed: errno=${errno.errno}"))
             ()
@@ -192,11 +192,11 @@ private[process] trait ProcessesCompanionPlatform {
                       .to
                   }
                 } else {
-                  fallbackExitValue(nativeProcess.pid)
+                  fallbackExitValue(nativeProcess.pid).to
                 }
               }
             } else {
-              fallbackExitValue(nativeProcess.pid)
+              fallbackExitValue(nativeProcess.pid).to
             }
 
           def stdin: Pipe[F, Byte, Nothing] = writeFd(nativeProcess.stdinFd)
@@ -208,12 +208,29 @@ private[process] trait ProcessesCompanionPlatform {
       }
     }
 
-    private def fallbackExitValue(pid: pid_t): F[Int] = F.delay {
-      val status = stackalloc[CInt]()
-      val result = waitpid(pid, status, 0)
-      if (result < 0) throw new IOException(s"waitpid failed with errno: ${errno.errno}")
-      WEXITSTATUS(!status)
+    private def fallbackExitValue(pid: pid_t): IO[Int] = {
+      def loop: IO[Int] =
+        IO.blocking {
+          Zone { _ =>
+            val status = stackalloc[CInt]()
+            val result = waitpid(pid, status, WNOHANG)
+            if (result == pid) Some(WEXITSTATUS(!status))
+            else if (result == 0) None
+            else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
+          }
+        }.flatMap {
+          case Some(code) => IO.pure(code)
+          case None       => IO.sleep(100.millis) >> loop
+        }
+
+      loop.onCancel {
+        IO.blocking {
+          kill(pid, SIGKILL)
+          ()
+        }
+      }
     }
+
   }
 }
 
