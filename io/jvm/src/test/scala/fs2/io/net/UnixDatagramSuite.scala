@@ -71,6 +71,7 @@ class UnixDatagramSuite extends Fs2Suite {
                 clientSocket =>
                   println(s"Bound client socket: " + clientSocket.address)
                   sendAndReceive(clientSocket, msg, serverAddress)
+                    .flatTap(_ => IO.println("client done"))
               }
             client.concurrently(server)
           }
