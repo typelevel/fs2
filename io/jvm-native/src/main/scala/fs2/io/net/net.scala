@@ -32,4 +32,9 @@ package object net {
   type UnknownHostException = com.comcast.ip4s.UnknownHostException
   type DatagramSocketOption = SocketOption
   val DatagramSocketOption = SocketOption
+
+  private[net] implicit final class DatagramSocketOptionOps(private val self: DatagramSocketOption)
+      extends AnyVal {
+    def toSocketOption: SocketOption = self
+  }
 }

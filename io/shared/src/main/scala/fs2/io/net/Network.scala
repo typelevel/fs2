@@ -158,7 +158,7 @@ object Network extends NetworkCompanionPlatform {
     ): Resource[F, DatagramSocket[F]] =
       bindDatagramSocket(
         SocketAddress(address.getOrElse(Ipv4Address.Wildcard), port.getOrElse(Port.Wildcard)),
-        Nil /* TODO convert options */
+        options.map(_.toSocketOption)
       )
   }
 
