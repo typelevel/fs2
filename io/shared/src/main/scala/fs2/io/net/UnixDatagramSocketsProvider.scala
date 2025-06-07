@@ -23,14 +23,13 @@ package fs2
 package io
 package net
 
-import fs2.io.net.tls.TLSContext
+import cats.effect.Resource
+import com.comcast.ip4s.UnixSocketAddress
 
-sealed trait Network[F[_]] extends NetworkPlatform[F] with SocketGroup[F] {
-  def tlsContext: TLSContext.Builder[F]
-}
+private[net] trait UnixDatagramSocketsProvider[F[_]] {
 
-object Network extends NetworkCompanionPlatform {
-  private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
-
-  def apply[F[_]](implicit F: Network[F]): F.type = F
+  def bindDatagramSocket(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, DatagramSocket[F]]
 }

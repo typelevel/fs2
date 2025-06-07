@@ -20,10 +20,25 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io
+package net
 
-import cats.effect.IO
+import com.comcast.ip4s.GenSocketAddress
 
-trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("node.js")(UnixSockets.forAsync[IO])
+/** Information about a connected socket. Super trait of both [[ServerSocket]] and [[Socket]]. */
+trait SocketInfo[F[_]] {
+
+  /** Local address of this socket. */
+  def address: GenSocketAddress
+
+  /** Gets the set of options that may be used with `setOption`. Note some options may not support `getOption`. */
+  def supportedOptions: F[Set[SocketOption.Key[?]]]
+
+  /** Gets the value of the specified option, if defined. */
+  def getOption[A](key: SocketOption.Key[A]): F[Option[A]]
+
+  /** Sets the specified option to the supplied value. */
+  def setOption[A](key: SocketOption.Key[A], value: A): F[Unit]
 }
+
+object SocketInfo extends SocketInfoCompanionPlatform

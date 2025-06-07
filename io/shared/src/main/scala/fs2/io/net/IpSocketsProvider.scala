@@ -22,28 +22,19 @@
 package fs2
 package io
 package net
-package unixsocket
 
-import cats.effect.{Async, IO, LiftIO}
-import fs2.io.file.Files
+import cats.effect.kernel.Resource
+import com.comcast.ip4s.{Host, SocketAddress}
 
-private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
-  @deprecated("Use Network instead", "3.13.0")
-  def forIO: UnixSockets[IO] = forLiftIO
+private[net] trait IpSocketsProvider[F[_]] {
 
-  @deprecated("Use Network instead", "3.13.0")
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
-  }
+  def connectIp(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]]
 
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    forAsyncAndFiles(Files.forAsync(F), F)
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] = {
-    val _ = Files[F]
-    new AsyncUnixSockets(new AsyncSocketsProvider)
-  }
+  def bindIp(
+      address: SocketAddress[Host],
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]]
 }

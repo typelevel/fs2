@@ -23,11 +23,18 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import cats.effect.Resource
+import com.comcast.ip4s.UnixSocketAddress
 
-/** A single datagram to send to the specified remote address or received from the specified address.
-  *
-  * @param remote   remote party to send/receive datagram to/from
-  * @param bytes    data to send/receive
-  */
-final case class Datagram(remote: SocketAddress[IpAddress], bytes: Chunk[Byte])
+private[net] trait UnixSocketsProvider[F[_]] {
+
+  def connectUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, Socket[F]]
+
+  def bindUnix(
+      address: UnixSocketAddress,
+      options: List[SocketOption]
+  ): Resource[F, ServerSocket[F]]
+}

@@ -23,12 +23,11 @@ package fs2
 package io
 package net
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import cats.effect.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
 
-import java.net.InetSocketAddress
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
 
@@ -37,7 +36,12 @@ private[net] trait SocketCompanionPlatform {
       ch: AsynchronousSocketChannel
   ): F[Socket[F]] =
     (Mutex[F], Mutex[F]).mapN { (readMutex, writeMutex) =>
-      new AsyncSocket[F](ch, readMutex, writeMutex)
+      new AsyncSocket[F](
+        ch,
+        readMutex,
+        writeMutex,
+        SocketAddressHelpers.toGenSocketAddress(ch.getRemoteAddress)
+      )
     }
 
   private[net] abstract class BufferedReads[F[_]](
@@ -106,9 +110,14 @@ private[net] trait SocketCompanionPlatform {
   private final class AsyncSocket[F[_]](
       ch: AsynchronousSocketChannel,
       readMutex: Mutex[F],
-      writeMutex: Mutex[F]
+      writeMutex: Mutex[F],
+      val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
-      extends BufferedReads[F](readMutex) {
+      extends BufferedReads[F](readMutex)
+      with SocketInfo.AsyncSocketInfo[F] {
+
+    protected def asyncInstance = F
+    protected def channel = ch
 
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
@@ -120,7 +129,7 @@ private[net] trait SocketCompanionPlatform {
         F.delay(Some(endOfInput.voidError))
       }
 
-    def write(bytes: Chunk[Byte]): F[Unit] = {
+    override def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
         F.async[Int] { cb =>
           ch.write(
@@ -139,28 +148,20 @@ private[net] trait SocketCompanionPlatform {
       }
     }
 
-    def localAddress: F[SocketAddress[IpAddress]] =
-      F.delay(
-        SocketAddress.fromInetSocketAddress(
-          ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-        )
-      )
+    override def localAddress: F[SocketAddress[IpAddress]] =
+      asyncInstance.pure(address.asIpUnsafe)
 
-    def remoteAddress: F[SocketAddress[IpAddress]] =
-      F.delay(
-        SocketAddress.fromInetSocketAddress(
-          ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-        )
-      )
+    override def remoteAddress: F[SocketAddress[IpAddress]] =
+      asyncInstance.pure(peerAddress.asIpUnsafe)
 
-    def isOpen: F[Boolean] = F.delay(ch.isOpen)
+    override def isOpen: F[Boolean] = F.delay(ch.isOpen)
 
-    def endOfOutput: F[Unit] =
+    override def endOfOutput: F[Unit] =
       F.delay {
         ch.shutdownOutput(); ()
       }
 
-    def endOfInput: F[Unit] =
+    override def endOfInput: F[Unit] =
       F.delay {
         ch.shutdownInput(); ()
       }
