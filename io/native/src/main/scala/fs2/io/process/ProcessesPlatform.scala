@@ -25,7 +25,6 @@ package process
 
 import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all.*
-import fs2.{Stream, Pipe}
 import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
 import scala.scalanative.libc.*
