@@ -95,9 +95,9 @@ private[process] trait ProcessesCompanionPlatform {
             } else {
               findExecutable(process.command).getOrElse(process.command)
             }
-          val stdinPipe = stackalloc[CInt](2)
-          val stdoutPipe = stackalloc[CInt](2)
-          val stderrPipe = stackalloc[CInt](2)
+          val stdinPipe = stackalloc[CInt](2.toUInt)
+          val stdoutPipe = stackalloc[CInt](2.toUInt)
+          val stderrPipe = stackalloc[CInt](2.toUInt)
 
           if (pipe(stdinPipe) != 0 || pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
             throw new RuntimeException("Failed to create pipes")
@@ -251,13 +251,12 @@ private[process] trait ProcessesCompanionPlatform {
 
     private def fallbackExitValue(pid: pid_t): F[Int] = {
       def loop: F[Int] =
-        F.delay {
+        F.blocking {
           Zone { _ =>
             val status = stackalloc[CInt]()
             val result = waitpid(pid, status, WNOHANG)
 
             if (result == pid) {
-              println("bye bye process")
               Some(WEXITSTATUS(!status))
             } else if (result == 0) None
             else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
