@@ -31,7 +31,6 @@ import cats.effect.kernel.Resource
 import cats.effect.kernel.Sync
 import cats.syntax.all._
 import fs2.io.internal.NativeUtil._
-
 import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
