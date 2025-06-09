@@ -25,7 +25,7 @@ Our `withBitrate` combinator requires a `Stream[F, TimeStamped[ByteVector]]` arg
 
 ```scala mdoc
 def withReceivedBitrate[F[_]](input: Stream[F, Byte]): Stream[F, TimeStamped[Either[Long, ByteVector]]] =
-  input.chunks.map(c => TimeStamped.unsafeNow(c.toByteVector)).through(withBitrate)
+  input.chunks.map(c => TimeStamped.unsafeMonotonic(c.toByteVector)).through(withBitrate)
 ```
 
 Each emitted sample is the sum of bits received during each one second period. Let's compute an average of that value over the last 10 seconds. We can do this via `mapAccumulate` along with a `scala.collection.immutable.Queue`:

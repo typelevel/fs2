@@ -20,27 +20,13 @@
  */
 
 package fs2
-package io
-package net
+package io.net
 
-import cats.effect.kernel.Resource
-import com.comcast.ip4s._
+import cats.effect.IO
 
-trait DatagramSocketGroup[F[_]] {
-
-  /** Creates a UDP socket bound to the specified address.
-    *
-    * @param address              address to bind to; defaults to all interfaces
-    * @param port                 port to bind to; defaults to an ephemeral port
-    * @param options              socket options to apply to the underlying socket
-    * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
-    */
-  def openDatagramSocket(
-      address: Option[Host] = None,
-      port: Option[Port] = None,
-      options: List[DatagramSocketOption] = Nil,
-      protocolFamily: Option[DatagramSocketGroup.ProtocolFamily] = None
-  ): Resource[F, DatagramSocket[F]]
+trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
+  if (JdkUnixSocketsProvider.supported)
+    testProvider("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
+  if (JnrUnixSocketsProvider.supported)
+    testProvider("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
 }
-
-private[net] object DatagramSocketGroup extends DatagramSocketGroupCompanionPlatform

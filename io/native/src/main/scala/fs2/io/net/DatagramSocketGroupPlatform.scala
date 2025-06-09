@@ -20,10 +20,9 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io
+package net
 
-import cats.effect.IO
-
-trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  testProvider("native")(UnixSockets.forLiftIO[IO])
+private[net] trait DatagramSocketGroupCompanionPlatform {
+  type ProtocolFamily = java.net.ProtocolFamily
 }

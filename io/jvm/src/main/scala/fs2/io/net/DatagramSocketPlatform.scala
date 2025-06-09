@@ -37,5 +37,6 @@ private[net] trait DatagramSocketPlatform[F[_]] {
 }
 
 private[net] trait DatagramSocketCompanionPlatform {
+  // TODO deprecate and replace with real cross-platform type
   type NetworkInterface = java.net.NetworkInterface
 }

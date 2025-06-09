@@ -22,28 +22,20 @@
 package fs2
 package io
 package net
-package unixsocket
 
-import cats.effect.{Async, IO, LiftIO}
-import fs2.io.file.Files
+import com.comcast.ip4s.IpAddress
 
-private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
-  @deprecated("Use Network instead", "3.13.0")
-  def forIO: UnixSockets[IO] = forLiftIO
+private[net] trait DatagramSocketPlatform[F[_]] {
+  private[net] trait GroupMembershipPlatform {
 
-  @deprecated("Use Network instead", "3.13.0")
-  implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
-    val _ = LiftIO[F]
-    forAsyncAndFiles
+    /** Blocks datagrams from the specified source address. */
+    def block(source: IpAddress): F[Unit]
+
+    /** Unblocks datagrams from the specified source address. */
+    def unblock(source: IpAddress): F[Unit]
   }
+}
 
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
-    forAsyncAndFiles(Files.forAsync(F), F)
-
-  @deprecated("Use Network instead", "3.13.0")
-  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] = {
-    val _ = Files[F]
-    new AsyncUnixSockets(new AsyncSocketsProvider)
-  }
+private[net] trait DatagramSocketCompanionPlatform {
+  type NetworkInterface = java.net.NetworkInterface
 }
