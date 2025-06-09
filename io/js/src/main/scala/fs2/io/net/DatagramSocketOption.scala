@@ -68,7 +68,8 @@ object DatagramSocketOption {
   object MulticastInterface extends Key[String] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
       Sync[F].delay(sock.setMulticastInterface(value))
-    override private[net] def toSocketOption: SocketOption.Key[String] = SocketOption.MulticastInterface
+    override private[net] def toSocketOption: SocketOption.Key[String] =
+      SocketOption.MulticastInterface
   }
 
   object MulticastLoopback extends Key[Boolean] {
