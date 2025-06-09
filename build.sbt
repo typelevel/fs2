@@ -344,6 +344,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$"),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.SocketOptionCompanionPlatform#Key.fs2$io$net$SocketOptionCompanionPlatform$Key$$$outer"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.DatagramSocketOption#Key.toSocketOption"
   )
 )
 
