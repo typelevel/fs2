@@ -25,7 +25,7 @@ The `fs2.io.net.Socket` trait provides mechanisms for reading and writing data -
 To get started, let's write a client program that connects to a server, sends a message, and reads a response.
 
 ```scala mdoc
-import fs2.{Chunk, Stream}
+import fs2.Chunk
 import fs2.io.net.Network
 import cats.effect.MonadCancelThrow
 import cats.effect.std.Console
@@ -48,11 +48,10 @@ The `Network[F].connect` method returns a `Resource[F, Socket[F]]` which automat
 Note we aren't doing any binary message framing or packetization in this example. Hence, it's very possible for the single read to only receive a portion of the original message -- perhaps just the bytes for `"Hello, w"`. We can use FS2 streams to simplify this. The `Socket` trait defines stream operations  -- `writes` and `reads`. We could rewrite this example using the stream operations like so:
 
 ```scala mdoc:reset
-import fs2.{Chunk, Stream, text}
+import fs2.{Stream, text}
 import fs2.io.net.Network
 import cats.effect.MonadCancelThrow
 import cats.effect.std.Console
-import cats.syntax.all._
 import com.comcast.ip4s._
 
 def client[F[_]: MonadCancelThrow: Console: Network]: Stream[F, Unit] =
@@ -172,26 +171,24 @@ The [fs2-chat](https://github.com/functional-streams-for-scala/fs2-chat) sample 
 
 ## UDP
 
-UDP support works much the same way as TCP. The `fs2.io.net.DatagramSocket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `openDatagramSocket` method on `fs2.io.net.Network`. Unlike TCP, there's no differentiation between client and server sockets. Additionally, since UDP is a packet based protocol, read and write operations use `fs2.io.net.Datagram` values, which consist of a `Chunk[Byte]` and a `SocketAddress[IpAddress]`.
+UDP support works much the same way as TCP. The `fs2.io.net.DatagramSocket` trait provides mechanisms for reading and writing UDP datagrams. UDP sockets are created via the `bindDatagramSocket` method on `fs2.io.net.Network`. Unlike TCP, there's no differentiation between client and server sockets.
 
 Adapting the TCP client example for UDP gives us the following:
 
 ```scala mdoc:reset
 import fs2.{Stream, text}
-import fs2.io.net.{Datagram, Network}
+import fs2.io.net.Network
 import cats.effect.Concurrent
 import cats.effect.std.Console
 import com.comcast.ip4s._
 
 def client[F[_]: Concurrent: Console: Network]: F[Unit] = {
   val address = SocketAddress(ip"127.0.0.1", port"5555")
-  Stream.resource(Network[F].openDatagramSocket()).flatMap { socket =>
+  Stream.resource(Network[F].bindDatagramSocket()).flatMap { socket =>
     Stream("Hello, world!")
       .through(text.utf8.encode)
       .chunks
-      .map(data => Datagram(address, data))
-      .through(socket.writes)
-      .drain ++
+      .evalTap(data => socket.write(data, address)) ++
         socket.reads
           .flatMap(datagram => Stream.chunk(datagram.bytes))
           .through(text.utf8.decode)
@@ -202,11 +199,11 @@ def client[F[_]: Concurrent: Console: Network]: F[Unit] = {
 }
 ```
 
-When writing, we map each chunk of bytes to a `Datagram`, which includes the destination address of the packet. When reading, we convert the `Stream[F, Datagram]` to a `Stream[F, Byte]` via `flatMap(datagram => Stream.chunk(datagram.bytes))`. Otherwise, the example is unchanged.
+We call `socket.write`, supplying a chunk of bytes and the destination address. When reading, we convert the `Stream[F, Datagram]` to a `Stream[F, Byte]` via `flatMap(datagram => Stream.chunk(datagram.bytes))`. Otherwise, the example is unchanged.
 
 ```scala mdoc
 def echoServer[F[_]: Concurrent: Network]: F[Unit] =
-  Stream.resource(Network[F].openDatagramSocket(port = Some(port"5555"))).flatMap { socket =>
+  Stream.resource(Network[F].bindDatagramSocket(SocketAddress.port(port"5555"))).flatMap { socket =>
     socket.reads.through(socket.writes)
   }.compile.drain
 ```

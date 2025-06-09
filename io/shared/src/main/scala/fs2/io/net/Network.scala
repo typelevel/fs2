@@ -36,15 +36,18 @@ import com.comcast.ip4s.{
 }
 import fs2.io.net.tls.TLSContext
 
-/** Provides the ability to work with TCP, UDP, and TLS.
+/** Provides the ability to work with stream sockets (e.g. TCP), datagram sockets (e.g. UDP), and TLS.
+  *
+  * Both IP and unix sockets are supported, though unix socket support depends on the underlying platform support.
+  * The socket type is derived from addresses supplied to operations that open new sockets.
   *
   * @example {{{
   * import fs2.Stream
   * import fs2.io.net.{Datagram, Network}
   *
   * def send[F[_]: Network](datagram: Datagram): F[Unit] =
-  *   Network[F].openDatagramSocket().use { socket =>
-  *     socket.write(packet)
+  *   Network[F].bindDatagramSocket().use { socket =>
+  *     socket.write(datagram)
   *   }
   * }}}
   *
@@ -58,22 +61,44 @@ sealed trait Network[F[_]]
     with SocketGroup[F]
     with DatagramSocketGroup[F] {
 
+  /** Opens a stream socket and connects it to the supplied address.
+    *
+    * TCP is used when the supplied address contains an IP address or hostname. Unix sockets are also
+    * supported (when the supplied address contains a unix socket address).
+    *
+    * @param address              address to connect to
+    * @param options              socket options to apply to the socket
+    */
   def connect(address: GenSocketAddress, options: List[SocketOption] = Nil): Resource[F, Socket[F]]
 
+  /** Opens and binds a stream server socket to the supplied address.
+    *
+    * TCP is used when the supplied address contains an IP address or hostname. Unix sockets are also
+    * supported (when the supplied address contains a unix socket address).
+    *
+    * @param address              address to bind to
+    * @param options              socket options to apply to each accepted socket
+    */
   def bind(
       address: GenSocketAddress = SocketAddress.Wildcard,
       options: List[SocketOption] = Nil
   ): Resource[F, ServerSocket[F]]
 
+  /** Opens and binds a stream server socket to the supplied address and returns a stream of
+    * client sockets, each representing a client connection to the server.
+    *
+    * @param address              address to bind to
+    * @param options              socket options to apply to each accepted socket
+    */
   def bindAndAccept(
       address: GenSocketAddress = SocketAddress.Wildcard,
       options: List[SocketOption] = Nil
   ): Stream[F, Socket[F]]
 
-  /** Creates a datagram socket bound to the specified address.
+  /** Opens and binds a datagram socket bound to the specified address.
     *
     * @param address              address to bind to
-    * @param options              socket options to apply to the underlying socket
+    * @param options              socket options to apply to the socket
     */
   def bindDatagramSocket(
       address: GenSocketAddress = SocketAddress.Wildcard,
@@ -93,16 +118,6 @@ object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
-
-    override def connect(
-        address: GenSocketAddress,
-        options: List[SocketOption]
-    ): Resource[F, Socket[F]]
-
-    override def bind(
-        address: GenSocketAddress,
-        options: List[SocketOption]
-    ): Resource[F, ServerSocket[F]]
 
     override def bindAndAccept(
         address: GenSocketAddress,
