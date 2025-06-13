@@ -46,9 +46,8 @@ object SyscallBindings {
   def syscall(number: CLong, arg1: CLong, arg2: CLong): CLong = extern
 }
 
-object PidFd {
+object pidFd {
   private val SYS_pidfd_open = 434L
-  val PIDFD_NONBLOCK = 1
 
   def pidfd_open(pid: pid_t, flags: Int): Int = {
     val fd = SyscallBindings.syscall(SYS_pidfd_open, pid.toLong, flags.toLong)
@@ -182,7 +181,7 @@ private[process] trait ProcessesCompanionPlatform {
 
           def exitValue: F[Int] =
             if (LinktimeInfo.isLinux) {
-              F.delay(PidFd.pidfd_open(nativeProcess.pid, PidFd.PIDFD_NONBLOCK)).flatMap { pidfd =>
+              F.delay(pidFd.pidfd_open(nativeProcess.pid, 0)).flatMap { pidfd =>
                 if (pidfd >= 0) {
                   fileDescriptorPoller[F].flatMap { poller =>
                     poller
