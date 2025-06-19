@@ -62,215 +62,218 @@ final case class NativeProcess(
     stderrFd: Int
 )
 
-private[process] trait ProcessesCompanionPlatform {
-  def forAsync[F[_]: LiftIO](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
+private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
+  def forAsync[F[_]: LiftIO](implicit F: Async[F]): Processes[F] =
+    if (LinktimeInfo.isMac || LinktimeInfo.isLinux) {
+      new UnsealedProcesses[F] {
 
-    def spawn(process: ProcessBuilder): Resource[F, Process[F]] = {
+        def spawn(process: ProcessBuilder): Resource[F, Process[F]] = {
 
-      def createProcess(): F[NativeProcess] = F.blocking {
-        Zone { implicit z =>
-          def findExecutable(command: String): Option[String] = {
-            val pathEnv = sys.env.get("PATH").getOrElse("")
-            val paths = pathEnv.split(":").toList
+          def createProcess(): F[NativeProcess] = F.blocking {
+            Zone { implicit z =>
+              def findExecutable(command: String): Option[String] = {
+                val pathEnv = sys.env.get("PATH").getOrElse("")
+                val paths = pathEnv.split(":").toList
 
-            paths
-              .find { dir =>
-                val fullPath = s"$dir/$command"
-                access(toCString(fullPath), X_OK) == 0
+                paths
+                  .find { dir =>
+                    val fullPath = s"$dir/$command"
+                    access(toCString(fullPath), X_OK) == 0
+                  }
+                  .map(dir => s"$dir/$command")
+
               }
-              .map(dir => s"$dir/$command")
 
-          }
+              val envMap =
+                if (process.inheritEnv)
+                  sys.env ++ process.extraEnv
+                else process.extraEnv
 
-          val envMap =
-            if (process.inheritEnv)
-              sys.env ++ process.extraEnv
-            else process.extraEnv
+              val executable =
+                if (process.command.contains("/")) {
+                  process.command
+                } else {
+                  findExecutable(process.command).getOrElse(process.command)
+                }
+              val stdinPipe = stackalloc[CInt](2.toUInt)
+              val stdoutPipe = stackalloc[CInt](2.toUInt)
+              val stderrPipe = stackalloc[CInt](2.toUInt)
 
-          val executable =
-            if (process.command.contains("/")) {
-              process.command
-            } else {
-              findExecutable(process.command).getOrElse(process.command)
-            }
-          val stdinPipe = stackalloc[CInt](2.toUInt)
-          val stdoutPipe = stackalloc[CInt](2.toUInt)
-          val stderrPipe = stackalloc[CInt](2.toUInt)
+              if (pipe(stdinPipe) != 0 || pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
+                throw new RuntimeException("Failed to create pipes")
+              }
 
-          if (pipe(stdinPipe) != 0 || pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
-            throw new RuntimeException("Failed to create pipes")
-          }
+              val pid = fork()
+              if (pid < 0) {
+                close(stdinPipe(0)); close(stdinPipe(1))
+                close(stdoutPipe(0)); close(stdoutPipe(1))
+                close(stderrPipe(0)); close(stderrPipe(1))
+                throw new RuntimeException("fork failed")
+              } else if (pid == 0) {
+                close(stdinPipe(1))
+                close(stdoutPipe(0))
+                close(stderrPipe(0))
 
-          val pid = fork()
-          if (pid < 0) {
-            close(stdinPipe(0)); close(stdinPipe(1))
-            close(stdoutPipe(0)); close(stdoutPipe(1))
-            close(stderrPipe(0)); close(stderrPipe(1))
-            throw new RuntimeException("fork failed")
-          } else if (pid == 0) {
-            close(stdinPipe(1))
-            close(stdoutPipe(0))
-            close(stderrPipe(0))
+                if (
+                  dup2(stdinPipe(0), STDIN_FILENO) == -1 ||
+                  dup2(stdoutPipe(1), STDOUT_FILENO) == -1 ||
+                  dup2(stderrPipe(1), STDERR_FILENO) == -1
+                ) {
+                  _exit(1)
+                }
 
-            if (
-              dup2(stdinPipe(0), STDIN_FILENO) == -1 ||
-              dup2(stdoutPipe(1), STDOUT_FILENO) == -1 ||
-              dup2(stderrPipe(1), STDERR_FILENO) == -1
-            ) {
-              _exit(1)
-            }
+                close(stdinPipe(0))
+                close(stdoutPipe(1))
+                close(stderrPipe(1))
 
-            close(stdinPipe(0))
-            close(stdoutPipe(1))
-            close(stderrPipe(1))
+                process.workingDirectory.foreach { dir =>
+                  if (chdir(toCString(dir.toString)) != 0) {
+                    _exit(1)
+                  }
+                }
 
-            process.workingDirectory.foreach { dir =>
-              if (chdir(toCString(dir.toString)) != 0) {
+                val allArgs = process.command +: process.args
+                val argv = stackalloc[CString](allArgs.length.toULong + 1.toULong)
+                allArgs.zipWithIndex.foreach { case (arg, i) =>
+                  argv(i.toULong) = toCString(arg)
+                }
+                argv(allArgs.length.toULong) = null
+
+                val envp = stackalloc[CString]((envMap.size + 1).toULong)
+                envMap.zipWithIndex.foreach { case ((k, v), i) =>
+                  envp(i.toULong) = toCString(s"$k=$v")
+                }
+                envp(envMap.size.toULong) = null
+
+                execve(toCString(executable), argv, envp)
                 _exit(1)
+                throw new RuntimeException(s"execve failed")
+              } else {
+                close(stdinPipe(0))
+                close(stdoutPipe(1))
+                close(stderrPipe(1))
+                NativeProcess(
+                  pid = pid,
+                  stdinFd = stdinPipe(1),
+                  stdoutFd = stdoutPipe(0),
+                  stderrFd = stderrPipe(0)
+                )
               }
             }
-
-            val allArgs = process.command +: process.args
-            val argv = stackalloc[CString](allArgs.length.toULong + 1.toULong)
-            allArgs.zipWithIndex.foreach { case (arg, i) =>
-              argv(i.toULong) = toCString(arg)
-            }
-            argv(allArgs.length.toULong) = null
-
-            val envp = stackalloc[CString]((envMap.size + 1).toULong)
-            envMap.zipWithIndex.foreach { case ((k, v), i) =>
-              envp(i.toULong) = toCString(s"$k=$v")
-            }
-            envp(envMap.size.toULong) = null
-
-            execve(toCString(executable), argv, envp)
-            _exit(1)
-            throw new RuntimeException(s"execve failed")
-          } else {
-            close(stdinPipe(0))
-            close(stdoutPipe(1))
-            close(stderrPipe(1))
-            NativeProcess(
-              pid = pid,
-              stdinFd = stdinPipe(1),
-              stdoutFd = stdoutPipe(0),
-              stderrFd = stderrPipe(0)
-            )
-          }
-        }
-      }
-
-      def cleanup(proc: NativeProcess): F[Unit] =
-        F.blocking {
-          close(proc.stdinFd); close(proc.stdoutFd); close(proc.stderrFd)
-        } *>
-          F.delay(kill(proc.pid, SIGKILL)) *>
-          F.blocking {
-            val status = stackalloc[CInt]()
-            val r = waitpid(proc.pid, status, WNOHANG)
-            if (r < 0 && errno.errno != ECHILD)
-              throw new RuntimeException(s"waitpid failed: errno=${errno.errno}")
-            ()
           }
 
-      Resource.make(createProcess())(cleanup).map { nativeProcess =>
-        new UnsealedProcess[F] {
-          def isAlive: F[Boolean] = F.delay {
-            kill(nativeProcess.pid, 0) == 0 || errno.errno != ESRCH
-          }
+          def cleanup(proc: NativeProcess): F[Unit] =
+            F.blocking {
+              close(proc.stdinFd); close(proc.stdoutFd); close(proc.stderrFd)
+            } *>
+              F.delay(kill(proc.pid, SIGKILL)) *>
+              F.blocking {
+                val status = stackalloc[CInt]()
+                val r = waitpid(proc.pid, status, WNOHANG)
+                if (r < 0 && errno.errno != ECHILD)
+                  throw new RuntimeException(s"waitpid failed: errno=${errno.errno}")
+                ()
+              }
 
-          def exitValue: F[Int] =
-            if (LinktimeInfo.isLinux) {
-              F.delay(pidFd.pidfd_open(nativeProcess.pid, 0)).flatMap { pidfd =>
-                if (pidfd >= 0) {
-                  fileDescriptorPoller[F].flatMap { poller =>
-                    poller
-                      .registerFileDescriptor(pidfd, true, false)
-                      .use { handle =>
-                        handle.pollReadRec(()) { _ =>
-                          IO {
-                            Zone { _ =>
-                              val statusPtr = stackalloc[CInt]()
-                              val result = waitpid(nativeProcess.pid, statusPtr, WNOHANG)
+          Resource.make(createProcess())(cleanup).map { nativeProcess =>
+            new UnsealedProcess[F] {
+              def isAlive: F[Boolean] = F.delay {
+                kill(nativeProcess.pid, 0) == 0 || errno.errno != ESRCH
+              }
 
-                              if (result == nativeProcess.pid) {
-                                val exitCode = WEXITSTATUS(!statusPtr)
-                                Right(exitCode)
-                              } else if (result == 0) {
-                                Left(())
-                              } else {
-                                if (errno.errno == ECHILD) {
-                                  throw new IOException("No such process")
-                                } else {
-                                  throw new IOException(
-                                    s"waitpid failed with errno: ${errno.errno}"
-                                  )
+              def exitValue: F[Int] =
+                if (LinktimeInfo.isLinux) {
+                  F.delay(pidFd.pidfd_open(nativeProcess.pid, 0)).flatMap { pidfd =>
+                    if (pidfd >= 0) {
+                      fileDescriptorPoller[F].flatMap { poller =>
+                        poller
+                          .registerFileDescriptor(pidfd, true, false)
+                          .use { handle =>
+                            handle.pollReadRec(()) { _ =>
+                              IO {
+                                Zone { _ =>
+                                  val statusPtr = stackalloc[CInt]()
+                                  val result = waitpid(nativeProcess.pid, statusPtr, WNOHANG)
+
+                                  if (result == nativeProcess.pid) {
+                                    val exitCode = WEXITSTATUS(!statusPtr)
+                                    Right(exitCode)
+                                  } else if (result == 0) {
+                                    Left(())
+                                  } else {
+                                    if (errno.errno == ECHILD) {
+                                      throw new IOException("No such process")
+                                    } else {
+                                      throw new IOException(
+                                        s"waitpid failed with errno: ${errno.errno}"
+                                      )
+                                    }
+                                  }
                                 }
                               }
                             }
                           }
-                        }
+                          .to
                       }
-                      .to
+                    } else {
+                      fallbackExitValue(nativeProcess.pid)
+                    }
                   }
                 } else {
                   fallbackExitValue(nativeProcess.pid)
                 }
+
+              def stdin: Pipe[F, Byte, Nothing] = { in =>
+                in
+                  .through(writeFd(nativeProcess.stdinFd))
+                  .onFinalize {
+                    F.blocking {
+                      close(nativeProcess.stdinFd)
+                    }.void
+                  }
               }
-            } else {
-              fallbackExitValue(nativeProcess.pid)
-            }
+              def stdout: Stream[F, Byte] = readFd(nativeProcess.stdoutFd, 8192)
+                .onFinalize {
+                  F.blocking {
+                    close(nativeProcess.stdoutFd)
+                  }.void
+                }
 
-          def stdin: Pipe[F, Byte, Nothing] = { in =>
-            in
-              .through(writeFd(nativeProcess.stdinFd))
-              .onFinalize {
-                F.blocking {
-                  close(nativeProcess.stdinFd)
-                }.void
+              def stderr: Stream[F, Byte] = readFd(nativeProcess.stderrFd, 8192)
+                .onFinalize {
+                  F.blocking {
+                    close(nativeProcess.stderrFd)
+                  }.void
+                }
+            }
+          }
+        }
+
+        private def fallbackExitValue(pid: pid_t): F[Int] = {
+          def loop: F[Int] =
+            F.blocking {
+              Zone { _ =>
+                val status = stackalloc[CInt]()
+                val result = waitpid(pid, status, WNOHANG)
+
+                if (result == pid) {
+                  Some(WEXITSTATUS(!status))
+                } else if (result == 0) None
+                else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
               }
-          }
-          def stdout: Stream[F, Byte] = readFd(nativeProcess.stdoutFd, 8192)
-            .onFinalize {
-              F.blocking {
-                close(nativeProcess.stdoutFd)
-              }.void
+            }.flatMap {
+              case Some(code) => F.pure(code)
+              case None       => F.sleep(100.millis) >> loop
             }
 
-          def stderr: Stream[F, Byte] = readFd(nativeProcess.stderrFd, 8192)
-            .onFinalize {
-              F.blocking {
-                close(nativeProcess.stderrFd)
-              }.void
+          loop.onCancel {
+            F.blocking {
+              kill(pid, SIGKILL)
+              ()
             }
-        }
-      }
-    }
-
-    private def fallbackExitValue(pid: pid_t): F[Int] = {
-      def loop: F[Int] =
-        F.blocking {
-          Zone { _ =>
-            val status = stackalloc[CInt]()
-            val result = waitpid(pid, status, WNOHANG)
-
-            if (result == pid) {
-              Some(WEXITSTATUS(!status))
-            } else if (result == 0) None
-            else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
           }
-        }.flatMap {
-          case Some(code) => F.pure(code)
-          case None       => F.sleep(100.millis) >> loop
         }
 
-      loop.onCancel {
-        F.blocking {
-          kill(pid, SIGKILL)
-          ()
-        }
       }
-    }
-
-  }
+    } else super.forAsync[F]
 }
