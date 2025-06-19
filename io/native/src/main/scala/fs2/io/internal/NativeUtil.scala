@@ -76,7 +76,7 @@ private[io] object NativeUtil {
     else if (e == ECONNREFUSED)
       new ConnectException(msg)
     else
-      new IOException(msg)
+      new IOException(s"errno($e) $msg")
   }
 
   def setNonBlocking[F[_]](fd: CInt)(implicit F: Sync[F]): F[Unit] = F.delay {

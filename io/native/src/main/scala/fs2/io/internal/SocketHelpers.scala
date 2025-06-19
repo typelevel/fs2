@@ -21,19 +21,23 @@
 
 package fs2.io.internal
 
-import cats.effect.kernel.Resource
-import cats.effect.kernel.Sync
+import cats.effect.{Resource, Sync}
 import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Ipv4Address
-import com.comcast.ip4s.Ipv6Address
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{
+  GenSocketAddress,
+  IpAddress,
+  Ipv4Address,
+  Ipv6Address,
+  Port,
+  SocketAddress,
+  UnixSocketAddress
+}
 
 import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.arpa.inet._
+import scala.scalanative.posix.errno.ENOPROTOOPT
 import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
@@ -46,6 +50,8 @@ import NativeUtil._
 import netinetin._
 import netinetinOps._
 import syssocket._
+import sysun._
+import sysunOps._
 
 private[io] object SocketHelpers {
 
@@ -65,6 +71,67 @@ private[io] object SocketHelpers {
         (if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit) *>
           (if (LinktimeInfo.isMac) setNoSigPipe(fd) else F.unit)
       }
+
+  // TODO: Support other options (e.g. extended options?)
+
+  def supportedOptions[F[_]: Sync]: F[Set[SocketOption[?]]] =
+    Sync[F].pure(
+      Set(
+        StandardSocketOptions.SO_SNDBUF,
+        StandardSocketOptions.SO_RCVBUF,
+        StandardSocketOptions.SO_REUSEADDR,
+        StandardSocketOptions.SO_REUSEPORT,
+        StandardSocketOptions.SO_KEEPALIVE,
+        StandardSocketOptions.TCP_NODELAY
+      )
+    )
+
+  def getOption[F[_]: Sync, A](fd: CInt, name: SocketOption[A]): F[Option[A]] = (name match {
+    case StandardSocketOptions.SO_SNDBUF =>
+      getOptionInt(fd, SO_SNDBUF)
+    case StandardSocketOptions.SO_RCVBUF =>
+      getOptionInt(fd, SO_RCVBUF)
+    case StandardSocketOptions.SO_REUSEADDR =>
+      getOptionInt(fd, SO_REUSEADDR)
+    case StandardSocketOptions.SO_REUSEPORT =>
+      getOptionBool(fd, SO_REUSEPORT)
+    case StandardSocketOptions.SO_KEEPALIVE =>
+      getOptionBool(fd, SO_KEEPALIVE)
+    case StandardSocketOptions.TCP_NODELAY =>
+      getTcpOptionBool(fd, TCP_NODELAY)
+    case _ => Sync[F].pure(None)
+  }).asInstanceOf[F[Option[A]]]
+
+  def getOptionBool[F[_]: Sync](fd: CInt, option: CInt): F[Option[Boolean]] =
+    getOptionInt(fd, option).map(_.map(v => if (v == 0) false else true))
+
+  def getOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
+    getOptionImpl(fd, SOL_SOCKET, option)
+
+  def getTcpOptionBool[F[_]: Sync](fd: CInt, option: CInt): F[Option[Boolean]] =
+    getTcpOptionInt(fd, option).map(_.map(v => if (v == 0) false else true))
+
+  def getTcpOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
+    getOptionImpl(fd, IPPROTO_TCP /* aka SOL_TCP */, option)
+
+  def getOptionImpl[F[_]](fd: CInt, level: CInt, option: CInt)(implicit
+      F: Sync[F]
+  ): F[Option[Int]] =
+    F.delay {
+      val ptr = stackalloc[CInt]()
+      val szPtr = stackalloc[UInt]()
+      !szPtr = sizeof[CInt].toUInt
+      val ret = guardMask(
+        getsockopt(
+          fd,
+          level,
+          option,
+          ptr.asInstanceOf[Ptr[Byte]],
+          szPtr
+        )
+      )(_ == ENOPROTOOPT)
+      if (ret == ENOPROTOOPT) None else Some(!ptr)
+    }
 
   // macOS-only
   def setNoSigPipe[F[_]: Sync](fd: CInt): F[Unit] =
@@ -158,13 +225,14 @@ private[io] object SocketHelpers {
       throw errnoToThrowable(!optval)
   }
 
-  def getLocalAddress[F[_]](fd: Int, ipv4: Boolean)(implicit
-      F: Sync[F]
-  ): F[SocketAddress[IpAddress]] =
-    F.delay {
-      SocketHelpers.toSocketAddress(ipv4) { (addr, len) =>
-        guard_(getsockname(fd, addr, len))
-      }
+  def getAddress(fd: Int, domain: CInt): GenSocketAddress =
+    SocketHelpers.toSocketAddress(domain) { (addr, len) =>
+      guard_(getsockname(fd, addr, len))
+    }
+
+  def getPeerAddress(fd: Int, domain: CInt): GenSocketAddress =
+    SocketHelpers.toSocketAddress(domain) { (addr, len) =>
+      guard_(getpeername(fd, addr, len))
     }
 
   def toSockaddr[A](
@@ -252,29 +320,33 @@ private[io] object SocketHelpers {
     }
   }
 
-  def allocateSockaddr[A](
+  def allocateSockaddr[A](domain: CInt)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => A
   ): A = {
-    val addr = // allocate enough for an IPv6
-      stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]]
+    // FIXME: Scala Native 0.4 doesn't support getsockname for unix sockets; after upgrading to 0.5,
+    // this can be simplified to just allocate a sockaddr_un
+    val (addr, lenValue) = // allocate enough for unix socket address
+      if (domain == AF_UNIX)
+        (stackalloc[sockaddr_un]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_un].toUInt)
+      else (stackalloc[sockaddr_in6]().asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_in6].toUInt)
+
     val len = stackalloc[socklen_t]()
-    !len = sizeof[sockaddr_in6].toUInt
-
+    !len = lenValue
     f(addr, len)
   }
 
-  def toSocketAddress[A](ipv4: Boolean)(
+  def toSocketAddress[A](domain: CInt)(
       f: (Ptr[sockaddr], Ptr[socklen_t]) => Unit
-  ): SocketAddress[IpAddress] = allocateSockaddr { (addr, len) =>
+  ): GenSocketAddress = allocateSockaddr(domain) { (addr, len) =>
     f(addr, len)
-    toSocketAddress(addr, ipv4)
+    toSocketAddress(addr, domain)
   }
 
-  def toSocketAddress(addr: Ptr[sockaddr], ipv4: Boolean): SocketAddress[IpAddress] =
-    if (ipv4)
-      toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
-    else
-      toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
+  def toSocketAddress(addr: Ptr[sockaddr], domain: CInt): GenSocketAddress =
+    if (domain == AF_INET) toIpv4SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in]])
+    else if (domain == AF_INET6) toIpv6SocketAddress(addr.asInstanceOf[Ptr[sockaddr_in6]])
+    else if (domain == AF_UNIX) toUnixSocketAddress(addr.asInstanceOf[Ptr[sockaddr_un]])
+    else throw new UnsupportedOperationException
 
   private[this] def toIpv4SocketAddress(addr: Ptr[sockaddr_in]): SocketAddress[Ipv4Address] = {
     val port = Port.fromInt(ntohs(addr.sin_port).toInt).get
@@ -297,5 +369,10 @@ private[io] object SocketHelpers {
       addr
     }.get
     SocketAddress(host, port)
+  }
+
+  private[this] def toUnixSocketAddress(addr: Ptr[sockaddr_un]): UnixSocketAddress = {
+    val path = fromCString(addr.sun_path.asInstanceOf[CString])
+    UnixSocketAddress(path)
   }
 }

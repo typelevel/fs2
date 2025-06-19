@@ -22,29 +22,25 @@
 package fs2
 package io.net
 
-import cats.effect.LiftIO
-import cats.effect.Selector
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
+import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
-import com.comcast.ip4s.Dns
-import com.comcast.ip4s.Host
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.{Dns, Host, IpAddress, SocketAddress}
 
 import java.net.InetSocketAddress
-import java.nio.channels.AsynchronousCloseException
-import java.nio.channels.ClosedChannelException
-import java.nio.channels.SelectionKey.OP_ACCEPT
-import java.nio.channels.SelectionKey.OP_CONNECT
-import java.nio.channels.SocketChannel
+import java.nio.channels.{
+  AsynchronousCloseException,
+  ClosedChannelException,
+  SelectionKey,
+  SocketChannel
+}
 
-private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(implicit
-    F: Async[F]
-) extends SocketGroup[F] {
+private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
+    F: Async[F],
+    F2: LiftIO[F],
+    F3: Dns[F]
+) extends IpSocketsProvider[F] {
 
-  def client(
+  override def connectIp(
       to: SocketAddress[Host],
       options: List[SocketOption]
   ): Resource[F, Socket[F]] =
@@ -61,55 +57,43 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
         val connect = to.resolve.flatMap { ip =>
           F.delay(ch.connect(ip.toInetSocketAddress)).flatMap { connected =>
             selector
-              .select(ch, OP_CONNECT)
+              .select(ch, SelectionKey.OP_CONNECT)
               .to
               .untilM_(F.delay(ch.finishConnect()))
-              .unlessA(connected)
+              .unlessA(connected) *> F
+              .delay {
+                localAddress(ch) -> remoteAddress(ch)
+              }
+              .flatMap { case (addr, peerAddr) =>
+                SelectingSocket[F](
+                  selector,
+                  ch,
+                  addr,
+                  peerAddr
+                )
+              }
           }
         }
 
-        val make = SelectingSocket[F](
-          selector,
-          ch,
-          localAddress(ch),
-          remoteAddress(ch)
-        )
-
-        configure *> connect *> make
+        configure *> connect
       }
 
-  def server(
-      address: Option[Host],
-      port: Option[Port],
+  override def bindIp(
+      address: SocketAddress[Host],
       options: List[SocketOption]
-  ): Stream[F, Socket[F]] =
-    Stream
-      .resource(
-        serverResource(
-          address,
-          port,
-          options
-        )
-      )
-      .flatMap { case (_, clients) => clients }
-
-  def serverResource(
-      address: Option[Host],
-      port: Option[Port],
-      options: List[SocketOption]
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
+  ): Resource[F, ServerSocket[F]] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         F.delay(ch.close())
       }
-      .evalMap { serverCh =>
-        val configure = address.traverse(_.resolve).flatMap { ip =>
+      .evalMap { sch =>
+        val configure = address.host.resolve.flatMap { addr =>
           F.delay {
-            serverCh.configureBlocking(false)
-            serverCh.bind(
+            sch.configureBlocking(false)
+            sch.bind(
               new InetSocketAddress(
-                ip.map(_.toInetAddress).orNull,
-                port.map(_.value).getOrElse(0)
+                if (addr.isWildcard) null else addr.toInetAddress,
+                address.port.value
               )
             )
           }
@@ -118,8 +102,8 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
         def acceptLoop: Stream[F, SocketChannel] = Stream
           .bracketFull[F, SocketChannel] { poll =>
             def go: F[SocketChannel] =
-              F.delay(serverCh.accept()).flatMap {
-                case null => poll(selector.select(serverCh, OP_ACCEPT).to) *> go
+              F.delay(sch.accept()).flatMap {
+                case null => poll(selector.select(sch, SelectionKey.OP_ACCEPT).to) *> go
                 case ch   => F.pure(ch)
               }
             go
@@ -130,39 +114,31 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
             case ex                                                        => Stream.raiseError(ex)
           }
 
-        val clients = acceptLoop.evalMap { ch =>
+        val accept = acceptLoop.evalMap { ch =>
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
-          } *> SelectingSocket[F](
-            selector,
-            ch,
-            localAddress(ch),
-            remoteAddress(ch)
-          )
+            localAddress(ch) -> remoteAddress(ch)
+          }.flatMap { case (addr, peerAddr) =>
+            SelectingSocket[F](
+              selector,
+              ch,
+              addr,
+              peerAddr
+            )
+          }
         }
 
-        val socketAddress = F.delay {
-          SocketAddress.fromInetSocketAddress(
-            serverCh.getLocalAddress.asInstanceOf[InetSocketAddress]
-          )
-        }
-
-        configure *> socketAddress.tupleRight(clients)
+        configure *> F.delay(ServerSocket(SocketInfo.forAsync(sch), accept))
       }
 
-  private def localAddress(ch: SocketChannel) =
-    F.delay {
-      SocketAddress.fromInetSocketAddress(
-        ch.getLocalAddress.asInstanceOf[InetSocketAddress]
-      )
-    }
+  private def localAddress(ch: SocketChannel): SocketAddress[IpAddress] =
+    SocketAddress.fromInetSocketAddress(
+      ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+    )
 
-  private def remoteAddress(ch: SocketChannel) =
-    F.delay {
-      SocketAddress.fromInetSocketAddress(
-        ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
-      )
-    }
-
+  private def remoteAddress(ch: SocketChannel): SocketAddress[IpAddress] =
+    SocketAddress.fromInetSocketAddress(
+      ch.getRemoteAddress.asInstanceOf[InetSocketAddress]
+    )
 }
