@@ -97,7 +97,7 @@ private[io] object dgram {
   @js.native
   trait AddressInfo extends js.Object {
     def address: String = js.native
-    def family: Int = js.native
+    def family: String = js.native
     def port: Int = js.native
   }
 
@@ -109,7 +109,7 @@ private[io] object dgram {
   @js.native
   trait RemoteInfo extends js.Object {
     def address: String = js.native
-    def family: Int = js.native
+    def family: String = js.native
     def port: Int = js.native
     def size: Int = js.native
   }

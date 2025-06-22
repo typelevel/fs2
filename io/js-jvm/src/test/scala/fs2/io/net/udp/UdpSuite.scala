@@ -31,7 +31,7 @@ import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 
-class UdpSuite extends Fs2Suite with UdpSuitePlatform {
+class UdpSuite extends Fs2Suite {
   private def sendAndReceive(socket: DatagramSocket[IO], toSend: Datagram): IO[Datagram] =
     socket
       .write(toSend) >> socket.read.timeoutTo(1.second, IO.defer(sendAndReceive(socket, toSend)))
@@ -114,25 +114,45 @@ class UdpSuite extends Fs2Suite with UdpSuitePlatform {
       val group = mip"239.10.10.10"
       val groupJoin = MulticastJoin.asm(group)
       val msg = Chunk.array("Hello, world!".getBytes)
-      Stream
-        .resource(
-          Network[IO]
-            .bindDatagramSocket(
-              options = List(SocketOption.multicastTtl(1))
+      val outgoingInterface =
+        // Get first non-loopback interface with an IPv4 address
+        Network[IO].interfaces.getAll.map { interfaces =>
+          interfaces.values
+            .filterNot(_.isLoopback)
+            .flatMap(iface =>
+              iface.addresses.filter(_.address.fold(_ => true, _ => false)).as(iface)
             )
-            .evalMap { serverSocket =>
-              v4Interfaces
-                .traverse_(interface => serverSocket.join(groupJoin, interface))
-                .as(serverSocket)
+            .head
+        }
+      Stream
+        .eval(outgoingInterface)
+        .flatMap { out =>
+          Stream
+            .resource(
+              Network[IO]
+                .bindDatagramSocket(
+                  options = List(SocketOption.multicastTtl(1), SocketOption.multicastInterface(out))
+                )
+                .evalMap { serverSocket =>
+                  Network[IO].interfaces.getAll.flatMap { interfaces =>
+                    interfaces.values.toList
+                      .filter(iface =>
+                        iface.addresses.exists(_.address.fold(_ => true, _ => false))
+                      )
+                      .traverse_(iface => serverSocket.join(groupJoin, iface))
+                      .as(serverSocket)
+                  }
+                }
+            )
+            .flatMap { serverSocket =>
+              val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
+              val client =
+                Stream.resource(Network[IO].bindDatagramSocket()).flatMap { clientSocket =>
+                  val to = SocketAddress(group.address, serverSocket.address.asIpUnsafe.port)
+                  Stream.eval(clientSocket.write(msg, to) >> clientSocket.read)
+                }
+              client.concurrently(server)
             }
-        )
-        .flatMap { serverSocket =>
-          val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
-          val client = Stream.resource(Network[IO].bindDatagramSocket()).flatMap { clientSocket =>
-            val to = SocketAddress(group.address, serverSocket.address.asIpUnsafe.port)
-            Stream.eval(clientSocket.write(msg, to) >> clientSocket.read)
-          }
-          client.concurrently(server)
         }
         .compile
         .lastOrError

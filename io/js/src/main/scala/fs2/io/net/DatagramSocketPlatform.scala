@@ -31,13 +31,16 @@ import cats.effect.std.Dispatcher
 import cats.effect.std.Queue
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.comcast.ip4s.AnySourceMulticastJoin
-import com.comcast.ip4s.GenSocketAddress
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.MulticastJoin
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
-import com.comcast.ip4s.SourceSpecificMulticastJoin
+import com.comcast.ip4s.{
+  AnySourceMulticastJoin,
+  GenSocketAddress,
+  IpAddress,
+  MulticastJoin,
+  NetworkInterface => Ip4sNetworkInterface,
+  Port,
+  SocketAddress,
+  SourceSpecificMulticastJoin
+}
 import fs2.io.internal.facade
 
 import scala.scalajs.js
@@ -48,6 +51,8 @@ private[net] trait DatagramSocketPlatform[F[_]] {
 }
 
 private[net] trait DatagramSocketCompanionPlatform {
+
+  @deprecated("Use com.comcast.ip4s.NetworkInterface", "3.13.0")
   type NetworkInterface = String
 
   private[net] def forAsync[F[_]](
@@ -142,7 +147,49 @@ private[net] trait DatagramSocketCompanionPlatform {
 
     override def join(
         join: MulticastJoin[IpAddress],
-        interface: NetworkInterface
+        interface: Ip4sNetworkInterface
+    ): F[GroupMembership] = F
+      .delay {
+        val interfaceAddress = interface.addresses
+          .collectFirst { case c if c.address.fold(_ => true, _ => false) => c.address }
+          .getOrElse(
+            throw new IllegalArgumentException("specified interface does not have ipv4 address")
+          )
+          .toString
+        join match {
+          case AnySourceMulticastJoin(group) =>
+            sock.addMembership(group.address.toString, interfaceAddress)
+          case SourceSpecificMulticastJoin(source, group) =>
+            sock.addSourceSpecificMembership(
+              source.toString,
+              group.address.toString,
+              interfaceAddress
+            )
+        }
+        interfaceAddress
+      }
+      .map { interfaceAddress =>
+        new GroupMembership {
+
+          override def drop: F[Unit] = F.delay {
+            join match {
+              case AnySourceMulticastJoin(group) =>
+                sock.dropMembership(group.address.toString, interfaceAddress)
+              case SourceSpecificMulticastJoin(source, group) =>
+                sock.dropSourceSpecificMembership(
+                  source.toString,
+                  group.address.toString,
+                  interfaceAddress
+                )
+            }
+          }
+        }
+      }
+
+    @deprecated("Use overload that takes a com.comcast.ip4s.NetworkInterface", "3.13.0")
+    override def join(
+        join: MulticastJoin[IpAddress],
+        interface: DatagramSocket.NetworkInterface
     ): F[GroupMembership] = F
       .delay {
         join match {

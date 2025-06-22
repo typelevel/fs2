@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.kernel.Sync
+import com.comcast.ip4s.NetworkInterface
 import fs2.io.internal.facade
 
 /** Specifies a socket option on a TCP/UDP socket.
@@ -65,10 +66,13 @@ object DatagramSocketOption {
     override private[net] def toSocketOption: SocketOption.Key[Boolean] = SocketOption.Broadcast
   }
 
-  object MulticastInterface extends Key[String] {
-    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
-      Sync[F].delay(sock.setMulticastInterface(value))
-    override private[net] def toSocketOption: SocketOption.Key[String] =
+  object MulticastInterface extends Key[NetworkInterface] {
+    override private[net] def set[F[_]: Sync](
+        sock: facade.dgram.Socket,
+        value: NetworkInterface
+    ): F[Unit] =
+      SocketOption.MulticastInterface.set(sock, value)
+    override private[net] def toSocketOption: SocketOption.Key[NetworkInterface] =
       SocketOption.MulticastInterface
   }
 
@@ -116,7 +120,8 @@ object DatagramSocketOption {
   }
 
   def broadcast(value: Boolean): DatagramSocketOption = apply(Broadcast, value)
-  def multicastInterface(value: String): DatagramSocketOption = apply(MulticastInterface, value)
+  def multicastInterface(value: NetworkInterface): DatagramSocketOption =
+    apply(MulticastInterface, value)
   def multicastLoopback(value: Boolean): DatagramSocketOption = apply(MulticastLoopback, value)
   def multicastTtl(value: Int): DatagramSocketOption = apply(MulticastTtl, value)
   def receiveBufferSize(value: Int): DatagramSocketOption = apply(ReceiveBufferSize, value)

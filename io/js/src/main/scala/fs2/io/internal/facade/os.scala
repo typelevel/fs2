@@ -39,17 +39,6 @@ private[io] object os {
   def `type`(): String = js.native
 
   @js.native
-  @JSImport("os", "networkInterfaces")
-  def networkInterfaces(): js.Dictionary[js.Array[NetworkInterfaceInfo]] = js.native
-
-  @js.native
   @JSImport("os", "EOL")
   def EOL: String = js.native
-
-  @js.native
-  trait NetworkInterfaceInfo extends js.Object {
-    def family: String = js.native
-    def address: String = js.native
-  }
-
 }

@@ -83,7 +83,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       private def tryGetSelector =
         IO.pollers.map(_.collectFirst { case selector: Selector => selector }).to[F]
 
-      private implicit def dns: Dns[F] = Dns.forAsync[F]
+      private implicit def dnsInstance: Dns[F] = dns
 
       private def selecting[A](
           ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A],

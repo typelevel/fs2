@@ -22,6 +22,7 @@
 package fs2.io.net
 
 import cats.effect.kernel.Sync
+import com.comcast.ip4s.NetworkInterface
 import fs2.io.internal.facade
 
 import scala.annotation.nowarn
@@ -118,11 +119,30 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   }
   def broadcast(value: Boolean): SocketOption = apply(Broadcast, value)
 
-  object MulticastInterface extends Key[String] {
-    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
-      Sync[F].delay(sock.setMulticastInterface(value))
+  object MulticastInterface extends Key[NetworkInterface] {
+    override private[net] def set[F[_]: Sync](
+        sock: facade.dgram.Socket,
+        value: NetworkInterface
+    ): F[Unit] =
+      Sync[F].delay {
+        val mi = sock.address().family match {
+          case "IPv4" =>
+            value.addresses
+              .collectFirst {
+                case c if c.address.fold(_ => true, _ => false) => c.address.toString
+              }
+              .getOrElse(
+                throw new IllegalArgumentException(
+                  "socket is IPv4 but specified interface does not have an IPv4 address"
+                )
+              )
+          case "IPv6" => "::%" + value.name
+          case other  => throw new IllegalStateException(s"unexpected socket family: $other")
+        }
+        sock.setMulticastInterface(mi)
+      }
   }
-  def multicastInterface(value: String): SocketOption = apply(MulticastInterface, value)
+  def multicastInterface(value: NetworkInterface): SocketOption = apply(MulticastInterface, value)
 
   object MulticastLoop extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =

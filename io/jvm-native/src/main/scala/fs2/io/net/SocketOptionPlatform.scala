@@ -25,7 +25,9 @@ import java.net.{SocketOption => JSocketOption}
 import java.net.StandardSocketOptions
 
 import java.lang.{Boolean => JBoolean, Integer => JInt}
-import java.net.NetworkInterface
+import java.net.{NetworkInterface => JNetworkInterface}
+
+import com.comcast.ip4s.NetworkInterface
 
 private[net] trait SocketOptionCompanionPlatform {
   type Key[A] = JSocketOption[A]
@@ -38,6 +40,9 @@ private[net] trait SocketOptionCompanionPlatform {
 
   val MulticastInterface = StandardSocketOptions.IP_MULTICAST_IF
   def multicastInterface(value: NetworkInterface): SocketOption =
+    SocketOption(MulticastInterface, JNetworkInterface.getByName(value.name))
+
+  def multicastInterface(value: JNetworkInterface): SocketOption =
     SocketOption(MulticastInterface, value)
 
   val MulticastLoop = StandardSocketOptions.IP_MULTICAST_LOOP

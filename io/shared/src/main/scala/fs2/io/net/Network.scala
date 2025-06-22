@@ -26,10 +26,12 @@ package net
 import cats.ApplicativeThrow
 import cats.effect.{Async, IO, Resource}
 import com.comcast.ip4s.{
+  Dns,
   GenSocketAddress,
   Host,
   IpAddress,
   Ipv4Address,
+  NetworkInterfaces,
   Port,
   SocketAddress,
   UnixSocketAddress
@@ -110,6 +112,12 @@ sealed trait Network[F[_]]
     * For example, `Network[IO].tlsContext.system` returns a `F[TLSContext[F]]`.
     */
   def tlsContext: TLSContext.Builder[F]
+
+  /** Explicit instance of `Dns[F]`. */
+  def dns: Dns[F]
+
+  /** Explicit instance of `NetworkInterfaces[F]`. */
+  def interfaces: NetworkInterfaces[F]
 }
 
 object Network extends NetworkCompanionPlatform {
@@ -118,6 +126,9 @@ object Network extends NetworkCompanionPlatform {
   private[fs2] trait UnsealedNetwork[F[_]] extends Network[F]
 
   private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
+
+    def dns: Dns[F] = Dns.forAsync(F)
+    def interfaces: NetworkInterfaces[F] = NetworkInterfaces.forAsync(F)
 
     override def bindAndAccept(
         address: GenSocketAddress,

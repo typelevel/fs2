@@ -28,7 +28,13 @@ import cats.effect.std.Mutex
 import cats.effect.syntax.all._
 import cats.syntax.all._
 
-import com.comcast.ip4s.{GenSocketAddress, IpAddress, MulticastJoin, UnixSocketAddress}
+import com.comcast.ip4s.{
+  GenSocketAddress,
+  IpAddress,
+  MulticastJoin,
+  NetworkInterface,
+  UnixSocketAddress
+}
 
 import fs2.io.file.Files
 
@@ -173,6 +179,15 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
 
           override def writes = _.foreach(write)
 
+          override def join(
+              join: MulticastJoin[IpAddress],
+              interface: NetworkInterface
+          ) =
+            F.raiseError(
+              new UnsupportedOperationException("Multicast not supported on unix datagram sockets")
+            )
+
+          @deprecated("Use overload that takes a com.comcast.ip4s.NetworkInterface", "3.13.0")
           override def join(
               join: MulticastJoin[IpAddress],
               interface: DatagramSocket.NetworkInterface

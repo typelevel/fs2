@@ -24,7 +24,7 @@ package io
 package net
 package tls
 
-import java.net.NetworkInterface
+import java.net.{NetworkInterface => JNetworkInterface}
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource, Sync}
@@ -107,6 +107,12 @@ object DTLSSocket {
         override def join(
             join: MulticastJoin[IpAddress],
             interface: NetworkInterface
+        ): F[GroupMembership] =
+          Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
+
+        override def join(
+            join: MulticastJoin[IpAddress],
+            interface: JNetworkInterface
         ): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
 

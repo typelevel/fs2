@@ -27,13 +27,13 @@ import java.net.InetSocketAddress
 
 import cats.syntax.all._
 import cats.effect.{Async, Resource}
-import com.comcast.ip4s.{Dns, Host, SocketAddress}
+import com.comcast.ip4s.{Dns, Host, NetworkInterface, SocketAddress}
 
 import fs2.internal.ThreadFactories
 import java.net.StandardProtocolFamily
 import java.nio.channels.DatagramChannel
 import com.comcast.ip4s.*
-import java.net.NetworkInterface
+import java.net.{NetworkInterface => JNetworkInterface}
 import CollectionCompat.*
 
 private[net] object AsyncIpDatagramSocketsProvider {
@@ -131,10 +131,11 @@ private[net] object AsyncIpDatagramSocketsProvider {
                 interface: NetworkInterface
             ): F[GroupMembership] =
               Async[F].delay {
+                val jinterface = JNetworkInterface.getByName(interface.name)
                 val membership = join.fold(
-                  j => channel.join(j.group.address.toInetAddress, interface),
+                  j => channel.join(j.group.address.toInetAddress, jinterface),
                   j =>
-                    channel.join(j.group.address.toInetAddress, interface, j.source.toInetAddress)
+                    channel.join(j.group.address.toInetAddress, jinterface, j.source.toInetAddress)
                 )
                 new GroupMembership {
                   def drop = Async[F].delay(membership.drop)
@@ -145,6 +146,12 @@ private[net] object AsyncIpDatagramSocketsProvider {
                   override def toString = "GroupMembership"
                 }
               }
+
+            override def join(
+                j: MulticastJoin[IpAddress],
+                interface: JNetworkInterface
+            ): F[GroupMembership] =
+              join(j, NetworkInterface.fromJava(interface))
 
             override def supportedOptions: F[Set[SocketOption.Key[?]]] =
               Async[F].delay {
