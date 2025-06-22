@@ -347,7 +347,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.DatagramSocketOption#Key.toSocketOption"
-  )
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.join"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.DatagramSocketOption.multicastInterface"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.dns"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.interfaces")
 )
 
 lazy val root = tlCrossRootProject
