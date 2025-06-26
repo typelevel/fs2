@@ -128,7 +128,7 @@ object Network extends NetworkCompanionPlatform {
   private[fs2] abstract class AsyncNetwork[F[_]](implicit F: Async[F]) extends Network[F] {
 
     def dns: Dns[F] = Dns.forAsync(F)
-    def interfaces: NetworkInterfaces[F] = NetworkInterfaces.forAsync(F)
+    def interfaces: NetworkInterfaces[F] = NetworkInterfaces.forSync(F)
 
     override def bindAndAccept(
         address: GenSocketAddress,
