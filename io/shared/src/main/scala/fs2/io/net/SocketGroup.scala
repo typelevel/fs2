@@ -25,7 +25,6 @@ package net
 
 import cats.effect.kernel.Resource
 import com.comcast.ip4s.{Host, IpAddress, Port, SocketAddress}
-import cats.effect.kernel.Async
 
 /** Supports creation of client and server TCP sockets that all share
   * an underlying non-blocking channel group.
@@ -39,6 +38,7 @@ trait SocketGroup[F[_]] {
     * @param to      address of remote server
     * @param options socket options to apply to the underlying socket
     */
+  @deprecated("3.13.0", "Use Network[F].connect instead")
   def client(
       to: SocketAddress[Host],
       options: List[SocketOption] = List.empty
@@ -54,6 +54,7 @@ trait SocketGroup[F[_]] {
     * @param port               port to bind
     * @param options socket options to apply to the underlying socket
     */
+  @deprecated("3.13.0", "Use Network[F].bindAndAccept instead")
   def server(
       address: Option[Host] = None,
       port: Option[Port] = None,
@@ -64,30 +65,10 @@ trait SocketGroup[F[_]] {
     *
     * Make sure to handle errors in the client socket Streams.
     */
+  @deprecated("3.13.0", "Use Network[F].bind instead")
   def serverResource(
       address: Option[Host] = None,
       port: Option[Port] = None,
       options: List[SocketOption] = List.empty
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])]
-}
-
-private[net] object SocketGroup extends SocketGroupCompanionPlatform {
-
-  private[net] abstract class AbstractAsyncSocketGroup[F[_]: Async] extends SocketGroup[F] {
-    def server(
-        address: Option[Host],
-        port: Option[Port],
-        options: List[SocketOption]
-    ): Stream[F, Socket[F]] =
-      Stream
-        .resource(
-          serverResource(
-            address,
-            port,
-            options
-          )
-        )
-        .flatMap { case (_, clients) => clients }
-  }
-
 }

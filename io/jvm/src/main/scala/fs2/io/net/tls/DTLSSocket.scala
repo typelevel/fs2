@@ -24,7 +24,7 @@ package io
 package net
 package tls
 
-import java.net.NetworkInterface
+import java.net.{NetworkInterface => JNetworkInterface}
 
 import cats.Applicative
 import cats.effect.kernel.{Async, Resource, Sync}
@@ -63,25 +63,65 @@ object DTLSSocket {
   ): F[DTLSSocket[F]] =
     Applicative[F].pure {
       new DTLSSocket[F] {
+        override def connect(address: GenSocketAddress) =
+          socket.connect(address)
 
-        def read: F[Datagram] =
+        override def disconnect =
+          socket.disconnect
+
+        override def readGen: F[GenDatagram] = read.map(_.toGenDatagram)
+
+        override def read: F[Datagram] =
           engine.read(Int.MaxValue).flatMap {
             case Some(bytes) => Applicative[F].pure(Datagram(remoteAddress, bytes))
             case None        => read
           }
 
-        def reads: Stream[F, Datagram] =
+        override def reads: Stream[F, Datagram] =
           Stream.repeatEval(read)
-        def write(datagram: Datagram): F[Unit] =
+
+        override def write(bytes: Chunk[Byte]): F[Unit] =
+          engine.write(bytes)
+
+        override def write(bytes: Chunk[Byte], address: GenSocketAddress): F[Unit] =
+          if (address == remoteAddress) engine.write(bytes)
+          else
+            new IOException(
+              "Cannot write to a DTLSSocket with an address that differs from the connected address"
+            ).raiseError
+
+        override def write(datagram: Datagram): F[Unit] =
           engine.write(datagram.bytes)
 
-        def writes: Pipe[F, Datagram, Nothing] =
+        override def writes: Pipe[F, Datagram, Nothing] =
           _.foreach(write)
-        def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
-        def join(join: MulticastJoin[IpAddress], interface: NetworkInterface): F[GroupMembership] =
+
+        override def address = socket.address
+
+        @deprecated(
+          "3.13.0",
+          "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+        )
+        override def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
+
+        override def join(
+            join: MulticastJoin[IpAddress],
+            interface: NetworkInterface
+        ): F[GroupMembership] =
           Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
-        def beginHandshake: F[Unit] = engine.beginHandshake
-        def session: F[SSLSession] = engine.session
+
+        override def join(
+            join: MulticastJoin[IpAddress],
+            interface: JNetworkInterface
+        ): F[GroupMembership] =
+          Sync[F].raiseError(new RuntimeException("DTLSSocket does not support multicast"))
+
+        override def supportedOptions = socket.supportedOptions
+        override def getOption[A](key: SocketOption.Key[A]) = socket.getOption(key)
+        override def setOption[A](key: SocketOption.Key[A], value: A) = socket.setOption(key, value)
+
+        override def beginHandshake: F[Unit] = engine.beginHandshake
+        override def session: F[SSLSession] = engine.session
       }
     }
 }
