@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.kernel.Sync
+import com.comcast.ip4s.NetworkInterface
 import fs2.io.internal.facade
 
 /** Specifies a socket option on a TCP/UDP socket.
@@ -36,11 +37,21 @@ sealed trait DatagramSocketOption {
   type Value
   val key: DatagramSocketOption.Key[Value]
   val value: Value
+
+  private[net] def toSocketOption: SocketOption =
+    SocketOption(key.toSocketOption, value)
 }
 
 object DatagramSocketOption {
   sealed trait Key[A] {
+    private[net] def get[F[_]: Sync](sock: facade.dgram.Socket): F[Option[A]] = {
+      val _ = sock
+      Sync[F].raiseError(new UnsupportedOperationException("option does not support get"))
+    }
+
     private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: A): F[Unit]
+
+    private[net] def toSocketOption: SocketOption.Key[A]
   }
 
   def apply[A](key0: Key[A], value0: A): DatagramSocketOption = new DatagramSocketOption {
@@ -49,52 +60,68 @@ object DatagramSocketOption {
     val value = value0
   }
 
-  private object Broadcast extends Key[Boolean] {
+  object Broadcast extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
       Sync[F].delay(sock.setBroadcast(value))
+    override private[net] def toSocketOption: SocketOption.Key[Boolean] = SocketOption.Broadcast
   }
 
-  private object MulticastInterface extends Key[String] {
-    override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: String): F[Unit] =
-      Sync[F].delay(sock.setMulticastInterface(value))
+  object MulticastInterface extends Key[NetworkInterface] {
+    override private[net] def set[F[_]: Sync](
+        sock: facade.dgram.Socket,
+        value: NetworkInterface
+    ): F[Unit] =
+      SocketOption.MulticastInterface.set(sock, value)
+    override private[net] def toSocketOption: SocketOption.Key[NetworkInterface] =
+      SocketOption.MulticastInterface
   }
 
-  private object MulticastLoopback extends Key[Boolean] {
+  object MulticastLoopback extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Boolean): F[Unit] =
       Sync[F].delay {
         sock.setMulticastLoopback(value)
         ()
       }
+    override private[net] def toSocketOption: SocketOption.Key[Boolean] = SocketOption.MulticastLoop
   }
 
-  private object MulticastTtl extends Key[Int] {
+  object MulticastTtl extends Key[Int] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay {
         sock.setMulticastTTL(value)
         ()
       }
+    override private[net] def toSocketOption: SocketOption.Key[Int] = SocketOption.MulticastTtl
   }
 
-  private object ReceiveBufferSize extends Key[Int] {
+  object ReceiveBufferSize extends Key[Int] {
+    override private[net] def get[F[_]: Sync](sock: facade.dgram.Socket) =
+      Sync[F].delay(Some(sock.getRecvBufferSize))
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay(sock.setRecvBufferSize(value))
+    override private[net] def toSocketOption: SocketOption.Key[Int] = SocketOption.ReceiveBufferSize
   }
 
-  private object SendBufferSize extends Key[Int] {
+  object SendBufferSize extends Key[Int] {
+    override private[net] def get[F[_]: Sync](sock: facade.dgram.Socket) =
+      Sync[F].delay(Some(sock.getSendBufferSize))
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay(sock.setSendBufferSize(value))
+    override private[net] def toSocketOption: SocketOption.Key[Int] = SocketOption.SendBufferSize
   }
 
-  private object Ttl extends Key[Int] {
+  object Ttl extends Key[Int] {
     override private[net] def set[F[_]: Sync](sock: facade.dgram.Socket, value: Int): F[Unit] =
       Sync[F].delay {
         sock.setTTL(value)
         ()
       }
+    override private[net] def toSocketOption: SocketOption.Key[Int] = SocketOption.Ttl
   }
 
   def broadcast(value: Boolean): DatagramSocketOption = apply(Broadcast, value)
-  def multicastInterface(value: String): DatagramSocketOption = apply(MulticastInterface, value)
+  def multicastInterface(value: NetworkInterface): DatagramSocketOption =
+    apply(MulticastInterface, value)
   def multicastLoopback(value: Boolean): DatagramSocketOption = apply(MulticastLoopback, value)
   def multicastTtl(value: Int): DatagramSocketOption = apply(MulticastTtl, value)
   def receiveBufferSize(value: Int): DatagramSocketOption = apply(ReceiveBufferSize, value)

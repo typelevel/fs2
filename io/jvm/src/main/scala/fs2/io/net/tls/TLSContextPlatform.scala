@@ -186,7 +186,7 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
                   new TLSEngine.Binding[F] {
                     def write(data: Chunk[Byte]): F[Unit] =
                       if (data.isEmpty) Applicative[F].unit
-                      else socket.write(Datagram(remoteAddress, data))
+                      else socket.write(data, remoteAddress)
                     def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
                       socket.read.map(p => Some(p.bytes))
                   },
