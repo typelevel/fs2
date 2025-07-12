@@ -74,7 +74,7 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
   }
 
   @inline private def closeAll(fds: Int*): Unit =
-    fds.foreach(fd => if (fd >= 0) close(fd))
+    fds.foreach { fd => close(fd); () }
 
   def forAsync[F[_]: LiftIO](implicit F: Async[F]): Processes[F] =
     if (LinktimeInfo.isMac || LinktimeInfo.isLinux) {
@@ -134,8 +134,11 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
                   closeAll(stdinPipe(0), stdoutPipe(1), stderrPipe(1))
 
                   process.workingDirectory.foreach { dir =>
-                    if ((dir != null) && (dir.toString != "."))
-                      chdir(toCString(dir.toString))
+                    if ((dir != null) && (dir.toString != ".")) {
+                      val ret = chdir(toCString(dir.toString))
+                      if (ret != 0)
+                        throw new IOException(s"Failed to chdir to ${dir.toString}")
+                    }
                   }
 
                   execve(toCString(executable), argv, envp)
