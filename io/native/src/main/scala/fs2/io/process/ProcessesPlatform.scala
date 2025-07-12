@@ -34,10 +34,8 @@ import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.unistd.*
 import scala.scalanative.posix.signal.*
 import java.io.IOException
-import scala.concurrent.duration.*
 import cats.effect.LiftIO
 import cats.effect.IO
-import cats.effect.implicits.*
 import org.typelevel.scalaccompat.annotation._
 
 @extern
@@ -63,38 +61,28 @@ final case class NativeProcess(
 )
 
 private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
+
+  private def findExecutable(cmd: String)(implicit z: Zone): Option[String] = {
+    val pathEnv = sys.env.getOrElse("PATH", "")
+    pathEnv
+      .split(':')
+      .find { dir =>
+        val full = s"$dir/$cmd"
+        access(toCString(full), X_OK) == 0
+      }
+      .map(dir => s"$dir/$cmd")
+  }
+
+  @inline private def closeAll(fds: Int*): Unit =
+    fds.foreach(fd => if (fd >= 0) close(fd))
+
   def forAsync[F[_]: LiftIO](implicit F: Async[F]): Processes[F] =
     if (LinktimeInfo.isMac || LinktimeInfo.isLinux) {
       new UnsealedProcesses[F] {
-
         def spawn(process: ProcessBuilder): Resource[F, Process[F]] = {
 
           def createProcess(): F[NativeProcess] = F.blocking {
             Zone { implicit z =>
-              def findExecutable(command: String): Option[String] = {
-                val pathEnv = sys.env.get("PATH").getOrElse("")
-                val paths = pathEnv.split(":").toList
-
-                paths
-                  .find { dir =>
-                    val fullPath = s"$dir/$command"
-                    access(toCString(fullPath), X_OK) == 0
-                  }
-                  .map(dir => s"$dir/$command")
-
-              }
-
-              val envMap =
-                if (process.inheritEnv)
-                  sys.env ++ process.extraEnv
-                else process.extraEnv
-
-              val executable =
-                if (process.command.contains("/")) {
-                  process.command
-                } else {
-                  findExecutable(process.command).getOrElse(process.command)
-                }
               val stdinPipe = stackalloc[CInt](2.toUInt)
               val stdoutPipe = stackalloc[CInt](2.toUInt)
               val stderrPipe = stackalloc[CInt](2.toUInt)
@@ -102,83 +90,92 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
               if (pipe(stdinPipe) != 0 || pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
                 throw new RuntimeException("Failed to create pipes")
               }
+              val envMap =
+                if (process.inheritEnv)
+                  sys.env ++ process.extraEnv
+                else process.extraEnv
 
-              val pid = fork()
-              if (pid < 0) {
-                close(stdinPipe(0)); close(stdinPipe(1))
-                close(stdoutPipe(0)); close(stdoutPipe(1))
-                close(stderrPipe(0)); close(stderrPipe(1))
-                throw new RuntimeException("fork failed")
-              } else if (pid == 0) {
-                close(stdinPipe(1))
-                close(stdoutPipe(0))
-                close(stderrPipe(0))
+              val envp = stackalloc[CString]((envMap.size + 1).toULong)
+              envMap.zipWithIndex.foreach { case ((k, v), i) =>
+                envp(i.toULong) = toCString(s"$k=$v")
+              }
+              envp(envMap.size.toULong) = null
 
-                if (
-                  dup2(stdinPipe(0), STDIN_FILENO) == -1 ||
-                  dup2(stdoutPipe(1), STDOUT_FILENO) == -1 ||
-                  dup2(stderrPipe(1), STDERR_FILENO) == -1
-                ) {
-                  _exit(1)
-                }
+              val allArgs = process.command +: process.args
+              val argv = stackalloc[CString](allArgs.length.toULong + 1.toULong)
+              allArgs.zipWithIndex.foreach { case (arg, i) =>
+                argv(i.toULong) = toCString(arg)
+              }
+              argv(allArgs.length.toULong) = null
 
-                close(stdinPipe(0))
-                close(stdoutPipe(1))
-                close(stderrPipe(1))
+              val executable = findExecutable(process.command).getOrElse(process.command)
 
-                process.workingDirectory.foreach { dir =>
-                  if (chdir(toCString(dir.toString)) != 0) {
+              fork() match {
+                case -1 =>
+                  closeAll(
+                    stdinPipe(0),
+                    stdinPipe(1),
+                    stdoutPipe(0),
+                    stdoutPipe(1),
+                    stderrPipe(0),
+                    stderrPipe(1)
+                  )
+                  throw new IOException("Unable to fork process")
+                case 0 =>
+                  closeAll(stdinPipe(1), stdoutPipe(0), stderrPipe(0))
+                  if (
+                    dup2(stdinPipe(0), STDIN_FILENO) == -1 ||
+                    dup2(stdoutPipe(1), STDOUT_FILENO) == -1 ||
+                    dup2(stderrPipe(1), STDERR_FILENO) == -1
+                  ) {
                     _exit(1)
+                    throw new IOException("Unable to redirect file descriptors")
                   }
-                }
+                  closeAll(stdinPipe(0), stdoutPipe(1), stderrPipe(1))
 
-                val allArgs = process.command +: process.args
-                val argv = stackalloc[CString](allArgs.length.toULong + 1.toULong)
-                allArgs.zipWithIndex.foreach { case (arg, i) =>
-                  argv(i.toULong) = toCString(arg)
-                }
-                argv(allArgs.length.toULong) = null
+                  process.workingDirectory.foreach { dir =>
+                    if ((dir != null) && (dir.toString != "."))
+                      chdir(toCString(dir.toString))
+                  }
 
-                val envp = stackalloc[CString]((envMap.size + 1).toULong)
-                envMap.zipWithIndex.foreach { case ((k, v), i) =>
-                  envp(i.toULong) = toCString(s"$k=$v")
-                }
-                envp(envMap.size.toULong) = null
-
-                execve(toCString(executable), argv, envp)
-                _exit(1)
-                throw new RuntimeException(s"execve failed")
-              } else {
-                close(stdinPipe(0))
-                close(stdoutPipe(1))
-                close(stderrPipe(1))
-                NativeProcess(
-                  pid = pid,
-                  stdinFd = stdinPipe(1),
-                  stdoutFd = stdoutPipe(0),
-                  stderrFd = stderrPipe(0)
-                )
+                  execve(toCString(executable), argv, envp)
+                  _exit(127)
+                  throw new IOException(s"Failed to create process for command: ${process.command}")
+                case pid =>
+                  closeAll(stdinPipe(0), stdoutPipe(1), stderrPipe(1))
+                  NativeProcess(
+                    pid = pid,
+                    stdinFd = stdinPipe(1),
+                    stdoutFd = stdoutPipe(0),
+                    stderrFd = stderrPipe(0)
+                  )
               }
             }
           }
 
           def cleanup(proc: NativeProcess): F[Unit] =
             F.blocking {
-              close(proc.stdinFd); close(proc.stdoutFd); close(proc.stderrFd)
-            } *>
-              F.delay(kill(proc.pid, SIGKILL)) *>
-              F.blocking {
+              closeAll(proc.stdinFd, proc.stdoutFd, proc.stderrFd)
+              val alive = {
+                val res = kill(proc.pid, 0)
+                res == 0 || errno.errno == EPERM
+              }
+              if (alive) {
+                kill(proc.pid, SIGKILL)
                 val status = stackalloc[CInt]()
-                val r = waitpid(proc.pid, status, WNOHANG)
-                if (r < 0 && errno.errno != ECHILD)
-                  throw new RuntimeException(s"waitpid failed: errno=${errno.errno}")
+                waitpid(proc.pid, status, 0)
+                ()
+              } else {
+                val status = stackalloc[CInt]()
+                waitpid(proc.pid, status, WNOHANG)
                 ()
               }
+            }
 
           Resource.make(createProcess())(cleanup).map { nativeProcess =>
             new UnsealedProcess[F] {
               def isAlive: F[Boolean] = F.delay {
-                kill(nativeProcess.pid, 0) == 0 || errno.errno != ESRCH
+                kill(nativeProcess.pid, 0) == 0 || errno.errno != EPERM
               }
 
               def exitValue: F[Int] =
@@ -191,23 +188,21 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
                           .use { handle =>
                             handle.pollReadRec(()) { _ =>
                               IO {
-                                Zone { _ =>
-                                  val statusPtr = stackalloc[CInt]()
-                                  val result = waitpid(nativeProcess.pid, statusPtr, WNOHANG)
+                                val statusPtr = stackalloc[CInt]()
+                                val result = waitpid(nativeProcess.pid, statusPtr, WNOHANG)
 
-                                  if (result == nativeProcess.pid) {
-                                    val exitCode = WEXITSTATUS(!statusPtr)
-                                    Right(exitCode)
-                                  } else if (result == 0) {
-                                    Left(())
+                                if (result == nativeProcess.pid) {
+                                  val exitCode = WEXITSTATUS(!statusPtr)
+                                  Right(exitCode)
+                                } else if (result == 0) {
+                                  Left(())
+                                } else {
+                                  if (errno.errno == ECHILD) {
+                                    throw new IOException("No such process")
                                   } else {
-                                    if (errno.errno == ECHILD) {
-                                      throw new IOException("No such process")
-                                    } else {
-                                      throw new IOException(
-                                        s"waitpid failed with errno: ${errno.errno}"
-                                      )
-                                    }
+                                    throw new IOException(
+                                      s"waitpid failed with errno: ${errno.errno}"
+                                    )
                                   }
                                 }
                               }
@@ -249,31 +244,13 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
           }
         }
 
-        private def fallbackExitValue(pid: pid_t): F[Int] = {
-          def loop: F[Int] =
-            F.blocking {
-              Zone { _ =>
-                val status = stackalloc[CInt]()
-                val result = waitpid(pid, status, WNOHANG)
-
-                if (result == pid) {
-                  Some(WEXITSTATUS(!status))
-                } else if (result == 0) None
-                else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
-              }
-            }.flatMap {
-              case Some(code) => F.pure(code)
-              case None       => F.sleep(100.millis) >> loop
-            }
-
-          loop.onCancel {
-            F.blocking {
-              kill(pid, SIGKILL)
-              ()
-            }
+        private def fallbackExitValue(pid: pid_t): F[Int] =
+          F.blocking {
+            val status = stackalloc[CInt]()
+            val result = waitpid(pid, status, 0)
+            if (result == pid) WEXITSTATUS(!status)
+            else throw new IOException(s"waitpid failed with errno: ${errno.errno}")
           }
-        }
-
       }
     } else super.forAsync[F]
 }
