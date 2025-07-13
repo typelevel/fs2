@@ -199,7 +199,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
 }
 
 private object FdPollingDatagramSocket {
-  private final val DefaultReadSize = 65507
+  private final val DefaultReadSize = 8192
   private final val MSG_DONTWAIT = 0x40
 
   def apply[F[_]: LiftIO](
