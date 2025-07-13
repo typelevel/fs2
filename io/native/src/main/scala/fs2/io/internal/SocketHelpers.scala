@@ -60,7 +60,9 @@ import sysun._
 import sysunOps._
 import com.comcast.ip4s.NetworkInterface
 import com.comcast.ip4s.Cidr
+import org.typelevel.scalaccompat.annotation._
 
+@nowarn212("cat=unused")
 @extern
 object NetIf {
   def if_nametoindex(ifname: CString): CUnsignedInt = extern
