@@ -37,9 +37,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         new FdPollingIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
       protected def mkUnixSocketsProvider = new FdPollingUnixSocketsProvider[F]
       protected def mkIpDatagramSocketsProvider =
-        throw new UnsupportedOperationException(
-          "Datagram sockets not currently supported on Native"
-        )
+        new FdPollingIpDatagramSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
       protected def mkUnixDatagramSocketsProvider =
         throw new UnsupportedOperationException(
           "Unix datagram sockets not currently supported on Native"
