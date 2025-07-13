@@ -137,7 +137,7 @@ private[process] trait ProcessesCompanionPlatform extends Processesjvmnative {
                     if ((dir != null) && (dir.toString != ".")) {
                       val ret = chdir(toCString(dir.toString))
                       if (ret != 0)
-                        throw new IOException(s"Failed to chdir to ${dir.toString}")
+                        throw new IOException(s"Failed to  to ${dir.toString}")
                     }
                   }
 
