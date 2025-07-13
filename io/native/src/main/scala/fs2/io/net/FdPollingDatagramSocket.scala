@@ -167,7 +167,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
 
   def writes: Pipe[F, Datagram, Nothing] =
     _.foreach(write)
-  
+
   def join(
       join: MulticastJoin[IpAddress],
       interface: NetworkInterface
