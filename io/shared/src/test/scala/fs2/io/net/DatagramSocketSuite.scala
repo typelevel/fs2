@@ -26,7 +26,6 @@ package net
 import cats.effect.IO
 import scala.concurrent.duration._
 import com.comcast.ip4s._
-import fs2.io.net.Network
 import fs2.Chunk
 
 import cats.effect.kernel.Resource
