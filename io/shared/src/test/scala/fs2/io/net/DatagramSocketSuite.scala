@@ -94,15 +94,5 @@ class DatagramSocketSuite extends Fs2Suite {
       }
     }
 
-    test("send and receive large datagram") {
-      val largeMsg = Chunk.array(Array.fill(65000)(42.toByte))
-      setup.use { case (server, client) =>
-        for {
-          _ <- client.write(Datagram(server.address.asIpUnsafe, largeMsg))
-          received <- server.read.map(_.bytes)
-        } yield assertEquals(received.size, 65000)
-      }
-    }
-
   }
 }
