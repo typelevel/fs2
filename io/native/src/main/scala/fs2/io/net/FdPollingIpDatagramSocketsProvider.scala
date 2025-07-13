@@ -48,7 +48,7 @@ private final class FdPollingIpDatagramSocketsProvider[F[_]: Dns: LiftIO](implic
     _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
     handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
     _ <- Resource.eval {
-       F.delay {
+      F.delay {
         val resolvedAddress = SocketAddress(resolvedHost, address.port)
         SocketHelpers.toSockaddr(resolvedAddress) { (addr, len) =>
           guard_(sbind(fd, addr, len))
