@@ -102,7 +102,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             val remote =
               SocketHelpers.toSocketAddress(addrBuf, addrBuf._1.toInt)
             val bytes = Chunk.fromBytePtr(buf, nBytes.toInt)
-            Right(Datagram(remote.asIpUnsafe, bytes)
+            Right(Datagram(remote.asIpUnsafe, bytes))
           }
         }
       }
