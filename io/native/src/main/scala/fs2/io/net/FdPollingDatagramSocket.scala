@@ -97,6 +97,8 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             addrBuf,
             addrLen
           )
+          val family = addrBuf._1.toInt
+          println(s"recvfrom got sa_family = $family")
           if (nBytes < 0) Left(())
           else {
             val remote =
