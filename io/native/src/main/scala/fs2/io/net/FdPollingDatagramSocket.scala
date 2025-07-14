@@ -38,6 +38,7 @@ import scala.scalanative.libc.errno._
 import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
+import scala.scalanative.libc.string.memset
 import cats.syntax.all._
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
@@ -88,6 +89,8 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
           val addrBuf = stackalloc[sockaddr_storage]()
           val addrLen = stackalloc[socklen_t]()
           !addrLen = sizeof[sockaddr_storage].toUInt
+
+          memset(addrBuf.asInstanceOf[Ptr[Byte]], 0, sizeof[sockaddr_storage])
 
           val sa = addrBuf.asInstanceOf[Ptr[sockaddr]]
 
