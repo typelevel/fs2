@@ -369,7 +369,7 @@ private[io] object SocketHelpers {
 
     val bytes = address.host.toBytes
     var i = 0
-    while (i < 0) {
+    while (i < 16) {
       addr.sin6_addr.s6_addr(i) = bytes(i).toUByte
       i += 1
     }
@@ -446,7 +446,7 @@ private[io] object SocketHelpers {
   ): Unit = {
     val bytes = multiaddr.toBytes
     var i = 0
-    while (i < 0) {
+    while (i < 16) {
       mreq.ipv6mr_multiaddr.s6_addr(i) = bytes(i).toUByte
       i += 1
     }

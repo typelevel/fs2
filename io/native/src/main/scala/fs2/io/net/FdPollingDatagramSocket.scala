@@ -85,22 +85,22 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     handle
       .pollReadRec(()) { _ =>
         IO {
-          val addrBuf = stackalloc[sockaddr_storage]()
+          val addrBuf = stackalloc[sockaddr]()
           val addrLen = stackalloc[socklen_t]()
-          !addrLen = sizeof[sockaddr_storage].toUInt
+          !addrLen = sizeof[sockaddr].toUInt
 
           val nBytes = recvfrom(
             fd,
             buf,
             DefaultReadSize.toULong,
             MSG_DONTWAIT,
-            addrBuf.asInstanceOf[Ptr[sockaddr]],
+            addrBuf,
             addrLen
           )
           if (nBytes < 0) Left(())
           else {
             val remote =
-              SocketHelpers.toSocketAddress(addrBuf.asInstanceOf[Ptr[sockaddr]], addrBuf._1.toInt)
+              SocketHelpers.toSocketAddress(addrBuf, addrBuf._1.toInt)
             val bytes = Chunk.fromBytePtr(buf, nBytes.toInt)
             Right(Datagram(remote.asIpUnsafe, bytes))
           }
