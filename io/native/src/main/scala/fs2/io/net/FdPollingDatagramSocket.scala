@@ -88,7 +88,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
         IO {
           val addrBuf = stackalloc[sockaddr]()
           val addrLen = stackalloc[socklen_t]()
-          !addrLen = sizeof[sockaddr].toUInt
+          !addrLen = 128.toUInt
           val nBytes = recvfrom(
             fd,
             buf,
