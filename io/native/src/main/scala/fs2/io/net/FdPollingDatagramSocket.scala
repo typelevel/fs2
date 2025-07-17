@@ -39,6 +39,7 @@ import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
 import scala.scalanative.libc.string.memset
+import scala.scalanative.posix.errno._
 import cats.syntax.all._
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
@@ -86,31 +87,30 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     handle
       .pollReadRec(()) { _ =>
         IO {
-          val addrBuf = stackalloc[sockaddr_storage]()
+          val addrBuf = stackalloc[sockaddr]()
           val addrLen = stackalloc[socklen_t]()
-          !addrLen = sizeof[sockaddr_storage].toUInt
-
-          memset(addrBuf.asInstanceOf[Ptr[Byte]], 0, sizeof[sockaddr_storage])
-
-          val sa = addrBuf.asInstanceOf[Ptr[sockaddr]]
-
+          !addrLen = sizeof[sockaddr].toUInt
           val nBytes = recvfrom(
             fd,
             buf,
             DefaultReadSize.toULong,
             MSG_DONTWAIT,
-            sa,
+            addrBuf,
             addrLen
           )
 
-          val family = sa._1.toInt
-          val f = addrBuf._1.toInt
-          println(s"recvfrom got sa_family = $family")
-          println(s"recvfrom got sa_family2 = $f")
+          val family = addrBuf._1.toInt
+          println(s"family $family")
 
-          if (nBytes < 0) Left(())
-          else {
-            val remote = SocketHelpers.toSocketAddress(sa, family)
+          if (nBytes < 0) {
+            val err = errno
+            if (err == EAGAIN || err == EWOULDBLOCK) {
+              Left(())
+            } else {
+              throw new RuntimeException(s"[read] recvfrom fatal error, errno = $err")
+            }
+          } else {
+            val remote = SocketHelpers.toSocketAddress(addrBuf, family)
             val bytes = Chunk.fromBytePtr(buf, nBytes.toInt)
             Right(Datagram(remote.asIpUnsafe, bytes))
           }
