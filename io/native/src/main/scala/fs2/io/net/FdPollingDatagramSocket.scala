@@ -38,7 +38,6 @@ import scala.scalanative.libc.errno._
 import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
-import scala.scalanative.libc.string.memset
 import scala.scalanative.posix.errno._
 import cats.syntax.all._
 
