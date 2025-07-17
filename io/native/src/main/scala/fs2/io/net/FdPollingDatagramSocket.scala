@@ -97,13 +97,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             addrBuf,
             addrLen
           )
-
-          val addrBufBytes = addrBuf.asInstanceOf[Ptr[Byte]]
-          val debugStr = (0 until 16).map(i => f"${addrBufBytes(i) & 0xff}%02x").mkString(" ")
-          println(s"sockaddr raw bytes: $debugStr")
-
-          val family = addrBuf._1.toInt
-          println(s"family $family")
+          val family = SocketHelpers.getDomain(addrBuf)
 
           if (nBytes < 0) {
             val err = errno
