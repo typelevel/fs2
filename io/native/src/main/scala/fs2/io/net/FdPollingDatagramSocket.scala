@@ -88,7 +88,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
         IO {
           val addrBuf = stackalloc[sockaddr]()
           val addrLen = stackalloc[socklen_t]()
-          !addrLen = 128.toUInt
+          !addrLen = sizeof[sockaddr].toUInt
           val nBytes = recvfrom(
             fd,
             buf,
@@ -97,6 +97,10 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             addrBuf,
             addrLen
           )
+
+          val addrBufBytes = addrBuf.asInstanceOf[Ptr[Byte]]
+          val debugStr = (0 until 16).map(i => f"${addrBufBytes(i) & 0xff}%02x").mkString(" ")
+          println(s"sockaddr raw bytes: $debugStr")
 
           val family = addrBuf._1.toInt
           println(s"family $family")
