@@ -25,21 +25,20 @@ import scala.scalanative.unsafe._
 import netinetin.in_addr
 import netinetin.in6_addr
 
-@extern
 private[io] object Ipmulticast {
 
-  def IP_ADD_MEMBERSHIP: CInt = extern
-  def IP_DROP_MEMBERSHIP: CInt = extern
+  val IP_ADD_MEMBERSHIP: CInt = 12
+  val IP_DROP_MEMBERSHIP: CInt = 13
 
-  def IP_ADD_SOURCE_MEMBERSHIP: CInt = extern
-  def IP_DROP_SOURCE_MEMBERSHIP: CInt = extern
-  def IP_BLOCK_SOURCE: CInt = extern
-  def IP_UNBLOCK_SOURCE: CInt = extern
+  val IP_ADD_SOURCE_MEMBERSHIP: CInt = 39
+  val IP_DROP_SOURCE_MEMBERSHIP: CInt = 40
+  val IP_BLOCK_SOURCE: CInt = 38
+  val IP_UNBLOCK_SOURCE: CInt = 37
 
-  def IPV6_ADD_MEMBERSHIP: CInt = extern
-  def IPV6_DROP_MEMBERSHIP: CInt = extern
+  val IPV6_ADD_MEMBERSHIP: CInt = 20
+  val IPV6_DROP_MEMBERSHIP: CInt = 21
 
-  def IP_MULTICAST_TTL: CInt = extern
+  val IP_MULTICAST_TTL: CInt = 10
 
   type ip_mreq = CStruct2[
     in_addr,
