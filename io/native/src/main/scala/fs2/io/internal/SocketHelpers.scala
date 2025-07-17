@@ -674,11 +674,5 @@ private[io] object SocketHelpers {
   def interfaceIndex(name: String): CInt = Zone { implicit x =>
     NetIf.if_nametoindex(toCString(name)).toInt
   }
-
-  def getDomain(addr: sockaddr): CInt = {
-    val addrBufBytes = addr.asInstanceOf[Ptr[Byte]]
-    if (LinktimeInfo.isLinux) addrBufBytes(0) & 0xff
-    else addrBufBytes(1) & 0xff
-  }
-
+  
 }
