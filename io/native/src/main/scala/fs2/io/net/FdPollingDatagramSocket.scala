@@ -40,6 +40,7 @@ import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
 import scala.scalanative.posix.errno._
 import cats.syntax.all._
+import scala.scalanative.meta.LinktimeInfo
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     val fd: Int,
@@ -97,7 +98,10 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             addrBuf,
             addrLen
           )
-          val family = SocketHelpers.getDomain(addrBuf)
+          val addrBytes = addrBuf.asInstanceOf[Ptr[Byte]]
+          val family: Int =
+            if (LinktimeInfo.isLinux) addrBytes(0) & 0xff
+            else addrBytes(1) & 0xff
 
           if (nBytes < 0) {
             val err = errno
