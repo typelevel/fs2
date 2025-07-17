@@ -674,5 +674,5 @@ private[io] object SocketHelpers {
   def interfaceIndex(name: String): CInt = Zone { implicit x =>
     NetIf.if_nametoindex(toCString(name)).toInt
   }
-  
+
 }
