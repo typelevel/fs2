@@ -32,7 +32,7 @@ import com.comcast.ip4s._
 import scala.concurrent.duration._
 
 class UdpSuite extends Fs2Suite {
-  private def sendAndReceive(socket: DatagramSocket[IO], toSend: Datagram): IO[Datagram] =
+  def sendAndReceive(socket: DatagramSocket[IO], toSend: Datagram): IO[Datagram] =
     socket
       .write(toSend) >> socket.read.timeoutTo(1.second, IO.defer(sendAndReceive(socket, toSend)))
 
