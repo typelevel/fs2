@@ -35,6 +35,8 @@ import scala.scalanative.posix.unistd
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
+import java.util.concurrent.atomic.AtomicLong
+
 import FdPollingSocket._
 
 private final class FdPollingSocket[F[_]: LiftIO] private (
@@ -45,7 +47,17 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     val address: GenSocketAddress,
     val peerAddress: GenSocketAddress
 )(implicit F: Async[F])
-    extends Socket[F] {
+    extends Socket[F] { outer =>
+
+  private val totalBytesRead: AtomicLong = new AtomicLong(0L)
+  private val totalBytesWritten: AtomicLong = new AtomicLong(0L)
+  private val incompleteWriteCount: AtomicLong = new AtomicLong(0L)
+
+  def metrics: SocketMetrics = new SocketMetrics.UnsealedSocketMetrics {
+    def totalBytesRead() = outer.totalBytesRead.get
+    def totalBytesWritten() = outer.totalBytesWritten.get
+    def incompleteWriteCount() = outer.incompleteWriteCount.get
+  }
 
   def localAddress = F.pure(address.asIpUnsafe)
   def remoteAddress = F.pure(peerAddress.asIpUnsafe)
@@ -60,9 +72,10 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
     handle
       .pollReadRec(()) { _ =>
         IO(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { readed =>
-          if (readed > 0)
+          if (readed > 0) {
+            totalBytesRead.addAndGet(readed.toLong)
             IO(Right(Some(Chunk.fromBytePtr(buf, readed))))
-          else if (readed == 0)
+          } else if (readed == 0)
             IO.pure(Right(None))
           else
             IO.pure(Left(()))
@@ -76,6 +89,7 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
       def go(pos: Int): IO[Either[Int, Chunk[Byte]]] =
         IO(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong))).flatMap { readed =>
           if (readed > 0) {
+            totalBytesRead.addAndGet(readed.toLong)
             val newPos = pos + readed
             if (newPos < numBytes) go(newPos)
             else IO(Right(Chunk.fromBytePtr(buf, newPos)))
@@ -103,10 +117,12 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
           guard(unistd.write(fd, buf.atUnsafe(offset + pos), (length - pos).toULong))
       }.flatMap { wrote =>
         if (wrote >= 0) {
+          totalBytesWritten.addAndGet(wrote.toLong)
           val newPos = pos + wrote
-          if (newPos < length)
+          if (newPos < length) {
+            incompleteWriteCount.incrementAndGet()
             go(newPos)
-          else
+          } else
             IO.pure(Either.unit)
         } else
           IO.pure(Left(pos))

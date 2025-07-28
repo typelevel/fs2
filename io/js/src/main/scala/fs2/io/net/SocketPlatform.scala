@@ -27,6 +27,7 @@ import cats.data.{Kleisli, OptionT}
 import cats.effect.{Async, Resource}
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 import fs2.io.internal.{facade, SuspendedStream}
+import java.util.concurrent.atomic.AtomicLong
 
 private[net] trait SocketCompanionPlatform {
 
@@ -55,15 +56,27 @@ private[net] trait SocketCompanionPlatform {
       val address: GenSocketAddress,
       val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
-      extends Socket[F] {
+      extends Socket[F] { outer =>
+
+    private val totalBytesRead: AtomicLong = new AtomicLong(0L)
+    private val totalBytesWritten: AtomicLong = new AtomicLong(0L)
+    private val incompleteWriteCount: AtomicLong = new AtomicLong(0L)
+
+    def metrics: SocketMetrics = new SocketMetrics.UnsealedSocketMetrics {
+      def totalBytesRead(): Long = outer.totalBytesRead.get
+      def totalBytesWritten(): Long = outer.totalBytesWritten.get
+      def incompleteWriteCount(): Long = outer.incompleteWriteCount.get
+    }
 
     private def read(
         f: Stream[F, Byte] => Pull[F, Chunk[Byte], Option[(Chunk[Byte], Stream[F, Byte])]]
     ): F[Option[Chunk[Byte]]] =
       readStream
         .getAndUpdate(Kleisli(f).flatMapF {
-          case Some((chunk, tail)) => Pull.output1(chunk).as(tail)
-          case None                => Pull.pure(Stream.empty)
+          case Some((chunk, tail)) =>
+            totalBytesRead.addAndGet(chunk.size.toLong)
+            Pull.output1(chunk).as(tail)
+          case None => Pull.pure(Stream.empty)
         }.run)
         .compile
         .last
@@ -113,7 +126,11 @@ private[net] trait SocketCompanionPlatform {
       Stream.chunk(bytes).through(writes).compile.drain
 
     override def writes: Pipe[F, Byte, Nothing] =
-      writeWritable(F.pure(sock), endAfterUse = false)
+      writeWritableInstrumented(
+        F.pure(sock),
+        endAfterUse = false,
+        c => { totalBytesWritten.addAndGet(c.size.toLong); () }
+      )
   }
 
 }

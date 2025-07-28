@@ -34,6 +34,7 @@ import fs2.io.file.{Files, FileHandle, SyncFileHandle}
 
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
+import java.util.concurrent.atomic.AtomicLong
 
 private[net] abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
     extends UnixSocketsProvider[F] {
@@ -98,10 +99,19 @@ private[net] object AsyncUnixSocketsProvider {
       val peerAddress: UnixSocketAddress
   )(implicit F: Async[F])
       extends Socket.BufferedReads[F](readMutex)
-      with SocketInfo.OptionsSupport[F] {
+      with SocketInfo.OptionsSupport[F] { outer =>
 
     protected def asyncInstance = F
     protected def channel = ch
+
+    private val totalBytesWritten: AtomicLong = new AtomicLong(0L)
+    private val incompleteWriteCount: AtomicLong = new AtomicLong(0L)
+
+    def metrics: SocketMetrics = new SocketMetrics.UnsealedSocketMetrics {
+      def totalBytesRead(): Long = outer.totalBytesRead.get
+      def totalBytesWritten(): Long = outer.totalBytesWritten.get
+      def incompleteWriteCount(): Long = outer.incompleteWriteCount.get
+    }
 
     def readChunk(buff: ByteBuffer): F[Int] =
       evalOnVirtualThreadIfAvailable(F.blocking(ch.read(buff)))
@@ -109,8 +119,13 @@ private[net] object AsyncUnixSocketsProvider {
 
     def write(bytes: Chunk[Byte]): F[Unit] = {
       def go(buff: ByteBuffer): F[Unit] =
-        F.blocking(ch.write(buff)).cancelable(close) *>
-          F.delay(buff.remaining <= 0).ifM(F.unit, go(buff))
+        F.blocking(ch.write(buff)).cancelable(close).flatMap { written =>
+          totalBytesWritten.addAndGet(written.toLong)
+          if (written >= 0 && buff.remaining() > 0) {
+            incompleteWriteCount.incrementAndGet()
+            go(buff)
+          } else F.unit
+        }
 
       writeMutex.lock.surround {
         F.delay(bytes.toByteBuffer).flatMap(buffer => evalOnVirtualThreadIfAvailable(go(buffer)))
