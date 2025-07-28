@@ -94,6 +94,8 @@ trait Socket[F[_]] extends SocketInfo[F] {
     go(offset, count).through(writes)
   }
 
+  def metrics: SocketMetrics
+
   // Deprecated members
 
   @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
