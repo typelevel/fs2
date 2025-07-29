@@ -29,7 +29,7 @@ import cats.effect.std.Mutex
 import cats.effect.kernel._
 import cats.syntax.all._
 
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
 private[tls] trait TLSSocketPlatform[F[_]] {
 
@@ -88,11 +88,28 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def endOfInput: F[Unit] =
         socket.endOfInput
 
+      @deprecated("3.13.0", "Use address instead")
       def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
 
+      @deprecated("3.13.0", "Use peerAddress instead")
       def remoteAddress: F[SocketAddress[IpAddress]] =
         socket.remoteAddress
+
+      def address: GenSocketAddress =
+        socket.address
+
+      def peerAddress: GenSocketAddress =
+        socket.peerAddress
+
+      def supportedOptions: F[Set[SocketOption.Key[?]]] =
+        socket.supportedOptions
+
+      def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
+        socket.getOption(key)
+
+      def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
+        socket.setOption(key, value)
 
       def beginHandshake: F[Unit] =
         engine.beginHandshake
@@ -103,6 +120,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def applicationProtocol: F[String] =
         engine.applicationProtocol
 
+      @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
       def isOpen: F[Boolean] = socket.isOpen
     }
 }
