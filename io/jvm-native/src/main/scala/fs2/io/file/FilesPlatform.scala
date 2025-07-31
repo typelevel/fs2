@@ -381,7 +381,7 @@ private[file] trait FilesCompanionPlatform {
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))
 
-    private final val pathStreamChunkSize = 16
+    private final val pathStreamChunkSize = 1
     protected def _runJavaCollectionResource[C <: AutoCloseable](
         javaCollection: F[C],
         collectionIterator: C => Iterator[JPath]

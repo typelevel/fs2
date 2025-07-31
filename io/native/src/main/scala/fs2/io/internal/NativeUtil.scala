@@ -27,7 +27,6 @@ import java.io.IOException
 import java.net.BindException
 import java.net.ConnectException
 import scala.scalanative.annotation.alwaysinline
-import scala.scalanative.libc.errno._
 import scala.scalanative.posix.fcntl._
 import scala.scalanative.posix.errno._
 import scala.scalanative.posix.string._

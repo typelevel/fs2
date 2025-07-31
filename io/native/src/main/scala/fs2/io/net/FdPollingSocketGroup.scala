@@ -33,7 +33,6 @@ import fs2.io.internal.NativeUtil._
 import fs2.io.internal.SocketHelpers
 import fs2.io.internal.syssocket._
 
-import scala.scalanative.libc.errno._
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.errno._
 import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
