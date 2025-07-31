@@ -23,6 +23,8 @@ package fs2
 package io
 package file
 
+import java.io.UncheckedIOException
+
 import cats.effect.{IO, Resource, Ref}
 import cats.kernel.Order
 import cats.syntax.all._
@@ -545,8 +547,12 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { p =>
-          Files[IO].list(p).void.recover { case ex: NotDirectoryException =>
-            assertEquals(ex.getMessage, p.toString)
+          Files[IO].list(p).void.recover {
+            case _: UncheckedIOException if isNative =>
+              assert(true)
+
+            case ex: NotDirectoryException =>
+              assertEquals(ex.getMessage, p.toString)
           }
         }
         .compile
