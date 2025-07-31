@@ -432,7 +432,7 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.9-12-30f840f-20250404T193514Z-SNAPSHOT"
+                                                               "1.11.11"
                                                              else "2.2.1"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
