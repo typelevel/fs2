@@ -353,7 +353,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.6.0-89-86ff54b-20250404T190552Z-SNAPSHOT",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC2",
     tlJdkRelease := None
   )
   .jvmSettings(
