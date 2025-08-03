@@ -23,8 +23,6 @@ package fs2
 package io
 package file
 
-import java.io.UncheckedIOException
-
 import cats.effect.{IO, Resource, Ref}
 import cats.kernel.Order
 import cats.syntax.all._
@@ -548,7 +546,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFile)
         .flatMap { p =>
           Files[IO].list(p).void.recover {
-            case e: UncheckedIOException if isNative =>
+            // java.io.UncheckedIOException is unavailable in Scala.js
+            case e: RuntimeException if isNative =>
               e.getCause match {
                 case ex: NotDirectoryException =>
                   assertEquals(ex.getMessage, p.toString)
