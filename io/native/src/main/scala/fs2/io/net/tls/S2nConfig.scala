@@ -32,7 +32,7 @@ import scala.scalanative.unsigned._
 import scala.util.control.NonFatal
 
 import s2n._
-import s2nutil._
+import s2nutil.{toPtr => toPtr_, _}
 
 /** An `s2n_config`.
   *
@@ -106,7 +106,7 @@ object S2nConfig {
       _ <- verifyHostCallback.traverse_ { cb =>
         F.delay(gcRoot.add(cb)) *>
           F.delay {
-            guard_(s2n_config_set_verify_host_callback(cfg, s2nVerifyHostFn(_, _, _), toPtr(cb)))
+            guard_(s2n_config_set_verify_host_callback(cfg, s2nVerifyHostFn(_, _, _), toPtr_(cb)))
           }
       }.toResource
 

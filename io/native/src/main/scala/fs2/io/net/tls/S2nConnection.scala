@@ -39,7 +39,7 @@ import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import s2n._
-import s2nutil._
+import s2nutil.{toPtr => toPtr_, _}
 
 private[tls] trait S2nConnection[F[_]] {
 
@@ -82,7 +82,7 @@ private[tls] object S2nConnection {
       _ <- Resource.eval {
         F.delay {
           val ctx = ConnectionContext(privateKeyTasks, privateKeyCleanupTasks, F)
-          guard_(s2n_connection_set_ctx(conn, toPtr(ctx)))
+          guard_(s2n_connection_set_ctx(conn, toPtr_(ctx)))
           gcRoot.add(ctx)
         }
       }
@@ -96,7 +96,7 @@ private[tls] object S2nConnection {
       _ <- Resource.eval {
         F.delay {
           val ctx = RecvCallbackContext(recvBuffer, readTasks, socket, F)
-          guard_(s2n_connection_set_recv_ctx(conn, toPtr(ctx)))
+          guard_(s2n_connection_set_recv_ctx(conn, toPtr_(ctx)))
           guard_(s2n_connection_set_recv_cb(conn, recvCallback[F](_, _, _)))
           gcRoot.add(ctx)
         }
@@ -107,7 +107,7 @@ private[tls] object S2nConnection {
       _ <- Resource.eval {
         F.delay {
           val ctx = SendCallbackContext(sendAvailable, writeTasks, socket, F)
-          guard_(s2n_connection_set_send_ctx(conn, toPtr(ctx)))
+          guard_(s2n_connection_set_send_ctx(conn, toPtr_(ctx)))
           guard_(s2n_connection_set_send_cb(conn, sendCallback[F](_, _, _)))
           gcRoot.add(ctx)
         }
