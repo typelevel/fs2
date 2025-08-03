@@ -27,7 +27,7 @@ import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.Resource
 import cats.effect.kernel.Async
-import cats.effect.std.Hotswap
+import cats.effect.std.NonEmptyHotswap
 import cats.syntax.all._
 
 import scala.concurrent.duration._
@@ -568,7 +568,7 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
         writeCursorFromFileHandle(file, flags.contains(Flag.Append))
 
       def go(
-          fileHotswap: Hotswap[F, FileHandle[F]],
+          fileHotswap: NonEmptyHotswap[F, FileHandle[F]],
           cursor: WriteCursor[F],
           acc: Long,
           s: Stream[F, Byte]
@@ -583,7 +583,7 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
                   .eval {
                     fileHotswap
                       .swap(openNewFile)
-                      .flatMap(newCursor)
+                      .flatMap(_ => fileHotswap.get.use(newCursor))
                   }
                   .flatMap(nc => go(fileHotswap, nc, 0L, tl))
               else
@@ -595,9 +595,9 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
 
       in =>
         Stream
-          .resource(Hotswap(openNewFile))
-          .flatMap { case (fileHotswap, fileHandle) =>
-            Stream.eval(newCursor(fileHandle)).flatMap { cursor =>
+          .resource(NonEmptyHotswap(openNewFile))
+          .flatMap { fileHotswap =>
+            Stream.eval(fileHotswap.get.use(newCursor)).flatMap { cursor =>
               go(fileHotswap, cursor, 0L, in).stream.drain
             }
           }
