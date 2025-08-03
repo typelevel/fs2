@@ -548,8 +548,13 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .resource(tempFile)
         .flatMap { p =>
           Files[IO].list(p).void.recover {
-            case _: UncheckedIOException if isNative =>
-              assert(true)
+            case e: UncheckedIOException if isNative =>
+              e.getCause match {
+                case ex: NotDirectoryException =>
+                  assertEquals(ex.getMessage, p.toString)
+                case other =>
+                  fail(s"Unexpected error $other")
+              }
 
             case ex: NotDirectoryException =>
               assertEquals(ex.getMessage, p.toString)

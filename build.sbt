@@ -288,7 +288,7 @@ lazy val root = tlCrossRootProject
   )
 
 lazy val commonNativeSettings = Seq[Setting[?]](
-  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
   Test / nativeBrewFormulas += "openssl"
 )
 
@@ -304,8 +304,8 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.typelevel" %%% "cats-effect-testkit" % "3.7.0-RC1" % Test,
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
-      //"org.typelevel" %%% "munit-cats-effect" % "2.1.0" % Test,
-      //"org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0-RC1" % Test
     ),
     tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -341,7 +341,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      //"org.typelevel" %%% "munit-cats-effect" % "2.1.0" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
