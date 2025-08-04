@@ -381,14 +381,13 @@ private[file] trait FilesCompanionPlatform {
     def size(path: Path): F[Long] =
       Sync[F].blocking(JFiles.size(path.toNioPath))
 
-    private final val pathStreamChunkSize = 16
     protected def _runJavaCollectionResource[C <: AutoCloseable](
         javaCollection: F[C],
         collectionIterator: C => Iterator[JPath]
     ): Stream[F, JPath] =
       Stream
         .resource(Resource.fromAutoCloseable(javaCollection))
-        .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), pathStreamChunkSize))
+        .flatMap(ds => Stream.fromBlockingIterator[F](collectionIterator(ds), PathStreamChunkSize))
 
     private case class WalkEntry(
         path: Path,
