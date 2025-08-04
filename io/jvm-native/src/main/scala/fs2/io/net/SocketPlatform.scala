@@ -70,7 +70,8 @@ private[net] trait SocketCompanionPlatform {
     /** Instrumented version of `readChunk`. */
     protected def readChunk0(buffer: ByteBuffer): F[Int] =
       readChunk(buffer).map { bytesRead =>
-        totalBytesRead.addAndGet(bytesRead.toLong)
+        if (bytesRead >= 0)
+          totalBytesRead.addAndGet(bytesRead.toLong)
         bytesRead
       }
 
