@@ -369,7 +369,7 @@ lazy val root = tlCrossRootProject
   )
 
 lazy val commonNativeSettings = Seq[Setting[?]](
-  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.15").toMap,
+  tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
   Test / nativeBrewFormulas += "openssl"
 )
 
@@ -378,15 +378,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.1.38",
-      "org.typelevel" %%% "cats-core" % "2.11.0",
-      "org.typelevel" %%% "cats-effect" % "3.6.2",
-      "org.typelevel" %%% "cats-effect-laws" % "3.6.2" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.6.2" % Test,
-      "org.typelevel" %%% "cats-laws" % "2.11.0" % Test,
-      "org.typelevel" %%% "discipline-munit" % "2.0.0-M3" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.1.0" % Test,
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test
+      "org.scodec" %%% "scodec-bits" % "1.2.4",
+      "org.typelevel" %%% "cats-core" % "2.13.0",
+      "org.typelevel" %%% "cats-effect" % "3.7.0-RC1",
+      "org.typelevel" %%% "cats-effect-laws" % "3.7.0-RC1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.7.0-RC1" % Test,
+      "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
+      "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0-RC1" % Test
     ),
     tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -422,7 +422,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.1.0" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
@@ -434,14 +434,14 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC1",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC2",
     tlJdkRelease := None
   )
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
       "com.github.jnr" % "jnr-unixsocket" % "0.38.23" % Optional,
-      "com.google.jimfs" % "jimfs" % "1.3.0" % Test
+      "com.google.jimfs" % "jimfs" % "1.3.1" % Test
     )
   )
   .jsSettings(
@@ -513,8 +513,8 @@ lazy val scodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scodec" %%% "scodec-core" % (if (
                                                                scalaVersion.value.startsWith("2.")
                                                              )
-                                                               "1.11.10"
-                                                             else "2.2.1"),
+                                                               "1.11.11"
+                                                             else "2.3.3"),
     tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.2.0").toMap,
     tlJdkRelease := Some(8)
   )

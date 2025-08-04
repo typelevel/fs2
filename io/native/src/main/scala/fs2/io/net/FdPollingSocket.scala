@@ -59,7 +59,7 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] = readBuffer.get(maxBytes).use { buf =>
     handle
       .pollReadRec(()) { _ =>
-        IO(guard(unistd.read(fd, buf, maxBytes.toULong))).flatMap { readed =>
+        IO(guard(unistd.read(fd, buf, maxBytes.toUSize))).flatMap { readed =>
           if (readed > 0)
             IO(Right(Some(Chunk.fromBytePtr(buf, readed))))
           else if (readed == 0)
@@ -74,7 +74,7 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
   def readN(numBytes: Int): F[Chunk[Byte]] =
     readBuffer.get(numBytes).use { buf =>
       def go(pos: Int): IO[Either[Int, Chunk[Byte]]] =
-        IO(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toULong))).flatMap { readed =>
+        IO(guard(unistd.read(fd, buf + pos.toLong, (numBytes - pos).toUSize))).flatMap { readed =>
           if (readed > 0) {
             val newPos = pos + readed
             if (newPos < numBytes) go(newPos)
@@ -97,10 +97,10 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
       IO {
         if (LinktimeInfo.isLinux)
           guardSSize(
-            send(fd, buf.atUnsafe(offset + pos), (length - pos).toULong, MSG_NOSIGNAL)
+            send(fd, buf.atUnsafe(offset + pos), (length - pos).toUSize, MSG_NOSIGNAL)
           ).toInt
         else
-          guard(unistd.write(fd, buf.atUnsafe(offset + pos), (length - pos).toULong))
+          guard(unistd.write(fd, buf.atUnsafe(offset + pos), (length - pos).toUSize))
       }.flatMap { wrote =>
         if (wrote >= 0) {
           val newPos = pos + wrote

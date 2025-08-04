@@ -39,6 +39,8 @@ import java.util.concurrent.ExecutorService
 
 private[fs2] trait ioplatform extends iojvmnative {
 
+  private[io] val PathStreamChunkSize = 16
+
   private[this] lazy val stdinExecutor =
     Executors.newSingleThreadExecutor(ThreadFactories.named("fs2-stdin", true))
 

@@ -36,7 +36,7 @@ trait HashingSuitePlatform {
     val `type` = EVP_get_digestbyname((name + "\u0000").getBytes.atUnsafe(0))
     EVP_Digest(
       if (bytes.length > 0) bytes.atUnsafe(0) else null,
-      bytes.length.toULong,
+      bytes.length.toUSize,
       md.atUnsafe(0),
       size,
       `type`,
@@ -55,9 +55,9 @@ trait HashingSuitePlatform {
     HMAC(
       `type`,
       keySlice.values.atUnsafe(keySlice.offset),
-      keySlice.size.toULong,
+      keySlice.size.toUSize,
       if (bytes.length > 0) bytes.atUnsafe(0) else null,
-      bytes.length.toULong,
+      bytes.length.toUSize,
       md.atUnsafe(0),
       size
     )

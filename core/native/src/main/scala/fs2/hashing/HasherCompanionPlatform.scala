@@ -61,7 +61,7 @@ trait HasherCompanionPlatform {
             def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
               if (
-                EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1
+                EVP_DigestUpdate(ctx, slice.values.atUnsafe(slice.offset), slice.size.toUSize) != 1
               )
                 throw new RuntimeException(s"EVP_DigestUpdate: ${getOpensslError()}")
             }
@@ -122,7 +122,7 @@ trait HasherCompanionPlatform {
                 HMAC_Init_ex(
                   ctx,
                   keySlice.values.atUnsafe(keySlice.offset),
-                  keySlice.size.toULong,
+                  keySlice.size.toUSize,
                   `type`,
                   null
                 ) != 1
@@ -136,7 +136,7 @@ trait HasherCompanionPlatform {
           new SyncHasher[F] {
             def unsafeUpdate(chunk: Chunk[Byte]): Unit = {
               val slice = chunk.toArraySlice
-              if (HMAC_Update(ctx, slice.values.atUnsafe(slice.offset), slice.size.toULong) != 1)
+              if (HMAC_Update(ctx, slice.values.atUnsafe(slice.offset), slice.size.toUSize) != 1)
                 throw new RuntimeException(s"HMAC_Update: ${getOpensslError()}")
             }
 

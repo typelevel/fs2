@@ -34,7 +34,7 @@ import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import s2n._
-import s2nutil._
+import s2nutil.{toPtr => toPtr_, _}
 
 /** Parameters used in creation of an s2n_connection.
   * See [[https://github.com/aws/s2n-tls/ s2n-tls]] for detailed documentation on each parameter.
@@ -85,7 +85,7 @@ sealed trait TLSParameters {
               s2n_connection_set_verify_host_callback(
                 conn,
                 s2nVerifyHostFn(_, _, _),
-                toPtr(cb)
+                toPtr_(cb)
               )
             )
           }
