@@ -152,7 +152,7 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
                     pidfd
                   )
               }
-            }
+            }: NativeProcess
             nativeProcess
           }
 
