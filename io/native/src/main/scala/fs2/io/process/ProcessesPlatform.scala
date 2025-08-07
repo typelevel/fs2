@@ -95,7 +95,7 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
               stdoutPipe: (Int, Int),
               stderrPipe: (Int, Int)
           ): F[NativeProcess] = F.blocking {
-            Zone[NativeProcess] { implicit z =>
+            val nativeProcess: NativeProcess = Zone { implicit z =>
               val envMap =
                 if (process.inheritEnv)
                   sys.env ++ process.extraEnv
@@ -153,6 +153,7 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
                   )
               }
             }
+            nativeProcess
           }
 
           def cleanup(proc: NativeProcess): F[Unit] =
