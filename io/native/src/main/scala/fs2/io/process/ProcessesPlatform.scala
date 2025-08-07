@@ -29,7 +29,7 @@ import scala.scalanative.unsafe.*
 import scala.scalanative.unsigned.*
 import scala.scalanative.libc.*
 import scala.scalanative.posix.sys.wait.*
-import scala.scalanative.posix.errno.*
+import scala.scalanative.posix.errno.{EPERM, ECHILD}
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.unistd.*
 import scala.scalanative.posix.signal.*
@@ -101,18 +101,18 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
                   sys.env ++ process.extraEnv
                 else process.extraEnv
 
-              val envp = stackalloc[CString]((envMap.size + 1).toULong)
+              val envp = stackalloc[CString]((envMap.size + 1).toUSize)
               envMap.zipWithIndex.foreach { case ((k, v), i) =>
-                envp(i.toULong) = toCString(s"$k=$v")
+                envp(i.toUSize) = toCString(s"$k=$v")
               }
-              envp(envMap.size.toULong) = null
+              envp(envMap.size.toUSize) = null
 
               val allArgs = process.command +: process.args
-              val argv = stackalloc[CString](allArgs.length.toULong + 1.toULong)
+              val argv = stackalloc[CString](allArgs.length.toUSize + 1.toUSize)
               allArgs.zipWithIndex.foreach { case (arg, i) =>
-                argv(i.toULong) = toCString(arg)
+                argv(i.toUSize) = toCString(arg)
               }
-              argv(allArgs.length.toULong) = null
+              argv(allArgs.length.toUSize) = null
 
               val executable =
                 if (process.command.startsWith("/"))
