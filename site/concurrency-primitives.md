@@ -147,7 +147,6 @@ The program ends after 15 seconds when the signal interrupts the publishing of m
 
 ```scala mdoc:silent
 import scala.concurrent.duration._
-import scala.language.higherKinds
 import cats.effect.std.Console
 import cats.effect.{Clock, IO, IOApp, Temporal}
 import cats.syntax.all._
