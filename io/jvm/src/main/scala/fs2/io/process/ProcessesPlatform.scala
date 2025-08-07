@@ -23,4 +23,4 @@ package fs2
 package io
 package process
 
-private[process] trait ProcessesCompanionPlatform extends Processesjvmnative
+private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmNative
