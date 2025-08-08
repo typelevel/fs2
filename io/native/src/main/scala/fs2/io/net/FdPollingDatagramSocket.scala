@@ -33,12 +33,12 @@ import scala.scalanative.unsafe._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.unsigned._
 import fs2.io.internal.NativeUtil._
+import scala.scalanative.posix.errno.{EWOULDBLOCK, EAGAIN}
 
 import scala.scalanative.libc.errno._
 import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
-import scala.scalanative.posix.errno._
 import cats.syntax.all._
 import scalanative.posix.netinet.in._
 import scalanative.posix.netinet.inOps._
@@ -95,7 +95,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
           val nBytes = recvfrom(
             fd,
             buf,
-            DefaultReadSize.toULong,
+            DefaultReadSize.toUSize,
             MSG_DONTWAIT,
             addrBuf,
             addrLen
@@ -129,7 +129,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
         val sent = send(
           fd,
           buf.atUnsafe(offset + pos),
-          (length - pos).toULong,
+          (length - pos).toUSize,
           0
         )
         if (sent < 0) Left(pos)
@@ -155,7 +155,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
           val sent = sendto(
             fd,
             buf.atUnsafe(offset + pos),
-            (length - pos).toULong,
+            (length - pos).toUSize,
             0,
             addr,
             len

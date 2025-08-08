@@ -95,9 +95,7 @@ class UdpSuite extends Fs2Suite {
     test("echo connected") {
       val msg = Chunk.array("Hello, world!".getBytes)
       Stream
-        .resource(
-          Network[IO].bindDatagramSocket(address = SocketAddress(ip"127.0.0.1", Port.Wildcard))
-        )
+        .resource(Network[IO].bindDatagramSocket())
         .flatMap { serverSocket =>
           val serverAddress = serverSocket.address.asIpUnsafe
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
