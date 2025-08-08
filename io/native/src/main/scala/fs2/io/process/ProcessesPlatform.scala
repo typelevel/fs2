@@ -95,7 +95,7 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
               stdoutPipe: (Int, Int),
               stderrPipe: (Int, Int)
           ): F[NativeProcess] = F.blocking {
-            Zone.apply[NativeProcess] { implicit z =>
+            Zone {
               val envMap =
                 if (process.inheritEnv)
                   sys.env ++ process.extraEnv
