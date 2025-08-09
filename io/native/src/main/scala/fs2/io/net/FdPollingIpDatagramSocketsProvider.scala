@@ -68,7 +68,7 @@ private final class FdPollingIpDatagramSocketsProvider[F[_]: Dns: LiftIO](implic
     }
     _ <- Resource.eval {
       F.delay {
-        println(s"[DEBUG2] options sucess")
+        println(s"[DEBUG2] FINAL")
       }
     }
     datagram <- FdPollingDatagramSocket(
