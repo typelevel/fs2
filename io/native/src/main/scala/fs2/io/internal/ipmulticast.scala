@@ -29,10 +29,6 @@ import scala.scalanative.meta.LinktimeInfo
 private[io] object Ipmulticast {
   private val isMac = LinktimeInfo.isMac
 
-  val IP_MULTICAST_IF: CInt =
-    if (isMac) 9
-    else 32
-
   val IP_MULTICAST_TTL: CInt =
     if (isMac) 10
     else 33
@@ -44,9 +40,7 @@ private[io] object Ipmulticast {
     if (isMac) 12
     else 35
 
-  val IP_DROP_MEMBERSHIP: CInt =
-    if (isMac) 13
-    else 36
+  val IP_DROP_MEMBERSHIP: CInt = 13
 
   val IP_ADD_SOURCE_MEMBERSHIP: CInt =
     if (isMac) 0x46 else 39

@@ -238,11 +238,8 @@ private[io] object SocketHelpers {
     case StandardSocketOptions.IP_MULTICAST_IF =>
       value match {
         case nif: JNetworkInterface =>
-          println("calling IF")
           val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
-          println("calling IF 2")
           val ans = SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
-          println(s"sucess $ans")
           ans
         case other =>
           throw new IllegalArgumentException(
@@ -257,7 +254,6 @@ private[io] object SocketHelpers {
     Sync[F].delay {
       val inAddr = stackalloc[in_addr]()
       (!inAddr).s_addr = htonl(interfaceAddr.toLong.toUInt)
-      println("hello 1")
       guard_(
         setsockopt(
           fd,
@@ -519,7 +515,6 @@ private[io] object SocketHelpers {
       _ =>
         ipv4AddressOf(interface) match {
           case Some(ifaceAddr) =>
-            println("calling membership")
             setIpv4MulticastMembership(
               fd,
               group.asInstanceOf[Ipv4Address],
