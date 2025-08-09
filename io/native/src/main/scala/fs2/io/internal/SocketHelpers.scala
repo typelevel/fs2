@@ -238,6 +238,7 @@ private[io] object SocketHelpers {
     case StandardSocketOptions.IP_MULTICAST_IF =>
       value match {
         case nif: JNetworkInterface =>
+          println("calling IF")
           val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
           SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
 
@@ -516,6 +517,7 @@ private[io] object SocketHelpers {
       _ =>
         ipv4AddressOf(interface) match {
           case Some(ifaceAddr) =>
+            println("calling membership")
             setIpv4MulticastMembership(
               fd,
               group.asInstanceOf[Ipv4Address],
