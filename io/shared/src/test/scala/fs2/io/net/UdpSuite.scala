@@ -136,9 +136,10 @@ class UdpSuite extends Fs2Suite {
                 .evalMap { serverSocket =>
                   Network[IO].interfaces.getAll.flatMap { interfaces =>
                     interfaces.values.toList
-                      .filter(iface =>
+                      .filter { iface =>
+                        println("hi 344")
                         iface.addresses.exists(_.address.fold(_ => true, _ => false))
-                      )
+                      }
                       .traverse_(iface => serverSocket.join(groupJoin, iface))
                       .as(serverSocket)
                   }
@@ -146,9 +147,11 @@ class UdpSuite extends Fs2Suite {
             )
             .flatMap { serverSocket =>
               val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
+              println("going to the clientside")
               val client =
                 Stream.resource(Network[IO].bindDatagramSocket()).flatMap { clientSocket =>
                   val to = SocketAddress(group.address, serverSocket.address.asIpUnsafe.port)
+                  println("sending the data over")
                   Stream.eval(clientSocket.write(msg, to) >> clientSocket.read)
                 }
               client.concurrently(server)

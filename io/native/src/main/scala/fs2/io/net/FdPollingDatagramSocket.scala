@@ -182,8 +182,10 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
       interface: NetworkInterface
   ): F[GroupMembership] =
     F.delay {
+      println("hello 123")
       val groupAddress = join.fold(
         j => {
+          println("hello 122")
           SocketHelpers.join(fd, j.group.address, interface)
           j.group.address
         },
