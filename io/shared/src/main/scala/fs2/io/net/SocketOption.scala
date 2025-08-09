@@ -40,7 +40,6 @@ sealed trait SocketOption {
 object SocketOption extends SocketOptionCompanionPlatform {
   def apply[A](key0: Key[A], value0: A): SocketOption = new SocketOption {
     type Value = A
-    println("ehelp")
     val key = key0
     val value = value0
   }
