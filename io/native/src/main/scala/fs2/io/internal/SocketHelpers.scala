@@ -241,8 +241,9 @@ private[io] object SocketHelpers {
           println("calling IF")
           val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
           println("calling IF 2")
-          SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
-
+          val ans = SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
+          println("sucess")
+          ans
         case other =>
           throw new IllegalArgumentException(
             s"Expected java.net.NetworkInterface for IP_MULTICAST_IF but got ${other.getClass}"
