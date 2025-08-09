@@ -242,7 +242,7 @@ private[io] object SocketHelpers {
           val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
           println("calling IF 2")
           val ans = SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
-          println("sucess")
+          println(s"sucess $ans")
           ans
         case other =>
           throw new IllegalArgumentException(
