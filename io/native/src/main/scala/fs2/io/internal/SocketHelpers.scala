@@ -700,7 +700,7 @@ private[io] object SocketHelpers {
     f(addr, sizeof[sockaddr].toUInt)
   }
 
-  def interfaceIndex(name: String): CInt = Zone { implicit x =>
+  def interfaceIndex(name: String): CInt = Zone.acquire { implicit x =>
     NetIf.if_nametoindex(toCString(name)).toInt
   }
 
