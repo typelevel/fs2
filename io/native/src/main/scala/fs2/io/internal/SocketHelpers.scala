@@ -53,8 +53,6 @@ import scala.scalanative.unsigned._
 import scala.jdk.CollectionConverters._
 import java.net.Inet4Address
 import java.net.{NetworkInterface => JNetworkInterface}
-import scala.scalanative.libc.errno.errno
-
 import NativeUtil._
 import netinetin._
 import Ipmulticast._
