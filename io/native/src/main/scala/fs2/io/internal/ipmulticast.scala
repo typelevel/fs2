@@ -24,21 +24,53 @@ package fs2.io.internal
 import scala.scalanative.unsafe._
 import netinetin.in_addr
 import netinetin.in6_addr
+import scala.scalanative.meta.LinktimeInfo
 
 private[io] object Ipmulticast {
+  private val isMac = LinktimeInfo.isMac
 
-  val IP_ADD_MEMBERSHIP: CInt = 35
-  val IP_DROP_MEMBERSHIP: CInt = 13
+  val IP_MULTICAST_IF: CInt =
+    if (isMac) 9
+    else 32
 
-  val IP_ADD_SOURCE_MEMBERSHIP: CInt = 39
-  val IP_DROP_SOURCE_MEMBERSHIP: CInt = 40
-  val IP_BLOCK_SOURCE: CInt = 38
-  val IP_UNBLOCK_SOURCE: CInt = 37
+  val IP_MULTICAST_TTL: CInt =
+    if (isMac) 10
+    else 33
+  val IP_MULTICAST_LOOP: CInt =
+    if (isMac) 11
+    else 34
 
-  val IPV6_ADD_MEMBERSHIP: CInt = 20
-  val IPV6_DROP_MEMBERSHIP: CInt = 21
+  val IP_ADD_MEMBERSHIP: CInt =
+    if (isMac) 12
+    else 35
 
-  val IP_MULTICAST_TTL: CInt = 33
+  val IP_DROP_MEMBERSHIP: CInt =
+    if (isMac) 13
+    else 36
+
+  val IP_ADD_SOURCE_MEMBERSHIP: CInt =
+    if (isMac) 0x46 else 39
+
+  val IP_DROP_SOURCE_MEMBERSHIP: CInt =
+    if (isMac) 0x47 else 40
+
+  val IP_BLOCK_SOURCE: CInt =
+    if (isMac) 0x48 else 38
+
+  val IP_UNBLOCK_SOURCE: CInt =
+    if (isMac) 0x49 else 37
+
+  val IPV6_MULTICAST_LOOP: CInt =
+    if (isMac) 11
+    else 19
+
+  val IPV6_ADD_MEMBERSHIP: CInt =
+    if (isMac) 12
+    else 20
+
+  val IPV6_DROP_MEMBERSHIP: CInt =
+    if (isMac) 13
+    else 21
 
   type ip_mreq = CStruct2[
     in_addr,
