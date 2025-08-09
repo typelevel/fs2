@@ -42,15 +42,20 @@ private final class FdPollingIpDatagramSocketsProvider[F[_]: Dns: LiftIO](implic
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
+    resolvedHost <- Resource.eval(address.host.resolve)
+    ipv4 = resolvedHost.isInstanceOf[Ipv4Address]
+    fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_DGRAM)
     _ <- Resource.eval {
       F.delay {
         println(s"[DEBUG] Binding datagram socket")
       }
     }
-    resolvedHost <- Resource.eval(address.host.resolve)
-    ipv4 = resolvedHost.isInstanceOf[Ipv4Address]
-    fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_DGRAM)
     _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
+    _ <- Resource.eval {
+      F.delay {
+        println(s"[DEBUG2] options sucess")
+      }
+    }
     handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
     _ <- Resource.eval {
       F.delay {
@@ -60,6 +65,11 @@ private final class FdPollingIpDatagramSocketsProvider[F[_]: Dns: LiftIO](implic
         }
       }
 
+    }
+    _ <- Resource.eval {
+      F.delay {
+        println(s"[DEBUG2] options sucess")
+      }
     }
     datagram <- FdPollingDatagramSocket(
       fd,
