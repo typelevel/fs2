@@ -240,6 +240,7 @@ private[io] object SocketHelpers {
         case nif: JNetworkInterface =>
           println("calling IF")
           val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
+          println("calling IF 2")
           SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
 
         case other =>
