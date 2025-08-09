@@ -256,7 +256,7 @@ private[io] object SocketHelpers {
     Sync[F].delay {
       val inAddr = stackalloc[in_addr]()
       (!inAddr).s_addr = htonl(interfaceAddr.toLong.toUInt)
-
+      println("hello 1")
       guard_(
         setsockopt(
           fd,
