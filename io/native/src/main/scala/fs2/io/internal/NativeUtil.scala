@@ -45,6 +45,7 @@ private[io] object NativeUtil {
   @alwaysinline def guardSSize(thunk: => CSSize): CSSize = {
     val rtn = thunk
     if (rtn < 0) {
+      println(rtn)
       val e = errno
       if (e == EAGAIN || e == EWOULDBLOCK)
         rtn
