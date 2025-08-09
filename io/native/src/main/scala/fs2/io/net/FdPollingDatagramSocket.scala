@@ -66,7 +66,6 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
   def connect(address: GenSocketAddress) =
     F.delay {
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
-        println(s"socket address is ${addr._1.toInt}")
         val res = sconnect(fd, addr, len)
         if (res < 0) {
           val e = errno
@@ -195,12 +194,14 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
       )
       new GroupMembership {
         def drop = join.fold(
-          j => SocketHelpers.drop(fd, j.group.address, interface),
-          j => SocketHelpers.drop(fd, j.group.address, interface, j.source)
+          j => F.delay(SocketHelpers.drop(fd, j.group.address, interface)),
+          j => F.delay(SocketHelpers.drop(fd, j.group.address, interface, j.source))
         )
-        def block(source: IpAddress) = SocketHelpers.block(fd, groupAddress, interface, source)
+        def block(source: IpAddress) =
+          F.delay(SocketHelpers.block(fd, groupAddress, interface, source))
 
-        def unblock(source: IpAddress) = SocketHelpers.unblock(fd, groupAddress, interface, source)
+        def unblock(source: IpAddress) =
+          F.delay(SocketHelpers.unblock(fd, groupAddress, interface, source))
       }
     }
 

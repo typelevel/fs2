@@ -43,12 +43,17 @@ import scala.scalanative.posix.netinet.in.IPPROTO_IP
 import scala.scalanative.posix.netinet.in.IPPROTO_IPV6
 import scala.scalanative.posix.netinet.in.IP_TOS
 import scala.scalanative.posix.netinet.in.IP_MULTICAST_LOOP
+import scala.scalanative.posix.netinet.in.IP_MULTICAST_IF
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
+import scala.jdk.CollectionConverters._
+import java.net.Inet4Address
+import java.net.{NetworkInterface => JNetworkInterface}
+import scala.scalanative.libc.errno.errno
 
 import NativeUtil._
 import netinetin._
@@ -226,8 +231,47 @@ private[io] object SocketHelpers {
         SO_BROADCAST,
         value.asInstanceOf[java.lang.Boolean]
       )
-    case _ => throw new IllegalArgumentException
+    case StandardSocketOptions.IP_MULTICAST_TTL =>
+      SocketHelpers.setIpOption(
+        fd,
+        IP_MULTICAST_TTL,
+        value.asInstanceOf[java.lang.Integer]
+      )
+    case StandardSocketOptions.IP_MULTICAST_IF =>
+      value match {
+        case nif: JNetworkInterface =>
+          val ifaceAddr = getFirstIpv4Address(nif).getOrElse(Ipv4Address.fromLong(0L))
+          SocketHelpers.setIpMulticastIfByAddress(fd, ifaceAddr)
+
+        case other =>
+          throw new IllegalArgumentException(
+            s"Expected java.net.NetworkInterface for IP_MULTICAST_IF but got ${other.getClass}"
+          )
+      }
+    case _ =>
+      throw new IllegalArgumentException
   }
+
+  def setIpMulticastIfByAddress[F[_]: Sync](fd: CInt, interfaceAddr: Ipv4Address): F[Unit] =
+    Sync[F].delay {
+      val inAddr = stackalloc[in_addr]()
+      (!inAddr).s_addr = htonl(interfaceAddr.toLong.toUInt)
+
+      guard_(
+        setsockopt(
+          fd,
+          IPPROTO_IP,
+          IP_MULTICAST_IF,
+          inAddr.asInstanceOf[Ptr[Byte]],
+          sizeof[in_addr].toUInt
+        )
+      )
+    }
+
+  def getFirstIpv4Address(nif: JNetworkInterface): Option[Ipv4Address] =
+    nif.getInetAddresses.asScala.collectFirst { case inet4: Inet4Address =>
+      Ipv4Address.fromBytes(inet4.getAddress)
+    }.flatten
 
   def setOption[F[_]](fd: CInt, option: CInt, value: Boolean)(implicit F: Sync[F]): F[Unit] =
     setOptionImpl(fd, SOL_SOCKET, option, if (value) 1 else 0)
@@ -469,9 +513,7 @@ private[io] object SocketHelpers {
       ipv4
     }
 
-  def join[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface)(implicit
-      F: Sync[F]
-  ): F[Unit] =
+  def join(fd: CInt, group: IpAddress, interface: NetworkInterface): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -483,7 +525,7 @@ private[io] object SocketHelpers {
               IP_ADD_MEMBERSHIP
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
       _ => {
         val index = interfaceIndex(interface.name)
@@ -496,9 +538,7 @@ private[io] object SocketHelpers {
       }
     )
 
-  def join[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress)(
-      implicit F: Sync[F]
-  ): F[Unit] =
+  def join(fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -511,14 +551,12 @@ private[io] object SocketHelpers {
               IP_ADD_SOURCE_MEMBERSHIP
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
-      _ => F.raiseError(new Exception("Source Specific Multicast not implemented for IPv6Address"))
+      _ => throw new Exception("Source Specific Multicast not implemented for IPv6Address")
     )
 
-  def drop[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface)(implicit
-      F: Sync[F]
-  ): F[Unit] =
+  def drop(fd: CInt, group: IpAddress, interface: NetworkInterface): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -530,7 +568,7 @@ private[io] object SocketHelpers {
               IP_DROP_MEMBERSHIP
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
       _ => {
         val index = interfaceIndex(interface.name)
@@ -543,9 +581,7 @@ private[io] object SocketHelpers {
       }
     )
 
-  def drop[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress)(
-      implicit F: Sync[F]
-  ): F[Unit] =
+  def drop(fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -558,14 +594,12 @@ private[io] object SocketHelpers {
               IP_DROP_SOURCE_MEMBERSHIP
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
-      _ => F.raiseError(new Exception("Source Specific Multicast not implemented for IPv6Address"))
+      _ => throw new Exception("Source Specific Multicast not implemented for IPv6Address")
     )
 
-  def block[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress)(
-      implicit F: Sync[F]
-  ): F[Unit] =
+  def block(fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -578,14 +612,12 @@ private[io] object SocketHelpers {
               IP_BLOCK_SOURCE
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
-      _ => F.raiseError(new Exception("Block not implemented for IPv6Address"))
+      _ => throw new Exception("Block not implemented for IPv6Address")
     )
 
-  def unblock[F[_]](fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress)(
-      implicit F: Sync[F]
-  ): F[Unit] =
+  def unblock(fd: CInt, group: IpAddress, interface: NetworkInterface, source: IpAddress): Unit =
     group.fold(
       _ =>
         ipv4AddressOf(interface) match {
@@ -598,71 +630,68 @@ private[io] object SocketHelpers {
               IP_UNBLOCK_SOURCE
             )
           case None =>
-            F.raiseError(new Exception("No IPv4Address found for Network Interface"))
+            throw new Exception("No IPv4Address found for Network Interface")
         },
-      _ => F.raiseError(new Exception("Unblock not implemented for IPv6Address"))
+      _ => throw new Exception("Unblock not implemented for IPv6Address")
     )
 
-  private[io] def setIpv4MulticastMembership[F[_]](
+  private[io] def setIpv4MulticastMembership(
       fd: CInt,
       multiaddr: Ipv4Address,
       interface: Ipv4Address,
       option: CInt
-  )(implicit F: Sync[F]): F[Unit] =
-    F.delay {
-      val mreq = stackalloc[ip_mreq]()
-      toIpmreq(multiaddr, interface, mreq)
-      guard_(
-        setsockopt(
-          fd,
-          IPPROTO_IP,
-          option,
-          mreq.asInstanceOf[Ptr[Byte]],
-          sizeof[ip_mreq].toUInt
-        )
+  ): Unit = {
+    val mreq = stackalloc[ip_mreq]()
+    toIpmreq(multiaddr, interface, mreq)
+    guard_(
+      setsockopt(
+        fd,
+        IPPROTO_IP,
+        option,
+        mreq.asInstanceOf[Ptr[Byte]],
+        sizeof[ip_mreq].toUInt
       )
-    }
+    )
+  }
 
-  private[io] def setSourceSpecificGroup[F[_]](
+  private[io] def setSourceSpecificGroup(
       fd: CInt,
       multiaddr: Ipv4Address,
       interface: Ipv4Address,
       imr_sourceaddr: Ipv4Address,
       option: CInt
-  )(implicit F: Sync[F]): F[Unit] =
-    F.delay {
-      val mreq_source = stackalloc[ip_mreq_source]()
-      toIpmreqSource(multiaddr, interface, imr_sourceaddr, mreq_source)
-      guard_(
-        setsockopt(
-          fd,
-          IPPROTO_IP,
-          option,
-          mreq_source.asInstanceOf[Ptr[Byte]],
-          sizeof[ip_mreq].toUInt
-        )
+  ): Unit = {
+    val mreq_source = stackalloc[ip_mreq_source]()
+    toIpmreqSource(multiaddr, interface, imr_sourceaddr, mreq_source)
+    guard_(
+      setsockopt(
+        fd,
+        IPPROTO_IP,
+        option,
+        mreq_source.asInstanceOf[Ptr[Byte]],
+        sizeof[ip_mreq].toUInt
       )
-    }
+    )
+  }
 
-  private[io] def setIpv6MulticastGroup[F[_]](
+  private[io] def setIpv6MulticastGroup(
       fd: CInt,
       multiaddr: Ipv6Address,
       index: CInt,
       option: CInt
-  )(implicit F: Sync[F]): F[Unit] =
-    F.delay {
-      val mreq = stackalloc[ipv6_mreq]()
-      toIpmreq6(multiaddr, index, mreq)
-      guard_(
-        setsockopt(
-          fd,
-          IPPROTO_IPV6,
-          option,
-          mreq.asInstanceOf[Ptr[Byte]],
-          sizeof[ip_mreq].toUInt
-        )
+  ): Unit = {
+    val mreq = stackalloc[ipv6_mreq]()
+    toIpmreq6(multiaddr, index, mreq)
+    guard_(
+      setsockopt(
+        fd,
+        IPPROTO_IPV6,
+        option,
+        mreq.asInstanceOf[Ptr[Byte]],
+        sizeof[ip_mreq].toUInt
       )
-    }
+    )
+  }
 
   def disconnectSockaddr[A](f: (Ptr[sockaddr], socklen_t) => A): A = {
     val addr = stackalloc[sockaddr]()

@@ -27,7 +27,7 @@ import netinetin.in6_addr
 
 private[io] object Ipmulticast {
 
-  val IP_ADD_MEMBERSHIP: CInt = 12
+  val IP_ADD_MEMBERSHIP: CInt = 35
   val IP_DROP_MEMBERSHIP: CInt = 13
 
   val IP_ADD_SOURCE_MEMBERSHIP: CInt = 39
@@ -38,7 +38,7 @@ private[io] object Ipmulticast {
   val IPV6_ADD_MEMBERSHIP: CInt = 20
   val IPV6_DROP_MEMBERSHIP: CInt = 21
 
-  val IP_MULTICAST_TTL: CInt = 10
+  val IP_MULTICAST_TTL: CInt = 33
 
   type ip_mreq = CStruct2[
     in_addr,
