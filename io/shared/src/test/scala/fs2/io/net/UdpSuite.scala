@@ -29,8 +29,6 @@ import cats.syntax.all._
 
 import com.comcast.ip4s._
 
-import scala.concurrent.duration._
-
 class UdpSuite extends Fs2Suite {
   group("udp") {
     test("multicast") {
