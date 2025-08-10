@@ -67,7 +67,8 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     F.delay {
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
         val res = sconnect(fd, addr, len)
-        println(s"this is $addr")
+        val fam = addr.asInstanceOf[Ptr[sockaddr]]._1.toInt
+        println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${len.toInt}")
         if (res < 0) {
           println("error here res")
           val e = errno
