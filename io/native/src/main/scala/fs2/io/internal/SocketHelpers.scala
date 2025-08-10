@@ -352,6 +352,7 @@ private[io] object SocketHelpers {
     val len = stackalloc[socklen_t]()
 
     toSockaddrIn(address, addr, len)
+    println(s"-> sockaddr sa_family = ${addr.sin_family.toInt}, len = $len")
 
     f(addr, !len)
   }
