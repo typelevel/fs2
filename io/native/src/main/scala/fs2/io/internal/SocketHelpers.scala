@@ -81,14 +81,13 @@ private[io] object SocketHelpers {
             if (LinktimeInfo.isLinux)
               syssocket.SOCK_NONBLOCK
             else 0
-
-          guard(socket(domain, `type` | SOCK_NONBLOCK, 0))
           val domainStr =
             if (domain == AF_INET) "AF_INET"
             else if (domain == AF_INET6) "AF_INET6"
             else s"domain=$domain"
 
           println(s"[debug] chosenDomain=$domainStr")
+          guard(socket(domain, `type` | SOCK_NONBLOCK, 0))
         }
       }(fd => F.delay(guard_(close(fd))))
       .evalTap { fd =>
