@@ -88,7 +88,7 @@ private[io] object SocketHelpers {
             else if (domain == AF_INET6) "AF_INET6"
             else s"domain=$domain"
 
-          println(s"[debug] openNonBlocking -> fd=$fd chosenDomain=$domainStr")
+          println(s"[debug] chosenDomain=$domainStr")
         }
       }(fd => F.delay(guard_(close(fd))))
       .evalTap { fd =>

@@ -42,6 +42,7 @@ import java.net.{NetworkInterface => JNetworkInterface}
 import cats.syntax.all._
 import scalanative.posix.netinet.in._
 import scalanative.posix.netinet.inOps._
+import scala.scalanative.posix.string._
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     val fd: Int,
@@ -67,8 +68,8 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
     F.delay {
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
         val fam = addr.asInstanceOf[Ptr[sockaddr]]._1.toInt
-        println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${!len}")
-        val res = sconnect(fd, addr, !len)
+        println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${len}")
+        val res = sconnect(fd, addr, len)
         println(s"[debug] addrPtr = $addr")
         if (res < 0) {
           val e = errno
