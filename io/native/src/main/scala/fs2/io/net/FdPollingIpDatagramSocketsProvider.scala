@@ -44,6 +44,7 @@ private final class FdPollingIpDatagramSocketsProvider[F[_]: Dns: LiftIO](implic
     poller <- Resource.eval(fileDescriptorPoller[F])
     resolvedHost <- Resource.eval(address.host.resolve)
     ipv4 = resolvedHost.isInstanceOf[Ipv4Address]
+    _ <- Resource.eval(F.delay(println(s"is this ipv4 $ipv4")))
     fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_DGRAM)
     _ <- Resource.eval(options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value)))
     handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
