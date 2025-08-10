@@ -81,12 +81,6 @@ private[io] object SocketHelpers {
             if (LinktimeInfo.isLinux)
               syssocket.SOCK_NONBLOCK
             else 0
-          val domainStr =
-            if (domain == AF_INET) "AF_INET"
-            else if (domain == AF_INET6) "AF_INET6"
-            else s"domain=$domain"
-
-          println(s"[debug] chosenDomain=$domainStr")
           guard(socket(domain, `type` | SOCK_NONBLOCK, 0))
         }
       }(fd => F.delay(guard_(close(fd))))
@@ -357,17 +351,6 @@ private[io] object SocketHelpers {
     val len = stackalloc[socklen_t]()
 
     toSockaddrIn(address, addr, len)
-    println(
-      s"[debug] toSockaddrIn -> sin_family=${addr.sin_family.toInt}, len(ptr)=$len, len(deref)=${!len}"
-    )
-    val raw32 = addr.sin_addr.s_addr.toLong & 0xffffffffL
-    val b0 = ((raw32 >> 24) & 0xff).toInt
-    val b1 = ((raw32 >> 16) & 0xff).toInt
-    val b2 = ((raw32 >> 8) & 0xff).toInt
-    val b3 = (raw32 & 0xff).toInt
-    println(
-      s"[debug] toSockaddrIn -> IPv4 = $b0.$b1.$b2.$b3 portBE=${addr.sin_port.toInt & 0xffff}"
-    )
 
     f(addr, !len)
   }
