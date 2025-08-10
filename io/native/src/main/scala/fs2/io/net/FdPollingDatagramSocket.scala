@@ -66,15 +66,20 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
   def connect(address: GenSocketAddress) =
     F.delay {
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
-        val res = sconnect(fd, addr, len)
         val fam = addr.asInstanceOf[Ptr[sockaddr]]._1.toInt
-        println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${len.toInt}")
+        println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${!len}")
+        val res = sconnect(fd, addr, !len)
+        println(s"[debug] addrPtr = $addr")
         if (res < 0) {
-          println("error here res")
           val e = errno
+          val msg = fromCString(strerror(e))
+          println(s"[debug] connect failed -> res=$res errno=$e ($msg)")
           throw errnoToThrowable(e)
+        } else {
+          println(s"[debug] connect OK -> res=$res")
         }
       }
+
     }
 
   def disconnect: F[Unit] = F.delay {
