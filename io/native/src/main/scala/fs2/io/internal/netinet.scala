@@ -40,6 +40,14 @@ private[io] object netinetin {
     CArray[Byte, _8]
   ]
 
+  type sockaddr_in2 = CStruct5[
+    uint8_t,
+    sa_family_t,
+    in_port_t,
+    in_addr,
+    CArray[Byte, _8]
+  ]
+
   type in6_addr = CStruct1[CArray[CUnsignedChar, _16]]
 
   type sockaddr_in6 = CStruct5[
@@ -67,6 +75,17 @@ private[io] object netinetinOps {
     def sin_port_=(sin_port: in_port_t): Unit = sockaddr_in._2 = sin_port
     def sin_addr: in_addr = sockaddr_in._3
     def sin_addr_=(sin_addr: in_addr) = sockaddr_in._3 = sin_addr
+  }
+
+  implicit final class sockaddr_inOps_MacOS(val sockaddr_in: Ptr[sockaddr_in2]) extends AnyVal {
+    def sin_len: uint8_t = sockaddr_in._1
+    def sin_len_=(sl: uint8_t): Unit = sockaddr_in._1 = sl
+    def sin_family: sa_family_t = sockaddr_in._2
+    def sin_family_=(sf: sa_family_t): Unit = sockaddr_in._2 = sf
+    def sin_port: in_port_t = sockaddr_in._3
+    def sin_port_=(sp: in_port_t): Unit = sockaddr_in._3 = sp
+    def sin_addr: in_addr = sockaddr_in._4
+    def sin_addr_=(sa: in_addr): Unit = sockaddr_in._4 = sa
   }
 
   implicit final class in6_addrOps(val in6_addr: in6_addr) extends AnyVal {

@@ -69,7 +69,7 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
         val fam = addr.asInstanceOf[Ptr[sockaddr]]._1.toInt
         println(s"[debug] About to connect: sockaddr sa_family = $fam, len(deref) = ${len}")
-        val res = sconnect(fd, addr, len)
+        val res = sconnect(fd, addr.asInstanceOf[Ptr[sockaddr]], len)
         println(s"[debug] addrPtr = $addr")
         if (res < 0) {
           val e = errno
@@ -191,10 +191,8 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
       interface: NetworkInterface
   ): F[GroupMembership] =
     F.delay {
-      println("hello 123")
       val groupAddress = join.fold(
         j => {
-          println("hello 122")
           SocketHelpers.join(fd, j.group.address, interface)
           j.group.address
         },
