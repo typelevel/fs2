@@ -38,9 +38,7 @@ import cats.effect.LiftIO
 import cats.effect.IO
 import org.typelevel.scalaccompat.annotation._
 import fs2.io.internal.NativeUtil._
-import scala.concurrent.duration.*
 import cats.effect.unsafe.KqueueSystem.Kqueue
-import cats.effect.implicits.*
 
 @extern
 @nowarn212("cat=unused")
