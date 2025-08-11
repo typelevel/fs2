@@ -39,6 +39,7 @@ import cats.effect.IO
 import org.typelevel.scalaccompat.annotation._
 import fs2.io.internal.NativeUtil._
 import scala.concurrent.duration.*
+import cats.effect.unsafe.KqueueSystem.Kqueue
 import cats.effect.implicits.*
 
 @extern
@@ -225,7 +226,11 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
                           fallbackExitValue(nativeProcess.pid)
                       }
                     } else {
-                      fileDescriptorPoller.awaitevent(nativeProcess.pid, -5, 0x0005, 0x80000000).to
+                      fileDescriptorPoller[F] match {
+                        case kq: Kqueue =>
+                          kq.awaitEvent(nativeProcess.pid, -5, 0x0005, 0x80000000).to.map(_.toInt)
+                        case _ => fallbackExitValue(nativeProcess.pid)
+                      }
                     }
 
                   def stdin: Pipe[F, Byte, Nothing] = { in =>
