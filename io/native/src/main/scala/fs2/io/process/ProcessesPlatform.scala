@@ -261,32 +261,10 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
           }
         }
 
-        private def fallbackExitValue(pid: pid_t): F[Int] = {
-          def check: F[Option[Int]] = F.blocking {
-            val status = stackalloc[CInt]()
-            val result = waitpid(pid, status, WNOHANG)
-            if (result == pid) Some(WEXITSTATUS(!status))
-            else if (result == 0) None
-            else if (errno.errno == ECHILD)
-              throw new IOException("No such process")
-            else
-              throw new IOException(s"waitpid failed with errno: ${errno.errno}")
-          }
-
-          def loop: F[Int] =
-            check.flatMap {
-              case Some(code) => F.pure(code)
-              case None       => F.sleep(50.millis) >> loop
-            }
-
-          loop.onCancel {
-            F.blocking {
-              kill(pid, SIGKILL)
-              val status = stackalloc[CInt]()
-              waitpid(pid, status, WNOHANG)
-              ()
-            }.void
-          }
+        private def fallbackExitValue(pid: pid_t): F[Int] = F.delay {
+          val status = stackalloc[CInt]()
+          guard_(waitpid(pid, status, 0))
+          WEXITSTATUS(!status)
         }
 
       }
