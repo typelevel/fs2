@@ -225,7 +225,7 @@ private[process] trait ProcessesCompanionPlatform extends ProcessesCompanionJvmN
                           fallbackExitValue(nativeProcess.pid)
                       }
                     } else {
-                      fallbackExitValue(nativeProcess.pid)
+                      fileDescriptorPoller.awaitevent(nativeProcess.pid, -5, 0x0005, 0x80000000).to
                     }
 
                   def stdin: Pipe[F, Byte, Nothing] = { in =>
