@@ -28,7 +28,6 @@ import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress, GenSocketAddress, NetworkInterface}
-import fs2.{Chunk, Pipe, Stream}
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
