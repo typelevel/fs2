@@ -118,7 +118,13 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           address: GenSocketAddress,
           options: List[SocketOption]
       ): Resource[F, DatagramSocket[F]] =
-        fallback.bindDatagramSocket(address, options)
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) =>
+            new SelectingIpDatagramSocketsProvider[F](selector)
+              .bindDatagramSocket(address.asIpUnsafe, options)
+          case None =>
+            fallback.bindDatagramSocket(address, options)
+        }
 
       // Implementations of deprecated operations
 
