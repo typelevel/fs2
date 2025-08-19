@@ -27,7 +27,7 @@ import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
 import com.comcast.ip4s.{Dns, Host, SocketAddress}
 
-import java.net.{InetAddress, InetSocketAddress}
+import java.net.InetSocketAddress
 
 private final class SelectingIpDatagramSocketsProvider[F[_]](selector: Selector)(implicit
     F: Async[F],
@@ -43,25 +43,16 @@ private final class SelectingIpDatagramSocketsProvider[F[_]](selector: Selector)
       .make(F.delay(selector.provider.openDatagramChannel()))(ch => F.delay(ch.close()))
       .evalMap { ch =>
         address.host.resolve[F].flatMap { addr =>
-          val jAddr =
-            if (addr.isWildcard)
-              new InetSocketAddress(InetAddress.getByName("0.0.0.0"), address.port.value)
-            else
-              new InetSocketAddress(addr.toInetAddress, address.port.value)
-
+          val jAddr = new InetSocketAddress(addr.toInetAddress, address.port.value)
           F.delay {
             ch.configureBlocking(false)
             ch.bind(jAddr)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
           } *> F
             .delay {
-              val localInetSockAddr = Option(ch.getLocalAddress)
-                .collect { case isa: InetSocketAddress =>
-                  val inet = Option(isa.getAddress).getOrElse(InetAddress.getByName("0.0.0.0"))
-                  new InetSocketAddress(inet, isa.getPort)
-                }
-                .getOrElse(jAddr)
-              localInetSockAddr
+              val isa = ch.getLocalAddress.asInstanceOf[InetSocketAddress]
+              val inet = isa.getAddress
+              new InetSocketAddress(inet, isa.getPort)
             }
             .flatMap(local =>
               SelectingDatagramSocket(selector, ch, SocketAddress.fromInetSocketAddress(local))
