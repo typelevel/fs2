@@ -19,7 +19,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net
+package fs2
+package io
+package net
 
 import cats.effect.{LiftIO, Selector}
 import cats.effect.kernel.Async
@@ -33,7 +35,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.{DatagramChannel, SelectionKey}
 import java.net.{NetworkInterface => JNetworkInterface}
 import com.comcast.ip4s.MulticastJoin
-import scala.jdk.CollectionConverters._
+import CollectionCompat.*
 
 private final class SelectingDatagramSocket[F[_]: LiftIO] private (
     selector: Selector,
