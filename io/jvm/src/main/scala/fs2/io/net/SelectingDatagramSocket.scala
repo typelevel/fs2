@@ -33,7 +33,6 @@ import java.nio.ByteBuffer
 import java.nio.channels.{DatagramChannel, SelectionKey}
 import java.net.{NetworkInterface => JNetworkInterface}
 import com.comcast.ip4s.MulticastJoin
-import scala.jdk.CollectionConverters._
 
 private final class SelectingDatagramSocket[F[_]: LiftIO] private (
     selector: Selector,
