@@ -270,6 +270,18 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
       }
     }
 
+    test("sockets are released at the end of the resource scope") {
+      val f =
+        Network[IO].serverResource(port = Some(port"9071")).use { case (bindAddress, clients) =>
+          clients.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
+            Network[IO].client(bindAddress).use { client =>
+              client.read(1).assertEquals(None)
+            }
+          }
+        }
+      f >> f >> f
+    }
+
     test("endOfOutput / endOfInput ignores ENOTCONN") {
       Network[IO].serverResource().use { case (bindAddress, clients) =>
         Network[IO].client(bindAddress).surround(IO.sleep(100.millis)).background.surround {
