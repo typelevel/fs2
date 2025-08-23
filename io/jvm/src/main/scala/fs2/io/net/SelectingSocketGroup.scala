@@ -22,7 +22,7 @@
 package fs2
 package io.net
 
-import scala.concurrent.duration.*
+import scala.concurrent.duration._
 
 import cats.effect.LiftIO
 import cats.effect.Selector
