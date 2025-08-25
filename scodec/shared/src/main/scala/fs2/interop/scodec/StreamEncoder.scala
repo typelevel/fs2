@@ -136,7 +136,7 @@ object StreamEncoder {
           s: Stream[F, A]
       ): Pull[F, BitVector, Option[(Stream[F, A], StreamEncoder[A])]] =
         s.pull.uncons1.flatMap {
-          case None => Pull.pure(None)
+          case None          => Pull.pure(None)
           case Some((a, s1)) =>
             encoder
               .encode(a)
@@ -159,7 +159,7 @@ object StreamEncoder {
           s: Stream[F, A]
       ): Pull[F, BitVector, Option[(Stream[F, A], StreamEncoder[A])]] =
         s.pull.uncons1.flatMap {
-          case None => Pull.pure(None)
+          case None          => Pull.pure(None)
           case Some((a, s1)) =>
             encoder
               .encode(a)

@@ -274,10 +274,10 @@ object Demultiplexer {
 
     def handlePacket(state: Option[DecodeState], packet: Packet): StepResult[Out] =
       packet.payload match {
-        case None => StepResult.noOutput(state)
+        case None          => StepResult.noOutput(state)
         case Some(payload) =>
           val currentResult = state match {
-            case None => StepResult.noOutput(state)
+            case None        => StepResult.noOutput(state)
             case Some(state) =>
               val currentData = packet.payloadUnitStart
                 .map(start => payload.take(start.toLong * 8L))

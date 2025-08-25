@@ -38,7 +38,7 @@ class TableBuilder private (cases: Map[Int, List[TableSupport[?]]]) {
   def build(gs: GroupedSections[Section]): Either[TableBuildingError, Table] =
     cases.get(gs.tableId) match {
       case None | Some(Nil) => Left(TableBuildingError(gs.tableId, "Unknown table id"))
-      case Some(list) =>
+      case Some(list)       =>
         list.dropRight(1).foldRight[Either[String, ?]](list.last.toTable(gs)) { (next, res) =>
           res.fold(_ => next.toTable(gs), Right(_))
         } match {

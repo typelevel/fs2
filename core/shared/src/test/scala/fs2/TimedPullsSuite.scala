@@ -134,7 +134,7 @@ class TimedPullsSuite extends Fs2Suite {
         .timed { tp =>
           def go(tp: Pull.Timed[IO, Int]): Pull[IO, String, Unit] =
             tp.uncons.flatMap {
-              case None => Pull.done
+              case None                   => Pull.done
               case Some((Right(_), next)) =>
                 Pull.output1("elem") >> tp.timeout(timeout) >> go(next)
               case Some((Left(_), next)) => Pull.output1("timeout") >> go(next)
@@ -241,7 +241,7 @@ class TimedPullsSuite extends Fs2Suite {
         .timed { tp =>
           def go(tp: Pull.Timed[IO, Unit]): Pull[IO, String, Unit] =
             tp.uncons.flatMap {
-              case None => Pull.done
+              case None                => Pull.done
               case Some((Right(_), n)) =>
                 Pull.output1("elem") >>
                   tp.timeout(0.millis) >> // cancel old timeout without starting a new one

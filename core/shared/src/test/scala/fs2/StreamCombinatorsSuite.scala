@@ -524,7 +524,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
     def durationSinceLastTrue[F[_]]: Pipe[F, BD, BD] = {
       def go(lastTrue: FiniteDuration, s: Stream[F, BD]): Pull[F, BD, Unit] =
         s.pull.uncons1.flatMap {
-          case None => Pull.done
+          case None             => Pull.done
           case Some((pair, tl)) =>
             pair match {
               case (true, d) =>

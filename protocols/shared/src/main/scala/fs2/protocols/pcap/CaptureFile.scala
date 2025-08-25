@@ -52,7 +52,7 @@ object CaptureFile {
   ): StreamDecoder[TimeStamped[A]] =
     streamDecoder { global =>
       linkDecoders(global.network) match {
-        case None => Left(Err(s"unsupported link type ${global.network}"))
+        case None          => Left(Err(s"unsupported link type ${global.network}"))
         case Some(decoder) =>
           Right { hdr =>
             decoder.map { value =>
