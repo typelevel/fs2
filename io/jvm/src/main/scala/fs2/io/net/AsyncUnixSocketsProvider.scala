@@ -67,7 +67,7 @@ private[net] abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: As
         Stream
           .resource(accept.attempt)
           .flatMap {
-            case Left(_) => Stream.empty[F]
+            case Left(_)         => Stream.empty[F]
             case Right(accepted) =>
               Stream.eval(
                 AsyncUnixSocketsProvider.makeSocket(accepted, address, UnixSocketAddress(""))
