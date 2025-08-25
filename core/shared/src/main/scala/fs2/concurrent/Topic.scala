@@ -163,7 +163,7 @@ object Topic {
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
           signalClosure.tryGet.flatMap {
             case Some(_) => Topic.closed.pure[F]
-            case None =>
+            case None    =>
               state.get
                 .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
                 .as(Topic.rightUnit)
@@ -200,7 +200,7 @@ object Topic {
 
           Resource.eval(signalClosure.tryGet).flatMap {
             case Some(_) => Resource.pure(Stream.empty)
-            case None =>
+            case None    =>
               Resource
                 .make(subscribe)(unsubscribe)
                 .as(chan.stream)

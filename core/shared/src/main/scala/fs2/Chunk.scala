@@ -1509,7 +1509,7 @@ object Chunk
         @tailrec
         def go(): Unit =
           state match {
-            case Nil => ()
+            case Nil                    => ()
             case h :: tail if h.isEmpty =>
               state = tail
               go()

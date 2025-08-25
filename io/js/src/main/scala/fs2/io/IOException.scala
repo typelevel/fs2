@@ -44,7 +44,7 @@ object IOException {
     case SSLException(ex)           => Some(ex)
     case FileSystemException(ex)    => Some(ex)
     case UnknownHostException(ex)   => Some(ex)
-    case _ =>
+    case _                          =>
       cause.exception match {
         case error: js.Error if error.message.contains("EPIPE") =>
           Some(new JavaScriptIOException("Broken pipe", cause))

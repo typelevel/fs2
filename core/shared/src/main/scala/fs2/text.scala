@@ -630,7 +630,7 @@ object text {
         while (idx < str.length) {
           str(idx) match {
             case c if alphabet.ignore(c) => // ignore
-            case c =>
+            case c                       =>
               val cidx =
                 if (padding == 0)
                   if (c == Pad)

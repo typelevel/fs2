@@ -215,7 +215,7 @@ private[tls] object TLSEngine {
               else
                 binding.read(engine.getSession.getPacketBufferSize).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake
-                  case None =>
+                  case None    =>
                     unwrapBuffer.inputRemains
                       .flatMap(x => if (x > 0) Applicative[F].unit else stopUnwrap)
                 }

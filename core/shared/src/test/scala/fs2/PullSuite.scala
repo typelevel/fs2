@@ -44,7 +44,7 @@ class PullSuite extends Fs2Suite {
       val pull: Pull[Fallible, Int, Unit] = Pull.fromEither[Fallible](either)
 
       either match {
-        case Left(l) => assertEquals(pull.stream.compile.toList, Left(l))
+        case Left(l)  => assertEquals(pull.stream.compile.toList, Left(l))
         case Right(r) =>
           assertEquals(pull.stream.compile.toList, Right(List(r)))
       }
