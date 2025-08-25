@@ -69,7 +69,7 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
       case Empty         => Pull.pure(Some(s))
       case Result(a)     => Pull.output1(a).as(Some(s))
       case Failed(cause) => Pull.raiseError(cause)
-      case Append(x, y) =>
+      case Append(x, y)  =>
         x(s).flatMap {
           case None      => Pull.pure(None)
           case Some(rem) => y()(rem)
@@ -139,7 +139,7 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
             case None =>
               carriedError match {
                 case Some(e) => Pull.raiseError(CodecError(e))
-                case None =>
+                case None    =>
                   if (carry.isEmpty) Pull.pure(None) else Pull.pure(Some(Stream(carry)))
               }
           }
@@ -153,9 +153,9 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
   def flatMap[B](f: A => StreamDecoder[B]): StreamDecoder[B] =
     new StreamDecoder[B](
       self.step match {
-        case Empty         => Empty
-        case Result(a)     => f(a).step
-        case Failed(cause) => Failed(cause)
+        case Empty                      => Empty
+        case Result(a)                  => f(a).step
+        case Failed(cause)              => Failed(cause)
         case Decode(g, once, failOnErr) =>
           Decode(in => g(in).map(_.map(_.flatMap(f))), once, failOnErr)
         case Isolate(bits, decoder) => Isolate(bits, decoder.flatMap(f))
@@ -169,9 +169,9 @@ final class StreamDecoder[+A] private (private val step: StreamDecoder.Step[A]) 
   def handleErrorWith[A2 >: A](f: Throwable => StreamDecoder[A2]): StreamDecoder[A2] =
     new StreamDecoder[A2](
       self.step match {
-        case Empty         => Empty
-        case Result(a)     => Result(a)
-        case Failed(cause) => f(cause).step
+        case Empty                      => Empty
+        case Result(a)                  => Result(a)
+        case Failed(cause)              => f(cause).step
         case Decode(g, once, failOnErr) =>
           Decode(in => g(in).map(_.map(_.handleErrorWith(f))), once, failOnErr)
         case Isolate(bits, decoder) => Isolate(bits, decoder.handleErrorWith(f))

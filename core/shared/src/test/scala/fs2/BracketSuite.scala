@@ -345,7 +345,7 @@ class BracketSuite extends Fs2Suite {
               tl.pull.uncons
                 .flatMap {
                   case Some(_) => throw new Err
-                  case None =>
+                  case None    =>
                     Pull.eval(r.get.flatMap(b => if (b) IO.unit else IO.raiseError(new Err)))
                 }
                 .lease

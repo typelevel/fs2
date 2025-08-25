@@ -710,7 +710,7 @@ object Pull extends PullLowPriority {
       view: Cont[Unit, F, O]
   ): Pull[F, O, Unit] =
     view match {
-      case IdContP => fmoc
+      case IdContP                               => fmoc
       case bv: Bind[F, O, Unit, Unit] @unchecked =>
         fmoc match {
           case r: Terminal[Unit] =>
@@ -915,7 +915,7 @@ object Pull extends PullLowPriority {
           getCont()(interruption)
         case interrupted: Interrupted => interrupted // impossible
         case _: Succeeded[?]          => interruption
-        case failed: Fail =>
+        case failed: Fail             =>
           val errs = interruption.deferredError.toList :+ failed.error
           Fail(CompositeFailure.fromList(errs).getOrElse(failed.error))
       }
@@ -949,7 +949,7 @@ object Pull extends PullLowPriority {
 
       def interruptGuard(scope: Scope[F], view: Cont[Nothing, G, X])(next: => F[End]): F[End] =
         scope.isInterrupted.flatMap {
-          case None => next
+          case None          => next
           case Some(outcome) =>
             val result = outcome match {
               case Outcome.Errored(err)       => Fail(err)
@@ -1058,8 +1058,8 @@ object Pull extends PullLowPriority {
 
                   val next: Pull[G, X, Unit] = loop
                   transformWith(next) {
-                    case Succeeded(_) => go(j + 1)
-                    case Fail(err)    => Fail(err)
+                    case Succeeded(_)                     => go(j + 1)
+                    case Fail(err)                        => Fail(err)
                     case interruption @ Interrupted(_, _) =>
                       interruptBoundary(tail, interruption).flatMapOutput(fun)
                   }
@@ -1182,7 +1182,7 @@ object Pull extends PullLowPriority {
 
         def closeTerminal(r: Either[Throwable, Unit], ancestor: Scope[F]): Terminal[Unit] =
           close.interruption match {
-            case None => r.fold(Fail(_), Succeeded(_))
+            case None                                       => r.fold(Fail(_), Succeeded(_))
             case Some(Interrupted(interruptedScopeId, err)) =>
               def err1 = CompositeFailure.fromList(r.swap.toOption.toList ++ err.toList)
               if (ancestor.descendsFrom(interruptedScopeId))
