@@ -103,6 +103,8 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         def waitForDeregistration: F[Unit] =
+          // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+          // give the runtime/cpu time to do something else; some guesswork involved here
           F.delay(ch.isRegistered()).ifM(F.sleep(2.millis) >> waitForDeregistration, F.unit)
         F.delay(ch.close()) >> waitForDeregistration
       }
