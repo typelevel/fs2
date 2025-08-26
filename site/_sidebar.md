@@ -9,6 +9,6 @@
 - [Scodec](scodec.md)
 - [API Reference](api-reference.md)
 - [FAQ](faq.md)
-- [Documentation](documentation.md)
+- [More Resources](documentation.md)
 - [Adopters](adopters.md)
 - [Ecosystem](ecosystem.md)
