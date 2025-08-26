@@ -87,7 +87,7 @@ final private[fs2] case class InterruptContext[F[_]](
   def eval[A](fa: F[A]): F[Either[InterruptionOutcome, A]] =
     ref.get.flatMap {
       case Some(outcome) => F.pure(Left(outcome))
-      case None =>
+      case None          =>
         F.raceOutcome(deferred.get, fa.attempt).flatMap {
           case Right(oc) =>
             oc.fold(

@@ -148,7 +148,7 @@ private[fs2] final class Scope[F[_]] private (
       state
         .modify {
           case s: Scope.State.Closed[F] => (s, None)
-          case s: Scope.State.Open[F] =>
+          case s: Scope.State.Open[F]   =>
             (s.copy(children = scope +: s.children), Some(scope))
         }
         .flatMap {
@@ -207,8 +207,8 @@ private[fs2] final class Scope[F[_]] private (
         }
       }
     }.map {
-      case Left(Outcome.Errored(t)) => Outcome.Errored(t)
-      case Left(Outcome.Canceled()) => Outcome.Canceled()
+      case Left(Outcome.Errored(t))       => Outcome.Errored(t)
+      case Left(Outcome.Canceled())       => Outcome.Canceled()
       case Left(Outcome.Succeeded(token)) =>
         Outcome.Succeeded[Id, Throwable, Either[Unique.Token, R]](Left(token))
       case Right(Left(t))  => Outcome.Errored(t)
@@ -328,7 +328,7 @@ private[fs2] final class Scope[F[_]] private (
   private def findSelfOrChild(scopeId: Unique.Token): F[Option[Scope[F]]] = {
     def go(scopes: Chain[Scope[F]]): F[Option[Scope[F]]] =
       scopes.uncons match {
-        case None => F.pure(None)
+        case None                => F.pure(None)
         case Some((scope, tail)) =>
           if (scope.id == scopeId) F.pure(Some(scope))
           else
@@ -357,7 +357,7 @@ private[fs2] final class Scope[F[_]] private (
   def shiftScope(scopeId: Unique.Token, context: => String): F[Scope[F]] =
     findStepScope(scopeId).flatMap {
       case Some(scope) => F.pure(scope)
-      case None =>
+      case None        =>
         val msg =
           s"""|Scope lookup failure!
               |
@@ -388,7 +388,7 @@ private[fs2] final class Scope[F[_]] private (
     if (scopeId == self.id) F.pure(Some(self))
     else
       self.parent match {
-        case None => self.findSelfOrChild(scopeId)
+        case None         => self.findSelfOrChild(scopeId)
         case Some(parent) =>
           parent.findSelfOrChild(scopeId).flatMap {
             case Some(scope) => F.pure(Some(scope))
@@ -467,7 +467,7 @@ private[fs2] final class Scope[F[_]] private (
   def lease: F[Lease[F]] =
     for {
       children <- state.get.flatMap[Chain[Scope[F]]] {
-        case x: Scope.State.Open[F] => F.pure(x.children)
+        case x: Scope.State.Open[F]   => F.pure(x.children)
         case _: Scope.State.Closed[F] =>
           F.raiseError(new RuntimeException("Scope closed at time of lease"))
       }

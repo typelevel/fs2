@@ -83,7 +83,7 @@ object CompositeFailure {
       second: Either[Throwable, Unit]
   ): Either[Throwable, Unit] =
     first match {
-      case Right(_) => second
+      case Right(_)  => second
       case Left(err) =>
         Left(second.fold(err1 => apply(err, err1, Nil), _ => err))
     }
