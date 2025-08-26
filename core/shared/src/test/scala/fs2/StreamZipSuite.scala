@@ -276,7 +276,7 @@ class StreamZipSuite extends Fs2Suite {
             case None => IO.raiseError[Vector[(String, Int)]](new Throwable("Results not found"))
             case Some(Outcome.Succeeded(v)) => IO.pure(v)
             case Some(Outcome.Errored(ex))  => IO.raiseError[Vector[(String, Int)]](ex)
-            case Some(Outcome.Canceled()) =>
+            case Some(Outcome.Canceled())   =>
               IO.raiseError[Vector[(String, Int)]](
                 new Throwable("Cancelled found on results outcome")
               )

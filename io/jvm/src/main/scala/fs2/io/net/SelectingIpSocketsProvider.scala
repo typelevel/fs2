@@ -22,6 +22,8 @@
 package fs2
 package io.net
 
+import scala.concurrent.duration._
+
 import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
 import com.comcast.ip4s.{Dns, Host, IpAddress, SocketAddress}
@@ -84,7 +86,11 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
   ): Resource[F, ServerSocket[F]] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
-        F.delay(ch.close())
+        def waitForDeregistration: F[Unit] =
+          // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+          // give the runtime/cpu time to do something else; some guesswork involved here
+          F.delay(ch.isRegistered()).ifM(F.sleep(2.millis) >> waitForDeregistration, F.unit)
+        F.delay(ch.close()) >> waitForDeregistration
       }
       .evalMap { sch =>
         val configure = address.host.resolve.flatMap { addr =>

@@ -59,7 +59,7 @@ private[process] trait ProcessesCompanionPlatform {
               F.delay {
                 (childProcess.exitCode: Any) match {
                   case i: Int => Right(i)
-                  case _ =>
+                  case _      =>
                     val f: js.Function1[Any, Unit] = {
                       case i: Int => cb(Right(i))
                       case _      => // do nothing
