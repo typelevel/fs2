@@ -32,7 +32,7 @@ private[net] object SocketAddressHelpers {
   def toGenSocketAddress(address: JSocketAddress): GenSocketAddress =
     address match {
       case addr: InetSocketAddress => SocketAddress.fromInetSocketAddress(addr)
-      case _ =>
+      case _                       =>
         if (JdkUnixSocketsProvider.supported && address.isInstanceOf[UnixDomainSocketAddress]) {
           UnixSocketAddress(address.asInstanceOf[UnixDomainSocketAddress].getPath.toString)
         } else if (JnrUnixSocketsProvider.supported && address.isInstanceOf[JnrUnixSocketAddress]) {

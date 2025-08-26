@@ -57,7 +57,7 @@ private[reactivestreams] final class StreamSubscription[F[_], A] private (
       in => {
         def go(s: Stream[F, A]): Pull[F, A, Unit] =
           Pull.eval(requests.take).flatMap {
-            case Infinite => s.pull.echo
+            case Infinite  => s.pull.echo
             case Finite(n) =>
               s.pull.take(n).flatMap {
                 case None      => Pull.done

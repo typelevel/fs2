@@ -121,7 +121,7 @@ class StreamTranslateSuite extends Fs2Suite {
   test("7 - ok to translate step leg that is forced back in to a stream") {
     def goStep(step: Option[Stream.StepLeg[Function0, Int]]): Pull[Function0, Int, Unit] =
       step match {
-        case None => Pull.done
+        case None       => Pull.done
         case Some(step) =>
           Pull.output(step.head) >> step.stream.pull.echo
       }

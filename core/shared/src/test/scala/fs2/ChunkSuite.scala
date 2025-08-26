@@ -205,7 +205,7 @@ class ChunkSuite extends Fs2Suite {
           val listScan = c.toList.scanLeft(List[A]())(step)
           val (chunkScan, chunkCarry) = c.scanLeftCarry(List[A]())(step)
 
-          assertEquals((chunkScan.toList, chunkCarry), ((listScan.tail, listScan.last)))
+          assertEquals((chunkScan.toList, chunkCarry), (listScan.tail, listScan.last))
         }
       }
       property("asSeq") {
@@ -293,13 +293,13 @@ class ChunkSuite extends Fs2Suite {
 
   group("scanLeftCarry") {
     test("returns empty and zero for empty Chunk") {
-      assertEquals(Chunk[Int]().scanLeftCarry(0)(_ + _), ((Chunk.empty, 0)))
+      assertEquals(Chunk[Int]().scanLeftCarry(0)(_ + _), (Chunk.empty, 0))
     }
     test("returns first result and first result for singleton") {
-      assertEquals(Chunk(2).scanLeftCarry(1)(_ + _), ((Chunk(3), 3)))
+      assertEquals(Chunk(2).scanLeftCarry(1)(_ + _), (Chunk(3), 3))
     }
     test("returns all results and last result for multiple elements") {
-      assertEquals(Chunk(2, 3).scanLeftCarry(1)(_ + _), ((Chunk(3, 6), 6)))
+      assertEquals(Chunk(2, 3).scanLeftCarry(1)(_ + _), (Chunk(3, 6), 6))
     }
   }
 

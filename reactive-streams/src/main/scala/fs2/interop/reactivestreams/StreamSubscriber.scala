@@ -150,7 +150,7 @@ object StreamSubscriber {
           case RequestBeforeSubscription(req) =>
             WaitingOnUpstream(s, Chunk.empty, req) -> (() => s.request(bufferSize.toLong))
           case Uninitialized => Idle(s, Chunk.empty) -> (() => ())
-          case o =>
+          case o             =>
             val err = new Error(s"received subscription in invalid state [$o]")
             o -> { () =>
               s.cancel()
@@ -165,7 +165,7 @@ object StreamSubscriber {
             } else
               WaitingOnUpstream(s, newBuffer, r) -> (() => ())
           case DownstreamCancellation => DownstreamCancellation -> (() => ())
-          case o =>
+          case o                      =>
             o -> (() => reportFailure(new Error(s"received record [$a] in invalid state [$o]")))
         }
         case OnComplete => {
@@ -191,7 +191,7 @@ object StreamSubscriber {
           case o            => o -> (() => ())
         }
         case OnDequeue(r) => {
-          case Uninitialized => RequestBeforeSubscription(r) -> (() => ())
+          case Uninitialized     => RequestBeforeSubscription(r) -> (() => ())
           case Idle(sub, buffer) =>
             WaitingOnUpstream(sub, buffer, r) -> (() => sub.request(bufferSize.toLong))
           case err @ UpstreamError(e) => err -> (() => r(e.asLeft))

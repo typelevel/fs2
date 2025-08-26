@@ -146,7 +146,7 @@ object Network extends NetworkCompanionPlatform {
       address match {
         case sa: SocketAddress[Host] => ifIp(sa)
         case ua: UnixSocketAddress   => ifUnix(ua)
-        case other =>
+        case other                   =>
           ApplicativeThrow[G].raiseError(
             new UnsupportedOperationException(s"Unsupported address type: $other")
           )

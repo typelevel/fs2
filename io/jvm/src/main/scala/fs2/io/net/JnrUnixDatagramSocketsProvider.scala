@@ -107,7 +107,7 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
           )(f: UnixSocketAddress => A): A =
             address match {
               case u: UnixSocketAddress => f(u)
-              case _ =>
+              case _                    =>
                 throw new IllegalArgumentException(
                   s"Unsupported address type $address; must pass a UnixSocketAddress"
                 )

@@ -200,7 +200,7 @@ class ChannelSuite extends Fs2Suite {
 
   def blackHole(s: Stream[IO, Unit]) =
     s.repeatPull(_.uncons.flatMap {
-      case None => Pull.pure(None)
+      case None           => Pull.pure(None)
       case Some((hd, tl)) =>
         val action = IO.delay(0.until(hd.size).foreach(_ => ()))
         Pull.eval(action).as(Some(tl))

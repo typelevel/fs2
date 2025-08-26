@@ -82,8 +82,8 @@ class MemoryLeakSpec extends FunSuite {
           IO.sleep(params.monitorPeriod)
         )
       ).map {
-        case Left(_)         => ()
-        case Right(Right(_)) => ()
+        case Left(_)           => ()
+        case Right(Right(_))   => ()
         case Right(Left(path)) =>
           fail(s"leak detected - heap dump: $path")
       }.unsafeRunSync()

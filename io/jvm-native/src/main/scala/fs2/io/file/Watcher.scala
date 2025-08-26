@@ -148,10 +148,10 @@ object Watcher {
     /** Determines the path for which the supplied event references. */
     private[Watcher] def pathOf(event: Event): Option[JPath] =
       event match {
-        case Event.Created(p, _)  => Some(p.toNioPath)
-        case Event.Deleted(p, _)  => Some(p.toNioPath)
-        case Event.Modified(p, _) => Some(p.toNioPath)
-        case Event.Overflow(_)    => None
+        case Event.Created(p, _)                       => Some(p.toNioPath)
+        case Event.Deleted(p, _)                       => Some(p.toNioPath)
+        case Event.Modified(p, _)                      => Some(p.toNioPath)
+        case Event.Overflow(_)                         => None
         case Event.NonStandard(e, registeredDirectory) =>
           if (e.context.isInstanceOf[JPath])
             Some(registeredDirectory.toNioPath.resolve(e.context.asInstanceOf[JPath]))

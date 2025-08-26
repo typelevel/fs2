@@ -50,7 +50,7 @@ class SectionCodec private (
       val preHeader = SectionHeader(section.tableId, extension.isDefined, privateBits, 0)
       for {
         encData <- extension match {
-          case None => c.codec(preHeader, verifyCrc).encode(data)
+          case None      => c.codec(preHeader, verifyCrc).encode(data)
           case Some(ext) =>
             for {
               encExt <- Codec[SectionExtension].encode(ext)
