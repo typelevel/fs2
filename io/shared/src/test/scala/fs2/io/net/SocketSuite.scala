@@ -270,9 +270,9 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
 
     test("sockets are released at the end of the resource scope") {
       val f =
-        Network[IO].serverResource(port = Some(port"9071")).use { case (bindAddress, clients) =>
-          clients.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
-            Network[IO].client(bindAddress).use { client =>
+        Network[IO].bind(SocketAddress.port(port"9071")).use { serverSocket =>
+          serverSocket.accept.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
+            Network[IO].connect(serverSocket.address).use { client =>
               client.read(1).assertEquals(None)
             }
           }
