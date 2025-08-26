@@ -192,6 +192,13 @@ private[fs2] trait ioplatform {
       writable: F[Writable],
       endAfterUse: Boolean = true
   )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
+    writeWritableInstrumented(writable, endAfterUse, _ => ())
+
+  private[io] def writeWritableInstrumented[F[_]](
+      writable: F[Writable],
+      endAfterUse: Boolean = true,
+      onWrite: Chunk[Byte] => Unit
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
     in =>
       Stream
         .eval(writable)
@@ -201,7 +208,10 @@ private[fs2] trait ioplatform {
               F.delay {
                 writable.write(
                   chunk.toUint8Array,
-                  e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  e => {
+                    onWrite(chunk)
+                    cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  }
                 )
                 Some(F.delay(writable.destroy()))
               }
