@@ -54,8 +54,8 @@ private final class SelectingIpDatagramSocketsProvider[F[_]](selector: Selector)
               val inet = isa.getAddress
               new InetSocketAddress(inet, isa.getPort)
             }
-            .flatMap(loca =>
-              SelectingDatagramSocket(selector, ch, SocketAddress.fromInetSocketAddress(loca))
+            .flatMap(local =>
+              SelectingDatagramSocket(selector, ch, SocketAddress.fromInetSocketAddress(local))
             )
         }
       }
