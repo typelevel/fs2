@@ -339,7 +339,7 @@ jobs:
     name: Test I/O on macOS
     strategy:
       matrix:
-        os: [macos-latest]
+        os: [macos-14]
         java: [temurin@17]
         project: [ioJS, ioJVM, ioNative]
     runs-on: ${{ matrix.os }}

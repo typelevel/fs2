@@ -45,6 +45,11 @@ private[io] object dgram {
 
     def bind(options: BindOptions, cb: js.Function0[Unit]): Unit = js.native
 
+    def connect(port: Int, address: String, cb: js.Function1[js.UndefOr[js.Error], Unit]): Unit =
+      js.native
+
+    def disconnect(): Unit = js.native
+
     def addMembership(multicastAddress: String, multicastInterface: String): Unit = js.native
 
     def dropMembership(multicastAddress: String, multicastInterface: String): Unit = js.native
@@ -63,6 +68,9 @@ private[io] object dgram {
 
     def close(cb: js.Function0[Unit]): Unit = js.native
 
+    def send(msg: Uint8Array, cb: js.Function1[js.Error, Unit]): Unit =
+      js.native
+
     def send(msg: Uint8Array, port: Int, address: String, cb: js.Function1[js.Error, Unit]): Unit =
       js.native
 
@@ -74,7 +82,11 @@ private[io] object dgram {
 
     def setMulticastTTL(ttl: Int): Unit = js.native
 
+    def getRecvBufferSize: Int = js.native
+
     def setRecvBufferSize(size: Int): Unit = js.native
+
+    def getSendBufferSize: Int = js.native
 
     def setSendBufferSize(size: Int): Unit = js.native
 
@@ -85,7 +97,7 @@ private[io] object dgram {
   @js.native
   trait AddressInfo extends js.Object {
     def address: String = js.native
-    def family: Int = js.native
+    def family: String = js.native
     def port: Int = js.native
   }
 
@@ -97,7 +109,7 @@ private[io] object dgram {
   @js.native
   trait RemoteInfo extends js.Object {
     def address: String = js.native
-    def family: Int = js.native
+    def family: String = js.native
     def port: Int = js.native
     def size: Int = js.native
   }
