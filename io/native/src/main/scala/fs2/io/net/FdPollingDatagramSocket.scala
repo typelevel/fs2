@@ -40,10 +40,7 @@ import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
 import cats.syntax.all._
-import scala.scalanative.posix.string._
-import fs2.io.internal.netinetin.sockaddr_in2
 import fs2.io.internal.netinetin.sockaddr_in
-import scala.scalanative.meta.LinktimeInfo
 import fs2.io.internal.netinetinOps._
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
@@ -69,30 +66,12 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
   def connect(address: GenSocketAddress) =
     F.delay {
       SocketHelpers.toSockaddr(address.asIpUnsafe) { (addr, len) =>
-        val (ptr, length) =
-          if (LinktimeInfo.isMac) {
-            val origIn = addr.asInstanceOf[Ptr[sockaddr_in]]
-            val addr2 = stackalloc[sockaddr_in2]()
-            addr2.sin_len = sizeof[sockaddr_in2].toUByte
-            addr2.sin_family = origIn.sin_family
-            addr2.sin_port = origIn.sin_port
-            addr2.sin_addr = origIn.sin_addr
-            (addr2.asInstanceOf[Ptr[sockaddr]], sizeof[sockaddr_in2].toUInt)
-          } else {
-            (addr, len)
-          }
-        val res = sconnect(fd, addr.asInstanceOf[Ptr[sockaddr]], len)
-        println(s"[debug] addrPtr = $addr")
+        val res = sconnect(fd, addr, len)
         if (res < 0) {
           val e = errno
-          val msg = fromCString(strerror(e))
-          println(s"[debug] connect failed -> res=$res errno=$e ($msg)")
           throw errnoToThrowable(e)
-        } else {
-          println(s"[debug] connect OK -> res=$res")
         }
       }
-
     }
 
   def disconnect: F[Unit] = F.delay {
