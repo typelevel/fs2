@@ -86,11 +86,20 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
       private implicit def dnsInstance: Dns[F] = dns
 
       private def selecting[A](
-          ifSelecting: SelectingIpSocketsProvider[F] => Resource[F, A],
+          ifSelecting: IpSocketsProvider[F] => Resource[F, A],
           orElse: => Resource[F, A]
       ): Resource[F, A] =
         Resource.eval(tryGetSelector).flatMap {
           case Some(selector) => ifSelecting(new SelectingIpSocketsProvider(selector))
+          case None           => orElse
+        }
+
+      private def selectingDatagram[A](
+          ifSelecting: SelectingIpDatagramSocketsProvider[F] => Resource[F, A],
+          orElse: => Resource[F, A]
+      ): Resource[F, A] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) => ifSelecting(new SelectingIpDatagramSocketsProvider(selector))
           case None           => orElse
         }
 
@@ -118,13 +127,15 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           address: GenSocketAddress,
           options: List[SocketOption]
       ): Resource[F, DatagramSocket[F]] =
-        Resource.eval(tryGetSelector).flatMap {
-          case Some(selector) =>
-            new SelectingIpDatagramSocketsProvider[F](selector)
-              .bindDatagramSocket(address.asIpUnsafe, options)
-          case None =>
-            fallback.bindDatagramSocket(address, options)
-        }
+        matchAddress(
+          address,
+          sa =>
+            selectingDatagram(
+              _.bindDatagramSocket(sa, options),
+              fallback.bindDatagramSocket(sa, options)
+            ),
+          ua => fallback.bindDatagramSocket(ua, options)
+        )
 
       // Implementations of deprecated operations
 
