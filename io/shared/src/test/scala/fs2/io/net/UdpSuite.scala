@@ -50,11 +50,13 @@ class UdpSuite extends Fs2Suite {
           val serverAddress = SocketAddress(ip"127.0.0.1", serverSocket.address.asIpUnsafe.port)
           println("checking address 2")
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
+          println("checking address 3")
           val client =
             Stream.resource(Network[IO].bindDatagramSocket(SocketAddress.Wildcard)).evalMap {
               clientSocket =>
                 sendAndReceive(clientSocket, Datagram(serverAddress, msg))
             }
+          println("checking address 4")
           client.concurrently(server)
         }
         .compile
