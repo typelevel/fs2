@@ -40,8 +40,6 @@ import fs2.io.internal.syssocket.{connect => sconnect}
 import fs2.io.net.FdPollingDatagramSocket._
 import java.net.{NetworkInterface => JNetworkInterface}
 import cats.syntax.all._
-import fs2.io.internal.netinetin.sockaddr_in
-import fs2.io.internal.netinetinOps._
 import scala.scalanative.meta.LinktimeInfo
 
 private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
@@ -100,8 +98,10 @@ private final class FdPollingDatagramSocket[F[_]: LiftIO] private (
             addrBuf,
             addrLen
           )
-          var family = addrBuf.asInstanceOf[Ptr[sockaddr_in]].sin_family.toInt
-          if (LinktimeInfo.isMac) family = family & 0xff
+          val addrBytes = addrBuf.asInstanceOf[Ptr[Byte]]
+          val family: Int =
+            if (LinktimeInfo.isLinux) addrBytes(0) & 0xff
+            else addrBytes(1) & 0xff
           println("checking address 5")
           if (nBytes < 0) {
             val err = errno
