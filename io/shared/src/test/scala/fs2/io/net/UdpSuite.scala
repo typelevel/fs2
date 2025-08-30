@@ -46,7 +46,9 @@ class UdpSuite extends Fs2Suite {
       Stream
         .resource(Network[IO].bindDatagramSocket(SocketAddress.Wildcard))
         .flatMap { serverSocket =>
+          println("checking address 1")
           val serverAddress = SocketAddress(ip"127.0.0.1", serverSocket.address.asIpUnsafe.port)
+          println("checking address 2")
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
           val client =
             Stream.resource(Network[IO].bindDatagramSocket(SocketAddress.Wildcard)).evalMap {
