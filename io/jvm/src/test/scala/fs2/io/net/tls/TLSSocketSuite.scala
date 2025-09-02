@@ -32,8 +32,11 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
 import com.comcast.ip4s._
+import java.io.FileNotFoundException
 import java.security.Security
 import javax.net.ssl.SSLHandshakeException
+
+import fs2.io.file.Path
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
@@ -215,6 +218,20 @@ class TLSSocketSuite extends TLSSuite {
         .compile
         .to(Chunk)
         .assertEquals(msg)
+    }
+  }
+
+  group("TLSContextBuilder") {
+    test("fromKeyStoreResource - not found") {
+      Network[IO].tlsContext
+        .fromKeyStoreResource("does-not-exist.jks", Array.empty, Array.empty)
+        .intercept[IOException]
+    }
+
+    test("fromKeyStoreFile - not found") {
+      Network[IO].tlsContext
+        .fromKeyStoreFile(Path("does-not-exist.jks"), Array.empty, Array.empty)
+        .intercept[FileNotFoundException]
     }
   }
 }
