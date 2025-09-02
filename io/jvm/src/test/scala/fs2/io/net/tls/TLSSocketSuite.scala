@@ -224,13 +224,13 @@ class TLSSocketSuite extends TLSSuite {
   group("TLSContextBuilder") {
     test("fromKeyStoreResource - not found") {
       Network[IO].tlsContext
-        .fromKeyStoreResource("does-not-exist.jks", Array.empty, Array.empty)
+        .fromKeyStoreResource("does-not-exist.jks", Array.empty[Char], Array.empty[Char])
         .intercept[IOException]
     }
 
     test("fromKeyStoreFile - not found") {
       Network[IO].tlsContext
-        .fromKeyStoreFile(Path("does-not-exist.jks"), Array.empty, Array.empty)
+        .fromKeyStoreFile(Path("does-not-exist.jks"), Array.empty[Char], Array.empty[Char])
         .intercept[FileNotFoundException]
     }
   }
