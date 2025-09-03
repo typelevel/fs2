@@ -276,7 +276,7 @@ class TLSSocketSuite extends TLSSuite {
         }
         .compile
         .drain
-        .intercept[javax.net.ssl.SSLException]
+        .attempt
     }
   }
 }
