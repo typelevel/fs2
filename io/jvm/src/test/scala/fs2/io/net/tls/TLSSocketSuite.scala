@@ -220,7 +220,7 @@ class TLSSocketSuite extends TLSSuite {
         .assertEquals(msg)
     }
 
-    test("endOfOutput during handshake results in termination".only) {
+    test("endOfOutput during handshake results in termination") {
       val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
 
       def limitWrites(raw: Socket[IO], limit: Int): Socket[IO] = new Socket[IO] {
