@@ -259,7 +259,7 @@ class TLSSocketSuite extends TLSSuite {
           tlsContext.clientBuilder(rawClient).withLogger(logger).build
         }
       } yield serverSocket.accept
-        .flatMap(s => Stream.resource(tlsContext.server(limitWrites(s, 100)))) -> client
+        .flatMap(s => Stream.resource(tlsContext.server(limitWrites(s, 20)))) -> client
 
       Stream
         .resource(setup)
