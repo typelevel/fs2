@@ -226,22 +226,13 @@ class TLSSocketSuite extends TLSSuite {
       def limitWrites(raw: Socket[IO], limit: Int): Socket[IO] = new Socket[IO] {
         def endOfInput = raw.endOfInput
         def endOfOutput = raw.endOfOutput
-        @deprecated("", "")
         def isOpen = raw.isOpen
-        @deprecated("", "")
         def localAddress = raw.localAddress
-        def peerAddress = raw.peerAddress
         def read(maxBytes: Int) = raw.read(maxBytes)
         def readN(numBytes: Int) = raw.readN(numBytes)
         def reads = raw.reads
-        @deprecated("", "")
         def remoteAddress = raw.remoteAddress
         def writes = raw.writes
-
-        def address = raw.address
-        def getOption[A](key: SocketOption.Key[A]) = raw.getOption(key)
-        def setOption[A](key: SocketOption.Key[A], value: A) = raw.setOption(key, value)
-        def supportedOptions = raw.supportedOptions
 
         private var totalWritten: Int = 0
         def write(bytes: Chunk[Byte]) =
@@ -257,15 +248,16 @@ class TLSSocketSuite extends TLSSuite {
       // Doing so should not cause the server to peg a CPU
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
-        serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        addressAndConnections <- Network[IO].serverResource(Some(ip"127.0.0.1"))
+        (serverAddress, server) = addressAndConnections
         echoServer =
-          serverSocket.accept
+          server
             .flatMap(s => Stream.resource(tlsContext.serverBuilder(s).withLogger(logger).build))
             .map { socket =>
               socket.reads.chunks.foreach(socket.write)
             }
             .parJoinUnbounded
-        client <- Network[IO].connect(serverSocket.address).flatMap { rawClient =>
+        client <- Network[IO].client(serverAddress).flatMap { rawClient =>
           tlsContext.client(limitWrites(rawClient, 10))
         }
       } yield echoServer -> client
