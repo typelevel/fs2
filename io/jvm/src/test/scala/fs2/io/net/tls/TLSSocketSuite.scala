@@ -243,31 +243,36 @@ class TLSSocketSuite extends TLSSuite {
         def setOption[A](key: SocketOption.Key[A], value: A) = raw.setOption(key, value)
         def supportedOptions = raw.supportedOptions
 
-        private var totalWritten: Long = 0
+        private var totalWritten: Int = 0
         def write(bytes: Chunk[Byte]) =
           if (totalWritten >= limit) endOfOutput
           else {
-            val b = bytes.take(limit)
-            raw.write(b) >> IO(totalWritten += b.size)
+            val b = bytes.take(limit - totalWritten)
+            raw.write(b) >> IO(totalWritten += b.size) >> IO(totalWritten >= limit)
+              .ifM(endOfOutput, IO.unit)
           }
       }
 
+      // Setup an HTTPS echo server & a client that starts a TLS handshake but only sends the first few bytes and then signals no more output
+      // Doing so should not cause the server to peg a CPU
       val setup = for {
         tlsContext <- Resource.eval(testTlsContext)
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        echoServer =
+          serverSocket.accept
+            .flatMap(s => Stream.resource(tlsContext.serverBuilder(s).withLogger(logger).build))
+            .map { socket =>
+              socket.reads.chunks.foreach(socket.write)
+            }
+            .parJoinUnbounded
         client <- Network[IO].connect(serverSocket.address).flatMap { rawClient =>
-          tlsContext.clientBuilder(rawClient).withLogger(logger).build
+          tlsContext.client(limitWrites(rawClient, 10))
         }
-      } yield serverSocket.accept
-        .flatMap(s => Stream.resource(tlsContext.server(limitWrites(s, 20)))) -> client
+      } yield echoServer -> client
 
       Stream
         .resource(setup)
-        .flatMap { case (server, clientSocket) =>
-          val echoServer = server.map { socket =>
-            socket.reads.chunks.foreach(socket.write(_))
-          }.parJoinUnbounded
-
+        .flatMap { case (echoServer, clientSocket) =>
           val client =
             Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
               clientSocket.reads.take(msg.size.toLong)
@@ -276,7 +281,6 @@ class TLSSocketSuite extends TLSSuite {
         }
         .compile
         .drain
-        .attempt
     }
   }
 
