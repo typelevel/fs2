@@ -356,6 +356,12 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.dns"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.interfaces"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.fromKeyStoreFile"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.fs2$io$net$tls$TLSContextCompanionPlatform$BuilderPlatform$$$outer"
+  ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.metrics")
 )
 

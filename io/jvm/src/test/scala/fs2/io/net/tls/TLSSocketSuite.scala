@@ -32,8 +32,11 @@ import cats.effect.{IO, Resource}
 import cats.syntax.all._
 
 import com.comcast.ip4s._
+import java.io.FileNotFoundException
 import java.security.Security
 import javax.net.ssl.SSLHandshakeException
+
+import fs2.io.file.Path
 
 class TLSSocketSuite extends TLSSuite {
   val size = 8192
@@ -215,6 +218,83 @@ class TLSSocketSuite extends TLSSuite {
         .compile
         .to(Chunk)
         .assertEquals(msg)
+    }
+
+    test("endOfOutput during handshake results in termination") {
+      val msg = Chunk.array(("Hello, world! " * 20000).getBytes)
+
+      def limitWrites(raw: Socket[IO], limit: Int): Socket[IO] = new Socket[IO] {
+        def endOfInput = raw.endOfInput
+        def endOfOutput = raw.endOfOutput
+        @deprecated("", "")
+        def isOpen = raw.isOpen
+        @deprecated("", "")
+        def localAddress = raw.localAddress
+        def peerAddress = raw.peerAddress
+        def read(maxBytes: Int) = raw.read(maxBytes)
+        def readN(numBytes: Int) = raw.readN(numBytes)
+        def reads = raw.reads
+        @deprecated("", "")
+        def remoteAddress = raw.remoteAddress
+        def writes = raw.writes
+
+        def address = raw.address
+        def getOption[A](key: SocketOption.Key[A]) = raw.getOption(key)
+        def setOption[A](key: SocketOption.Key[A], value: A) = raw.setOption(key, value)
+        def supportedOptions = raw.supportedOptions
+
+        private var totalWritten: Int = 0
+        def write(bytes: Chunk[Byte]) =
+          if (totalWritten >= limit) endOfOutput
+          else {
+            val b = bytes.take(limit - totalWritten)
+            raw.write(b) >> IO(totalWritten += b.size) >> IO(totalWritten >= limit)
+              .ifM(endOfOutput, IO.unit)
+          }
+      }
+
+      // Setup an HTTPS echo server & a client that starts a TLS handshake but only sends the first few bytes and then signals no more output
+      // Doing so should not cause the server to peg a CPU
+      val setup = for {
+        tlsContext <- Resource.eval(testTlsContext)
+        serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        echoServer =
+          serverSocket.accept
+            .flatMap(s => Stream.resource(tlsContext.serverBuilder(s).withLogger(logger).build))
+            .map { socket =>
+              socket.reads.chunks.foreach(socket.write)
+            }
+            .parJoinUnbounded
+        client <- Network[IO].connect(serverSocket.address).flatMap { rawClient =>
+          tlsContext.client(limitWrites(rawClient, 10))
+        }
+      } yield echoServer -> client
+
+      Stream
+        .resource(setup)
+        .flatMap { case (echoServer, clientSocket) =>
+          val client =
+            Stream.exec(clientSocket.write(msg)).onFinalize(clientSocket.endOfOutput) ++
+              clientSocket.reads.take(msg.size.toLong)
+
+          client.concurrently(echoServer)
+        }
+        .compile
+        .drain
+    }
+  }
+
+  group("TLSContextBuilder") {
+    test("fromKeyStoreResource - not found") {
+      Network[IO].tlsContext
+        .fromKeyStoreResource("does-not-exist.jks", Array.empty[Char], Array.empty[Char])
+        .intercept[IOException]
+    }
+
+    test("fromKeyStoreFile - not found") {
+      Network[IO].tlsContext
+        .fromKeyStoreFile(Path("does-not-exist.jks"), Array.empty[Char], Array.empty[Char])
+        .intercept[FileNotFoundException]
     }
   }
 }
