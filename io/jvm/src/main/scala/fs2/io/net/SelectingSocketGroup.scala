@@ -22,6 +22,8 @@
 package fs2
 package io.net
 
+import scala.concurrent.duration._
+
 import cats.effect.LiftIO
 import cats.effect.Selector
 import cats.effect.kernel.Async
@@ -100,7 +102,11 @@ private final class SelectingSocketGroup[F[_]: LiftIO: Dns](selector: Selector)(
   ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
-        F.delay(ch.close())
+        def waitForDeregistration: F[Unit] =
+          // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+          // give the runtime/cpu time to do something else; some guesswork involved here
+          F.delay(ch.isRegistered()).ifM(F.sleep(2.millis) >> waitForDeregistration, F.unit)
+        F.delay(ch.close()) >> waitForDeregistration
       }
       .evalMap { serverCh =>
         val configure = address.traverse(_.resolve).flatMap { ip =>
