@@ -41,7 +41,7 @@ private[io] object net {
   @js.native
   trait Server extends EventEmitter {
 
-    def address(): ServerAddress = js.native
+    def address(): js.UndefOr[ServerAddress] = js.native
 
     def listening: Boolean = js.native
 
@@ -110,6 +110,7 @@ private[io] object net {
 
     def setTimeout(timeout: Double): Socket = js.native
 
+    def timeout: Double = js.native
   }
 
 }

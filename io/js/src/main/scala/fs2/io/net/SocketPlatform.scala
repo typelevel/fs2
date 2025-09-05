@@ -23,28 +23,24 @@ package fs2
 package io
 package net
 
-import cats.data.Kleisli
-import cats.data.OptionT
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
-import cats.syntax.all._
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
-import fs2.io.internal.SuspendedStream
-import fs2.io.internal.facade
+import cats.data.{Kleisli, OptionT}
+import cats.effect.{Async, Resource}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import fs2.io.internal.{facade, SuspendedStream}
 
 private[net] trait SocketCompanionPlatform {
 
   private[net] def forAsync[F[_]](
-      sock: facade.net.Socket
+      sock: facade.net.Socket,
+      address: GenSocketAddress,
+      peerAddress: GenSocketAddress
   )(implicit F: Async[F]): Resource[F, Socket[F]] =
     suspendReadableAndRead(
       destroyIfNotEnded = false,
       destroyIfCanceled = false
     )(sock.asInstanceOf[Readable])
       .flatMap { case (_, stream) =>
-        SuspendedStream(stream).map(new AsyncSocket(sock, _))
+        SuspendedStream(stream).map(new AsyncSocket(sock, _, address, peerAddress))
       }
       .onFinalize {
         F.delay {
@@ -55,7 +51,9 @@ private[net] trait SocketCompanionPlatform {
 
   private[net] class AsyncSocket[F[_]](
       sock: facade.net.Socket,
-      readStream: SuspendedStream[F, Byte]
+      readStream: SuspendedStream[F, Byte],
+      val address: GenSocketAddress,
+      val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
       extends Socket[F] {
 
@@ -87,17 +85,29 @@ private[net] trait SocketCompanionPlatform {
 
     override def isOpen: F[Boolean] = F.delay(sock.readyState == "open")
 
-    override def remoteAddress: F[SocketAddress[IpAddress]] =
-      for {
-        ip <- F.delay(sock.remoteAddress.toOption.flatMap(IpAddress.fromString).get)
-        port <- F.delay(sock.remotePort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(ip, port)
-
     override def localAddress: F[SocketAddress[IpAddress]] =
-      for {
-        ip <- F.delay(sock.localAddress.toOption.flatMap(IpAddress.fromString).get)
-        port <- F.delay(sock.localPort.toOption.map(_.toInt).flatMap(Port.fromInt).get)
-      } yield SocketAddress(ip, port)
+      F.delay(address.asIpUnsafe)
+
+    override def remoteAddress: F[SocketAddress[IpAddress]] =
+      F.delay(peerAddress.asIpUnsafe)
+
+    override def supportedOptions: F[Set[SocketOption.Key[?]]] =
+      F.pure(
+        Set(
+          SocketOption.Encoding,
+          SocketOption.KeepAlive,
+          SocketOption.NoDelay,
+          SocketOption.Timeout,
+          SocketOption.UnixSocketDeleteIfExists,
+          SocketOption.UnixSocketDeleteOnClose
+        )
+      )
+
+    override def getOption[A](key: SocketOption.Key[A]): F[Option[A]] =
+      key.get(sock)
+
+    override def setOption[A](key: SocketOption.Key[A], value: A): F[Unit] =
+      key.set(sock, value)
 
     override def write(bytes: Chunk[Byte]): F[Unit] =
       Stream.chunk(bytes).through(writes).compile.drain

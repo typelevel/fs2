@@ -19,12 +19,15 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.net.unixsocket
+package fs2
+package io
+package net
+package unixsocket
 
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
+import cats.effect.{Async, LiftIO}
 
-private[unixsocket] trait UnixSocketsCompanionPlatform {
+private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
+  @deprecated("Use Network instead", "3.13.0")
   implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] =
-    new FdPollingUnixSockets[F]
+    new AsyncUnixSockets(new FdPollingUnixSocketsProvider[F])
 }

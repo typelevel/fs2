@@ -34,7 +34,9 @@ ThisBuild / githubWorkflowAddedJobs +=
     scalas = Nil,
     sbtStepPreamble = Nil,
     javas = List(githubWorkflowJavaVersions.value.head),
-    oses = List("macos-latest"),
+    oses = List(
+      "macos-14"
+    ), // FIXME: macos-15 breaks sending multicast to local network - https://github.com/actions/runner-images/issues/10924
     matrixAdds = Map("project" -> List("ioJS", "ioJVM", "ioNative")),
     steps = githubWorkflowJobSetup.value.toList ++ List(
       WorkflowStep.Run(List("brew install s2n"), cond = Some("matrix.project == 'ioNative'")),
@@ -272,6 +274,93 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[MissingTypesProblem](
     "fs2.interop.flow.StreamSubscriber$State$WaitingOnUpstream$"
+  ),
+  // Network refactor: #3563
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.connect"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bind"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bindAndAccept"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.address"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.peerAddress"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.address"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.supportedOptions"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.getOption"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.Socket.setOption"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.net.SocketCompanionPlatform#AsyncSocket.this"
+  ),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$AbstractAsyncSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroupCompanionPlatform"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.SocketGroupCompanionPlatform$AsyncSocketGroup"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.address"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSSocket.supportedOptions"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.getOption"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem]("fs2.io.net.tls.TLSSocket.setOption"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSockets$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JdkUnixSocketsImpl"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSockets"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSockets$"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.JnrUnixSocketsImpl"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform$AsyncSocket"
+  ),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.unixsocket.UnixSocketsCompanionPlatform$AsyncUnixSockets"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.SelectingSocket.apply"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SelectingSocketGroup"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.Socket.forAsync"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.SocketOptionCompanionPlatform#Key.get"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.Network.openDatagramSocket"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem]("fs2.io.net.FdPollingSocket.apply"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.FdPollingSocketGroup"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.unixsocket.FdPollingUnixSockets"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem](
+    "fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.remote"
+  ),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.AsynchronousDatagramSocketGroup#WriterDatagram.this"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.address"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.DatagramSocket.supportedOptions"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.getOption"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.setOption"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.readGen"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.connect"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.disconnect"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.write"),
+  ProblemFilters.exclude[MissingClassProblem](
+    "fs2.io.net.DatagramSocketGroupCompanionPlatform$AsyncDatagramSocketGroup"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.bindDatagramSocket"),
+  ProblemFilters.exclude[MissingClassProblem]("fs2.io.net.SocketGroup$"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.SocketOptionCompanionPlatform#Key.fs2$io$net$SocketOptionCompanionPlatform$Key$$$outer"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.net.DatagramSocketOption#Key.toSocketOption"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.DatagramSocket.join"),
+  ProblemFilters.exclude[IncompatibleMethTypeProblem](
+    "fs2.io.net.DatagramSocketOption.multicastInterface"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.dns"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Network.interfaces"),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.fromKeyStoreFile"
+  ),
+  ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
+    "fs2.io.net.tls.TLSContext#Builder.fs2$io$net$tls$TLSContextCompanionPlatform$BuilderPlatform$$$outer"
   )
 )
 

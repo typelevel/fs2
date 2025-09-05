@@ -68,9 +68,15 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       underlying: Socket[F],
       val session: F[SSLSession],
       val applicationProtocol: F[String]
-  ) extends Socket.AsyncSocket[F](sock, readStream)
+  ) extends Socket.AsyncSocket[F](
+        sock,
+        readStream,
+        underlying.address,
+        underlying.peerAddress
+      )
       with UnsealedTLSSocket[F] {
-    override def localAddress = underlying.localAddress
-    override def remoteAddress = underlying.remoteAddress
+    override def getOption[A](key: SocketOption.Key[A]) = underlying.getOption(key)
+    override def setOption[A](key: SocketOption.Key[A], value: A) = underlying.setOption(key, value)
+    override def supportedOptions = underlying.supportedOptions
   }
 }

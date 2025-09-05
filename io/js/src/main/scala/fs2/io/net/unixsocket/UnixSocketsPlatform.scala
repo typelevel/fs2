@@ -20,103 +20,30 @@
  */
 
 package fs2
-package io.net.unixsocket
+package io
+package net
+package unixsocket
 
-import cats.effect.IO
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
-import cats.effect.std.Dispatcher
-import cats.syntax.all._
-import fs2.concurrent.Channel
+import cats.effect.{Async, IO, LiftIO}
 import fs2.io.file.Files
-import fs2.io.file.Path
-import fs2.io.net.Socket
-import fs2.io.internal.facade
 
-import scala.scalajs.js
-
-private[unixsocket] trait UnixSocketsCompanionPlatform {
+private[unixsocket] trait UnixSocketsCompanionPlatform { self: UnixSockets.type =>
+  @deprecated("Use Network instead", "3.13.0")
   def forIO: UnixSockets[IO] = forLiftIO
 
+  @deprecated("Use Network instead", "3.13.0")
   implicit def forLiftIO[F[_]: Async: LiftIO]: UnixSockets[F] = {
     val _ = LiftIO[F]
     forAsyncAndFiles
   }
 
+  @deprecated("Use Network instead", "3.13.0")
   def forAsync[F[_]](implicit F: Async[F]): UnixSockets[F] =
     forAsyncAndFiles(Files.forAsync(F), F)
 
-  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] =
-    new UnixSockets[F] {
-
-      override def client(address: UnixSocketAddress): Resource[F, Socket[F]] =
-        Resource
-          .make(
-            F.delay(
-              new facade.net.Socket(new facade.net.SocketOptions { allowHalfOpen = true })
-            )
-          )(socket =>
-            F.delay {
-              if (!socket.destroyed)
-                socket.destroy()
-            }
-          )
-          .evalTap { socket =>
-            F.async_[Unit] { cb =>
-              socket.connect(address.path, () => cb(Right(())))
-              ()
-            }
-          }
-          .flatMap(Socket.forAsync[F])
-
-      override def server(
-          address: UnixSocketAddress,
-          deleteIfExists: Boolean,
-          deleteOnClose: Boolean
-      ): fs2.Stream[F, Socket[F]] =
-        for {
-          dispatcher <- Stream.resource(Dispatcher.sequential[F])
-          channel <- Stream.eval(Channel.unbounded[F, facade.net.Socket])
-          errored <- Stream.eval(F.deferred[js.JavaScriptException])
-          server <- Stream.bracket(
-            F.delay {
-              facade.net.createServer(
-                new facade.net.ServerOptions {
-                  pauseOnConnect = true
-                  allowHalfOpen = true
-                },
-                sock => dispatcher.unsafeRunAndForget(channel.send(sock))
-              )
-            }
-          )(server =>
-            F.async_[Unit] { cb =>
-              if (server.listening) {
-                server.close(e => cb(e.toLeft(()).leftMap(js.JavaScriptException)))
-                ()
-              } else
-                cb(Right(()))
-            }
-          )
-          _ <- Stream
-            .resource(
-              server.registerListener[F, js.Error]("error", dispatcher) { e =>
-                errored.complete(js.JavaScriptException(e)).void
-              }
-            )
-            .concurrently(Stream.eval(errored.get.flatMap(F.raiseError[Unit])))
-          _ <- Stream.bracket(
-            if (deleteIfExists) Files[F].deleteIfExists(Path(address.path)).void else F.unit
-          )(_ => if (deleteOnClose) Files[F].deleteIfExists(Path(address.path)).void else F.unit)
-          _ <- Stream.eval(
-            F.async_[Unit] { cb =>
-              server.listen(address.path, () => cb(Right(())))
-              ()
-            }
-          )
-          socket <- channel.stream.flatMap(sock => Stream.resource(Socket.forAsync(sock)))
-        } yield socket
-
-    }
-
+  @deprecated("Use Network instead", "3.13.0")
+  def forAsyncAndFiles[F[_]: Files](implicit F: Async[F]): UnixSockets[F] = {
+    val _ = Files[F]
+    new AsyncUnixSockets(new AsyncSocketsProvider)
+  }
 }

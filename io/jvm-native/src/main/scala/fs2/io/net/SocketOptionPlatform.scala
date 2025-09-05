@@ -25,7 +25,9 @@ import java.net.{SocketOption => JSocketOption}
 import java.net.StandardSocketOptions
 
 import java.lang.{Boolean => JBoolean, Integer => JInt}
-import java.net.NetworkInterface
+import java.net.{NetworkInterface => JNetworkInterface}
+
+import com.comcast.ip4s.NetworkInterface
 
 private[net] trait SocketOptionCompanionPlatform {
   type Key[A] = JSocketOption[A]
@@ -36,39 +38,69 @@ private[net] trait SocketOptionCompanionPlatform {
   def integer(key: JSocketOption[JInt], value: Int): SocketOption =
     SocketOption[JInt](key, value)
 
+  val MulticastInterface = StandardSocketOptions.IP_MULTICAST_IF
   def multicastInterface(value: NetworkInterface): SocketOption =
-    SocketOption(StandardSocketOptions.IP_MULTICAST_IF, value)
+    SocketOption(MulticastInterface, JNetworkInterface.getByName(value.name))
 
+  def multicastInterface(value: JNetworkInterface): SocketOption =
+    SocketOption(MulticastInterface, value)
+
+  val MulticastLoop = StandardSocketOptions.IP_MULTICAST_LOOP
   def multicastLoop(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.IP_MULTICAST_LOOP, value)
+    boolean(MulticastLoop, value)
 
+  val MulticastTtl = StandardSocketOptions.IP_MULTICAST_TTL
   def multicastTtl(value: Int): SocketOption =
-    integer(StandardSocketOptions.IP_MULTICAST_TTL, value)
+    integer(MulticastTtl, value)
 
+  val TypeOfService = StandardSocketOptions.IP_TOS
   def typeOfService(value: Int): SocketOption =
-    integer(StandardSocketOptions.IP_TOS, value)
+    integer(TypeOfService, value)
 
+  val Broadcast = StandardSocketOptions.SO_BROADCAST
   def broadcast(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.SO_BROADCAST, value)
+    boolean(Broadcast, value)
 
+  val KeepAlive = StandardSocketOptions.SO_KEEPALIVE
   def keepAlive(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.SO_KEEPALIVE, value)
+    boolean(KeepAlive, value)
 
+  val Linger = StandardSocketOptions.SO_LINGER
   def linger(value: Int): SocketOption =
-    integer(StandardSocketOptions.SO_LINGER, value)
+    integer(Linger, value)
 
+  val ReceiveBufferSize = StandardSocketOptions.SO_RCVBUF
   def receiveBufferSize(value: Int): SocketOption =
-    integer(StandardSocketOptions.SO_RCVBUF, value)
+    integer(ReceiveBufferSize, value)
 
+  val ReuseAddress = StandardSocketOptions.SO_REUSEADDR
   def reuseAddress(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.SO_REUSEADDR, value)
+    boolean(ReuseAddress, value)
 
+  // Note: this option was added in Java 9 so lazily load it to avoid failure on Java 8
+  lazy val ReusePort = StandardSocketOptions.SO_REUSEPORT
   def reusePort(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.SO_REUSEPORT, value)
+    boolean(ReusePort, value)
 
+  val SendBufferSize = StandardSocketOptions.SO_SNDBUF
   def sendBufferSize(value: Int): SocketOption =
-    integer(StandardSocketOptions.SO_SNDBUF, value)
+    integer(SendBufferSize, value)
 
+  val NoDelay = StandardSocketOptions.TCP_NODELAY
   def noDelay(value: Boolean): SocketOption =
-    boolean(StandardSocketOptions.TCP_NODELAY, value)
+    boolean(NoDelay, value)
+
+  val UnixSocketDeleteIfExists: Key[JBoolean] = new Key[JBoolean] {
+    def name() = "FS2_UNIX_DELETE_IF_EXISTS"
+    def `type`() = classOf[JBoolean]
+  }
+  def unixSocketDeleteIfExists(value: JBoolean): SocketOption =
+    boolean(UnixSocketDeleteIfExists, value)
+
+  val UnixSocketDeleteOnClose: Key[JBoolean] = new Key[JBoolean] {
+    def name() = "FS2_UNIX_DELETE_ON_CLOSE"
+    def `type`() = classOf[JBoolean]
+  }
+  def unixSocketDeleteOnClose(value: Boolean): SocketOption =
+    boolean(UnixSocketDeleteOnClose, value)
 }
