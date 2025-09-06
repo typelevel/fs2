@@ -94,6 +94,15 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           case None           => orElse
         }
 
+      private def selectingDatagram[A](
+          ifSelecting: SelectingIpDatagramSocketsProvider[F] => Resource[F, A],
+          orElse: => Resource[F, A]
+      ): Resource[F, A] =
+        Resource.eval(tryGetSelector).flatMap {
+          case Some(selector) => ifSelecting(new SelectingIpDatagramSocketsProvider(selector))
+          case None           => orElse
+        }
+
       override def connect(
           address: GenSocketAddress,
           options: List[SocketOption]
@@ -118,7 +127,15 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           address: GenSocketAddress,
           options: List[SocketOption]
       ): Resource[F, DatagramSocket[F]] =
-        fallback.bindDatagramSocket(address, options)
+        matchAddress(
+          address,
+          sa =>
+            selectingDatagram(
+              _.bindDatagramSocket(sa, options),
+              fallback.bindDatagramSocket(sa, options)
+            ),
+          ua => fallback.bindDatagramSocket(ua, options)
+        )
 
       // Implementations of deprecated operations
 
