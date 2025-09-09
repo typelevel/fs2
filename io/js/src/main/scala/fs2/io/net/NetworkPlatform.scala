@@ -23,61 +23,24 @@ package fs2
 package io
 package net
 
-import cats.effect.IO
-import cats.effect.LiftIO
-import cats.effect.kernel.Async
-import cats.effect.kernel.Resource
-import com.comcast.ip4s.Host
-import com.comcast.ip4s.IpAddress
-import com.comcast.ip4s.Port
-import com.comcast.ip4s.SocketAddress
-import fs2.io.net.tls.TLSContext
+import cats.effect.{Async, LiftIO}
 
 private[net] trait NetworkPlatform[F[_]]
 
 private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: Network.type =>
-  def forIO: Network[IO] = forLiftIO
 
   implicit def forLiftIO[F[_]: Async: LiftIO]: Network[F] = {
     val _ = LiftIO[F]
     forAsync
   }
 
-  def forAsync[F[_]](implicit F: Async[F]): Network[F] =
-    new UnsealedNetwork[F] {
-
-      private lazy val socketGroup = SocketGroup.forAsync[F]
-      private lazy val datagramSocketGroup = DatagramSocketGroup.forAsync[F]
-
-      override def client(
-          to: SocketAddress[Host],
-          options: List[SocketOption]
-      ): Resource[F, Socket[F]] =
-        socketGroup.client(to, options)
-
-      override def server(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Stream[F, Socket[F]] =
-        socketGroup.server(address, port, options)
-
-      override def serverResource(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[SocketOption]
-      ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-        socketGroup.serverResource(address, port, options)
-
-      override def openDatagramSocket(
-          address: Option[Host],
-          port: Option[Port],
-          options: List[DatagramSocketOption],
-          protocolFamily: Option[DatagramSocketGroup.ProtocolFamily]
-      ): Resource[F, DatagramSocket[F]] =
-        datagramSocketGroup.openDatagramSocket(address, port, options, protocolFamily)
-
-      override def tlsContext: TLSContext.Builder[F] = TLSContext.Builder.forAsync
-
+  def forAsync[F[_]](implicit F: Async[F]): Network[F] = {
+    val omni = new AsyncSocketsProvider[F]
+    new AsyncProviderBasedNetwork[F] {
+      protected def mkIpSocketsProvider = omni
+      protected def mkUnixSocketsProvider = omni
+      protected def mkIpDatagramSocketsProvider = omni
+      protected def mkUnixDatagramSocketsProvider = omni
     }
+  }
 }

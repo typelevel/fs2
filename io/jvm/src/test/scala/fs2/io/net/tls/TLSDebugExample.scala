@@ -37,7 +37,7 @@ object TLSDebug {
       host: SocketAddress[Hostname]
   ): F[String] =
     host.resolve.flatMap { socketAddress =>
-      Network[F].client(socketAddress).use { rawSocket =>
+      Network[F].connect(socketAddress).use { rawSocket =>
         tlsContext
           .clientBuilder(rawSocket)
           .withParameters(
