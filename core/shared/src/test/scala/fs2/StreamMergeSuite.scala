@@ -241,4 +241,52 @@ class StreamMergeSuite extends Fs2Suite {
         }
     }
   }
+
+  test("mergePreferred prefers this over that") {
+
+    val units = Stream.unit.covary[IO].repeat
+    val left = units.map(Left(_))
+    val right = units.map(Right(_))
+
+    val stream = left.mergePreferred(right)
+
+    stream
+      .take(10000)
+      .fold((0L, 0L)) {
+        case ((left, right), Left(_))  => (left + 1, right)
+        case ((left, right), Right(_)) => (left, right + 1)
+      }
+      .compile
+      .lastOrError
+      .map { case (left, right) =>
+        val relLeft = left.toDouble / (left + right).toDouble
+        // Tolerate up to 2% elements of the non preferred stream.
+        // Increase the value, if the test (ocassionally) reports false positives.
+        val delta = 0.02d
+        assertEqualsDouble(relLeft, 1.0d, delta)
+      }
+  }
+
+  test("mergePreferred fully consumes this") {
+    forAllF { (stream: Stream[Pure, Int]) =>
+      stream.covary[IO].mergePreferred(Stream.empty.covary[IO]).assertEmitsSameAs(stream)
+    }
+  }
+
+  test("mergePreferred fully consumes that") {
+    forAllF { (stream: Stream[Pure, Int]) =>
+      Stream.empty.covary[IO].mergePreferred(stream.covary[IO]).assertEmitsSameAs(stream)
+    }
+  }
+
+  test("mergePreferred fully consumes both") {
+    forAllF { (leftStream: Stream[Pure, Int], rightStream: Stream[Pure, Int]) =>
+      val leftTagged = leftStream.covary[IO]
+      val rightTagged = rightStream.covary[IO]
+      leftTagged
+        .mergePreferred(rightTagged)
+        .assertEmitsUnorderedSameAs(leftStream ++ rightStream)
+    }
+  }
+
 }
