@@ -247,15 +247,16 @@ class StreamMergeSuite extends Fs2Suite {
     // Create stream for each int that comes in,
     // then run them in parallel
     // Where we return the int value and then wait (Simulating some work that never ends, or ends in long time.).
-    def run(source: Stream[IO, Int]): IO[Vector[Int]] = {
-      source.map { a =>
-        Stream.emit(a) ++
-        Stream.never[IO]
-      }.parJoinUnbounded
-      .timeoutOnPullTo(200.millis, Stream.empty)
-      .compile
-      .toVector
-    }
+    def run(source: Stream[IO, Int]): IO[Vector[Int]] =
+      source
+        .map { a =>
+          Stream.emit(a) ++
+            Stream.never[IO]
+        }
+        .parJoinUnbounded
+        .timeoutOnPullTo(200.millis, Stream.empty)
+        .compile
+        .toVector
 
     run(
       (Stream.emit(1) ++ Stream.sleep_[IO](50.millis) ++ Stream.emit(2)).merge(
@@ -273,14 +274,13 @@ class StreamMergeSuite extends Fs2Suite {
     case object Tick2 extends Data
 
     def splitHead[F[_], O](in: fs2.Stream[F, O]): fs2.Stream[F, (O, fs2.Stream[F, O])] =
-      in.pull.uncons1
-      .flatMap {
+      in.pull.uncons1.flatMap {
         case Some((head, tail)) => fs2.Pull.output(Chunk((head, tail)))
-        case None => fs2.Pull.done
-      }
-      .stream
+        case None               => fs2.Pull.done
+      }.stream
 
-    val source = Stream.emits(1 to 2).evalMap(i => IO(Item(i)).delayBy(100.millis)) ++ Stream.never[IO]
+    val source =
+      Stream.emits(1 to 2).evalMap(i => IO(Item(i)).delayBy(100.millis)) ++ Stream.never[IO]
 
     val timer = fs2.Stream.awakeEvery[IO](50.millis).map(_ => Tick1)
     val timer2 = fs2.Stream.awakeEvery[IO](50.millis).map(_ => Tick2)
@@ -288,19 +288,22 @@ class StreamMergeSuite extends Fs2Suite {
     val sources = timer2.mergeHaltBoth(source.mergeHaltBoth(timer))
 
     splitHead(sources)
-    .flatMap { case (head, tail) =>
-      splitHead(tail).flatMap { case (head2, tail) =>
-        Stream.emit(head) ++ Stream.emit(head2) ++ tail
-      }.parEvalMap(3) { i =>
-       IO(i)
+      .flatMap { case (head, tail) =>
+        splitHead(tail)
+          .flatMap { case (head2, tail) =>
+            Stream.emit(head) ++ Stream.emit(head2) ++ tail
+          }
+          .parEvalMap(3) { i =>
+            IO(i)
+          }
       }
-    }
-    .interruptAfter(230.millis)
-    .compile
-    .toVector.assert { data =>
-      data.count(_.isInstanceOf[Item]) == 2 &&
-      data.count(_.isInstanceOf[Tick1.type]) == 4 &&
-      data.count(_.isInstanceOf[Tick2.type]) == 4
-    }
+      .interruptAfter(230.millis)
+      .compile
+      .toVector
+      .assert { data =>
+        data.count(_.isInstanceOf[Item]) == 2 &&
+        data.count(_.isInstanceOf[Tick1.type]) == 4 &&
+        data.count(_.isInstanceOf[Tick2.type]) == 4
+      }
   }
 }
