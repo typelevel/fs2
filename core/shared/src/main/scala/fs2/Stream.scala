@@ -2063,7 +2063,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case (Some(r1), Some(r2)) => CompositeFailure.fromResults(r1, r2)
         }
         def run(s: Stream[F2, O2]): F2[Unit] =
-          // `guard` ensures we do not pull another chunk until the previous one has been consumed downstream.
+          // `guard` ensures we do not pull another chunk until the previous one has been produced for downstream.
           Semaphore[F2](1).flatMap { guard =>
             def sendChunk(chk: Chunk[O2]): F2[Unit] = {
               val outStr = Stream.exec(guard.release) ++ Stream.chunk(chk)
