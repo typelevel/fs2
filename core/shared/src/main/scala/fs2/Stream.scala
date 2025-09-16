@@ -2066,7 +2066,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           // `guard` ensures we do not pull another chunk until the previous one has been consumed downstream.
           Semaphore[F2](1).flatMap { guard =>
             def sendChunk(chk: Chunk[O2]): F2[Unit] = {
-              val outStr = Stream.chunk(chk).onFinalize(guard.release)
+              val outStr = Stream.exec(guard.release) ++ Stream.chunk(chk)
               output.send(outStr) >> guard.acquire
             }
 
