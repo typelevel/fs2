@@ -25,9 +25,11 @@ import scala.collection.generic.{
   GenericTraversableTemplate,
   MapFactory,
   SetFactory,
+  SortedMapFactory,
+  SortedSetFactory,
   TraversableFactory
 }
-import scala.collection.{MapLike, SetLike, Traversable}
+import scala.collection.{MapLike, SetLike, SortedMapLike, SortedSetLike, Traversable}
 
 import fs2.internal._
 
@@ -52,10 +54,30 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
   ): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
 
+  implicit def supportsSortedMapFactory[
+      K: Ordering,
+      V,
+      C[a, b] <: collection.SortedMap[a, b] with SortedMapLike[
+        a,
+        b,
+        C[a, b]
+      ]
+  ](
+      f: SortedMapFactory[C]
+  ): Collector.Aux[(K, V), C[K, V]] =
+    make(Builder.fromSortedMapFactory(f))
+
   implicit def supportsSetFactory[A, C[x] <: Set[x] with SetLike[x, C[x]]](
       f: SetFactory[C]
   ): Collector.Aux[A, C[A]] =
     make(Builder.fromSetFactory(f))
+
+  implicit def supportsSortedSetFactory[A: Ordering, C[x] <: collection.SortedSet[
+    x
+  ] with SortedSetLike[x, C[x]]](
+      f: SortedSetFactory[C]
+  ): Collector.Aux[A, C[A]] =
+    make(Builder.fromSortedSetFactory(f))
 
   private[fs2] trait BuilderPlatform { self: Collector.Builder.type =>
     def fromFactory[A, C[_], B](f: Factory[A, C[B]]): Builder[A, C[B]] =
@@ -71,8 +93,24 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
     ): Builder[(K, V), C[K, V]] =
       fromBuilder(f.newBuilder)
 
+    def fromSortedMapFactory[
+        K: Ordering,
+        V,
+        C[a, b] <: collection.SortedMap[a, b] with SortedMapLike[a, b, C[a, b]]
+    ](
+        f: SortedMapFactory[C]
+    ): Builder[(K, V), C[K, V]] =
+      fromBuilder(f.newBuilder)
+
     def fromSetFactory[A, C[x] <: collection.Set[x] with SetLike[x, C[x]]](
         f: SetFactory[C]
+    ): Builder[A, C[A]] =
+      fromBuilder(f.newBuilder)
+
+    def fromSortedSetFactory[A: Ordering, C[x] <: collection.SortedSet[x] with SortedSetLike[x, C[
+      x
+    ]]](
+        f: SortedSetFactory[C]
     ): Builder[A, C[A]] =
       fromBuilder(f.newBuilder)
   }

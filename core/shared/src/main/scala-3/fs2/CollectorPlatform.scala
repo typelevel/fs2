@@ -22,7 +22,13 @@
 package fs2
 
 import scala.collection.immutable.ArraySeq
-import scala.collection.{Factory, IterableFactory, MapFactory}
+import scala.collection.{
+  Factory,
+  EvidenceIterableFactory,
+  IterableFactory,
+  MapFactory,
+  SortedMapFactory
+}
 import scala.reflect.ClassTag
 
 private[fs2] trait CollectorPlatform { self: Collector.type =>
@@ -37,6 +43,16 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
 
   implicit def supportsMapFactory[K, V, C[_, _]](f: MapFactory[C]): Collector.Aux[(K, V), C[K, V]] =
     make(Builder.fromMapFactory(f))
+
+  implicit def supportsSortedMapFactory[K: Ordering, V, C[_, _]](
+      f: SortedMapFactory[C]
+  ): Collector.Aux[(K, V), C[K, V]] =
+    make(Builder.fromSortedMapFactory(f))
+
+  implicit def supportsEvidenceIterableFactory[A, C[_], E[_]](f: EvidenceIterableFactory[C, E])(
+      implicit ev: E[A]
+  ): Collector.Aux[A, C[A]] =
+    make(Builder.fromEvidenceIterableFactory(f))
 
   /** Use `ArraySeq.untagged` to build a `Collector` where a `ClassTag` is not available.
     */
@@ -70,6 +86,16 @@ private[fs2] trait CollectorPlatform { self: Collector.type =>
       fromBuilder(f.newBuilder)
 
     def fromMapFactory[K, V, C[_, _]](f: MapFactory[C]): Builder[(K, V), C[K, V]] =
+      fromBuilder(f.newBuilder)
+
+    def fromSortedMapFactory[K: Ordering, V, C[_, _]](
+        f: SortedMapFactory[C]
+    ): Builder[(K, V), C[K, V]] =
+      fromBuilder(f.newBuilder)
+
+    def fromEvidenceIterableFactory[A, C[_], E[_]](f: EvidenceIterableFactory[C, E])(implicit
+        ev: E[A]
+    ): Builder[A, C[A]] =
       fromBuilder(f.newBuilder)
 
     def taggedArraySeq[A: ClassTag]: Builder[A, ArraySeq[A]] =
