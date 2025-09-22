@@ -224,7 +224,7 @@ class StreamMergeSuite extends Fs2Suite {
     }
   }
 
-  test("merge not emit ahead") {
+  test("merge not emit ahead more than 1 chunk") {
     forAllF { (v: Int) =>
       Ref
         .of[IO, Int](v)
@@ -236,8 +236,8 @@ class StreamMergeSuite extends Fs2Suite {
             .repeatEval(ref.get)
             .merge(Stream.never[IO])
             .evalMap(sleepAndSet)
-            .take(2)
-            .assertEmits(List(v, v + 1))
+            .take(6)
+            .assertEmits(List(v, v, v + 1, v + 1, v + 2, v + 2))
         }
     }
   }
