@@ -242,6 +242,24 @@ class StreamMergeSuite extends Fs2Suite {
     }
   }
 
+  test("mergeAndAwaitDownstream not emit ahead") {
+    forAllF { (v: Int) =>
+      Ref
+        .of[IO, Int](v)
+        .flatMap { ref =>
+          def sleepAndSet(value: Int): IO[Int] =
+            IO.sleep(100.milliseconds) >> ref.set(value + 1) >> IO(value)
+
+          Stream
+            .repeatEval(ref.get)
+            .mergeAndAwaitDownstream(Stream.never[IO])
+            .evalMap(sleepAndSet)
+            .take(3)
+            .assertEmits(List(v, v + 1, v + 2))
+        }
+    }
+  }
+
   test("merge produces when concurrently handled") {
 
     // Create stream for each int that comes in,

@@ -2000,6 +2000,107 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.force(fstream)
   }
 
+  /** Implementation of [[merge]], however allows specifying how to combine the output stream.
+    * This can be used to control how chunks are emitted downstream. See [[mergeAndAwaitDownstream]] for example.
+    *
+    * @param f The function that combines the output stream and a finalizer for the chunk.
+    *          This way we can controll when to pull pull next chunk from upstream.
+    */
+  private def merge_[F2[x] >: F[x], O2 >: O](
+      that: Stream[F2, O2]
+  )(
+      f: (Stream[F2, O2], F2[Unit]) => Stream[F2, O2]
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    Stream.force {
+      // `State` describes the state of an upstream stream (`this` and `that` are both upstream streams)
+      // None            : the stream has not yet terminated
+      // Some(Left(t))   : the stream terminated with an error
+      // Some(Right(())) : the stream terminated successfully
+      type State = Option[Either[Throwable, Unit]]
+      for {
+        // `bothStates` keeps track of the state of `this` and `that` stream
+        // so we can terminate downstream when both upstreams terminate.
+        bothStates <- SignallingRef.of[F2, (State, State)]((None, None))
+        // `output` is used to send chunks from upstreams to downstream.
+        // It sends streams, not chunks, to tie each chunk with a finalizer
+        output <- Channel.synchronous[F2, Stream[F2, O2]]
+        // `stopDef` is used to interrupt the upstreams if a) any of the
+        // upstreams raises an error, or b) the downstream terminates.
+        stopDef <- Deferred[F2, Unit]
+      } yield {
+        val signalStop: F2[Unit] = stopDef.complete(()).void
+        val stop: F2[Either[Throwable, Unit]] = stopDef.get.as(Right(()))
+        def complete(result: Either[Throwable, Unit]): F2[Unit] =
+          bothStates.update {
+            case (None, None)  => (Some(result), None)
+            case (other, None) => (other, Some(result))
+            case _             => sys.error("impossible")
+          }
+        val bothStopped: PartialFunction[(State, State), Either[Throwable, Unit]] = {
+          case (Some(r1), Some(r2)) => CompositeFailure.fromResults(r1, r2)
+        }
+        def run(s: Stream[F2, O2]): F2[Unit] =
+          // `guard` ensures we do not pull another chunk until the previous one has been produced for downstream.
+          Semaphore[F2](1).flatMap { guard =>
+            def sendChunk(chk: Chunk[O2]): F2[Unit] =
+              output.send(f(Stream.chunk(chk), guard.release)) >> guard.acquire
+
+            (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
+              // Stop when the other upstream has errored or the downstream has completed.
+              // This may also interrupt the initial call to `guard.acquire` as the call is made at the
+              // beginning of the stream.
+              .interruptWhen(stop)
+              .compile
+              .drain
+              .attempt
+              .flatMap {
+                case r @ Left(_) =>
+                  // On error, interrupt the other upstream and downstream.
+                  complete(r) >> signalStop
+                case r @ Right(()) => complete(r)
+              }
+          }
+
+        val waitForBoth: F2[Unit] = bothStates.discrete
+          .collect(bothStopped)
+          .head
+          .rethrow
+          .compile
+          .drain
+          .guarantee(output.close.void)
+
+        // There is no need to clean up these fibers. If the downstream is cancelled,
+        // both streams will stop gracefully and the fibers will complete.
+        val setup: F2[Fiber[F2, Throwable, Unit]] =
+          run(this).start >> run(that).start >> waitForBoth.start
+        Stream.bracket(setup)(wfb => signalStop >> wfb.joinWithUnit) >> output.stream.flatten
+          .interruptWhen(stop)
+      }
+    }
+
+  /** Like [[merge]], but ensures that each chunk is fully consumed downstream before pulling the next chunk from the same side.
+    * This looses the equivalence with `Stream(this, that).parJoinUnbounded` but can be useful when we need to never read ahead from
+    * the merged streams.
+    *
+    * @note Pay attention to possible deadlocks of "this" or "that" when using this function, notably in parallel processing
+    *       as unless the chunk is fully processed / scope of the chunk is released, the next chunk will not be pulled.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> import cats.effect._
+    * scala> Ref.of[IO, Int](0).flatMap{ ref =>
+    *      |   fs2.Stream.never[IO].mergeAndAwaitDownstream(fs2.Stream.repeatEval(ref.get)).evalMap(value => {
+    *      |     IO.sleep(1.second) >> ref.set(value + 1) as value
+    *      |   }).take(6).compile.toVector
+    *      | }.unsafeRunSync()
+    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5)
+    * }}}
+    */
+  def mergeAndAwaitDownstream[F2[x] >: F[x], O2 >: O](
+      that: Stream[F2, O2]
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    merge_(that) { case (s, fin) => s.onFinalize(fin) }
+
   /** Interleaves the two inputs nondeterministically. The output stream
     * halts after BOTH `s1` and `s2` terminate normally, or in the event
     * of an uncaught failure on either `s1` or `s2`. Has the property that
@@ -2034,74 +2135,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def merge[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    Stream.force {
-      // `State` describes the state of an upstream stream (`this` and `that` are both upstream streams)
-      // None            : the stream has not yet terminated
-      // Some(Left(t))   : the stream terminated with an error
-      // Some(Right(())) : the stream terminated successfully
-      type State = Option[Either[Throwable, Unit]]
-      for {
-        // `bothStates` keeps track of the state of `this` and `that` stream
-        // so we can terminate downstream when both upstreams terminate.
-        bothStates <- SignallingRef.of[F2, (State, State)]((None, None))
-        // `output` is used to send chunks from upstreams to downstream.
-        // It sends streams, not chunks, to tie each chunk with a finalizer
-        output <- Channel.synchronous[F2, Stream[F2, O2]]
-        // `stopDef` is used to interrupt the upstreams if a) any of the
-        // upstreams raises an error, or b) the downstream terminates.
-        stopDef <- Deferred[F2, Unit]
-      } yield {
-        val signalStop: F2[Unit] = stopDef.complete(()).void
-        val stop: F2[Either[Throwable, Unit]] = stopDef.get.as(Right(()))
-        def complete(result: Either[Throwable, Unit]): F2[Unit] =
-          bothStates.update {
-            case (None, None)  => (Some(result), None)
-            case (other, None) => (other, Some(result))
-            case _             => sys.error("impossible")
-          }
-        val bothStopped: PartialFunction[(State, State), Either[Throwable, Unit]] = {
-          case (Some(r1), Some(r2)) => CompositeFailure.fromResults(r1, r2)
-        }
-        def run(s: Stream[F2, O2]): F2[Unit] =
-          // `guard` ensures we do not pull another chunk until the previous one has been produced for downstream.
-          Semaphore[F2](1).flatMap { guard =>
-            def sendChunk(chk: Chunk[O2]): F2[Unit] = {
-              val outStr = Stream.exec(guard.release) ++ Stream.chunk(chk)
-              output.send(outStr) >> guard.acquire
-            }
-
-            (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
-              // Stop when the other upstream has errored or the downstream has completed.
-              // This may also interrupt the initial call to `guard.acquire` as the call is made at the
-              // beginning of the stream.
-              .interruptWhen(stop)
-              .compile
-              .drain
-              .attempt
-              .flatMap {
-                case r @ Left(_) =>
-                  // On error, interrupt the other upstream and downstream.
-                  complete(r) >> signalStop
-                case r @ Right(()) => complete(r)
-              }
-          }
-
-        val waitForBoth: F2[Unit] = bothStates.discrete
-          .collect(bothStopped)
-          .head
-          .rethrow
-          .compile
-          .drain
-          .guarantee(output.close.void)
-
-        // There is no need to clean up these fibers. If the downstream is cancelled,
-        // both streams will stop gracefully and the fibers will complete.
-        val setup: F2[Fiber[F2, Throwable, Unit]] =
-          run(this).start >> run(that).start >> waitForBoth.start
-        Stream.bracket(setup)(wfb => signalStop >> wfb.joinWithUnit) >> output.stream.flatten
-          .interruptWhen(stop)
-      }
-    }
+    merge_(that) { case (s, fin) => Stream.exec(fin) ++ s }
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](
