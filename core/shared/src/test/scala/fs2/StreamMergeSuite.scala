@@ -21,10 +21,10 @@
 
 package fs2
 
-import scala.concurrent.duration._
-
+import scala.concurrent.duration.*
 import cats.effect.IO
 import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.testkit.TestControl
 import org.scalacheck.effect.PropF.forAllF
 
 class StreamMergeSuite extends Fs2Suite {
@@ -305,19 +305,23 @@ class StreamMergeSuite extends Fs2Suite {
 
     val sources = timer2.mergeHaltBoth(source.mergeHaltBoth(timer))
 
-    splitHead(sources)
-      .flatMap { case (head, tail) =>
-        splitHead(tail)
-          .flatMap { case (head2, tail) =>
-            Stream.emit(head) ++ Stream.emit(head2) ++ tail
-          }
-          .parEvalMap(3) { i =>
-            IO(i)
-          }
-      }
-      .interruptAfter(230.millis)
-      .compile
-      .toVector
+    val program =
+      splitHead(sources)
+        .flatMap { case (head, tail) =>
+          splitHead(tail)
+            .flatMap { case (head2, tail) =>
+              Stream.emit(head) ++ Stream.emit(head2) ++ tail
+            }
+            .parEvalMap(3) { i =>
+              IO(i)
+            }
+        }
+        .interruptAfter(230.millis)
+        .compile
+        .toVector
+
+    TestControl
+      .executeEmbed(program)
       .assert { data =>
         data.count(_.isInstanceOf[Item]) == 2 &&
         data.count(_.isInstanceOf[Tick1.type]) == 4 &&
