@@ -276,11 +276,15 @@ class StreamMergeSuite extends Fs2Suite {
         .compile
         .toVector
 
-    run(
-      (Stream.emit(1) ++ Stream.sleep_[IO](50.millis) ++ Stream.emit(2)).merge(
-        Stream.never[IO]
+    TestControl
+      .executeEmbed(
+        run(
+          (Stream.emit(1) ++ Stream.sleep_[IO](50.millis) ++ Stream.emit(2)).merge(
+            Stream.never[IO]
+          )
+        )
       )
-    ).assertEquals(Vector(1, 2))
+      .assertEquals(Vector(1, 2))
   }
 
   test("issue #3598") {
