@@ -313,8 +313,19 @@ class TimedPullsSuite extends Fs2Suite {
   }
 
   test("After the first uncons, timeouts start immediately") {
+    // Time how often we generate data in the main stream.
+    // This is only started after the first uncons.
     val emissionTime = 100.millis
-    val timeout = 200.millis
+
+    // Timeout which is registered before the first uncons, it is registered immediately
+    // But we do not expect it to trigger.
+    // This has to be longer than emissionTime, otherwise the first uncons would always timeout.
+    val initialTimeout = 200.millis
+
+    // Timeout registered after the first uncons, this one should be fired
+    val timeout = 50.millis
+
+    // Time we wait before doing uncons.
     val timedPullPause = Pull.eval(IO.sleep(150.millis))
 
     val prog =
@@ -323,7 +334,7 @@ class TimedPullsSuite extends Fs2Suite {
         .repeatN(2)
         .pull
         .timed { tp =>
-          tp.timeout(timeout) >>
+          tp.timeout(initialTimeout) >>
             // If the first timeout started immediately, this pause
             // before uncons would cause a timeout to be emitted
             timedPullPause >>
