@@ -39,8 +39,9 @@ import fs2.concurrent._
 import fs2.internal._
 import org.typelevel.scalaccompat.annotation._
 import Pull.StreamPullOps
+import cats.mtl.{LiftKind, LiftValue}
 
-import java.util.concurrent.Flow.{Publisher, Processor, Subscriber}
+import java.util.concurrent.Flow.{Processor, Publisher, Subscriber}
 
 /** A stream producing output of type `O` and which may evaluate `F` effects.
   *
@@ -5844,9 +5845,46 @@ object Stream extends StreamLowPriority {
     new Defer[Stream[F, *]] {
       override def defer[A](fa: => Stream[F, A]): Stream[F, A] = Stream.empty ++ fa
     }
+
+  implicit def liftKindInstance[F[_]](implicit F: Applicative[F]): LiftKind[F, Stream[F, *]] =
+    liftKindImpl(F)
+
+  implicit def liftValueFromResourceInstance[F[_]](implicit
+      F: MonadCancel[F, ?]
+  ): LiftValue[Resource[F, *], Stream[F, *]] =
+    liftValueFromResourceImpl(implicitly)
 }
 
 private[fs2] trait StreamLowPriority {
   implicit def monadInstance[F[_]]: Monad[Stream[F, *]] =
     new Stream.StreamMonad[F]
+
+  protected[this] def liftKindImpl[F[_]](F: Applicative[F]): LiftKind[F, Stream[F, *]] =
+    new LiftKind[F, Stream[F, *]] {
+      val applicativeF: Applicative[F] = F
+      val applicativeG: Applicative[Stream[F, *]] = monadInstance
+      def apply[A](fa: F[A]): Stream[F, A] = Stream.eval(fa)
+      def limitedMapK[A](ga: Stream[F, A])(scope: F ~> F): Stream[F, A] =
+        ga.translate(scope)
+    }
+
+  implicit def liftKindComposedInstance[F[_], G[_]](implicit
+      inner: LiftKind[F, G]
+  ): LiftKind[F, Stream[G, *]] =
+    inner.andThen(liftKindImpl(inner.applicativeG))
+
+  protected[this] def liftValueFromResourceImpl[F[_]](
+      applicativeResource: Applicative[Resource[F, *]]
+  )(implicit F: MonadCancel[F, ?]): LiftValue[Resource[F, *], Stream[F, *]] =
+    new LiftValue[Resource[F, *], Stream[F, *]] {
+      val applicativeF: Applicative[Resource[F, *]] = applicativeResource
+      val applicativeG: Applicative[Stream[F, *]] = monadInstance
+      def apply[A](fa: Resource[F, A]): Stream[F, A] = Stream.resource(fa)
+    }
+
+  implicit def liftValueFromResourceComposedInstance[F[_], G[_]](implicit
+      inner: LiftValue[F, Resource[G, *]],
+      G: MonadCancel[G, ?]
+  ): LiftValue[F, Stream[G, *]] =
+    inner.andThen(liftValueFromResourceImpl(inner.applicativeG))
 }

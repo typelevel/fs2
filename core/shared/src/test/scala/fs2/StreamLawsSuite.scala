@@ -21,20 +21,39 @@
 
 package fs2
 
-import cats.Eq
-import cats.effect.IO
+import cats.{Applicative, Eq, ~>}
+import cats.data.{IdT, OptionT}
+import cats.effect.{Concurrent, IO, Ref, Resource}
 import cats.effect.testkit.TestInstances
 import cats.laws.discipline._
 import cats.laws.discipline.arbitrary._
+import cats.mtl.LiftValue
+import cats.mtl.laws.discipline.{LiftKindTests, LiftValueTests}
+import org.scalacheck.{Arbitrary, Gen}
 
 class StreamLawsSuite extends Fs2Suite with TestInstances {
   implicit val ticker: Ticker = Ticker()
 
-  implicit def eqStream[O: Eq]: Eq[Stream[IO, O]] =
-    Eq.instance((x, y) =>
-      Eq[IO[Vector[Either[Throwable, O]]]]
-        .eqv(x.attempt.compile.toVector, y.attempt.compile.toVector)
-    )
+  implicit def eqStream[F[_], O](implicit
+      F: Concurrent[F],
+      eqFVecEitherThrowO: Eq[F[Vector[Either[Throwable, O]]]]
+  ): Eq[Stream[F, O]] =
+    Eq.by((_: Stream[F, O]).attempt.compile.toVector)
+
+  private[this] val counter: IO[Ref[IO, Int]] = IO.ref(0)
+
+  implicit val arbitraryScope: Arbitrary[IO ~> IO] =
+    Arbitrary {
+      Gen.const {
+        new (IO ~> IO) {
+          def apply[A](fa: IO[A]): IO[A] =
+            for {
+              ref <- counter
+              res <- ref.update(_ + 1) >> fa
+            } yield res
+        }
+      }
+    }
 
   checkAll(
     "MonadError[Stream[F, *], Throwable]",
@@ -50,4 +69,32 @@ class StreamLawsSuite extends Fs2Suite with TestInstances {
     "Align[Stream[F, *]]",
     AlignTests[Stream[IO, *]].align[Int, Int, Int, Int]
   )
+  checkAll(
+    "LiftKind[IO, Stream[IO, *]",
+    LiftKindTests[IO, Stream[IO, *]].liftKind[Int, Int]
+  )
+  checkAll(
+    "LiftKind[IO, Stream[OptionT[IO, *], *]",
+    LiftKindTests[IO, Stream[OptionT[IO, *], *]].liftKind[Int, Int]
+  )
+  checkAll(
+    "LiftValue[Resource[IO, *], Stream[IO, *]",
+    LiftValueTests[Resource[IO, *], Stream[IO, *]].liftValue[Int, Int]
+  )
+  locally {
+    // this is a somewhat silly instance, but we need a
+    // `LiftValue[X, Resource[IO, *]]` instance where `X` is not `IO` because
+    // that already has a higher priority implicit instance
+    implicit val liftIdTResource: LiftValue[IdT[IO, *], Resource[IO, *]] =
+      new LiftValue[IdT[IO, *], Resource[IO, *]] {
+        val applicativeF: Applicative[IdT[IO, *]] = implicitly
+        val applicativeG: Applicative[Resource[IO, *]] = implicitly
+        def apply[A](fa: IdT[IO, A]): Resource[IO, A] =
+          Resource.eval(fa.value)
+      }
+    checkAll(
+      "LiftValue[IdT[IO, *], Stream[IO, *]] via Resource[IO, *]",
+      LiftValueTests[IdT[IO, *], Stream[IO, *]].liftValue[Int, Int]
+    )
+  }
 }
