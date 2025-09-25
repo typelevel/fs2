@@ -30,6 +30,7 @@ import cats.syntax.all._
 
 import java.nio.channels.{AsynchronousSocketChannel, CompletionHandler}
 import java.nio.{Buffer, ByteBuffer}
+import java.util.concurrent.atomic.AtomicLong
 
 private[net] trait SocketCompanionPlatform {
   private[net] def forAsync[F[_]: Async](
@@ -50,6 +51,7 @@ private[net] trait SocketCompanionPlatform {
       extends Socket[F] {
     private[this] final val defaultReadSize = 8192
     private[this] var readBuffer: ByteBuffer = ByteBuffer.allocate(defaultReadSize)
+    protected val totalBytesRead: AtomicLong = new AtomicLong(0L)
 
     private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
       readMutex.lock.surround {
@@ -64,6 +66,14 @@ private[net] trait SocketCompanionPlatform {
 
     /** Performs a single channel read operation in to the supplied buffer. */
     protected def readChunk(buffer: ByteBuffer): F[Int]
+
+    /** Instrumented version of `readChunk`. */
+    protected def readChunk0(buffer: ByteBuffer): F[Int] =
+      readChunk(buffer).map { bytesRead =>
+        if (bytesRead >= 0)
+          totalBytesRead.addAndGet(bytesRead.toLong): Unit
+        bytesRead
+      }
 
     /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
     private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
@@ -83,7 +93,7 @@ private[net] trait SocketCompanionPlatform {
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
       withReadBuffer(max) { buffer =>
-        readChunk(buffer).flatMap { read =>
+        readChunk0(buffer).flatMap { read =>
           if (read < 0) F.pure(None)
           else releaseBuffer(buffer).map(Some(_))
         }
@@ -92,7 +102,7 @@ private[net] trait SocketCompanionPlatform {
     def readN(max: Int): F[Chunk[Byte]] =
       withReadBuffer(max) { buffer =>
         def go: F[Chunk[Byte]] =
-          readChunk(buffer).flatMap { readBytes =>
+          readChunk0(buffer).flatMap { readBytes =>
             if (readBytes < 0 || buffer.position() >= max)
               releaseBuffer(buffer)
             else go
@@ -114,10 +124,19 @@ private[net] trait SocketCompanionPlatform {
       val peerAddress: GenSocketAddress
   )(implicit F: Async[F])
       extends BufferedReads[F](readMutex)
-      with SocketInfo.AsyncSocketInfo[F] {
+      with SocketInfo.AsyncSocketInfo[F] { outer =>
 
     protected def asyncInstance = F
     protected def channel = ch
+
+    private val totalBytesWritten: AtomicLong = new AtomicLong(0L)
+    private val incompleteWriteCount: AtomicLong = new AtomicLong(0L)
+
+    def metrics: SocketMetrics = new SocketMetrics.UnsealedSocketMetrics {
+      def totalBytesRead(): Long = outer.totalBytesRead.get
+      def totalBytesWritten(): Long = outer.totalBytesWritten.get
+      def incompleteWriteCount(): Long = outer.incompleteWriteCount.get
+    }
 
     protected def readChunk(buffer: ByteBuffer): F[Int] =
       F.async[Int] { cb =>
@@ -139,9 +158,11 @@ private[net] trait SocketCompanionPlatform {
           )
           F.delay(Some(endOfOutput.voidError))
         }.flatMap { written =>
-          if (written >= 0 && buff.remaining() > 0)
+          totalBytesWritten.addAndGet(written.toLong)
+          if (written >= 0 && buff.remaining() > 0) {
+            incompleteWriteCount.incrementAndGet()
             go(buff)
-          else F.unit
+          } else F.unit
         }
       writeMutex.lock.surround {
         F.delay(bytes.toByteBuffer).flatMap(go)

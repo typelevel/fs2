@@ -35,6 +35,7 @@ import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey.OP_READ
 import java.nio.channels.SelectionKey.OP_WRITE
 import java.nio.channels.SocketChannel
+import java.util.concurrent.atomic.AtomicLong
 
 private final class SelectingSocket[F[_]: LiftIO] private (
     selector: Selector,
@@ -45,10 +46,19 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     val peerAddress: SocketAddress[IpAddress]
 )(implicit F: Async[F])
     extends Socket.BufferedReads(readMutex)
-    with SocketInfo.AsyncSocketInfo[F] {
+    with SocketInfo.AsyncSocketInfo[F] { outer =>
 
   protected def asyncInstance = F
   protected def channel = ch
+
+  private val totalBytesWritten: AtomicLong = new AtomicLong(0L)
+  private val incompleteWriteCount: AtomicLong = new AtomicLong(0L)
+
+  def metrics: SocketMetrics = new SocketMetrics.UnsealedSocketMetrics {
+    def totalBytesRead(): Long = outer.totalBytesRead.get
+    def totalBytesWritten(): Long = outer.totalBytesWritten.get
+    def incompleteWriteCount(): Long = outer.incompleteWriteCount.get
+  }
 
   override def localAddress: F[SocketAddress[IpAddress]] =
     asyncInstance.pure(address)
@@ -65,10 +75,12 @@ private final class SelectingSocket[F[_]: LiftIO] private (
   def write(bytes: Chunk[Byte]): F[Unit] = {
     def go(buf: ByteBuffer): F[Unit] =
       F.delay {
-        ch.write(buf)
+        val written = ch.write(buf)
+        totalBytesWritten.addAndGet(written.toLong)
         buf.remaining()
       }.flatMap { remaining =>
         if (remaining > 0) {
+          incompleteWriteCount.incrementAndGet()
           selector.select(ch, OP_WRITE).to *> go(buf)
         } else F.unit
       }
