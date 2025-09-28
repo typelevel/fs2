@@ -327,7 +327,7 @@ object Pull extends PullLowPriority {
     ): Pull[F2, O2, Unit] =
       self match {
         case a: AlgEffect[F, Unit] => a
-        case r: Terminal[?]        => r
+        case r: Terminal[Unit]     => r
         case _                     => FlatMapOutput(self, f)
       }
 
@@ -1316,9 +1316,9 @@ object Pull extends PullLowPriority {
     stream match {
       case t: Translate[?, f, ?] =>
         translate(t.stream, t.fk.andThen(fK.asInstanceOf[f ~> G]))
-      case o: Output[?]   => o
-      case r: Terminal[?] => r
-      case _              => Translate(stream, fK)
+      case o: Output[?]      => o
+      case r: Terminal[Unit] => r
+      case _                 => Translate(stream, fK)
     }
 
   /* Applies the outputs of this pull to `f` and returns the result in a new `Pull`. */
