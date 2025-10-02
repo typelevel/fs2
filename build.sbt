@@ -158,19 +158,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 lazy val root = tlCrossRootProject
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
-lazy val core = crossProject(JVMPlatform, JSPlatform)
-  .in(file("core"))
-  .settings(
-    name := "fs2-core",
-    libraryDependencies ++= Seq(
-      "org.typelevel" %%% "cats-core" % "2.6.1",
-      "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
-      "org.typelevel" %%% "cats-effect" % "2.5.4",
-      "org.typelevel" %%% "cats-effect-laws" % "2.5.4" % Test,
-      "org.scodec" %%% "scodec-bits" % "1.1.28",
-      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
-      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
-    ) ++ (
+val compilerSettings = Seq(
+    libraryDependencies ++= ( 
       if (scalaVersion.value.startsWith("3.")) Nil
       else
         Seq(
@@ -189,7 +178,23 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
                            "-source:3.0-migration"
                          )
                        else Nil)
+                       )
+
+lazy val core = crossProject(JVMPlatform, JSPlatform)
+  .in(file("core"))
+  .settings(
+    name := "fs2-core",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %%% "cats-core" % "2.6.1",
+      "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
+      "org.typelevel" %%% "cats-effect" % "2.5.4",
+      "org.typelevel" %%% "cats-effect-laws" % "2.5.4" % Test,
+      "org.scodec" %%% "scodec-bits" % "1.1.28",
+      "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
+      "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
+    ),
   )
+  .settings(compilerSettings)
 
 lazy val coreJVM = core.jvm
   .enablePlugins(SbtOsgi)
@@ -232,6 +237,7 @@ lazy val io = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val reactiveStreams = project
@@ -257,6 +263,7 @@ lazy val reactiveStreams = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val benchmark = project
@@ -267,6 +274,7 @@ lazy val benchmark = project
     Test / run / javaOptions := (Test / run / javaOptions).value
       .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
+  .settings(compilerSettings)
   .dependsOn(io)
 
 lazy val experimental = project
@@ -287,4 +295,5 @@ lazy val experimental = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
