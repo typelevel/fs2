@@ -1,6 +1,4 @@
-import microsites.ExtraMdFileConfig
 import com.typesafe.tools.mima.core._
-import sbtcrossproject.crossProject
 
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
 addCommandAlias(
@@ -10,7 +8,7 @@ addCommandAlias(
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
 
-ThisBuild / baseVersion := "2.5"
+ThisBuild / tlBaseVersion := "2.5"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -18,19 +16,14 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.6"
-ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", Scala213)
+val Scala213 = "2.13.16"
+ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.20", Scala213)
+ThisBuild / scalaVersion := Scala213
 
-ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
-ThisBuild / githubWorkflowJavaVersions := Seq("temurin@11")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"))
 
-ThisBuild / spiewakCiReleaseSnapshots := true
-
-ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
-
-ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues", "coreJVM/it:test"))
-)
+ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
 ThisBuild / scmInfo := Some(
   ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
@@ -40,8 +33,6 @@ ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
 
-ThisBuild / publishGithubUser := "mpilquist"
-ThisBuild / publishFullName := "Michael Pilquist"
 ThisBuild / developers ++= List(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
@@ -55,8 +46,6 @@ ThisBuild / developers ++= List(
 ).map { case (username, fullName) =>
   Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
-
-ThisBuild / fatalWarningsInCI := false
 
 ThisBuild / Test / javaOptions ++= Seq(
   "-Dscala.concurrent.context.minThreads=8",
@@ -72,6 +61,12 @@ ThisBuild / initialCommands := s"""
     implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """
+
+ThisBuild / tlVersionIntroduced := Map(
+  "2.12" -> "2.5.12",
+  "2.13" -> "2.5.12",
+  "3" -> "2.5.12"
+)
 
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // These methods were only used internally between Stream and Pull: they were private to fs2.
@@ -157,23 +152,36 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.compression$DeflateParams$DeflateParamsImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.compression#DeflateParams#DeflateParamsImpl.apply"
-  )
+  ),
 )
 
-lazy val root = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
+lazy val root = tlCrossRootProject
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
-lazy val IntegrationTest = config("it").extend(Test)
+val compilerSettings = Seq(
+    libraryDependencies ++= ( 
+      if (scalaVersion.value.startsWith("3.")) Nil
+      else
+        Seq(
+          compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+          compilerPlugin(("org.typelevel" % "kind-projector" % "0.13.4").cross(CrossVersion.full))
+        )
+    ),
+    scalacOptions ++= (if (scalaVersion.value.startsWith("2.12"))
+                         Seq(
+                           "-Ypartial-unification"
+                         )
+                       else if (scalaVersion.value.startsWith("3."))
+                         Seq(
+                           "-language:implicitConversions",
+                           "-Ykind-projector",
+                           "-source:3.0-migration"
+                         )
+                       else Nil)
+                       )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings: _*)
-  .settings(
-    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
-  )
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
@@ -184,8 +192,9 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.scodec" %%% "scodec-bits" % "1.1.28",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
-    )
+    ),
   )
+  .settings(compilerSettings)
 
 lazy val coreJVM = core.jvm
   .enablePlugins(SbtOsgi)
@@ -228,6 +237,7 @@ lazy val io = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val reactiveStreams = project
@@ -253,6 +263,7 @@ lazy val reactiveStreams = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
 
 lazy val benchmark = project
@@ -263,6 +274,7 @@ lazy val benchmark = project
     Test / run / javaOptions := (Test / run / javaOptions).value
       .filterNot(o => o.startsWith("-Xmx") || o.startsWith("-Xms")) ++ Seq("-Xms256m", "-Xmx256m")
   )
+  .settings(compilerSettings)
   .dependsOn(io)
 
 lazy val experimental = project
@@ -283,50 +295,5 @@ lazy val experimental = project
     OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package"),
     osgiSettings
   )
+  .settings(compilerSettings)
   .dependsOn(coreJVM % "compile->compile;test->test")
-
-lazy val microsite = project
-  .in(file("mdoc"))
-  .settings(
-    mdocIn := file("site"),
-    mdocOut := file("target/website"),
-    mdocVariables := Map(
-      "version" -> version.value,
-      "scalaVersions" -> crossScalaVersions.value
-        .map(v => s"- **$v**")
-        .mkString("\n")
-    ),
-    githubWorkflowArtifactUpload := false,
-    fatalWarningsInCI := false
-  )
-  .dependsOn(coreJVM, io, reactiveStreams)
-  .enablePlugins(MdocPlugin, NoPublishPlugin)
-
-ThisBuild / githubWorkflowBuildPostamble ++= List(
-  WorkflowStep.Sbt(
-    List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '$Scala213'")
-  )
-)
-
-ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
-  id = "site",
-  name = "Deploy site",
-  needs = List("publish"),
-  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
-  scalas = (ThisBuild / scalaVersion).value :: Nil,
-  cond = """
-  | always() &&
-  | needs.build.result == 'success' &&
-  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
-  """.stripMargin.trim.linesIterator.mkString.some,
-  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
-    WorkflowStep.Use(
-      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
-      name = Some(s"Deploy site"),
-      params = Map(
-        "publish_dir" -> "./target/website",
-        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
-      )
-    )
-)
