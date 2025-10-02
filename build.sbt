@@ -155,7 +155,13 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.compression$DeflateParams$DeflateParamsImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.compression#DeflateParams#DeflateParamsImpl.apply"
-  )
+  ),
+  // Scala 3 exclusions for copy methods that should not have existed
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$1"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$2"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$3"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.apply")
 )
 
 lazy val root = tlCrossRootProject
