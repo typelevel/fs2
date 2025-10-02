@@ -218,10 +218,7 @@ private[tls] object TLSEngine {
               else
                 binding.read(engine.getSession.getPacketBufferSize, timeout).flatMap {
                   case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake(timeout)
-                  case None =>
-                    unwrapBuffer.inputRemains.flatMap(x =>
-                      if (x > 0) Applicative[F].unit else stopUnwrap
-                    )
+                  case None => stopUnwrap
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
