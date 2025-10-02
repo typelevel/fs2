@@ -17,12 +17,11 @@ ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
 val Scala213 = "2.13.16"
-ThisBuild / crossScalaVersions := Seq("3.3.6", "2.12.15", Scala213)
+ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.20", Scala213)
+ThisBuild / scalaVersion := Scala213
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"))
-// ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
-// ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
 ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
@@ -47,8 +46,6 @@ ThisBuild / developers ++= List(
 ).map { case (username, fullName) =>
   Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
-
-ThisBuild / tlFatalWarnings := false
 
 ThisBuild / Test / javaOptions ++= Seq(
   "-Dscala.concurrent.context.minThreads=8",
@@ -156,24 +153,15 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.compression#DeflateParams#DeflateParamsImpl.apply"
   ),
-  // Scala 3 exclusions for copy methods that should not have existed
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$1"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$2"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.copy$default$3"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Chunk#ByteBuffer.apply")
 )
 
 lazy val root = tlCrossRootProject
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
-lazy val IntegrationTest = config("it").extend(Test)
-
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .settings(
     name := "fs2-core",
-    tlJdkRelease := None,
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
@@ -182,7 +170,25 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
       "org.scodec" %%% "scodec-bits" % "1.1.28",
       "org.typelevel" %%% "scalacheck-effect-munit" % "1.0.2" % Test,
       "org.typelevel" %%% "munit-cats-effect-2" % "1.0.5" % Test
-    )
+    ) ++ (
+      if (scalaVersion.value.startsWith("3.")) Nil
+      else
+        Seq(
+          compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+          compilerPlugin(("org.typelevel" % "kind-projector" % "0.13.4").cross(CrossVersion.full))
+        )
+    ),
+    scalacOptions ++= (if (scalaVersion.value.startsWith("2.12"))
+                         Seq(
+                           "-Ypartial-unification"
+                         )
+                       else if (scalaVersion.value.startsWith("3."))
+                         Seq(
+                           "-language:implicitConversions",
+                           "-Ykind-projector",
+                           "-source:3.0-migration"
+                         )
+                       else Nil)
   )
 
 lazy val coreJVM = core.jvm
@@ -213,7 +219,6 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     Test / fork := true,
-    tlJdkRelease := None,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -234,7 +239,6 @@ lazy val reactiveStreams = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-reactive-streams",
-    tlJdkRelease := None,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
@@ -270,7 +274,6 @@ lazy val experimental = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-experimental",
-    tlJdkRelease := None,
     OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
