@@ -16,8 +16,8 @@ ThisBuild / organizationName := "Functional Streams for Scala"
 ThisBuild / homepage := Some(url("https://github.com/typelevel/fs2"))
 ThisBuild / startYear := Some(2013)
 
-val Scala213 = "2.13.6"
-ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", Scala213)
+val Scala213 = "2.13.16"
+ThisBuild / crossScalaVersions := Seq("3.3.6", "2.12.15", Scala213)
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"))
@@ -159,11 +159,6 @@ lazy val IntegrationTest = config("it").extend(Test)
 
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
-  .configs(IntegrationTest)
-  // .settings(Defaults.itSettings: _*)
-  .settings(
-    inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
-  )
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
