@@ -161,6 +161,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .settings(
     name := "fs2-core",
+    tlJdkRelease := None,
     libraryDependencies ++= Seq(
       "org.typelevel" %%% "cats-core" % "2.6.1",
       "org.typelevel" %%% "cats-laws" % "2.6.1" % Test,
@@ -200,6 +201,7 @@ lazy val io = project
   .settings(
     name := "fs2-io",
     Test / fork := true,
+    tlJdkRelease := None,
     OsgiKeys.exportPackage := Seq("fs2.io.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
@@ -220,6 +222,7 @@ lazy val reactiveStreams = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-reactive-streams",
+    tlJdkRelease := None,
     libraryDependencies ++= Seq(
       "org.reactivestreams" % "reactive-streams" % "1.0.3",
       "org.reactivestreams" % "reactive-streams-tck" % "1.0.3" % "test",
@@ -255,6 +258,7 @@ lazy val experimental = project
   .enablePlugins(SbtOsgi)
   .settings(
     name := "fs2-experimental",
+    tlJdkRelease := None,
     OsgiKeys.exportPackage := Seq("fs2.experimental.*"),
     OsgiKeys.privatePackage := Seq(),
     OsgiKeys.importPackage := {
