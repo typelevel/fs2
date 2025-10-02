@@ -65,6 +65,12 @@ ThisBuild / initialCommands := s"""
     implicit val timerIO: Timer[IO] = IO.timer(global)
   """
 
+ThisBuild / tlVersionIntroduced := Map(
+  "2.12" -> "2.5.12",
+  "2.13" -> "2.5.12",
+  "3" -> "2.5.12"
+)
+
 ThisBuild / mimaBinaryIssueFilters ++= Seq(
   // These methods were only used internally between Stream and Pull: they were private to fs2.
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.Stream.fromFreeC"),
