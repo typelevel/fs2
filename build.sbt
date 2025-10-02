@@ -274,4 +274,3 @@ lazy val experimental = project
     osgiSettings
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
-
