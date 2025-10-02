@@ -1,6 +1,4 @@
-import microsites.ExtraMdFileConfig
 import com.typesafe.tools.mima.core._
-import sbtcrossproject.crossProject
 
 addCommandAlias("fmt", "; compile:scalafmt; test:scalafmt; it:scalafmt; scalafmtSbt")
 addCommandAlias(
@@ -10,7 +8,7 @@ addCommandAlias(
 addCommandAlias("testJVM", ";coreJVM/test;io/test;reactiveStreams/test;benchmark/test")
 addCommandAlias("testJS", "coreJS/test")
 
-ThisBuild / baseVersion := "2.5"
+ThisBuild / tlBaseVersion := "2.5"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -21,16 +19,12 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.6"
 ThisBuild / crossScalaVersions := Seq("3.0.2", "2.12.15", Scala213)
 
-ThisBuild / githubWorkflowEnv += ("JABBA_INDEX" -> "https://github.com/typelevel/jdk-index/raw/main/index.json")
-ThisBuild / githubWorkflowJavaVersions := Seq("temurin@11")
+ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("11"))
+// ThisBuild / githubWorkflowBuildPreamble ++= nativeBrewInstallWorkflowSteps.value
+// ThisBuild / nativeBrewInstallCond := Some("matrix.project == 'rootNative'")
 
-ThisBuild / spiewakCiReleaseSnapshots := true
-
-ThisBuild / spiewakMainBranches := List("main", "series/2.5.x")
-
-ThisBuild / githubWorkflowBuild := Seq(
-  WorkflowStep.Sbt(List("fmtCheck", "test", "mimaReportBinaryIssues", "coreJVM/it:test"))
-)
+ThisBuild / tlCiReleaseBranches := List("main", "series/2.5.x")
 
 ThisBuild / scmInfo := Some(
   ScmInfo(url("https://github.com/typelevel/fs2"), "git@github.com:typelevel/fs2.git")
@@ -40,8 +34,6 @@ ThisBuild / licenses := List(("MIT", url("http://opensource.org/licenses/MIT")))
 
 ThisBuild / doctestTestFramework := DoctestTestFramework.ScalaCheck
 
-ThisBuild / publishGithubUser := "mpilquist"
-ThisBuild / publishFullName := "Michael Pilquist"
 ThisBuild / developers ++= List(
   "pchiusano" -> "Paul Chiusano",
   "pchlupacek" -> "Pavel Chlupáček",
@@ -56,7 +48,7 @@ ThisBuild / developers ++= List(
   Developer(username, fullName, s"@$username", url(s"https://github.com/$username"))
 }
 
-ThisBuild / fatalWarningsInCI := false
+ThisBuild / tlFatalWarnings := false
 
 ThisBuild / Test / javaOptions ++= Seq(
   "-Dscala.concurrent.context.minThreads=8",
@@ -160,9 +152,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   )
 )
 
-lazy val root = project
-  .in(file("."))
-  .enablePlugins(NoPublishPlugin, SonatypeCiReleasePlugin)
+lazy val root = tlCrossRootProject
   .aggregate(coreJVM, coreJS, io, reactiveStreams, benchmark, experimental)
 
 lazy val IntegrationTest = config("it").extend(Test)
@@ -170,7 +160,7 @@ lazy val IntegrationTest = config("it").extend(Test)
 lazy val core = crossProject(JVMPlatform, JSPlatform)
   .in(file("core"))
   .configs(IntegrationTest)
-  .settings(Defaults.itSettings: _*)
+  // .settings(Defaults.itSettings: _*)
   .settings(
     inConfig(IntegrationTest)(org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings)
   )
@@ -285,48 +275,3 @@ lazy val experimental = project
   )
   .dependsOn(coreJVM % "compile->compile;test->test")
 
-lazy val microsite = project
-  .in(file("mdoc"))
-  .settings(
-    mdocIn := file("site"),
-    mdocOut := file("target/website"),
-    mdocVariables := Map(
-      "version" -> version.value,
-      "scalaVersions" -> crossScalaVersions.value
-        .map(v => s"- **$v**")
-        .mkString("\n")
-    ),
-    githubWorkflowArtifactUpload := false,
-    fatalWarningsInCI := false
-  )
-  .dependsOn(coreJVM, io, reactiveStreams)
-  .enablePlugins(MdocPlugin, NoPublishPlugin)
-
-ThisBuild / githubWorkflowBuildPostamble ++= List(
-  WorkflowStep.Sbt(
-    List("microsite/mdoc"),
-    cond = Some(s"matrix.scala == '$Scala213'")
-  )
-)
-
-ThisBuild / githubWorkflowAddedJobs += WorkflowJob(
-  id = "site",
-  name = "Deploy site",
-  needs = List("publish"),
-  javas = (ThisBuild / githubWorkflowJavaVersions).value.toList,
-  scalas = (ThisBuild / scalaVersion).value :: Nil,
-  cond = """
-  | always() &&
-  | needs.build.result == 'success' &&
-  | (needs.publish.result == 'success' && github.ref == 'refs/heads/main')
-  """.stripMargin.trim.linesIterator.mkString.some,
-  steps = githubWorkflowGeneratedDownloadSteps.value.toList :+
-    WorkflowStep.Use(
-      UseRef.Public("peaceiris", "actions-gh-pages", "v3"),
-      name = Some(s"Deploy site"),
-      params = Map(
-        "publish_dir" -> "./target/website",
-        "github_token" -> "${{ secrets.GITHUB_TOKEN }}"
-      )
-    )
-)
