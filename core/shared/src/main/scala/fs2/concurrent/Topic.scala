@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect._
+import cats.effect.Resource.ExitCase
 import cats.effect.implicits._
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
@@ -208,7 +209,8 @@ object Topic {
         }
 
         def publish: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
+          in
+            .onFinalizeCase(closeWithExitCase(_).void)
             .evalMap(publish1)
             .takeWhile(_.isRight)
             .drain
@@ -223,13 +225,25 @@ object Topic {
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
         def close: F[Either[Topic.Closed, Unit]] =
+          closeWithExitCase(ExitCase.Succeeded)
+
+        def closeWithExitCase(exitCase: ExitCase): F[Either[Closed, Unit]] =
           signalClosure
             .complete(())
             .flatMap { completedNow =>
               val result = if (completedNow) Topic.rightUnit else Topic.closed
+              val closeChannel =
+                (channel: Channel[F, A]) =>
+                  exitCase match {
+                    case ExitCase.Succeeded  => channel.close.void
+                    case ExitCase.Errored(e) => channel.raiseError(e).void
+                    case ExitCase.Canceled   => channel.cancel.void
+                  }
 
               state.get
-                .flatMap { case (subs, _) => foreach(subs)(_.close.void) }
+                .flatMap { case (subs, _) =>
+                  foreach(subs)(closeChannel)
+                }
                 .as(result)
             }
             .uncancelable
