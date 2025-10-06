@@ -36,17 +36,42 @@ private[process] trait ProcessesCompanionPlatform {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource {
         F.async_[(Process[F], F[Unit])] { cb =>
+          val spawnOptions = new facade.child_process.SpawnOptions {
+            cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+            env =
+              if (process.inheritEnv)
+                (facade.process.env ++ process.extraEnv).toJSDictionary
+              else
+                process.extraEnv.toJSDictionary
+          }
+
+          val stdinOpt: js.Any = process.outputConfig.stdin match {
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       =>
+          }
+
+          val stdoutOpt: js.Any = process.outputConfig.stdout match {
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       =>
+          }
+
+          val stderrOpt: js.Any = process.outputConfig.stderr match {
+            case StreamRedirect.Inherit    => "inherit"
+            case StreamRedirect.Discard    => "ignore"
+            case StreamRedirect.File(path) => "pipe"
+            case StreamRedirect.Pipe       =>
+          }
+
+          spawnOptions.stdio = js.Array(stdinOpt, stdoutOpt, stderrOpt)
+
           val childProcess = facade.child_process.spawn(
             process.command,
             process.args.toJSArray,
-            new facade.child_process.SpawnOptions {
-              cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-              env =
-                if (process.inheritEnv)
-                  (facade.process.env ++ process.extraEnv).toJSDictionary
-                else
-                  process.extraEnv.toJSDictionary
-            }
+            spawnOptions
           )
 
           val fs2Process = new UnsealedProcess[F] {
@@ -72,9 +97,21 @@ private[process] trait ProcessesCompanionPlatform {
 
             def stdin = writeWritable(F.delay(childProcess.stdin))
 
-            def stdout = unsafeReadReadable(childProcess.stdout)
+            def stdout =
+              if (process.outputConfig.stdout == StreamRedirect.Pipe)
+                unsafeReadReadable(childProcess.stdout)
+              else
+                Stream.empty
 
-            def stderr = unsafeReadReadable(childProcess.stderr)
+            def stderr =
+              if (process.outputConfig.stderr == StreamRedirect.Pipe)
+                unsafeReadReadable(childProcess.stderr)
+              else
+                Stream.empty
+
+            def mergedOutput: Stream[F, Byte] =
+              stdout.merge(stderr)
+
           }
 
           val finalize = F.asyncCheckAttempt[Unit] { cb =>
