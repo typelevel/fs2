@@ -43,7 +43,7 @@ import scala.scalanative.unsigned._
 private[fs2] trait ioplatform extends iojvmnative {
 
   private[io] val PathStreamChunkSize =
-    1 // FIXME https://github.com/scala-native/scala-native/issues/4431
+    16
 
   private[fs2] def fileDescriptorPoller[F[_]: LiftIO]: F[FileDescriptorPoller] =
     IO.pollers
