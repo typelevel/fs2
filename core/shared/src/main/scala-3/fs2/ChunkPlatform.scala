@@ -36,7 +36,7 @@ private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
     this match {
       case as: Chunk.IArraySlice[_] if ct.wrap.runtimeClass eq as.getClass =>
         as.asInstanceOf[Chunk.IArraySlice[O2]]
-      case _ => new Chunk.IArraySlice(IArray.unsafeFromArray(toArray(ct)), 0, size)
+      case _ => new Chunk.IArraySlice(IArray.unsafeFromArray(toArray(using ct)), 0, size)
     }
 
   private[fs2] def asSeqPlatform: Option[IndexedSeq[O]] =
@@ -55,7 +55,7 @@ private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {
         Some(
           ArraySeq
             .unsafeWrapArray(
-              IArray.genericWrapArray(iArraySlice.values).toArray(iArraySlice.ct)
+              IArray.genericWrapArray(iArraySlice.values).toArray(using iArraySlice.ct)
             )
             .slice(
               from = iArraySlice.offset,
