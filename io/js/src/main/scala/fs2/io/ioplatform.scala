@@ -32,9 +32,10 @@ import fs2.io.internal.facade
 
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
-import scala.annotation.nowarn
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
+
+import org.typelevel.scalaccompat.annotation._
 
 private[fs2] trait ioplatform {
 
@@ -423,8 +424,7 @@ private[fs2] trait ioplatform {
   /** Stream of bytes read asynchronously from standard input.
     * Takes a dummy `Int` parameter for source-compatibility with JVM.
     */
-  @nowarn("msg=never used")
-  def stdin[F[_]: Async](ignored: Int): Stream[F, Byte] = stdin
+  def stdin[F[_]: Async](@unused ignored: Int): Stream[F, Byte] = stdin
 
   /** Pipe of bytes that writes emitted values to standard output asynchronously. */
   def stdout[F[_]: Async]: Pipe[F, Byte, Nothing] = stdoutAsync
@@ -451,8 +451,7 @@ private[fs2] trait ioplatform {
   /** Stream of `String` read asynchronously from standard input decoded in UTF-8.
     * Takes a dummy `Int` parameter for source-compatibility with JVM.
     */
-  @nowarn("msg=never used")
-  def stdinUtf8[F[_]: Async](ignored: Int): Stream[F, String] =
+  def stdinUtf8[F[_]: Async](@unused ignored: Int): Stream[F, String] =
     stdinAsync.through(text.utf8.decode)
 
   // Copied JVM implementations, for bincompat

@@ -3816,6 +3816,7 @@ object Stream extends StreamLowPriority {
     * are dequeued and emitted as a single chunk.
     */
   @nowarn("msg=never used")
+  @nowarn3("msg=unused implicit parameter")
   def fromQueueNoneTerminated[F[_]: Functor, A](
       queue: QueueSource[F, Option[A]],
       limit: Int = Int.MaxValue
