@@ -24,13 +24,13 @@
 package fs2.protocols
 package ip
 
-import scodec.bits._
+import scodec.bits.*
 import scodec.{Codec, SizeBound}
-import scodec.codecs._
-import scodec.compat._
-import fs2.interop.scodec._
+import scodec.codecs.*
+import fs2.interop.scodec.*
 import fs2.protocols.ethernet.{EtherType, EthernetFrameHeader}
 import com.comcast.ip4s.Ipv4Address
+import org.typelevel.scalaccompat.annotation.*
 
 /** IPv4 header. */
 case class Ipv4Header(
@@ -43,7 +43,9 @@ case class Ipv4Header(
     options: BitVector
 ) extends UnsealedIpHeader
 
+@nowarn3("msg=unused import")
 object Ipv4Header {
+  import scodec.compat.*
 
   implicit val codec: Codec[Ipv4Header] = {
     // format: off
