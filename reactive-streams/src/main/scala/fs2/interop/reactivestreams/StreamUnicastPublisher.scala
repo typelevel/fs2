@@ -27,8 +27,8 @@ import cats.effect.kernel._
 import cats.effect.std.Dispatcher
 
 import org.reactivestreams._
+import org.typelevel.scalaccompat.annotation._
 
-import scala.annotation.unused
 import scala.util.control.NoStackTrace
 
 /** Implementation of a `org.reactivestreams.Publisher`
