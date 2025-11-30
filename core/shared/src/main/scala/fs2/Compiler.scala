@@ -179,7 +179,7 @@ object Compiler extends CompilerLowPriority {
     }
 
     implicit def forSync[F[_]](implicit F: Sync[F]): Target[F] = F match {
-      case async: Async[F @unchecked] => Target.forConcurrent(async)
+      case async: Async[F @unchecked] => Target.forConcurrent(using async)
       case _                          => new SyncTarget
     }
 

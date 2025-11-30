@@ -556,7 +556,7 @@ object text {
             case Some((max, raiseThrowable)) if stringBuilder.length > max =>
               Pull.raiseError[F](
                 new LineTooLongException(stringBuilder.length, max)
-              )(raiseThrowable)
+              )(using raiseThrowable)
             case _ =>
               Pull.output(Chunk.from(linesBuffer)) >> go(
                 stream,

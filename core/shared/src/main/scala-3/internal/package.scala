@@ -28,5 +28,5 @@ package object internal {
   private[fs2] type Factory[-A, +C] = scala.collection.Factory[A, C]
 
   private[fs2] def makeArrayBuilder[A](implicit ct: ClassTag[A]): ArrayBuilder[A] =
-    ArrayBuilder.make(ct)
+    ArrayBuilder.make(using ct)
 }

@@ -776,7 +776,7 @@ object Chunk
 
       case a: mutable.ArraySeq[o] =>
         val arr = a.array.asInstanceOf[Array[O]]
-        array(arr)(ClassTag(arr.getClass.getComponentType))
+        array(arr)(using ClassTag(arr.getClass.getComponentType))
 
       case l: List[O] =>
         if (l.isEmpty) empty
