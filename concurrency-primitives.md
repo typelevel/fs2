@@ -213,28 +213,28 @@ When multiple processes try to access a precious resource you might want to cons
 
 Three processes are trying to access a shared resource at the same time but only one at a time will be granted access and the next process have to wait until the resource gets available again (availability is one as indicated by the semaphore counter).
 
-R1, R2 & R3 will request access of the precious resource concurrently so this could be one possible outcome:
+P1, P2 & P3 will request access of the precious resource concurrently so this could be one possible outcome:
 
 ```
-R1 >> Availability: 1
-R2 >> Availability: 1
-R2 >> Started | Availability: 0
-R3 >> Availability: 0
+P1 >> Availability: 1
+P2 >> Availability: 1
+P2 >> Started | Availability: 0
+P3 >> Availability: 0
 --------------------------------
-R1 >> Started | Availability: 0
-R2 >> Done | Availability: 0
+P1 >> Started | Availability: 0
+P2 >> Done | Availability: 0
 --------------------------------
-R3 >> Started | Availability: 0
-R1 >> Done | Availability: 0
+P3 >> Started | Availability: 0
+P1 >> Done | Availability: 0
 --------------------------------
-R3 >> Done | Availability: 1
+P3 >> Done | Availability: 1
 ```
 
-This means when R1 and R2 requested the availability it was one and R2 was faster in getting access to the resource so it started processing. R3 was the slowest and saw that there was no availability from the beginning.
+This means when P1 and P2 requested the availability it was one and P2 was faster in getting access to the resource so it started processing. P3 was the slowest and saw that there was no availability from the beginning.
 
-Once R2 was done R1 started processing immediately showing no availability.
-Once R1 was done R3 started processing immediately showing no availability.
-Finally, R3 was done showing an availability of one once again.
+Once P2 was done P1 started processing immediately showing no availability.
+Once P1 was done P3 started processing immediately showing no availability.
+Finally, P3 was done showing an availability of one once again.
 
 ```scala
 import cats.effect.{IO, IOApp, Temporal}
@@ -244,9 +244,9 @@ import fs2.Stream
 
 import scala.concurrent.duration._
 
-class PreciousResource[F[_]: Temporal](name: String, s: Semaphore[F]) {
+class SlowProcess[F[_]: Temporal](name: String, s: Semaphore[F]) {
 
-  def use: Stream[F, Unit] = {
+  def execute: Stream[F, Unit] = {
     for {
       _ <- Stream.eval(s.available.map(a => println(s"$name >> Availability: $a")))
       _ <- Stream.eval(s.acquire)
@@ -263,10 +263,10 @@ object Resources extends IOApp.Simple {
   def run: IO[Unit] = {
     val stream = for {
       s   <- Stream.eval(Semaphore[IO](1))
-      r1  = new PreciousResource[IO]("R1", s)
-      r2  = new PreciousResource[IO]("R2", s)
-      r3  = new PreciousResource[IO]("R3", s)
-      _   <- Stream(r1.use, r2.use, r3.use).parJoin(3)
+      p1  = new SlowProcess[IO]("P1", s)
+      p2  = new SlowProcess[IO]("P2", s)
+      p3  = new SlowProcess[IO]("P3", s)
+      _   <- Stream(p1.execute, p2.execute, p3.execute).parJoin(3)
     } yield ()
     stream.compile.drain
   }
