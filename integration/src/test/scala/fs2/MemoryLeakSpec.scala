@@ -218,16 +218,11 @@ class MemoryLeakSpec extends FunSuite {
 
   leakTest("constant eval") {
     var cnt = 0
-    var start = System.currentTimeMillis
     Stream
       .constant(())
       .flatMap { _ =>
         Stream.eval(IO {
           cnt = (cnt + 1) % 1000000
-          if (cnt == 0) {
-            val now = System.currentTimeMillis
-            start = now
-          }
         })
       }
   }
