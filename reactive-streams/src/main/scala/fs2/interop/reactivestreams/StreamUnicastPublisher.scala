@@ -27,6 +27,7 @@ import cats.effect.kernel._
 import cats.effect.std.Dispatcher
 
 import org.reactivestreams._
+import org.typelevel.scalaccompat.annotation._
 
 import scala.util.control.NoStackTrace
 
@@ -49,7 +50,7 @@ final class StreamUnicastPublisher[F[_]: Async, A](
   private[reactivestreams] def this(
       stream: Stream[F, A],
       startDispatcher: Dispatcher[F],
-      requestDispatcher: Dispatcher[F]
+      @unused requestDispatcher: Dispatcher[F]
   ) =
     this(stream, startDispatcher)
 

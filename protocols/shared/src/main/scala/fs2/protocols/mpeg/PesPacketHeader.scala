@@ -23,10 +23,10 @@
 
 package fs2.protocols.mpeg
 
-import scodec.bits._
+import scodec.bits.*
 import scodec.Codec
-import scodec.codecs._
-import scodec.compat._
+import scodec.codecs.*
+import org.typelevel.scalaccompat.annotation.*
 
 sealed abstract class PesScramblingControl
 object PesScramblingControl {
@@ -61,7 +61,9 @@ case class PesPacketHeader(
     extension: Option[PesPacketHeader.Extension]
 )
 
+@nowarn3("msg=unused import")
 object PesPacketHeader {
+  import scodec.compat.*
 
   case class Flags(
       ptsFlag: Boolean,

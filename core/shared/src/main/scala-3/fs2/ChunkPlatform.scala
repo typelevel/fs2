@@ -24,7 +24,6 @@ package fs2
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.ArraySeq
-import scala.collection.immutable
 import scala.reflect.ClassTag
 
 private[fs2] trait ChunkPlatform[+O] extends Chunk213And3Compat[O] {

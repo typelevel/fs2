@@ -128,7 +128,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
                 .to
             }
           }(addrFd => F.delay(guard_(close(addrFd._2))))
-          (address, fd) = addrFd
+          (_, fd) = addrFd
           _ <- Resource.eval {
             val setNonBlock = if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit
             setNonBlock *> options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value))

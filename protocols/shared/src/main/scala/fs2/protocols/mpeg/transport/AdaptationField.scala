@@ -26,8 +26,8 @@ package transport
 
 import scodec.{Attempt, Codec, DecodeResult, SizeBound}
 import scodec.bits.BitVector
-import scodec.codecs._
-import scodec.compat._
+import scodec.codecs.*
+import org.typelevel.scalaccompat.annotation.*
 
 /** Partial modelling of the adaptation field.
   * The field extension, if present, is ignored upon decoding.
@@ -40,7 +40,9 @@ case class AdaptationField(
     transportPrivateData: Option[BitVector]
 )
 
+@nowarn3("msg=unused import")
 object AdaptationField {
+  import scodec.compat.*
 
   final val Empty: AdaptationField = AdaptationField(None, None, None, None, None)
 

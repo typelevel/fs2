@@ -1459,6 +1459,7 @@ object Chunk
 
   /** `Traverse`, `Monad`, `Alternative`, and `TraverseFilter` instance for `Chunk`.
     */
+  @nowarn213("msg=parameterless")
   implicit val instance
       : Traverse[Chunk] with Monad[Chunk] with Alternative[Chunk] with TraverseFilter[Chunk] =
     new Traverse[Chunk] with Monad[Chunk] with Alternative[Chunk] with TraverseFilter[Chunk] {
