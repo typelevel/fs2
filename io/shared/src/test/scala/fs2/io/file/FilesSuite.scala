@@ -545,18 +545,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
       Stream
         .resource(tempFile)
         .flatMap { p =>
-          Files[IO].list(p).void.recover {
-            // java.io.UncheckedIOException is unavailable in Scala.js
-            case e: RuntimeException if isNative =>
-              e.getCause match {
-                case ex: NotDirectoryException =>
-                  assertEquals(ex.getMessage, p.toString)
-                case other =>
-                  fail(s"Unexpected error $other")
-              }
-
-            case ex: NotDirectoryException =>
-              assertEquals(ex.getMessage, p.toString)
+          Files[IO].list(p).void.recover { case ex: NotDirectoryException =>
+            assertEquals(ex.getMessage, p.toString)
           }
         }
         .compile
