@@ -82,7 +82,7 @@ private[io] object net {
   @js.native
   class Socket extends fs2.io.Duplex {
 
-    def this(options: SocketOptions) = this()
+    def this(@unused options: SocketOptions) = this()
 
     def connect(path: String, connectListener: js.Function0[Unit]): Socket = js.native
 

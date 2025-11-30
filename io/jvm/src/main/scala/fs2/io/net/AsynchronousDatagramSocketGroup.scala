@@ -178,11 +178,11 @@ private[net] object AsynchronousDatagramSocketGroup {
 
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
-          var cancelReader: () => Unit = null
           if (attachment.hasReaders) {
-            cancelReader = attachment.queueReader(readerId, cb)
+            attachment.queueReader(readerId, cb)
+            ()
           } else if (!read1(channel, cb)) {
-            cancelReader = attachment.queueReader(readerId, cb)
+            attachment.queueReader(readerId, cb)
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_READ); ()
             } catch {
@@ -239,11 +239,10 @@ private[net] object AsynchronousDatagramSocketGroup {
         val attachment = key.attachment.asInstanceOf[Attachment]
         onSelectorThread {
           val channel = key.channel.asInstanceOf[DatagramChannel]
-          var cancelWriter: () => Unit = null
           if (attachment.hasWriters) {
-            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
+            attachment.queueWriter(writerId, (writerDatagram, cb))
+            ()
           } else if (!write1(channel, writerDatagram, cb)) {
-            cancelWriter = attachment.queueWriter(writerId, (writerDatagram, cb))
             try {
               key.interestOps(key.interestOps | SelectionKey.OP_WRITE); ()
             } catch {

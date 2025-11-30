@@ -28,6 +28,7 @@ import cats.effect.std.Dispatcher
 
 import org.reactivestreams._
 
+import scala.annotation.unused
 import scala.util.control.NoStackTrace
 
 /** Implementation of a `org.reactivestreams.Publisher`
@@ -49,7 +50,7 @@ final class StreamUnicastPublisher[F[_]: Async, A](
   private[reactivestreams] def this(
       stream: Stream[F, A],
       startDispatcher: Dispatcher[F],
-      requestDispatcher: Dispatcher[F]
+      @unused requestDispatcher: Dispatcher[F]
   ) =
     this(stream, startDispatcher)
 

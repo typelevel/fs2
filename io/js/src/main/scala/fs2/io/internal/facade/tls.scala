@@ -183,7 +183,7 @@ private[io] object tls {
   @js.native
   class TLSSocket extends Socket {
 
-    def this(socket: fs2.io.Duplex, options: TLSSocketOptions) = this()
+    def this(@unused socket: fs2.io.Duplex, @unused options: TLSSocketOptions) = this()
 
     def alpnProtocol: String | Boolean = js.native
 
