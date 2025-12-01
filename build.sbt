@@ -361,7 +361,8 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
     "fs2.io.net.tls.TLSContext#Builder.fs2$io$net$tls$TLSContextCompanionPlatform$BuilderPlatform$$$outer"
-  )
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.net.Socket.metrics")
 )
 
 lazy val root = tlCrossRootProject
