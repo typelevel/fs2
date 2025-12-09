@@ -185,4 +185,34 @@ class TopicSuite extends Fs2Suite {
 
     TestControl.executeEmbed(program) // will fail if program is deadlocked
   }
+
+  // https://github.com/typelevel/fs2/issues/3646
+  test(
+    "all subscribers should receive messages in the same order, even on concurrent publishers".flaky
+  ) {
+    val nSubscribers = 100
+    val check =
+      Topic[IO, String]
+        .flatMap { t =>
+          t.subscribeAwaitUnbounded.replicateA(nSubscribers).use { subs =>
+            IO.both(t.publish1("foo"), t.publish1("bar")) // racing two publishers
+              .flatMap {
+                case (Right(()), Right(())) =>
+                  subs
+                    .traverse(s => s.take(2).compile.toList)
+                    .map {
+                      case xs :: xss =>
+                        // all subscriptions must have received the events in the same order
+                        xss.foreach(ys => assertEquals(ys, xs))
+                      case Nil =>
+                        fail(s"Impossible, there are $nSubscribers subscribers")
+                    }
+                case _ =>
+                  fail("There's no reason for either publish1 to reject the publication")
+              }
+          }
+        }
+
+    check.replicateA(10000)
+  }
 }
