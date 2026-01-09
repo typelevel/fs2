@@ -24,6 +24,7 @@ package concurrent
 
 import cats.effect._
 import cats.effect.implicits._
+import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 
 /** Stream aware, multiple producer, single consumer closeable channel.
@@ -116,6 +117,18 @@ sealed trait Channel[F[_], A] {
     */
   def closeWithElement(a: A): F[Either[Channel.Closed, Unit]]
 
+  /** Raises an error, closing the channel with an error state.
+    *
+    * No-op if the channel is closed, see [[close]] for further info.
+    */
+  def raiseError(e: Throwable): F[Either[Channel.Closed, Unit]]
+
+  /** Cancels the channel, closing it with a canceled state.
+    *
+    * No-op if the channel is closed, see [[close]] for further info.
+    */
+  def cancel: F[Either[Channel.Closed, Unit]]
+
   /** Returns true if this channel is closed */
   def isClosed: F[Boolean]
 
@@ -138,62 +151,62 @@ object Channel {
         size: Int,
         waiting: Option[Deferred[F, Unit]],
         producers: List[(A, Deferred[F, Unit])],
-        closed: Boolean
+        closed: Option[ExitCase]
     )
 
-    val open = State(List.empty, 0, None, List.empty, closed = false)
+    val open = State(List.empty, 0, None, List.empty, closed = None)
 
-    def empty(isClosed: Boolean): State =
-      if (isClosed) State(List.empty, 0, None, List.empty, closed = true)
+    def empty(close: Option[ExitCase]): State =
+      if (close.nonEmpty) State(List.empty, 0, None, List.empty, closed = close)
       else open
 
     (F.ref(open), F.deferred[Unit]).mapN { (state, closedGate) =>
       new Channel[F, A] {
 
         def sendAll: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
+          in.onFinalizeCase(closeWithExitCase(_).void)
             .evalMap(send)
             .takeWhile(_.isRight)
             .drain
         }
 
-        def sendImpl(a: A, close: Boolean) =
+        def sendImpl(a: A, close: Option[ExitCase]) =
           F.deferred[Unit].flatMap { producer =>
             state.flatModifyFull { case (poll, state) =>
               state match {
-                case s @ State(_, _, _, _, closed @ true) =>
+                case s @ State(_, _, _, _, Some(_)) =>
                   (s, Channel.closed[Unit].pure[F])
 
-                case State(values, size, waiting, producers, closed @ false) =>
+                case State(values, size, waiting, producers, None) =>
                   if (size < capacity)
                     (
                       State(a :: values, size + 1, None, producers, close),
-                      signalClosure.whenA(close) *> notifyStream(waiting).as(rightUnit)
+                      signalClosure.whenA(close.nonEmpty) *> notifyStream(waiting).as(rightUnit)
                     )
                   else
                     (
                       State(values, size, None, (a, producer) :: producers, close),
-                      signalClosure.whenA(close) *>
+                      signalClosure.whenA(close.nonEmpty) *>
                         notifyStream(waiting).as(rightUnit) <*
-                        waitOnBound(producer, poll).unlessA(close)
+                        waitOnBound(producer, poll).unlessA(close.nonEmpty)
                     )
               }
             }
           }
 
-        def send(a: A) = sendImpl(a, false)
+        def send(a: A) = sendImpl(a, None)
 
-        def closeWithElement(a: A) = sendImpl(a, true)
+        def closeWithElement(a: A) = sendImpl(a, Some(ExitCase.Succeeded))
 
         def trySend(a: A) =
           state.flatModify {
-            case s @ State(_, _, _, _, closed @ true) =>
+            case s @ State(_, _, _, _, Some(_)) =>
               (s, Channel.closed[Boolean].pure[F])
 
-            case s @ State(values, size, waiting, producers, closed @ false) =>
+            case s @ State(values, size, waiting, producers, None) =>
               if (size < capacity)
                 (
-                  State(a :: values, size + 1, None, producers, false),
+                  State(a :: values, size + 1, None, producers, None),
                   notifyStream(waiting).as(rightTrue)
                 )
               else
@@ -201,16 +214,25 @@ object Channel {
           }
 
         def close =
+          closeWithExitCase(ExitCase.Succeeded)
+
+        def closeWithExitCase(exitCase: ExitCase): F[Either[Closed, Unit]] =
           state.flatModify {
-            case s @ State(_, _, _, _, closed @ true) =>
+            case s @ State(_, _, _, _, Some(_)) =>
               (s, Channel.closed[Unit].pure[F])
 
-            case State(values, size, waiting, producers, closed @ false) =>
+            case State(values, size, waiting, producers, None) =>
               (
-                State(values, size, None, producers, true),
+                State(values, size, None, producers, Some(exitCase)),
                 notifyStream(waiting).as(rightUnit) <* signalClosure
               )
           }
+
+        def raiseError(e: Throwable): F[Either[Closed, Unit]] =
+          closeWithExitCase(ExitCase.Errored(e))
+
+        def cancel: F[Either[Closed, Unit]] =
+          closeWithExitCase(ExitCase.Canceled)
 
         def isClosed = closedGate.tryGet.map(_.isDefined)
 
@@ -250,8 +272,12 @@ object Channel {
                       unblock.as(Pull.output(toEmit) >> consumeLoop)
                     } else {
                       F.pure(
-                        if (closed) Pull.done
-                        else Pull.eval(waiting.get) >> consumeLoop
+                        closed match {
+                          case Some(ExitCase.Succeeded)  => Pull.done
+                          case Some(ExitCase.Errored(e)) => Pull.raiseError(e)
+                          case Some(ExitCase.Canceled)   => Pull.eval(F.canceled)
+                          case None                      => Pull.eval(waiting.get) >> consumeLoop
+                        }
                       )
                     }
                 }

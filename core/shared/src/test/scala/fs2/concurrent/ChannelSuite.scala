@@ -29,6 +29,8 @@ import scala.concurrent.duration._
 
 import org.scalacheck.effect.PropF.forAllF
 
+import scala.concurrent.CancellationException
+
 class ChannelSuite extends Fs2Suite {
 
   test("receives some simple elements above capacity and closes") {
@@ -323,4 +325,21 @@ class ChannelSuite extends Fs2Suite {
     racingSendOperations(channel)
   }
 
+  test("stream should terminate when sendAll is interrupted") {
+    val program =
+      Channel
+        .bounded[IO, Unit](1)
+        .flatMap { ch =>
+          val producer =
+            Stream
+              .eval(IO.canceled)
+              .through(ch.sendAll)
+
+          ch.stream.concurrently(producer).compile.drain
+        }
+
+    TestControl
+      .executeEmbed(program)
+      .intercept[CancellationException]
+  }
 }
