@@ -104,7 +104,8 @@ private[io] object SocketHelpers {
     case StandardSocketOptions.TCP_NODELAY =>
       getTcpOptionBool(fd, TCP_NODELAY)
     case fs2.io.net.SocketOption.OriginalDestination =>
-      val SO_ORIGINAL_DST = 80 // linux kernel option: https://github.com/torvalds/linux/blob/master/include/uapi/linux/netfilter_ipv4.h#L52
+      // linux kernel option: https://github.com/torvalds/linux/blob/master/include/uapi/linux/netfilter_ipv4.h#L52
+      val SO_ORIGINAL_DST = 80
       getIpOptSocketAddress(fd, SO_ORIGINAL_DST)
     case _ => Sync[F].pure(None)
   }).asInstanceOf[F[Option[A]]]
@@ -121,7 +122,9 @@ private[io] object SocketHelpers {
   def getTcpOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
     getOptionImpl(fd, IPPROTO_TCP /* aka SOL_TCP */, option)
 
-  def getIpOptSocketAddress[F[_]](fd: CInt, option: CInt)(implicit F: Sync[F]): F[Option[SocketAddress[IpAddress]]] = {
+  def getIpOptSocketAddress[F[_]](fd: CInt, option: CInt)(implicit
+      F: Sync[F]
+  ): F[Option[SocketAddress[IpAddress]]] =
     F.delay {
       val size = sizeOf[sockaddr_storage]
       val ptr = stackalloc[Byte](size)
@@ -129,17 +132,18 @@ private[io] object SocketHelpers {
       !szPtr = size.toUInt
       val ret = guardMask(
         getsockopt(fd, IPPROTO_IP, option, ptr, szPtr)
-        )(_ == ENOPROTOOPT)
-      if (ret == ENOPROTOOPT) None else {
+      )(_ == ENOPROTOOPT)
+      if (ret == ENOPROTOOPT) None
+      else {
         val sockaddr = ptr.asInstanceOf[Ptr[sockaddr_storage]]
-        if(sockaddr._1 == AF_INET) {
+        if (sockaddr._1 == AF_INET) {
           val dstStr = stackalloc[Byte](INET_ADDRSTRLEN)
           val addr = ptr.asInstanceOf[Ptr[sockaddr_in]]
           val addr_in = addr.sin_addr
           val port = htons(addr.sin_port).toInt
           inet_ntop(AF_INET, addr_in.toPtr.asInstanceOf[CVoidPtr], dstStr, INET_ADDRSTRLEN.toUInt)
           SocketAddress.fromString4(s"${fromCString(dstStr)}:$port")
-        } else if(sockaddr._1 == AF_INET6) {
+        } else if (sockaddr._1 == AF_INET6) {
           val dstStr = stackalloc[Byte](INET6_ADDRSTRLEN)
           val addr = ptr.asInstanceOf[Ptr[sockaddr_in6]]
           val addr_in = addr.sin6_addr
@@ -151,7 +155,6 @@ private[io] object SocketHelpers {
         }
       }
     }
-  }
 
   def getOptionImpl[F[_]](fd: CInt, level: CInt, option: CInt)(implicit
       F: Sync[F]
