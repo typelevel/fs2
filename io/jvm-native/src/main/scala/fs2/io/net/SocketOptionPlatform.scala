@@ -28,6 +28,8 @@ import java.lang.{Boolean => JBoolean, Integer => JInt}
 import java.net.{NetworkInterface => JNetworkInterface}
 
 import com.comcast.ip4s.NetworkInterface
+import com.comcast.ip4s.SocketAddress
+import com.comcast.ip4s.IpAddress
 
 private[net] trait SocketOptionCompanionPlatform {
   type Key[A] = JSocketOption[A]
@@ -89,6 +91,11 @@ private[net] trait SocketOptionCompanionPlatform {
   val NoDelay = StandardSocketOptions.TCP_NODELAY
   def noDelay(value: Boolean): SocketOption =
     boolean(NoDelay, value)
+
+  val OriginalDestination: Key[SocketAddress[IpAddress]] = new Key[SocketAddress[IpAddress]] {
+    def name() = "SO_ORIGINAL_DST"
+    def `type`() = classOf[SocketAddress[IpAddress]]
+  }
 
   val UnixSocketDeleteIfExists: Key[JBoolean] = new Key[JBoolean] {
     def name() = "FS2_UNIX_DELETE_IF_EXISTS"

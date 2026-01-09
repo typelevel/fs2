@@ -55,7 +55,6 @@ import netinetinOps._
 import syssocket._
 import sysun._
 import sysunOps._
-import com.comcast.ip4s.Host
 
 private[io] object SocketHelpers {
 
@@ -86,7 +85,8 @@ private[io] object SocketHelpers {
         StandardSocketOptions.SO_REUSEADDR,
         StandardSocketOptions.SO_REUSEPORT,
         StandardSocketOptions.SO_KEEPALIVE,
-        StandardSocketOptions.TCP_NODELAY
+        StandardSocketOptions.TCP_NODELAY,
+        fs2.io.net.SocketOption.OriginalDestination
       )
     )
 
@@ -103,8 +103,9 @@ private[io] object SocketHelpers {
       getOptionBool(fd, SO_KEEPALIVE)
     case StandardSocketOptions.TCP_NODELAY =>
       getTcpOptionBool(fd, TCP_NODELAY)
-    case _ if name.name() == "SO_ORIGINAL_DST" =>
-      getOptOriginalDest(fd)
+    case fs2.io.net.SocketOption.OriginalDestination =>
+      val SO_ORIGINAL_DST = 80 // linux kernel option: https://github.com/torvalds/linux/blob/master/include/uapi/linux/netfilter_ipv4.h#L52
+      getIpOptSocketAddress(fd, SO_ORIGINAL_DST)
     case _ => Sync[F].pure(None)
   }).asInstanceOf[F[Option[A]]]
 
@@ -120,16 +121,14 @@ private[io] object SocketHelpers {
   def getTcpOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
     getOptionImpl(fd, IPPROTO_TCP /* aka SOL_TCP */, option)
 
-  def getOptOriginalDest[F[_]](fd: CInt)(implicit F: Sync[F]): F[Option[SocketAddress[IpAddress]]] = {
+  def getIpOptSocketAddress[F[_]](fd: CInt, option: CInt)(implicit F: Sync[F]): F[Option[SocketAddress[IpAddress]]] = {
     F.delay {
-      val SOL_IP = 0
-      val SO_ORIGINAL_DST = 80
       val size = sizeOf[sockaddr_storage]
       val ptr = stackalloc[Byte](size)
       val szPtr = stackalloc[UInt]()
       !szPtr = size.toUInt
       val ret = guardMask(
-        getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, ptr, szPtr)
+        getsockopt(fd, IPPROTO_IP, option, ptr, szPtr)
         )(_ == ENOPROTOOPT)
       if (ret == ENOPROTOOPT) None else {
         val sockaddr = ptr.asInstanceOf[Ptr[sockaddr_storage]]
@@ -148,7 +147,6 @@ private[io] object SocketHelpers {
           inet_ntop(AF_INET6, addr_in.toPtr.asInstanceOf[CVoidPtr], dstStr, INET6_ADDRSTRLEN.toUInt)
           SocketAddress.fromString6(s"${fromCString(dstStr)}:$port")
         } else {
-          println("Something went wrong during getsockopt")
           None
         }
       }
