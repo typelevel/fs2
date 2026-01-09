@@ -36,12 +36,10 @@ import com.comcast.ip4s.{
 import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
-import scala.scalanative.posix.arpa.inet._
 import scala.scalanative.posix.errno.ENOPROTOOPT
 import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
-import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.netinet.in._
