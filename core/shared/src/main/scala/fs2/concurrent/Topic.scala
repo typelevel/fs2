@@ -23,7 +23,6 @@ package fs2
 package concurrent
 
 import cats.effect._
-import cats.effect.implicits._
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
 
@@ -151,7 +150,7 @@ object Topic {
   /** Constructs a Topic */
   def apply[F[_], A](implicit F: Concurrent[F]): F[Topic[F, A]] =
     (
-      F.ref(LongMap.empty[Channel[F, A]] -> 1L),
+      F.ref(State.initial[F, A]),
       SignallingRef[F, Int](0),
       F.deferred[Unit]
     ).mapN { case (state, subscriberCount, signalClosure) =>
@@ -161,11 +160,11 @@ object Topic {
           lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
 
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
-          signalClosure.tryGet.flatMap {
-            case Some(_) => Topic.closed.pure[F]
-            case None    =>
-              state.get
-                .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
+          state.get.flatMap {
+            case State.Closed() =>
+              Topic.closed.pure[F]
+            case State.Active(subs, _) =>
+              foreach(subs)(_.send(a).void)
                 .as(Topic.rightUnit)
           }
 
@@ -180,31 +179,44 @@ object Topic {
             .flatMap(subscribeAwaitImpl)
 
         def subscribeAwaitImpl(chan: Channel[F, A]): Resource[F, Stream[F, A]] = {
-          val subscribe = state.modify { case (subs, id) =>
-            (subs.updated(id, chan), id + 1) -> id
-          } <* subscriberCount.update(_ + 1)
+          val subscribe: F[Option[Long]] =
+            state.flatModify {
+              case State.Active(subs, nextId) =>
+                val newState = State.Active(subs.updated(nextId, chan), nextId + 1)
+                val action = subscriberCount.update(_ + 1)
+                val result = Some(nextId)
+                newState -> action.as(result)
+              case closed @ State.Closed() =>
+                closed -> F.pure(None)
+            }
 
-          def unsubscribe(id: Long) =
-            state.modify { case (subs, nextId) =>
-              // _After_ we remove the bounded channel for this
-              // subscriber, we need to drain it to unblock to
-              // publish loop which might have already enqueued
-              // something.
-              def drainChannel: F[Unit] =
-                subs.get(id).traverse_ { chan =>
-                  chan.close >> chan.stream.compile.drain
-                }
+          def unsubscribe(id: Long): F[Unit] =
+            state.flatModify {
+              case State.Active(subs, nextId) =>
+                // _After_ we remove the bounded channel for this
+                // subscriber, we need to drain it to unblock to
+                // publish loop which might have already enqueued
+                // something.
+                def drainChannel: F[Unit] =
+                  subs.get(id).traverse_ { chan =>
+                    chan.close >> chan.stream.compile.drain
+                  }
 
-              (subs - id, nextId) -> drainChannel
-            }.flatten >> subscriberCount.update(_ - 1)
+                State.Active(subs - id, nextId) -> (drainChannel *> subscriberCount.update(_ - 1))
 
-          Resource.eval(signalClosure.tryGet).flatMap {
-            case Some(_) => Resource.pure(Stream.empty)
-            case None    =>
-              Resource
-                .make(subscribe)(unsubscribe)
-                .as(chan.stream)
-          }
+              case closed @ State.Closed() =>
+                closed -> F.unit
+            }
+
+          Resource
+            .make(subscribe) {
+              case Some(id) => unsubscribe(id)
+              case None     => F.unit
+            }
+            .map {
+              case Some(_) => chan.stream
+              case None    => Stream.empty
+            }
         }
 
         def publish: Pipe[F, A, Nothing] = { in =>
@@ -223,21 +235,32 @@ object Topic {
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
         def close: F[Either[Topic.Closed, Unit]] =
-          signalClosure
-            .complete(())
-            .flatMap { completedNow =>
-              val result = if (completedNow) Topic.rightUnit else Topic.closed
-
-              state.get
-                .flatMap { case (subs, _) => foreach(subs)(_.close.void) }
-                .as(result)
-            }
-            .uncancelable
+          state.flatModify {
+            case State.Active(subs, _) =>
+              val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
+              (State.Closed(), action.as(Topic.rightUnit))
+            case closed @ State.Closed() =>
+              (closed, Topic.closed.pure[F])
+          }
 
         def closed: F[Unit] = signalClosure.get
         def isClosed: F[Boolean] = signalClosure.tryGet.map(_.isDefined)
       }
     }
+
+  private sealed trait State[F[_], A]
+
+  private object State {
+    case class Active[F[_], A](
+        subscribers: LongMap[Channel[F, A]],
+        nextId: Long
+    ) extends State[F, A]
+
+    case class Closed[F[_], A]() extends State[F, A]
+
+    def initial[F[_], A]: State[F, A] =
+      Active(LongMap.empty, 1L)
+  }
 
   private final val closed: Either[Closed, Unit] = Left(Closed)
   private final val rightUnit: Either[Closed, Unit] = Right(())
