@@ -185,4 +185,24 @@ class TopicSuite extends Fs2Suite {
 
     TestControl.executeEmbed(program) // will fail if program is deadlocked
   }
+
+  test("if publish1 returns Right, subscriber must receive the element") {
+    Topic[IO, Int]
+      .flatMap { topic =>
+        IO.deferred[Int].flatMap { gotIt =>
+          topic.subscribeAwait(1).use { stream =>
+            stream.evalMap(gotIt.complete(_).void).compile.drain.start.flatMap { _ =>
+              topic.subscribers.takeWhile(_ < 1).compile.drain >>
+                IO.both(topic.publish1(1), topic.close).flatMap {
+                  case (Right(_), _) =>
+                    gotIt.get.timeout(5.seconds).void
+                  case _ => IO.unit
+                }
+            }
+          }
+        }
+      }
+      .replicateA(100)
+      .void
+  }
 }
