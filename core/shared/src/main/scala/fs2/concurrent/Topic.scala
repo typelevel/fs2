@@ -164,9 +164,22 @@ object Topic {
           signalClosure.tryGet.flatMap {
             case Some(_) => Topic.closed.pure[F]
             case None    =>
-              state.get
-                .flatMap { case (subs, _) => foreach(subs)(_.send(a).void) }
-                .as(Topic.rightUnit)
+              state.get.flatMap { case (subs, _) =>
+                subs.foldLeft(F.pure(Topic.rightUnit)) { case (acc, (_, chan)) =>
+                  acc.flatMap {
+                    case Left(Topic.Closed) => Topic.closed.pure[F]
+                    case Right(_)           =>
+                      chan.send(a).flatMap {
+                        case Right(_) => Topic.rightUnit.pure[F]
+                        case Left(_)  =>
+                          signalClosure.tryGet.map {
+                            case Some(_) => Topic.closed
+                            case None    => Topic.rightUnit
+                          }
+                      }
+                  }
+                }
+              }
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
