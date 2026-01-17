@@ -218,7 +218,7 @@ class TopicSuite extends Fs2Suite {
 
   // https://github.com/typelevel/fs2/issues/3644
   test(
-    "when publish1 returns success, subscribers must receive the event, even if the publish1 races with close".fail
+    "when publish1 returns success, subscribers must receive the event, even if the publish1 races with close"
   ) {
     val check: IO[Unit] =
       Topic[IO, String]
