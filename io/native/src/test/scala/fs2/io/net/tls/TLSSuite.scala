@@ -26,30 +26,22 @@ package tls
 
 import cats.effect.IO
 import cats.effect.kernel.Resource
-import fs2.io.file.Files
-import fs2.io.file.Path
-import scodec.bits.ByteVector
 
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
-    cert <- Resource.eval {
-      Files[IO].readAll(Path("io/shared/src/test/resources/cert.pem")).compile.to(ByteVector)
-    }
-    key <- Resource.eval {
-      Files[IO].readAll(Path("io/shared/src/test/resources/key.pem")).compile.to(ByteVector)
-    }
+    provider <- Resource.eval(TestCertificateProvider.getCachedProvider)
+    certPair <- Resource.eval(provider.getCertificatePair)
     cfg <- S2nConfig.builder
-      .withCertChainAndKeysToStore(List(CertChainAndKey(cert, key)))
-      .withPemsToTrustStore(List(cert.decodeAscii.toOption.get))
+      .withCertChainAndKeysToStore(List(CertChainAndKey(certPair.certificate, certPair.privateKey)))
+      .withPemsToTrustStore(List(certPair.certificateString))
       .build[IO]
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
   def testClientTlsContext: Resource[IO, TLSContext[IO]] = for {
-    cert <- Resource.eval {
-      Files[IO].readAll(Path("io/shared/src/test/resources/cert.pem")).compile.to(ByteVector)
-    }
+    provider <- Resource.eval(TestCertificateProvider.getCachedProvider)
+    certPair <- Resource.eval(provider.getCertificatePair)
     cfg <- S2nConfig.builder
-      .withPemsToTrustStore(List(cert.decodeAscii.toOption.get))
+      .withPemsToTrustStore(List(certPair.certificateString))
       .build[IO]
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
