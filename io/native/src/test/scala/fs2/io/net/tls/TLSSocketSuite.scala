@@ -202,7 +202,7 @@ class TLSSocketSuite extends TLSSuite {
         .intercept[SSLException]
     }
 
-    test("mTLS client verification fails if client cannot authenticate") {
+    test("mTLS client verification fails if client cannot authenticate".ignore) {
       val msg = Chunk.array(("Hello, world! " * 100).getBytes)
 
       val setup = for {

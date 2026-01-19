@@ -275,8 +275,8 @@ class IoPlatformSuite extends Fs2Suite {
       bar.assertEquals("bar")
     }
     test("classloader") {
-      val size = readClassLoaderResource[IO]("keystore.jks", 8192).as(1L).compile.foldMonoid
-      size.assertEquals(2591L)
+      val size = readClassLoaderResource[IO]("fs2/io/foo", 8192).as(1L).compile.foldMonoid
+      size.assertEquals(3L)
     }
   }
 }
