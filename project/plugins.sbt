@@ -8,3 +8,7 @@ addSbtPlugin("io.github.sbt-doctest" % "sbt-doctest" % "0.12.3")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.8")
 
 libraryDependencySchemes += "com.lihaoyi" %% "geny" % VersionScheme.Always
+
+addSbtPlugin(
+  "com.github.sbt" % "sbt-unidoc" % "0.6.1"
+) // TODO: Remove once this is merged and released: https://github.com/typelevel/sbt-typelevel/pull/862
