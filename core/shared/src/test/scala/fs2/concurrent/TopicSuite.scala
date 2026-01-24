@@ -215,4 +215,76 @@ class TopicSuite extends Fs2Suite {
 
     check.replicateA(10000)
   }
+
+  // https://github.com/typelevel/fs2/issues/3644
+  test(
+    "when publish1 returns success, subscribers must receive the event, even if the publish1 races with close".fail
+  ) {
+    val check: IO[Unit] =
+      Topic[IO, String]
+        .flatMap { t =>
+          t.subscribeAwaitUnbounded.replicateA(100).use { subs =>
+            IO.both(t.publish1("foo"), t.close) // racing publish1 and close
+              .flatMap {
+                case (_, Left(_)) =>
+                  fail("There's no reason for Topic closure to fail")
+                case (published, Right(())) =>
+                  // the topic is closed
+                  subs
+                    .traverse(sub =>
+                      sub.compile.toList // all subscriptions must terminate, since the Topic was closed
+                    )
+                    .map { eventss =>
+                      val expected: List[String] =
+                        published match {
+                          case Right(()) =>
+                            // publication succeeded, expecting singleton list with the event
+                            List("foo")
+                          case Left(Topic.Closed) =>
+                            // publication rejected, expecting empty list
+                            Nil
+                        }
+                      eventss.foreach(events => assertEquals(events, expected))
+                    }
+              }
+          }
+        }
+
+    check.replicateA_(1000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribe and close concurrently".flaky) {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- t
+          .subscribe(maxQueued = 1)
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(100000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribeAwait and close concurrently".flaky) {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- Stream
+          .resource(t.subscribeAwait(maxQueued = 1))
+          .flatten
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(100000)
+  }
 }
