@@ -11,7 +11,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.18"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.20", Scala213, "3.3.7")
+ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.7")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -444,7 +444,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC2",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC3",
     tlJdkRelease := None
   )
   .jvmSettings(

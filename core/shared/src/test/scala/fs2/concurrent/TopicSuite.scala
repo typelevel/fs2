@@ -222,4 +222,39 @@ class TopicSuite extends Fs2Suite {
 
     check.replicateA_(1000)
   }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribe and close concurrently".flaky) {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- t
+          .subscribe(maxQueued = 1)
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(100000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribeAwait and close concurrently".flaky) {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- Stream
+          .resource(t.subscribeAwait(maxQueued = 1))
+          .flatten
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(100000)
+  }
 }
