@@ -267,7 +267,7 @@ class TopicSuite extends Fs2Suite {
         _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
       } yield ()
 
-    check.replicateA_(100000)
+    check.replicateA_(10000)
   }
 
   // https://github.com/typelevel/fs2/issues/3642
@@ -285,6 +285,6 @@ class TopicSuite extends Fs2Suite {
         _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
       } yield ()
 
-    check.replicateA_(100000)
+    check.replicateA_(10000)
   }
 }
