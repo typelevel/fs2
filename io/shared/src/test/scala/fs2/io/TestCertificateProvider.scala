@@ -25,6 +25,7 @@ import cats.effect.IO
 import cats.effect.std.AtomicCell
 import cats.effect.unsafe.implicits.global
 import fs2.io.file.Files
+import scala.concurrent.duration.*
 import scodec.bits.ByteVector
 
 object TestCertificateProvider {
@@ -99,7 +100,8 @@ object TestCertificateProvider {
             _ <-
               if (exitCode == 0) IO.unit
               else if (exitCode == 139 && attempt < 10) // Low entropy is likely cause, retry
-                run(cmd, attempt + 1)
+                IO.println("expected low entropy; retrying") >> IO
+                  .sleep(1.second) >> run(cmd, attempt + 1)
               else
                 IO.raiseError(
                   new RuntimeException(
