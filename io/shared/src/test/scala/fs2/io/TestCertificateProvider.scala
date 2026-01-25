@@ -22,10 +22,10 @@
 package fs2.io
 
 import cats.effect.IO
+import cats.effect.std.AtomicCell
+import cats.effect.unsafe.implicits.global
 import fs2.io.file.Files
 import scodec.bits.ByteVector
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import scala.concurrent.duration._
 
 object TestCertificateProvider {
 
@@ -39,28 +39,24 @@ object TestCertificateProvider {
       privateKeyString: String
   )
 
-  private val cachedValue: AtomicReference[Option[CertificateAndPrivateKey]] =
-    new AtomicReference(None)
-  private val generating = new AtomicBoolean(false)
+  private val cell: IO[AtomicCell[IO, Option[CertificateAndPrivateKey]]] = {
+    val p = scala.concurrent.Promise[AtomicCell[IO, Option[CertificateAndPrivateKey]]]()
+    AtomicCell[IO].of(Option.empty[CertificateAndPrivateKey]).unsafeRunAsync {
+      case Right(c) => p.success(c)
+      case Left(e)  => p.failure(e)
+    }
+    IO.fromFuture(IO(p.future))
+  }
 
   /** Returns a cached certificate and private key, generating it if necessary.
     * The generation happens once per test suite execution using a self-signed certificate.
     */
   def getCertificateAndPrivateKey: IO[CertificateAndPrivateKey] =
-    IO(cachedValue.get()).flatMap {
-      case Some(v) => IO.pure(v)
-      case None    =>
-        IO(generating.compareAndSet(false, true)).flatMap { won =>
-          if (won) {
-            generateCertificateAndPrivateKey
-              .flatMap { v =>
-                IO(cachedValue.set(Some(v))).as(v)
-              }
-              .guarantee(IO(generating.set(false)))
-          } else {
-            IO.sleep(50.millis) >> getCertificateAndPrivateKey
-          }
-        }
+    cell.flatMap {
+      _.evalUpdateAndGet {
+        case s @ Some(_) => IO.pure(s)
+        case None        => generateCertificateAndPrivateKey.map(Some(_))
+      }.map(_.get)
     }
 
   private def generateCertificateAndPrivateKey: IO[CertificateAndPrivateKey] =
