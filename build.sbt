@@ -27,6 +27,17 @@ ThisBuild / githubWorkflowBuild ++= Seq(
   )
 )
 
+// Install an entropy daemon so that openssl has enough entropy for key generation
+ThisBuild / githubWorkflowBuildPreamble += WorkflowStep.Run(
+  commands = List(
+    "sudo apt-get update",
+    "sudo apt-get install -y haveged",
+    "sudo systemctl start haveged"
+  ),
+  name = Some("Install entropy daemon"),
+  cond = Some("startsWith(matrix.os, 'ubuntu')")
+)
+
 ThisBuild / githubWorkflowAddedJobs +=
   WorkflowJob(
     "macos",
