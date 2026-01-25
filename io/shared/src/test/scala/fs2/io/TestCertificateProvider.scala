@@ -88,7 +88,9 @@ object TestCertificateProvider {
         "keyUsage=digitalSignature,keyEncipherment,keyCertSign",
         "-addext",
         "extendedKeyUsage=serverAuth,clientAuth",
-        "-sha256"
+        "-sha256",
+        "-rand",
+        "/dev/urandom"
       )
 
       def run(cmd: List[String], attempt: Int): IO[Unit] =

@@ -16,7 +16,6 @@ on:
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  RANDFILE: /dev/urandom
 
 
 concurrency:
@@ -81,13 +80,6 @@ jobs:
       - name: Install brew formulae (ubuntu)
         if: (matrix.project == 'rootNative') && startsWith(matrix.os, 'ubuntu')
         run: /home/linuxbrew/.linuxbrew/bin/brew install openssl s2n
-
-      - name: Install entropy daemon
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y haveged
-          sudo systemctl start haveged
 
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
