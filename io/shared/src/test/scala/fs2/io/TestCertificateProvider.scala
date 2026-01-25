@@ -24,188 +24,104 @@ package fs2.io
 import cats.effect.IO
 import fs2.io.file.Files
 import scodec.bits.ByteVector
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import scala.concurrent.duration._
-import java.util.concurrent.atomic.AtomicReference
-
-/** Platform-independent interface for test certificate generation.
-  */
-trait TestCertificateProvider {
-  def getCertificatePair: IO[TestCertificateProvider.CertificatePair]
-}
 
 object TestCertificateProvider {
 
-  /** Represents a certificate-key pair for testing
+  /** Represents a self-signed certificate and private key for testing.
+    * Both values are PEM encoded.
     */
-  case class CertificatePair(
+  case class CertificateAndPrivateKey(
       certificate: ByteVector,
       privateKey: ByteVector,
       certificateString: String,
       privateKeyString: String
   )
 
-  /** Creates a provider using OpenSSL (available on all supported platforms).
-    */
-  def createProvider: IO[TestCertificateProvider] =
-    IO.pure(new OpenSslCertificateProvider)
+  private val cachedValue: AtomicReference[Option[CertificateAndPrivateKey]] =
+    new AtomicReference(None)
+  private val generating = new AtomicBoolean(false)
 
-  private val providerRef = new AtomicReference[Option[TestCertificateProvider]](None)
-
-  /** Cached certificate provider to avoid regenerating for each test.
-    * Uses an AtomicReference to safely cache the provider across the test suite execution.
+  /** Returns a cached certificate and private key, generating it if necessary.
+    * The generation happens once per test suite execution using a self-signed certificate.
     */
-  def getCachedProvider: IO[TestCertificateProvider] =
-    IO(providerRef.get()).flatMap {
-      case Some(p) => IO.pure(p)
+  def getCertificateAndPrivateKey: IO[CertificateAndPrivateKey] =
+    IO(cachedValue.get()).flatMap {
+      case Some(v) => IO.pure(v)
       case None    =>
-        createProvider.flatMap { p =>
-          IO(providerRef.compareAndSet(None, Some(p))).flatMap {
-            case true  => IO.pure(p)
-            case false => getCachedProvider // Race condition lost, retry to get the winner
+        IO(generating.compareAndSet(false, true)).flatMap { won =>
+          if (won) {
+            generateCertificateAndPrivateKey
+              .flatMap { v =>
+                IO(cachedValue.set(Some(v))).as(v)
+              }
+              .guarantee(IO(generating.set(false)))
+          } else {
+            IO.sleep(50.millis) >> getCertificateAndPrivateKey
           }
         }
     }
 
-  private class OpenSslCertificateProvider extends TestCertificateProvider {
+  private def generateCertificateAndPrivateKey: IO[CertificateAndPrivateKey] =
+    Files[IO].tempDirectory.use { tempDir =>
+      val certPath = tempDir / "cert.pem"
+      val keyPath = tempDir / "key.pem"
 
-    def getCertificatePair: IO[TestCertificateProvider.CertificatePair] =
-      Files[IO].tempDirectory.use { tempDir =>
-        val caKey = tempDir / "ca_key.pem"
-        val caCert = tempDir / "ca_cert.pem"
-        val serverKey = tempDir / "server_key.pem"
-        val serverCsr = tempDir / "server.csr"
-        val serverCert = tempDir / "server_cert.pem"
-        val configFile = tempDir / "openssl.cnf"
+      val cmd = List(
+        "openssl",
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        keyPath.toString,
+        "-out",
+        certPath.toString,
+        "-days",
+        "365",
+        "-nodes",
+        "-subj",
+        "/CN=localhost/O=FS2 Tests",
+        "-addext",
+        "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:Unknown",
+        "-addext",
+        "basicConstraints=critical,CA:TRUE",
+        "-addext",
+        "keyUsage=digitalSignature,keyEncipherment,keyCertSign",
+        "-addext",
+        "extendedKeyUsage=serverAuth,clientAuth",
+        "-sha256"
+      )
 
-        val configContent =
-          """
-          |[req]
-          |distinguished_name = req_distinguished_name
-          |req_extensions = v3_req
-          |x509_extensions = v3_ca
-          |
-          |[req_distinguished_name]
-          |CN = Common Name
-          |
-          |[v3_ca]
-          |basicConstraints = critical,CA:TRUE,pathlen:0
-          |keyUsage = digitalSignature, keyCertSign, cRLSign
-          |subjectKeyIdentifier = hash
-          |authorityKeyIdentifier = keyid:always,issuer
-          |
-          |[v3_req]
-          |basicConstraints = CA:FALSE
-          |keyUsage = digitalSignature, keyEncipherment
-          |extendedKeyUsage = serverAuth, clientAuth
-          |subjectAltName = @alt_names
-          |
-          |[alt_names]
-          |DNS.1 = localhost
-          |DNS.2 = Unknown
-          |IP.1 = 127.0.0.1
-          |""".stripMargin
-
-        val genCa = List(
-          "openssl",
-          "req",
-          "-new",
-          "-x509",
-          "-newkey",
-          "rsa:2048",
-          "-nodes",
-          "-keyout",
-          caKey.toString,
-          "-out",
-          caCert.toString,
-          "-days",
-          "365",
-          "-subj",
-          "/CN=Test CA/O=FS2 Tests",
-          "-config",
-          configFile.toString,
-          "-extensions",
-          "v3_ca"
-        )
-
-        val genCsr = List(
-          "openssl",
-          "req",
-          "-new",
-          "-newkey",
-          "rsa:2048",
-          "-nodes",
-          "-keyout",
-          serverKey.toString,
-          "-out",
-          serverCsr.toString,
-          "-subj",
-          "/CN=Unknown/O=Unknown/OU=FS2 Tests/L=Unknown/ST=Unknown/C=XX",
-          "-config",
-          configFile.toString,
-          "-extensions",
-          "v3_req"
-        )
-
-        val signCert = List(
-          "openssl",
-          "x509",
-          "-req",
-          "-in",
-          serverCsr.toString,
-          "-CA",
-          caCert.toString,
-          "-CAkey",
-          caKey.toString,
-          "-CAcreateserial",
-          "-out",
-          serverCert.toString,
-          "-days",
-          "365",
-          "-extfile",
-          configFile.toString,
-          "-extensions",
-          "v3_req",
-          "-sha256"
-        )
-
-        def run(cmd: List[String]): IO[Unit] =
-          fs2.io.process.ProcessBuilder(cmd.head, cmd.tail: _*).spawn[IO].use { p =>
-            for {
-              out <- p.stdout.through(fs2.text.utf8.decode).compile.string
-              err <- p.stderr.through(fs2.text.utf8.decode).compile.string
-              exitCode <- p.exitValue
-              _ <-
-                if (exitCode == 0) IO.unit
-                else
-                  IO.raiseError(
-                    new RuntimeException(
-                      s"Command ${cmd.mkString(" ")} failed with exit code $exitCode\nStdout: $out\nStderr: $err"
-                    )
+      def run(cmd: List[String]): IO[Unit] =
+        fs2.io.process.ProcessBuilder(cmd.head, cmd.tail: _*).spawn[IO].use { p =>
+          for {
+            out <- p.stdout.through(fs2.text.utf8.decode).compile.string
+            err <- p.stderr.through(fs2.text.utf8.decode).compile.string
+            exitCode <- p.exitValue
+            _ <-
+              if (exitCode == 0) IO.unit
+              else
+                IO.raiseError(
+                  new RuntimeException(
+                    s"Command ${cmd.mkString(" ")} failed with exit code $exitCode\nStdout: $out\nStderr: $err"
                   )
-            } yield ()
-          }
+                )
+          } yield ()
+        }
 
-        for {
-          _ <- fs2
-            .Stream(configContent)
-            .through(fs2.text.utf8.encode)
-            .through(Files[IO].writeAll(configFile))
-            .compile
-            .drain
-          _ <- run(genCa)
-          _ <- run(genCsr)
-          _ <- run(signCert)
-          _ <- IO.sleep(1.second)
-          cert <- Files[IO].readAll(serverCert).compile.to(ByteVector)
-          key <- Files[IO].readAll(serverKey).compile.to(ByteVector)
-          caCertStr <- Files[IO].readAll(caCert).through(fs2.text.utf8.decode).compile.string
-          keyString <- Files[IO].readAll(serverKey).through(fs2.text.utf8.decode).compile.string
-        } yield TestCertificateProvider.CertificatePair(
-          certificate = cert,
-          privateKey = key,
-          certificateString = caCertStr,
-          privateKeyString = keyString
-        )
-      }
-  }
+      for {
+        _ <- run(cmd)
+        cert <- Files[IO].readAll(certPath).compile.to(ByteVector)
+        key <- Files[IO].readAll(keyPath).compile.to(ByteVector)
+        certString <- Files[IO].readAll(certPath).through(fs2.text.utf8.decode).compile.string
+        keyString <- Files[IO].readAll(keyPath).through(fs2.text.utf8.decode).compile.string
+      } yield CertificateAndPrivateKey(
+        certificate = cert,
+        privateKey = key,
+        certificateString = certString,
+        privateKeyString = keyString
+      )
+    }
 }

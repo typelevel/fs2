@@ -243,7 +243,7 @@ class TLSSocketSuite extends TLSSuite {
         }
         .compile
         .to(Chunk)
-        .assertEquals(Chunk.empty)
+        .intercept[SSLException]
     }
 
     test("mTLS client verification happy-path") {

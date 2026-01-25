@@ -29,8 +29,7 @@ import cats.effect.kernel.Resource
 
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
-    provider <- Resource.eval(TestCertificateProvider.getCachedProvider)
-    certPair <- Resource.eval(provider.getCertificatePair)
+    certPair <- Resource.eval(TestCertificateProvider.getCertificateAndPrivateKey)
     cfg <- S2nConfig.builder
       .withCertChainAndKeysToStore(List(CertChainAndKey(certPair.certificate, certPair.privateKey)))
       .withPemsToTrustStore(List(certPair.certificateString))
@@ -38,8 +37,7 @@ abstract class TLSSuite extends Fs2Suite {
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
   def testClientTlsContext: Resource[IO, TLSContext[IO]] = for {
-    provider <- Resource.eval(TestCertificateProvider.getCachedProvider)
-    certPair <- Resource.eval(provider.getCertificatePair)
+    certPair <- Resource.eval(TestCertificateProvider.getCertificateAndPrivateKey)
     cfg <- S2nConfig.builder
       .withPemsToTrustStore(List(certPair.certificateString))
       .build[IO]
