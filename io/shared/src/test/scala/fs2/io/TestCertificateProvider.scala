@@ -90,7 +90,7 @@ object TestCertificateProvider {
         "-sha256"
       )
 
-      def run(cmd: List[String]): IO[Unit] =
+      def run(cmd: List[String], attempt: Int): IO[Unit] =
         fs2.io.process.ProcessBuilder(cmd.head, cmd.tail: _*).spawn[IO].use { p =>
           for {
             out <- p.stdout.through(fs2.text.utf8.decode).compile.string
@@ -98,6 +98,8 @@ object TestCertificateProvider {
             exitCode <- p.exitValue
             _ <-
               if (exitCode == 0) IO.unit
+              else if (exitCode == 139 && attempt < 10) // Low entropy is likely cause, retry
+                run(cmd, attempt + 1)
               else
                 IO.raiseError(
                   new RuntimeException(
@@ -108,7 +110,7 @@ object TestCertificateProvider {
         }
 
       for {
-        _ <- run(cmd)
+        _ <- run(cmd, 0)
         cert <- Files[IO].readAll(certPath).compile.to(ByteVector)
         key <- Files[IO].readAll(keyPath).compile.to(ByteVector)
         certString <- Files[IO].readAll(certPath).through(fs2.text.utf8.decode).compile.string
