@@ -24,8 +24,8 @@ package fs2.io
 import cats.effect.IO
 import cats.effect.std.AtomicCell
 import cats.effect.unsafe.implicits.global
+import fs2.Stream
 import fs2.io.file.Files
-import scala.concurrent.duration.*
 import scodec.bits.ByteVector
 
 object TestCertificateProvider {
@@ -64,6 +64,23 @@ object TestCertificateProvider {
     Files[IO].tempDirectory.use { tempDir =>
       val certPath = tempDir / "cert.pem"
       val keyPath = tempDir / "key.pem"
+      val configPath = tempDir / "openssl.cnf"
+
+      val config = """[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = localhost
+O = FS2 Tests
+
+[v3_req]
+subjectAltName = DNS:localhost,IP:127.0.0.1,DNS:Unknown
+basicConstraints = critical,CA:TRUE
+keyUsage = digitalSignature,keyEncipherment,keyCertSign
+extendedKeyUsage = serverAuth,clientAuth
+"""
 
       val cmd = List(
         "openssl",
@@ -78,22 +95,12 @@ object TestCertificateProvider {
         "-days",
         "365",
         "-nodes",
-        "-subj",
-        "/CN=localhost/O=FS2 Tests",
-        "-addext",
-        "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:Unknown",
-        "-addext",
-        "basicConstraints=critical,CA:TRUE",
-        "-addext",
-        "keyUsage=digitalSignature,keyEncipherment,keyCertSign",
-        "-addext",
-        "extendedKeyUsage=serverAuth,clientAuth",
-        "-sha256",
-        "-rand",
-        "/dev/urandom"
+        "-config",
+        configPath.toString,
+        "-sha256"
       )
 
-      def run(cmd: List[String], attempt: Int): IO[Unit] =
+      def run(cmd: List[String]): IO[Unit] =
         fs2.io.process.ProcessBuilder(cmd.head, cmd.tail: _*).spawn[IO].use { p =>
           for {
             out <- p.stdout.through(fs2.text.utf8.decode).compile.string
@@ -101,9 +108,6 @@ object TestCertificateProvider {
             exitCode <- p.exitValue
             _ <-
               if (exitCode == 0) IO.unit
-              else if (exitCode == 139 && attempt < 10) // Low entropy is likely cause, retry
-                IO.println("expected low entropy; retrying") >> IO
-                  .sleep(1.second) >> run(cmd, attempt + 1)
               else
                 IO.raiseError(
                   new RuntimeException(
@@ -114,7 +118,8 @@ object TestCertificateProvider {
         }
 
       for {
-        _ <- run(cmd, 0)
+        _ <- Stream(config).through(Files[IO].writeUtf8Lines(configPath)).compile.drain
+        _ <- run(cmd)
         cert <- Files[IO].readAll(certPath).compile.to(ByteVector)
         key <- Files[IO].readAll(keyPath).compile.to(ByteVector)
         certString <- Files[IO].readAll(certPath).through(fs2.text.utf8.decode).compile.string
