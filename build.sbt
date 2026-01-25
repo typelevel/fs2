@@ -38,6 +38,8 @@ ThisBuild / githubWorkflowBuildPreamble += WorkflowStep.Run(
   cond = Some("startsWith(matrix.os, 'ubuntu')")
 )
 
+ThisBuild / githubWorkflowEnv += ("RANDFILE" -> "/dev/urandom")
+
 ThisBuild / githubWorkflowAddedJobs +=
   WorkflowJob(
     "macos",
