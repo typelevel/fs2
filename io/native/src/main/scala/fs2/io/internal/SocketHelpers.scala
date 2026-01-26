@@ -42,6 +42,7 @@ import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.posix.sys.socket._
+import scala.scalanative.posix.sys.socketOps._
 import scala.scalanative.posix.netinet.in._
 import scala.scalanative.posix.arpa.inet._
 import scala.scalanative.unsafe._
@@ -133,24 +134,8 @@ private[io] object SocketHelpers {
       )(_ == ENOPROTOOPT)
       if (ret == ENOPROTOOPT) None
       else {
-        val sockaddr = ptr.asInstanceOf[Ptr[sockaddr_storage]]
-        if (sockaddr._1 == AF_INET) {
-          val dstStr = stackalloc[Byte](INET_ADDRSTRLEN)
-          val addr = ptr.asInstanceOf[Ptr[sockaddr_in]]
-          val addr_in = addr.sin_addr
-          val port = htons(addr.sin_port).toInt
-          inet_ntop(AF_INET, addr_in.toPtr.asInstanceOf[CVoidPtr], dstStr, INET_ADDRSTRLEN.toUInt)
-          SocketAddress.fromString4(s"${fromCString(dstStr)}:$port")
-        } else if (sockaddr._1 == AF_INET6) {
-          val dstStr = stackalloc[Byte](INET6_ADDRSTRLEN)
-          val addr = ptr.asInstanceOf[Ptr[sockaddr_in6]]
-          val addr_in = addr.sin6_addr
-          val port = htons(addr.sin6_port).toInt
-          inet_ntop(AF_INET6, addr_in.toPtr.asInstanceOf[CVoidPtr], dstStr, INET6_ADDRSTRLEN.toUInt)
-          SocketAddress.fromString6(s"${fromCString(dstStr)}:$port")
-        } else {
-          None
-        }
+        val sa = ptr.asInstanceOf[Ptr[sockaddr]]
+        Some(toSocketAddress(sa, sa.sa_family.toInt).asIpUnsafe)
       }
     }
 
