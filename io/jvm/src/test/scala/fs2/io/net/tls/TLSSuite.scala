@@ -35,7 +35,9 @@ abstract class TLSSuite extends Fs2Suite {
 
         val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
         val cert = certFactory.generateCertificate(
-          new java.io.ByteArrayInputStream(certPair.certificatePem.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+          new java.io.ByteArrayInputStream(
+            certPair.certificatePem.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          )
         )
 
         val keyFactory = java.security.KeyFactory.getInstance("RSA")
