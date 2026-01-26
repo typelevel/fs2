@@ -25,7 +25,6 @@ import cats.effect.{IO, Ref, SyncIO}
 import cats.effect.std.Mutex
 import fs2.Stream
 import fs2.io.file.Files
-import scodec.bits.ByteVector
 
 object TestCertificateProvider {
 
@@ -33,10 +32,8 @@ object TestCertificateProvider {
     * Both values are PEM encoded.
     */
   case class CertificateAndPrivateKey(
-      certificate: ByteVector,
-      privateKey: ByteVector,
-      certificateString: String,
-      privateKeyString: String
+      certificatePem: String,
+      privateKeyPem: String
   )
 
   private val mutex: Mutex[IO] = Mutex.in[SyncIO, IO].unsafeRunSync()
@@ -113,15 +110,11 @@ extendedKeyUsage = serverAuth,clientAuth
       for {
         _ <- Stream(config).through(Files[IO].writeUtf8Lines(configPath)).compile.drain
         _ <- run(cmd)
-        cert <- Files[IO].readAll(certPath).compile.to(ByteVector)
-        key <- Files[IO].readAll(keyPath).compile.to(ByteVector)
-        certString <- Files[IO].readAll(certPath).through(fs2.text.utf8.decode).compile.string
-        keyString <- Files[IO].readAll(keyPath).through(fs2.text.utf8.decode).compile.string
+        certString <- Files[IO].readUtf8(certPath).compile.string
+        keyString <- Files[IO].readUtf8(keyPath).compile.string
       } yield CertificateAndPrivateKey(
-        certificate = cert,
-        privateKey = key,
-        certificateString = certString,
-        privateKeyString = keyString
+        certString,
+        keyString
       )
     }
 }

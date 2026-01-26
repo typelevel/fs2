@@ -55,4 +55,10 @@ final class CertChainAndKey private (chainPem: ByteVector, privateKeyPem: ByteVe
 object CertChainAndKey {
   def apply(chainPem: ByteVector, privateKeyPem: ByteVector): CertChainAndKey =
     new CertChainAndKey(chainPem, privateKeyPem)
+
+  def apply(chainPem: String, privateKeyPem: String): CertChainAndKey =
+    new CertChainAndKey(bytesFromPemString(chainPem), bytesFromPemString(privateKeyPem))
+
+  private def bytesFromPemString(s: String): ByteVector =
+    ByteVector.view(s.getBytes(java.nio.charset.StandardCharsets.UTF_8))
 }

@@ -41,11 +41,11 @@ abstract class TLSSuite extends Fs2Suite {
           SecureContext(
             minVersion = version,
             maxVersion = version,
-            ca = List(certPair.certificateString.asRight).some,
-            cert = List(certPair.certificateString.asRight).some,
+            ca = List(certPair.certificatePem.asRight).some,
+            cert = List(certPair.certificatePem.asRight).some,
             key =
               if (privateKey)
-                List(SecureContext.Key(certPair.privateKeyString.asRight, None)).some
+                List(SecureContext.Key(certPair.privateKeyPem.asRight, None)).some
               else None
           )
         )

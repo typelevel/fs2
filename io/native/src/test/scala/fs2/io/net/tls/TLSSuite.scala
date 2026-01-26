@@ -31,15 +31,17 @@ abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: Resource[IO, TLSContext[IO]] = for {
     certPair <- Resource.eval(TestCertificateProvider.getCertificateAndPrivateKey)
     cfg <- S2nConfig.builder
-      .withCertChainAndKeysToStore(List(CertChainAndKey(certPair.certificate, certPair.privateKey)))
-      .withPemsToTrustStore(List(certPair.certificateString))
+      .withCertChainAndKeysToStore(
+        List(CertChainAndKey(certPair.certificatePem, certPair.privateKeyPem))
+      )
+      .withPemsToTrustStore(List(certPair.certificatePem))
       .build[IO]
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
   def testClientTlsContext: Resource[IO, TLSContext[IO]] = for {
     certPair <- Resource.eval(TestCertificateProvider.getCertificateAndPrivateKey)
     cfg <- S2nConfig.builder
-      .withPemsToTrustStore(List(certPair.certificateString))
+      .withPemsToTrustStore(List(certPair.certificatePem))
       .build[IO]
   } yield Network[IO].tlsContext.fromS2nConfig(cfg)
 
