@@ -237,6 +237,7 @@ class TLSSocketSuite extends TLSSuite {
         @deprecated("", "")
         def remoteAddress = raw.remoteAddress
         def writes = raw.writes
+        def metrics = raw.metrics
 
         def address = raw.address
         def getOption[A](key: SocketOption.Key[A]) = raw.getOption(key)
