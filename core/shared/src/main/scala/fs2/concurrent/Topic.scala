@@ -164,8 +164,21 @@ object Topic {
             case State.Closed() =>
               Topic.closed.pure[F]
             case State.Active(subs, _) =>
-              foreach(subs)(_.send(a).void)
-                .as(Topic.rightUnit)
+              subs.foldLeft(F.pure(Topic.rightUnit)) { case (acc, (_, chan)) =>
+                acc.flatMap {
+                  case Left(Topic.Closed) => Topic.closed.pure[F]
+                  case Right(_)           =>
+                    chan.send(a).flatMap {
+                      case Right(_) => Topic.rightUnit.pure[F]
+                      case Left(_)  =>
+                        // Channel send failed, check if topic was closed
+                        state.get.map {
+                          case State.Closed()     => Topic.closed
+                          case State.Active(_, _) => Topic.rightUnit
+                        }
+                    }
+                }
+              }
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
