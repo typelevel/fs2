@@ -38,16 +38,29 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
   private[tls] def forAsync[F[_]](
       socket: Socket[F],
+      clientMode: Boolean,
       upgrade: fs2.io.Duplex => facade.tls.TLSSocket
   )(implicit F: Async[F]): Resource[F, TLSSocket[F]] =
     for {
-      duplexOut <- mkDuplex(socket.reads)
-      (duplex, out) = duplexOut
-      _ <- out.through(socket.writes).compile.drain.background
-      tlsSockReadable <- suspendReadableAndRead(
-        destroyIfNotEnded = false,
-        destroyIfCanceled = false
-      )(upgrade(duplex))
+      tlsSockReadable <- socket match {
+        case Socket.AsyncSocket(sock, _) if clientMode =>
+          for {
+            tlsSockReadable <- suspendReadableAndRead(
+              destroyIfNotEnded = false,
+              destroyIfCanceled = false
+            )(upgrade(sock))
+          } yield tlsSockReadable
+        case _ =>
+          for {
+            duplexOut <- mkDuplex(socket.reads)
+            (duplex, out) = duplexOut
+            _ <- out.through(socket.writes).compile.drain.background
+            tlsSockReadable <- suspendReadableAndRead(
+              destroyIfNotEnded = false,
+              destroyIfCanceled = false
+            )(upgrade(duplex))
+          } yield tlsSockReadable
+      }
       (tlsSock, readable) = tlsSockReadable
       readStream <- SuspendedStream(readable)
     } yield new AsyncTLSSocket(
