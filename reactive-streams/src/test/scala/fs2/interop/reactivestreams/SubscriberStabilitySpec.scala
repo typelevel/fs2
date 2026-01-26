@@ -23,13 +23,13 @@ package fs2
 package interop
 package reactivestreams
 
-import cats.effect._
+import cats.effect.*
 import cats.effect.std.Random
-import org.reactivestreams._
-
-import scala.concurrent.duration._
+import org.reactivestreams.*
 
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.concurrent.duration.*
 
 class SubscriberStabilitySpec extends Fs2Suite {
   test("StreamSubscriber has no race condition") {
@@ -86,5 +86,33 @@ class SubscriberStabilitySpec extends Fs2Suite {
 
     if (failed)
       fail("Uncaught exception was reported")
+  }
+
+  test("StreamSubscriber cancels subscription on downstream cancellation") {
+    def makePublisher(
+        requestCalled: AtomicBoolean,
+        subscriptionCancelled: AtomicBoolean
+    ): Publisher[ByteBuffer] =
+      new Publisher[ByteBuffer] {
+
+        class SubscriptionImpl extends Subscription {
+          override def request(n: Long): Unit = requestCalled.set(true)
+          override def cancel(): Unit = subscriptionCancelled.set(true)
+        }
+
+        override def subscribe(s: Subscriber[? >: ByteBuffer]): Unit =
+          s.onSubscribe(new SubscriptionImpl)
+      }
+
+    for {
+      requestCalled <- IO(new AtomicBoolean(false))
+      subscriptionCancelled <- IO(new AtomicBoolean(false))
+      publisher = makePublisher(requestCalled, subscriptionCancelled)
+      _ <- fromPublisher[IO, ByteBuffer](publisher, bufferSize = 1)
+        .interruptWhen(Stream.eval(IO(requestCalled.get())).repeat.spaced(10.millis))
+        .compile
+        .drain
+      _ <- IO(subscriptionCancelled.get).assert
+    } yield ()
   }
 }
