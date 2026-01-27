@@ -27,29 +27,26 @@ package tls
 import cats.effect.IO
 import cats.syntax.all._
 
-import scala.concurrent.duration._
-
 abstract class TLSSuite extends Fs2Suite {
 
   def testTlsContext(
       privateKey: Boolean,
       version: Option[SecureContext.SecureVersion] = None
   ): IO[TLSContext[IO]] =
-    IO.sleep((math.random() * 100).toInt.millis) *>
-      TestCertificateProvider.getCertificateAndPrivateKey.map { certPair =>
-        Network[IO].tlsContext.fromSecureContext(
-          SecureContext(
-            minVersion = version,
-            maxVersion = version,
-            ca = List(certPair.certificatePem.asRight).some,
-            cert = List(certPair.certificatePem.asRight).some,
-            key =
-              if (privateKey)
-                List(SecureContext.Key(certPair.privateKeyPem.asRight, None)).some
-              else None
-          )
+    TestCertificateProvider.getCertificateAndPrivateKey.map { certPair =>
+      Network[IO].tlsContext.fromSecureContext(
+        SecureContext(
+          minVersion = version,
+          maxVersion = version,
+          ca = List(certPair.certificatePem.asRight).some,
+          cert = List(certPair.certificatePem.asRight).some,
+          key =
+            if (privateKey)
+              List(SecureContext.Key(certPair.privateKeyPem.asRight, None)).some
+            else None
         )
-      }
+      )
+    }
 
   val logger = TLSLogger.Disabled
   // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
