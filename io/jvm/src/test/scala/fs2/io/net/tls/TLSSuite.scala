@@ -28,12 +28,35 @@ import cats.effect.IO
 
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: IO[TLSContext[IO]] =
-    Network[IO].tlsContext
-      .fromKeyStoreResource(
-        "keystore.jks",
-        "password".toCharArray,
-        "password".toCharArray
-      )
+    TestCertificateProvider.getCertificateAndPrivateKey.flatMap { certPair =>
+      IO.blocking {
+        val keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType)
+        keyStore.load(null, null)
+
+        val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
+        val cert = certFactory.generateCertificate(
+          new java.io.ByteArrayInputStream(
+            certPair.certificatePem.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          )
+        )
+
+        val keyFactory = java.security.KeyFactory.getInstance("RSA")
+        val keyPem = certPair.privateKeyPem
+          .replaceAll("-----BEGIN (.*)-----", "")
+          .replaceAll("-----END (.*)-----", "")
+          .replaceAll("\\s", "")
+        val keyBytes = java.util.Base64.getDecoder.decode(keyPem)
+        val keySpec = new java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val key = keyFactory.generatePrivate(keySpec)
+
+        keyStore.setKeyEntry("alias", key, "password".toCharArray, Array(cert))
+        keyStore.setCertificateEntry("ca", cert)
+
+        keyStore
+      }.flatMap { ks =>
+        Network[IO].tlsContext.fromKeyStore(ks, "password".toCharArray)
+      }
+    }
 
   val logger = TLSLogger.Disabled
   // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))

@@ -26,31 +26,23 @@ package tls
 
 import cats.effect.IO
 import cats.syntax.all._
-import fs2.io.file.Files
-import fs2.io.file.Path
-
-import scala.scalajs.js
 
 abstract class TLSSuite extends Fs2Suite {
 
   def testTlsContext(
       privateKey: Boolean,
       version: Option[SecureContext.SecureVersion] = None
-  ): IO[TLSContext[IO]] = Files[IO]
-    .readAll(Path("io/shared/src/test/resources/keystore.json"))
-    .through(text.utf8.decode)
-    .compile
-    .string
-    .flatMap(s => IO(js.JSON.parse(s).asInstanceOf[js.Dictionary[CertKey]]("server")))
-    .map { certKey =>
+  ): IO[TLSContext[IO]] =
+    TestCertificateProvider.getCertificateAndPrivateKey.map { certPair =>
       Network[IO].tlsContext.fromSecureContext(
         SecureContext(
           minVersion = version,
           maxVersion = version,
-          ca = List(certKey.cert.asRight).some,
-          cert = List(certKey.cert.asRight).some,
+          ca = List(certPair.certificatePem.asRight).some,
+          cert = List(certPair.certificatePem.asRight).some,
           key =
-            if (privateKey) List(SecureContext.Key(certKey.key.asRight, "password".some)).some
+            if (privateKey)
+              List(SecureContext.Key(certPair.privateKeyPem.asRight, None)).some
             else None
         )
       )
@@ -59,10 +51,4 @@ abstract class TLSSuite extends Fs2Suite {
   val logger = TLSLogger.Disabled
   // val logger = TLSLogger.Enabled(msg => IO(println(s"\u001b[33m${msg}\u001b[0m")))
 
-}
-
-@js.native
-trait CertKey extends js.Object {
-  def cert: String = js.native
-  def key: String = js.native
 }
