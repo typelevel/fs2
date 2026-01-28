@@ -185,4 +185,106 @@ class TopicSuite extends Fs2Suite {
 
     TestControl.executeEmbed(program) // will fail if program is deadlocked
   }
+
+  // https://github.com/typelevel/fs2/issues/3646
+  test(
+    "all subscribers should receive messages in the same order, even on concurrent publishers".flaky
+  ) {
+    val nSubscribers = 100
+    val check =
+      Topic[IO, String]
+        .flatMap { t =>
+          t.subscribeAwaitUnbounded.replicateA(nSubscribers).use { subs =>
+            IO.both(t.publish1("foo"), t.publish1("bar")) // racing two publishers
+              .flatMap {
+                case (Right(()), Right(())) =>
+                  subs
+                    .traverse(s => s.take(2).compile.toList)
+                    .map {
+                      case xs :: xss =>
+                        // all subscriptions must have received the events in the same order
+                        xss.foreach(ys => assertEquals(ys, xs))
+                      case Nil =>
+                        fail(s"Impossible, there are $nSubscribers subscribers")
+                    }
+                case _ =>
+                  fail("There's no reason for either publish1 to reject the publication")
+              }
+          }
+        }
+
+    check.replicateA(10000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3644
+  test(
+    "when publish1 returns success, subscribers must receive the event, even if the publish1 races with close".fail
+  ) {
+    val check: IO[Unit] =
+      Topic[IO, String]
+        .flatMap { t =>
+          t.subscribeAwaitUnbounded.replicateA(100).use { subs =>
+            IO.both(t.publish1("foo"), t.close) // racing publish1 and close
+              .flatMap {
+                case (_, Left(_)) =>
+                  fail("There's no reason for Topic closure to fail")
+                case (published, Right(())) =>
+                  // the topic is closed
+                  subs
+                    .traverse(sub =>
+                      sub.compile.toList // all subscriptions must terminate, since the Topic was closed
+                    )
+                    .map { eventss =>
+                      val expected: List[String] =
+                        published match {
+                          case Right(()) =>
+                            // publication succeeded, expecting singleton list with the event
+                            List("foo")
+                          case Left(Topic.Closed) =>
+                            // publication rejected, expecting empty list
+                            Nil
+                        }
+                      eventss.foreach(events => assertEquals(events, expected))
+                    }
+              }
+          }
+        }
+
+    check.replicateA_(1000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribe and close concurrently") {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- t
+          .subscribe(maxQueued = 1)
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(10000)
+  }
+
+  // https://github.com/typelevel/fs2/issues/3642
+  test("subscribeAwait and close concurrently") {
+    val check: IO[Unit] =
+      for {
+        t <- Topic[IO, Int]
+        fiber <- Stream
+          .resource(t.subscribeAwait(maxQueued = 1))
+          .flatten
+          .compile
+          .toList
+          .start // let the subscription race with closing
+        _ <- t.close
+        _ <- fiber.join.timeout(5.seconds) // checking termination of the subscription stream
+      } yield ()
+
+    check.replicateA_(10000)
+  }
 }
