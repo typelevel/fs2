@@ -49,7 +49,6 @@ import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import NativeUtil._
-import netinetin._
 import netinetinOps._
 import syssocket._
 import sysun._
