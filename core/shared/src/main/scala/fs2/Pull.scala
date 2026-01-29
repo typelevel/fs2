@@ -295,6 +295,7 @@ sealed abstract class Pull[+F[_], +O, +R] {
       _ => this,
       (l, _) => Pull.eval(l.cancel).rethrow
     )
+
 }
 
 object Pull extends PullLowPriority {
@@ -464,10 +465,70 @@ object Pull extends PullLowPriority {
   def extendScopeTo[F[_], O](
       s: Stream[F, O]
   )(implicit F: MonadError[F, Throwable]): Pull[F, Nothing, Stream[F, O]] =
-    for {
-      scope <- Pull.getScope[F]
-      lease <- Pull.eval(scope.lease)
-    } yield s.onFinalize(lease.cancel.redeemWith(F.raiseError(_), _ => F.unit))
+    Pull.getScope[F].map(scope => Stream.bracket(scope.lease)(_.cancel.rethrow) *> s)
+
+  private class ScopedBind[+F[_], +O, X, +R](
+      bind: Bind[F, O, X, R],
+      scope: Scope[F]
+  )(implicit F: MonadThrow[F])
+      extends Bind[F, O, X, R](
+        bindAcquireToScope(bind.step, scope)
+      ) {
+    def cont(r: Terminal[X]): Pull[F, O, R] =
+      bindAcquireToScope[F, O, R](bind.cont(r), scope)
+  }
+
+  private[fs2] def bindAcquireToScope[F[_], O, R](
+      pull: Pull[F, O, R],
+      scope: Scope[F]
+  )(implicit F: MonadThrow[F]): Pull[F, O, R] =
+    pull match {
+      case p: Pull.FlatMapOutput[?, ?, ?] =>
+        bindAcquireToScope(p.stream, scope).flatMapOutput(o => bindAcquireToScope(p.fun(o), scope))
+      case p: Pull.Acquire[F, r] @unchecked =>
+        Pull
+          .eval(
+            scope.acquireResource(
+              poll =>
+                if (p.cancelable) poll(p.resource)
+                else p.resource,
+              p.release
+            )
+          )
+          .flatMap {
+            case Outcome.Succeeded(Left(id)) =>
+              Pull.raiseError(new RuntimeException(s"what to do with id? $id"))
+            case Outcome.Succeeded(Right(r)) =>
+              Pull.pure(r)
+            case Outcome.Errored(e) => Pull.raiseError(e)
+            case Outcome.Canceled() => Pull.raiseError(new InterruptedException)
+          }
+      case p: Pull.Bind[F, O, x, R] @unchecked =>
+        new ScopedBind[F, O, x, R](p, scope)
+      case p: Pull.InScope[?, ?] =>
+        Pull.InScope(bindAcquireToScope(p.stream, scope), p.useInterruption)
+      case p: Pull.StepLeg[F, O] @unchecked =>
+        Pull.StepLeg(
+          bindAcquireToScope(p.stream, scope),
+          p.scope
+        )
+      case p: Pull.Uncons[F, O] @unchecked =>
+        Pull.Uncons(
+          bindAcquireToScope(p.stream, scope)
+        )
+      case other => other
+//      case p: Pull.AlgEffect[F, R] @unchecked =>
+//        p // workaround for Scala 3 'Pull.CloseScope case is unreachable'
+//      case p: Pull.Translate[g, F, O] @unchecked => p
+////      case p: Pull.InterruptWhen[?]   => p
+////      case p: Pull.CloseScope         => p
+////      case p: Pull.GetScope[?]        => p
+////      case p: Pull.Eval[?, ?]         => p
+//      case p: Pull.Fail                    => p
+//      case p: Pull.Succeeded[R] @unchecked => p
+//      case p: Pull.Interrupted             => p
+//      case p: Pull.Output[O] @unchecked    => p
+    }
 
   /** Repeatedly uses the output of the pull as input for the next step of the
     * pull. Halts when a step terminates with `None` or `Pull.raiseError`.

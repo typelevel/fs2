@@ -239,29 +239,31 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def broadcastThrough[F2[x] >: F[x]: Concurrent, O2](pipes: Pipe[F2, O, O2]*): Stream[F2, O2] = {
     assert(pipes.nonEmpty, s"pipes should not be empty")
-    Stream.force {
-      for {
-        // topic: contains the chunk that the pipes are processing at one point.
-        // until and unless all pipes are finished with it, won't move to next one
-        topic <- Topic[F2, Chunk[O]]
-        // Coordination: neither the producer nor any consumer starts
-        // until and unless all consumers are subscribed to topic.
-        allReady <- CountDownLatch[F2](pipes.length)
-      } yield {
-        val checkIn = allReady.release >> allReady.await
+    extendScopeThrough[F2, O2] { source =>
+      Stream.force {
+        for {
+          // topic: contains the chunk that the pipes are processing at one point.
+          // until and unless all pipes are finished with it, won't move to next one
+          topic <- Topic[F2, Chunk[O]]
+          // Coordination: neither the producer nor any consumer starts
+          // until and unless all consumers are subscribed to topic.
+          allReady <- CountDownLatch[F2](pipes.length)
+        } yield {
+          val checkIn = allReady.release >> allReady.await
 
-        def dump(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
-          Stream.resource(topic.subscribeAwait(1)).flatMap { sub =>
-            // Wait until all pipes are ready before consuming.
-            // Crucial: checkin is not passed to the pipe,
-            // so pipe cannot interrupt it and alter the latch count
-            Stream.exec(checkIn) ++ pipe(sub.unchunks)
-          }
+          def dump(pipe: Pipe[F2, O, O2]): Stream[F2, O2] =
+            Stream.resource(topic.subscribeAwait(1)).flatMap { sub =>
+              // Wait until all pipes are ready before consuming.
+              // Crucial: checkin is not passed to the pipe,
+              // so pipe cannot interrupt it and alter the latch count
+              Stream.exec(checkIn) ++ pipe(sub.unchunks)
+            }
 
-        val dumpAll: Stream[F2, O2] = Stream(pipes: _*).map(dump).parJoinUnbounded
-        // Wait until all pipes are checked in before pulling
-        val pump = Stream.exec(allReady.await) ++ topic.publish(chunks)
-        dumpAll.concurrently(pump)
+          val dumpAll: Stream[F2, O2] = Stream(pipes: _*).map(dump).parJoinUnbounded
+          // Wait until all pipes are checked in before pulling
+          val pump = Stream.exec(allReady.await) ++ topic.publish(source.chunks)
+          dumpAll.concurrently(pump)
+        }
       }
     }
   }
@@ -2358,64 +2360,65 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       channel: F2[Channel[F2, F2[Either[Throwable, O2]]]],
       isOrdered: Boolean,
       f: O => F2[O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] = {
-    val action =
-      (
-        Semaphore[F2](concurrency),
-        channel,
-        Deferred[F2, Unit],
-        Deferred[F2, Unit]
-      ).mapN { (semaphore, channel, stop, end) =>
-        def initFork(release: F2[Unit]): F2[Either[Throwable, O2] => F2[Unit]] = {
-          def ordered: F2[Either[Throwable, O2] => F2[Unit]] = {
-            def send(v: Deferred[F2, Either[Throwable, O2]]) =
-              (el: Either[Throwable, O2]) => v.complete(el).void
+  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
+    extendScopeThrough[F2, O2] { source =>
+      Stream.force {
+        (
+          Semaphore[F2](concurrency),
+          channel,
+          Deferred[F2, Unit],
+          Deferred[F2, Unit]
+        ).mapN { (semaphore, channel, stop, end) =>
+          def initFork(release: F2[Unit]): F2[Either[Throwable, O2] => F2[Unit]] = {
+            def ordered: F2[Either[Throwable, O2] => F2[Unit]] = {
+              def send(v: Deferred[F2, Either[Throwable, O2]]) =
+                (el: Either[Throwable, O2]) => v.complete(el).void
 
-            Deferred[F2, Either[Throwable, O2]]
-              .flatTap(value => channel.send(release *> value.get))
-              .map(send)
-          }
-
-          def unordered: Either[Throwable, O2] => F2[Unit] =
-            (el: Either[Throwable, O2]) => release <* channel.send(F.pure(el))
-
-          if (isOrdered) ordered else F.pure(unordered)
-        }
-
-        val releaseAndCheckCompletion =
-          semaphore.release *>
-            semaphore.available.flatMap {
-              case `concurrency` => channel.close *> end.complete(()).void
-              case _             => F.unit
+              Deferred[F2, Either[Throwable, O2]]
+                .flatTap(value => channel.send(release *> value.get))
+                .map(send)
             }
 
-        def forkOnElem(el: O): F2[Unit] =
-          F.uncancelable { poll =>
-            poll(semaphore.acquire) <*
-              Deferred[F2, Unit].flatMap { pushed =>
-                val init = initFork(pushed.complete(()).void)
-                poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
-                  val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
-                  F.start(stop.get.race(action) *> releaseAndCheckCompletion)
-                }
-              }
+            def unordered: Either[Throwable, O2] => F2[Unit] =
+              (el: Either[Throwable, O2]) => release <* channel.send(F.pure(el))
+
+            if (isOrdered) ordered else F.pure(unordered)
           }
 
-        val background =
-          Stream.exec(semaphore.acquire) ++
-            interruptWhen(stop.get.map(_.asRight[Throwable]))
-              .foreach(forkOnElem)
-              .onFinalizeCase {
-                case ExitCase.Succeeded => releaseAndCheckCompletion
-                case _                  => stop.complete(()) *> releaseAndCheckCompletion
+          val releaseAndCheckCompletion =
+            semaphore.release *>
+              semaphore.available.flatMap {
+                case `concurrency` => channel.close *> end.complete(()).void
+                case _             => F.unit
               }
 
-        val foreground = channel.stream.evalMap(_.rethrow)
-        foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
-      }
+          def forkOnElem(el: O): F2[Unit] =
+            F.uncancelable { poll =>
+              poll(semaphore.acquire) <*
+                Deferred[F2, Unit].flatMap { pushed =>
+                  val init = initFork(pushed.complete(()).void)
+                  poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
+                    val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
+                    F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                  }
+                }
+            }
 
-    Stream.force(action)
-  }
+          val background =
+            Stream.exec(semaphore.acquire) ++
+              source
+                .interruptWhen(stop.get.map(_.asRight[Throwable]))
+                .foreach(forkOnElem)
+                .onFinalizeCase {
+                  case ExitCase.Succeeded => releaseAndCheckCompletion
+                  case _                  => stop.complete(()) *> releaseAndCheckCompletion
+                }
+
+          val foreground = channel.stream.evalMap(_.rethrow)
+          foreground.onFinalize(stop.complete(()) *> end.get).concurrently(background)
+        }
+      }
+    }
 
   /** Concurrent zip.
     *
@@ -2490,12 +2493,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     */
   def prefetchN[F2[x] >: F[x]: Concurrent](
       n: Int
-  ): Stream[F2, O] =
+  ): Stream[F2, O] = extendScopeThrough[F2, O] { source =>
     Stream.eval(Channel.bounded[F2, Chunk[O]](n)).flatMap { chan =>
       chan.stream.unchunks.concurrently {
-        chunks.through(chan.sendAll)
+        source.chunks.through(chan.sendAll)
       }
     }
+  }
 
   /** Prints each element of this stream to standard out, converting each element to a `String` via `Show`. */
   def printlns[F2[x] >: F[x], O2 >: O](implicit
@@ -2955,6 +2959,27 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       s2: Stream[F2, O2]
   )(f: (Stream[F, O], Stream[F2, O2]) => Stream[F2, O3]): Stream[F2, O3] =
     f(this, s2)
+
+  /** Transforms this stream, explicitly extending the current scope through the given pipe.
+    *
+    * Use this when implementing a pipe where the resulting stream is not directly constructed from
+    * the source stream, e.g. when sending the source stream through a Channel and returning the
+    * channel's stream.
+    */
+  def extendScopeThrough[F2[x] >: F[x], O2](
+      f: Stream[F2, O] => Stream[F2, O2]
+  )(implicit F: MonadError[F2, Throwable]): Stream[F2, O2] =
+    this.pull.peek.flatMap {
+      case Some((_, stream)) =>
+        Pull
+          .getScope[F2]
+          .flatMap { scope =>
+            f(
+              Pull.bindAcquireToScope(stream.underlying, scope).stream
+            ).underlying
+          }
+      case None => Pull.done
+    }.stream
 
   /** Fails this stream with a `TimeoutException` if it does not complete within given `timeout`. */
   def timeout[F2[x] >: F[x]: Temporal](
