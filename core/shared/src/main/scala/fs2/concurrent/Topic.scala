@@ -152,33 +152,45 @@ object Topic {
     (
       F.ref(State.initial[F, A]),
       SignallingRef[F, Int](0),
+      F.deferred[Unit],
       F.deferred[Unit]
-    ).mapN { case (state, subscriberCount, signalClosure) =>
+    ).mapN { case (state, subscriberCount, signalClosure, publishersFinished) =>
       new Topic[F, A] {
 
         def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
-          lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
+          lm.foldLeft(F.unit) { case (op, (_, b)) => f(b) >> op }
 
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
-          state.get.flatMap {
-            case State.Closed() =>
-              Topic.closed.pure[F]
-            case State.Active(subs, _) =>
-              subs.foldLeft(F.pure(Topic.rightUnit)) { case (acc, (_, chan)) =>
-                acc.flatMap {
-                  case Left(Topic.Closed) => Topic.closed.pure[F]
-                  case Right(_)           =>
-                    chan.send(a).flatMap {
-                      case Right(_) => Topic.rightUnit.pure[F]
-                      case Left(_)  =>
-                        // Channel send failed, check if topic was closed
-                        state.get.map {
-                          case State.Closed()     => Topic.closed
-                          case State.Active(_, _) => Topic.rightUnit
-                        }
+          state.flatModify {
+            case s @ State.Active(subs, _, n, false) =>
+              val inc = n + 1
+              val newState = s.copy(publishing = inc)
+
+              val sends = subs.foldLeft(F.pure(true)) { case (acc, (_, chan)) =>
+                chan.send(a).map(_.isRight).map2(acc)(_ && _)
+              }
+
+              val action = sends.flatMap { allSucceeded =>
+                state.flatModify {
+                  case s @ State.Active(subs, _, n, closing) =>
+                    val dec = n - 1
+                    if (dec == 0 && closing) {
+                      val closeAction = foreach(subs)(_.close.void)
+                      (State.Closed(), closeAction >> publishersFinished.complete(()).void)
+                    } else {
+                      (s.copy(publishing = dec), F.unit)
                     }
+                  case s @ State.Closed() => (s, F.unit)
+                }.map { _ =>
+                  if (allSucceeded) Topic.rightUnit else Topic.closed
                 }
               }
+              (newState, action)
+
+            case s @ State.Active(_, _, _, true) =>
+              (s, Topic.closed.pure[F])
+            case s @ State.Closed() =>
+              (s, Topic.closed.pure[F])
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
@@ -194,18 +206,20 @@ object Topic {
         def subscribeAwaitImpl(chan: Channel[F, A]): Resource[F, Stream[F, A]] = {
           val subscribe: F[Option[Long]] =
             state.flatModify {
-              case State.Active(subs, nextId) =>
-                val newState = State.Active(subs.updated(nextId, chan), nextId + 1)
+              case s @ State.Active(subs, nextId, _, false) =>
+                val newState = s.copy(subscribers = subs.updated(nextId, chan), nextId = nextId + 1)
                 val action = subscriberCount.update(_ + 1)
                 val result = Some(nextId)
                 newState -> action.as(result)
+              case s @ State.Active(_, _, _, true) =>
+                s -> F.pure(None)
               case closed @ State.Closed() =>
                 closed -> F.pure(None)
             }
 
           def unsubscribe(id: Long): F[Unit] =
             state.flatModify {
-              case State.Active(subs, nextId) =>
+              case s @ State.Active(subs, nextId, _, _) =>
                 // _After_ we remove the bounded channel for this
                 // subscriber, we need to drain it to unblock to
                 // publish loop which might have already enqueued
@@ -215,7 +229,7 @@ object Topic {
                     chan.close >> chan.stream.compile.drain
                   }
 
-                State.Active(subs - id, nextId) -> (drainChannel *> subscriberCount.update(_ - 1))
+                s.copy(subscribers = subs - id) -> (drainChannel *> subscriberCount.update(_ - 1))
 
               case closed @ State.Closed() =>
                 closed -> F.unit
@@ -249,9 +263,15 @@ object Topic {
 
         def close: F[Either[Topic.Closed, Unit]] =
           state.flatModify {
-            case State.Active(subs, _) =>
-              val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
-              (State.Closed(), action.as(Topic.rightUnit))
+            case s @ State.Active(subs, _, n, false) =>
+              if (n == 0) {
+                val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
+                (State.Closed(), (action >> publishersFinished.complete(())).as(Topic.rightUnit))
+              } else {
+                (s.copy(closing = true), publishersFinished.get.as(Topic.rightUnit))
+              }
+            case s @ State.Active(_, _, _, true) =>
+              (s, publishersFinished.get.as(Topic.rightUnit))
             case closed @ State.Closed() =>
               (closed, Topic.closed.pure[F])
           }
@@ -266,13 +286,15 @@ object Topic {
   private object State {
     case class Active[F[_], A](
         subscribers: LongMap[Channel[F, A]],
-        nextId: Long
+        nextId: Long,
+        publishing: Long,
+        closing: Boolean
     ) extends State[F, A]
 
     case class Closed[F[_], A]() extends State[F, A]
 
     def initial[F[_], A]: State[F, A] =
-      Active(LongMap.empty, 1L)
+      Active(LongMap.empty, 1L, 0L, false)
   }
 
   private final val closed: Either[Closed, Unit] = Left(Closed)
