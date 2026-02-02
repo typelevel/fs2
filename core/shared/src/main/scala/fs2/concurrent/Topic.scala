@@ -221,7 +221,7 @@ object Topic {
 
           def unsubscribe(id: Long): F[Unit] =
             state.flatModify {
-              case s @ State.Active(subs, nextId, _, _) =>
+              case s @ State.Active(subs, _, _, _) =>
                 // _After_ we remove the bounded channel for this
                 // subscriber, we need to drain it to unblock to
                 // publish loop which might have already enqueued
