@@ -171,19 +171,21 @@ object Topic {
               }
 
               val action = sends.flatMap { allSucceeded =>
-                state.flatModify {
-                  case s @ State.Active(subs, _, n, closing) =>
-                    val dec = n - 1
-                    if (dec == 0 && closing) {
-                      val closeAction = foreach(subs)(_.close.void)
-                      (State.Closed(), closeAction >> publishersFinished.complete(()).void)
-                    } else {
-                      (s.copy(publishing = dec), F.unit)
-                    }
-                  case s @ State.Closed() => (s, F.unit)
-                }.map { _ =>
-                  if (allSucceeded) Topic.rightUnit else Topic.closed
-                }
+                state
+                  .flatModify {
+                    case s @ State.Active(subs, _, n, closing) =>
+                      val dec = n - 1
+                      if (dec == 0 && closing) {
+                        val closeAction = foreach(subs)(_.close.void)
+                        (State.Closed(), closeAction >> publishersFinished.complete(()).void)
+                      } else {
+                        (s.copy(publishing = dec), F.unit)
+                      }
+                    case s @ State.Closed() => (s, F.unit)
+                  }
+                  .map { _ =>
+                    if (allSucceeded) Topic.rightUnit else Topic.closed
+                  }
               }
               (newState, action)
 
