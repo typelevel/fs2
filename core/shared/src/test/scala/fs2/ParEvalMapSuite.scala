@@ -184,7 +184,7 @@ class ParEvalMapSuite extends Fs2Suite {
   group("cancels running computations when error raised") {
 
     test("parEvalMapUnordered") {
-      check(_.parEvalMapUnbounded(identity))
+      check(_.parEvalMapUnorderedUnbounded(identity))
     }
 
     test("parEvalMap") {
