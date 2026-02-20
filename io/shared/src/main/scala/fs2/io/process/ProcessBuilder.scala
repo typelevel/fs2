@@ -64,16 +64,16 @@ sealed abstract class ProcessBuilder private {
   def workingDirectory: Option[Path]
 
   /** Redirection for `stdin`. Defaults to [[Redirect.Pipe]]. */
-  def stdin: Redirect
+  def stdin: Redirect = Redirect.Pipe
 
   /** Redirection for `stdout`. Defaults to [[Redirect.Pipe]]. */
-  def stdout: Redirect
+  def stdout: Redirect = Redirect.Pipe
 
   /** Redirection for `stderr`. Defaults to [[Redirect.Pipe]]. */
-  def stderr: Redirect
+  def stderr: Redirect = Redirect.Pipe
 
   /** Whether to merge `stderr` into `stdout`. Defaults to `false`. */
-  def redirectErrorStream: Boolean
+  def redirectErrorStream: Boolean = false
 
   /** @see [[command]] */
   def withCommand(command: String): ProcessBuilder
@@ -94,19 +94,33 @@ sealed abstract class ProcessBuilder private {
   def withCurrentWorkingDirectory: ProcessBuilder
 
   /** @see [[stdin]] */
-  def withStdin(stdin: Redirect): ProcessBuilder
+  def withStdin(stdin: Redirect): ProcessBuilder = this match {
+    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stdin = stdin)
+    case _                                       => this
+  }
 
   /** @see [[stdout]] */
-  def withStdout(stdout: Redirect): ProcessBuilder
+  def withStdout(stdout: Redirect): ProcessBuilder = this match {
+    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stdout = stdout)
+    case _                                       => this
+  }
 
   /** @see [[stderr]] */
-  def withStderr(stderr: Redirect): ProcessBuilder
+  def withStderr(stderr: Redirect): ProcessBuilder = this match {
+    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stderr = stderr)
+    case _                                       => this
+  }
 
   /** @see [[redirectErrorStream]] */
-  def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder
+  def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder = this match {
+    case impl: ProcessBuilder.ProcessBuilderImpl =>
+      impl.copy(redirectErrorStream = redirectErrorStream)
+    case _ => this
+  }
 
   /** Sets `stdin`, `stdout`, and `stderr` to [[Redirect.Inherit]]. */
-  def inheritStdio: ProcessBuilder
+  def inheritStdio: ProcessBuilder =
+    withStdin(Redirect.Inherit).withStdout(Redirect.Inherit).withStderr(Redirect.Inherit)
 
   /** Starts the process and returns a handle for interacting with it.
     * Closing the resource will kill the process if it has not already terminated.
@@ -139,10 +153,10 @@ object ProcessBuilder {
       inheritEnv: Boolean,
       extraEnv: Map[String, String],
       workingDirectory: Option[Path],
-      stdin: Redirect,
-      stdout: Redirect,
-      stderr: Redirect,
-      redirectErrorStream: Boolean
+      override val stdin: Redirect,
+      override val stdout: Redirect,
+      override val stderr: Redirect,
+      override val redirectErrorStream: Boolean
   ) extends ProcessBuilder {
 
     def withCommand(command: String): ProcessBuilder = copy(command = command)
@@ -157,13 +171,13 @@ object ProcessBuilder {
       copy(workingDirectory = Some(workingDirectory))
     def withCurrentWorkingDirectory: ProcessBuilder = copy(workingDirectory = None)
 
-    def withStdin(stdin: Redirect): ProcessBuilder = copy(stdin = stdin)
-    def withStdout(stdout: Redirect): ProcessBuilder = copy(stdout = stdout)
-    def withStderr(stderr: Redirect): ProcessBuilder = copy(stderr = stderr)
-    def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder =
+    override def withStdin(stdin: Redirect): ProcessBuilder = copy(stdin = stdin)
+    override def withStdout(stdout: Redirect): ProcessBuilder = copy(stdout = stdout)
+    override def withStderr(stderr: Redirect): ProcessBuilder = copy(stderr = stderr)
+    override def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder =
       copy(redirectErrorStream = redirectErrorStream)
 
-    def inheritStdio: ProcessBuilder =
+    override def inheritStdio: ProcessBuilder =
       copy(stdin = Redirect.Inherit, stdout = Redirect.Inherit, stderr = Redirect.Inherit)
   }
 
