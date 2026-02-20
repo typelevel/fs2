@@ -366,16 +366,28 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stdin"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stdout"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stderr"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.redirectErrorStream"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.redirectErrorStream"
+  ),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStdin"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStdout"),
   ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStderr"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withRedirectErrorStream"),
-  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.inheritStdio"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.process.ProcessBuilder#ProcessBuilderImpl.copy"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.process.ProcessBuilder#ProcessBuilderImpl.this"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.withRedirectErrorStream"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.inheritStdio"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.this"
+  ),
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.process.ProcessBuilder$ProcessBuilderImpl$"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply")
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
+  )
 )
 
 lazy val root = tlCrossRootProject
