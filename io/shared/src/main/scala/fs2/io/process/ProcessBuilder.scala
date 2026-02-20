@@ -94,29 +94,16 @@ sealed abstract class ProcessBuilder private {
   def withCurrentWorkingDirectory: ProcessBuilder
 
   /** @see [[stdin]] */
-  def withStdin(stdin: Redirect): ProcessBuilder = this match {
-    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stdin = stdin)
-    case _                                       => this
-  }
+  def withStdin(stdin: Redirect): ProcessBuilder = this
 
   /** @see [[stdout]] */
-  def withStdout(stdout: Redirect): ProcessBuilder = this match {
-    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stdout = stdout)
-    case _                                       => this
-  }
+  def withStdout(stdout: Redirect): ProcessBuilder = this
 
   /** @see [[stderr]] */
-  def withStderr(stderr: Redirect): ProcessBuilder = this match {
-    case impl: ProcessBuilder.ProcessBuilderImpl => impl.copy(stderr = stderr)
-    case _                                       => this
-  }
+  def withStderr(stderr: Redirect): ProcessBuilder = this
 
   /** @see [[redirectErrorStream]] */
-  def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder = this match {
-    case impl: ProcessBuilder.ProcessBuilderImpl =>
-      impl.copy(redirectErrorStream = redirectErrorStream)
-    case _ => this
-  }
+  def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder = this
 
   /** Sets `stdin`, `stdout`, and `stderr` to [[Redirect.Inherit]]. */
   def inheritStdio: ProcessBuilder =
