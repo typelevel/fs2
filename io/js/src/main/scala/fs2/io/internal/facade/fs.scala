@@ -48,6 +48,13 @@ private[io] object fs {
   @JSImport("fs", "createWriteStream")
   def createWriteStream(path: String, options: WriteStreamOptions): fs2.io.Writable =
     js.native
+  @js.native
+  @JSImport("fs", "openSync")
+  def openSync(path: String, flags: String): Int = js.native
+
+  @js.native
+  @JSImport("fs", "closeSync")
+  def closeSync(fd: Int): Unit = js.native
 
   @js.native
   @JSImport("fs", "read")
