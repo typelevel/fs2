@@ -36,21 +36,23 @@ private[process] trait ProcessesCompanionPlatform {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
-          F.blocking {
-            val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
+          evalOnVirtualThreadIfAvailable(
+            F.blocking {
+              val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
 
-            process.workingDirectory.foreach { path =>
-              builder.directory(path.toNioPath.toFile)
+              process.workingDirectory.foreach { path =>
+                builder.directory(path.toNioPath.toFile)
+              }
+
+              val env = builder.environment()
+              if (!process.inheritEnv) env.clear()
+              process.extraEnv.foreach { case (k, v) =>
+                env.put(k, v)
+              }
+
+              builder.start()
             }
-
-            val env = builder.environment()
-            if (!process.inheritEnv) env.clear()
-            process.extraEnv.foreach { case (k, v) =>
-              env.put(k, v)
-            }
-
-            builder.start()
-          }
+          )
         } { process =>
           F.delay(process.isAlive())
             .ifM(
@@ -75,18 +77,18 @@ private[process] trait ProcessesCompanionPlatform {
 
             def stdin = writeOutputStreamCancelable(
               F.delay(process.getOutputStream()),
-              F.blocking(process.destroy())
+              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy()))
             )
 
             def stdout = readInputStreamCancelable(
               F.delay(process.getInputStream()),
-              F.blocking(process.destroy()),
+              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy())),
               8192
             )
 
             def stderr = readInputStreamCancelable(
               F.delay(process.getErrorStream()),
-              F.blocking(process.destroy()),
+              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy())),
               8192
             )
 
