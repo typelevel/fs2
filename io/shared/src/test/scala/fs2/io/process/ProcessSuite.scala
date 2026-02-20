@@ -208,7 +208,12 @@ class ProcessSuite extends Fs2Suite {
     Files[IO].tempFile.use { path =>
       ProcessBuilder("echo", "hello").withStdout(Redirect.toPath(path)).spawn[IO].use { p =>
         p.exitValue *>
-          Files[IO].readAll(path).through(fs2.text.utf8.decode).compile.string.assertEquals("hello\n") *>
+          Files[IO]
+            .readAll(path)
+            .through(fs2.text.utf8.decode)
+            .compile
+            .string
+            .assertEquals("hello\n") *>
           p.stdout.compile.toVector.assertEquals(Vector.empty) *>
           p.stderr.compile.toVector.assertEquals(Vector.empty)
       }
@@ -225,8 +230,10 @@ class ProcessSuite extends Fs2Suite {
         .through(Files[IO].writeAll(path))
         .compile
         .drain *>
-        ProcessBuilder("echo", "world").withStdout(Redirect.toPath(path, append = true)).spawn[IO].use {
-          p =>
+        ProcessBuilder("echo", "world")
+          .withStdout(Redirect.toPath(path, append = true))
+          .spawn[IO]
+          .use { p =>
             p.exitValue *>
               Files[IO]
                 .readAll(path)
@@ -234,7 +241,7 @@ class ProcessSuite extends Fs2Suite {
                 .compile
                 .string
                 .assertEquals(msg1 + msg2)
-        }
+          }
     }
   }
 

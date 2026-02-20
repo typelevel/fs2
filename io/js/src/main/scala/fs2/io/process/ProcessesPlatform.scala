@@ -37,18 +37,22 @@ private[process] trait ProcessesCompanionPlatform {
 
       def open(redirect: Redirect, flags: String): Resource[F, js.Any] =
         redirect match {
-          case Redirect.Pipe    => Resource.pure("pipe")
-          case Redirect.Inherit => Resource.pure("inherit")
-          case Redirect.Discard => Resource.pure("ignore")
+          case Redirect.Pipe           => Resource.pure("pipe")
+          case Redirect.Inherit        => Resource.pure("inherit")
+          case Redirect.Discard        => Resource.pure("ignore")
           case Redirect.FromPath(path) =>
-            Resource.make(F.delay(facade.fs.openSync(path.toString, flags)))(fd =>
-              F.delay(facade.fs.closeSync(fd))
-            ).map(_.asInstanceOf[js.Any])
+            Resource
+              .make(F.delay(facade.fs.openSync(path.toString, flags)))(fd =>
+                F.delay(facade.fs.closeSync(fd))
+              )
+              .map(_.asInstanceOf[js.Any])
           case Redirect.ToPath(path, append) =>
             val f = if (append) "a" else "w"
-            Resource.make(F.delay(facade.fs.openSync(path.toString, f)))(fd =>
-              F.delay(facade.fs.closeSync(fd))
-            ).map(_.asInstanceOf[js.Any])
+            Resource
+              .make(F.delay(facade.fs.openSync(path.toString, f)))(fd =>
+                F.delay(facade.fs.closeSync(fd))
+              )
+              .map(_.asInstanceOf[js.Any])
         }
 
       (
@@ -118,7 +122,7 @@ private[process] trait ProcessesCompanionPlatform {
 
               def stderr = childProcess.stderr match {
                 case null => Stream.empty
-                case s    => if (process.redirectErrorStream) Stream.empty else unsafeReadReadable(s)
+                case s => if (process.redirectErrorStream) Stream.empty else unsafeReadReadable(s)
               }
             }
 
