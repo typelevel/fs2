@@ -36,23 +36,21 @@ private[process] trait ProcessesCompanionPlatform {
     def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
       Resource
         .make {
-          evalOnVirtualThreadIfAvailable(
-            F.blocking {
-              val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
+          F.blocking {
+            val builder = new lang.ProcessBuilder((process.command :: process.args).asJava)
 
-              process.workingDirectory.foreach { path =>
-                builder.directory(path.toNioPath.toFile)
-              }
-
-              val env = builder.environment()
-              if (!process.inheritEnv) env.clear()
-              process.extraEnv.foreach { case (k, v) =>
-                env.put(k, v)
-              }
-
-              builder.start()
+            process.workingDirectory.foreach { path =>
+              builder.directory(path.toNioPath.toFile)
             }
-          )
+
+            val env = builder.environment()
+            if (!process.inheritEnv) env.clear()
+            process.extraEnv.foreach { case (k, v) =>
+              env.put(k, v)
+            }
+
+            builder.start()
+          }
         } { process =>
           F.delay(process.isAlive())
             .ifM(
@@ -77,18 +75,18 @@ private[process] trait ProcessesCompanionPlatform {
 
             def stdin = writeOutputStreamCancelable(
               F.delay(process.getOutputStream()),
-              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy()))
+              F.blocking(process.destroy())
             )
 
             def stdout = readInputStreamCancelable(
               F.delay(process.getInputStream()),
-              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy())),
+              F.blocking(process.destroy()),
               8192
             )
 
             def stderr = readInputStreamCancelable(
               F.delay(process.getErrorStream()),
-              evalOnVirtualThreadIfAvailable(F.blocking(process.destroy())),
+              F.blocking(process.destroy()),
               8192
             )
 
