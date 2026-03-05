@@ -419,33 +419,40 @@ private[fs2] trait FilesCompanionPlatform {
 
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
-        in.through {
-          writeWritable(
-            F.async_[Writable] { cb =>
-              val ws = facade.fs
-                .createWriteStream(
-                  path.toString,
-                  new facade.fs.WriteStreamOptions {
-                    flags = combineFlags(_flags)
+        in.pull.stepLeg.flatMap {
+          case None => Pull.done
+          case Some(leg) =>
+            leg.stream.cons(leg.head)
+              .through {
+                writeWritable(
+                  F.async_[Writable] { cb =>
+                    val ws = facade.fs
+                      .createWriteStream(
+                        path.toString,
+                        new facade.fs.WriteStreamOptions {
+                          flags = combineFlags(_flags)
+                        }
+                      )
+                    ws.once[Unit](
+                      "ready",
+                      _ => {
+                        ws.removeAllListeners()
+                        cb(Right(ws))
+                      }
+                    )
+                    ws.once[js.Error](
+                      "error",
+                      error => {
+                        ws.removeAllListeners()
+                        cb(Left(js.JavaScriptException(error)))
+                      }
+                    )
+                    ()
                   }
                 )
-              ws.once[Unit](
-                "ready",
-                _ => {
-                  ws.removeAllListeners()
-                  cb(Right(ws))
-                }
-              )
-              ws.once[js.Error](
-                "error",
-                error => {
-                  ws.removeAllListeners()
-                  cb(Left(js.JavaScriptException(error)))
-                }
-              )
-              ()
-            }
-          )
-        }
+              }
+              .pull
+              .echo
+        }.stream
   }
 }
