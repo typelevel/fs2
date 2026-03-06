@@ -420,9 +420,10 @@ private[fs2] trait FilesCompanionPlatform {
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
         in.pull.stepLeg.flatMap {
-          case None => Pull.done
+          case None      => Pull.done
           case Some(leg) =>
-            leg.stream.cons(leg.head)
+            leg.stream
+              .cons(leg.head)
               .through {
                 writeWritable(
                   F.async_[Writable] { cb =>
