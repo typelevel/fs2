@@ -388,15 +388,15 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.2.4",
       "org.typelevel" %%% "cats-core" % "2.13.0",
-      "org.typelevel" %%% "cats-effect" % "3.7.0-RC1",
+      "org.typelevel" %%% "cats-effect" % "3.7.0",
       "org.typelevel" %%% "cats-mtl" % "1.6.0",
-      "org.typelevel" %%% "cats-effect-laws" % "3.7.0-RC1" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.7.0-RC1" % Test,
+      "org.typelevel" %%% "cats-effect-laws" % "3.7.0" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.7.0" % Test,
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       "org.typelevel" %%% "cats-mtl-laws" % "1.6.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test,
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0-RC1" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test
     ),
     tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -432,7 +432,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
