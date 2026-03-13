@@ -113,8 +113,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
           val src = Stream("Hello", " world!").covary[IO].through(text.utf8.encode)
           src.through(Files[IO].writeAll(path)) ++
             src.through(Files[IO].writeAll(path, Flags.Append)) ++ Files[IO]
-            .readAll(path)
-            .through(text.utf8.decode)
+              .readAll(path)
+              .through(text.utf8.decode)
         }
         .compile
         .foldMonoid
@@ -165,8 +165,7 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         }
         .compile
         .foldMonoid
-        .assertEquals(
-          """|foo
+        .assertEquals("""|foo
              |bar
              |""".stripMargin)
     }

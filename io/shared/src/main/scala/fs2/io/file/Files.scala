@@ -530,12 +530,12 @@ object Files extends FilesCompanionPlatform with FilesLowPriority {
       })
 
     def writeAll(
-                  path: Path,
-                  flags: Flags
-                ): Pipe[F, Byte, Nothing] =
+        path: Path,
+        flags: Flags
+    ): Pipe[F, Byte, Nothing] =
       in =>
         in.pull.stepLeg.flatMap {
-          case None => Pull.done
+          case None      => Pull.done
           case Some(leg) =>
             Stream
               .resource(writeCursor(path, flags))
