@@ -2396,7 +2396,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 val init = initFork(pushed.complete(()).void)
                 poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
                   val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
-                  F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                  F.start(stop.get.race(action).void.guarantee(releaseAndCheckCompletion))
                 }
               }
           }
