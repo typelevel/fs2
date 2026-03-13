@@ -78,5 +78,6 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
     override def getOption[A](key: SocketOption.Key[A]) = underlying.getOption(key)
     override def setOption[A](key: SocketOption.Key[A], value: A) = underlying.setOption(key, value)
     override def supportedOptions = underlying.supportedOptions
+    override def metrics = underlying.metrics
   }
 }
