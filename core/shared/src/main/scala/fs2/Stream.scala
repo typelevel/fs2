@@ -1134,6 +1134,29 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     (Pull.output1(z) >> go(z, this)).stream
   }
 
+  /** Like `[[Stream#scan1]]`, but accepts a function returning an `F[_]`.
+    *
+    * @example {{{
+    * scala> import cats.effect.SyncIO
+    * scala> Stream(1,2,3,4).covary[SyncIO].evalScan1((acc,i) => SyncIO(acc + i)).compile.toVector.unsafeRunSync()
+    * res0: Vector[Int] = Vector(1, 3, 6, 10)
+    * }}}
+    */
+  def evalScan1[F2[x] >: F[x], O2 >: O](f: (O2, O2) => F2[O2]): fs2.Stream[F2, O2] = {
+    def go(z: O2, s: fs2.Stream[F2, O]): Pull[F2, O2, Unit] =
+      s.pull.uncons1.flatMap {
+        case Some((hd, tl)) =>
+          Pull.eval(f(z, hd)).flatMap(o => Pull.output1(o) >> go(o, tl))
+        case None => Pull.done
+      }
+    this.pull.uncons.flatMap {
+      case None => Pull.done
+      case Some((hd, tl)) =>
+        val (pre, post) = hd.splitAt(1)
+        Pull.output(pre) >> go(pre(0), tl.cons(post))
+    }.stream
+  }
+
   /** Like `observe` but observes with a function `O => F[O2]` instead of a pipe.
     * Not as powerful as `observe` since not all pipes can be represented by `O => F[O2]`, but much faster.
     * Alias for `evalMap(o => f(o).as(o))`.
