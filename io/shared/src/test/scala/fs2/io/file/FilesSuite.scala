@@ -166,8 +166,8 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals("""|foo
-                         |bar
-                         |""".stripMargin)
+             |bar
+             |""".stripMargin)
     }
 
     test("writeUtf8Lines - side effect") {
@@ -199,6 +199,32 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .compile
         .foldMonoid
         .assertEquals("")
+    }
+    test("empty stream does not create file") {
+      Files[IO].tempDirectory.use { dir =>
+        val path = dir / "should-not-exist.txt"
+        Stream.empty
+          .covary[IO]
+          .through(Files[IO].writeAll(path))
+          .compile
+          .drain
+          .flatMap(_ => Files[IO].exists(path))
+          .assertEquals(false)
+      }
+    }
+
+    test("error stream does not create file") {
+      Files[IO].tempDirectory.use { dir =>
+        val path = dir / "should-not-exist.txt"
+        Stream
+          .raiseError[IO](new RuntimeException("boom"))
+          .through(Files[IO].writeAll(path))
+          .compile
+          .drain
+          .attempt
+          .flatMap(_ => Files[IO].exists(path))
+          .assertEquals(false)
+      }
     }
   }
 
