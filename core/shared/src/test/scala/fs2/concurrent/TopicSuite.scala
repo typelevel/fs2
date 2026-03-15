@@ -235,16 +235,20 @@ class TopicSuite extends Fs2Suite {
                       sub.compile.toList // all subscriptions must terminate, since the Topic was closed
                     )
                     .map { eventss =>
-                      val expected: List[String] =
-                        published match {
-                          case Right(()) =>
-                            // publication succeeded, expecting singleton list with the event
-                            List("foo")
-                          case Left(Topic.Closed) =>
-                            // publication rejected, expecting empty list
-                            Nil
-                        }
-                      eventss.foreach(events => assertEquals(events, expected))
+                      published match {
+                        case Right(()) =>
+                          // publication succeeded, expecting singleton list with the event
+                          val expected = List("foo")
+                          eventss.foreach(events => assertEquals(events, expected))
+                        case Left(Topic.Closed) =>
+                          // publication rejected due to closure, some subscribers might have received it
+                          eventss.foreach { events =>
+                            assert(
+                              events == Nil || events == List("foo"),
+                              s"Unexpected events: $events"
+                            )
+                          }
+                      }
                     }
               }
           }

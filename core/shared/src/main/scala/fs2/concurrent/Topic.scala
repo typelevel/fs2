@@ -60,6 +60,10 @@ abstract class Topic[F[_], A] { self =>
     * Note: if `publish1` is called concurrently by multiple producers,
     * different subscribers may receive messages from different producers
     * in a different order.
+    *
+    * Note: if `publish1` returns `Left(Topic.Closed)`, it is possible
+    * that some subscribers received the event while others did not due
+    * to concurrent closure.
     */
   def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
@@ -152,47 +156,30 @@ object Topic {
     (
       F.ref(State.initial[F, A]),
       SignallingRef[F, Int](0),
-      F.deferred[Unit],
       F.deferred[Unit]
-    ).mapN { case (state, subscriberCount, signalClosure, publishersFinished) =>
+    ).mapN { case (state, subscriberCount, signalClosure) =>
       new Topic[F, A] {
 
         def foreach[B](lm: LongMap[B])(f: B => F[Unit]) =
-          lm.foldLeft(F.unit) { case (op, (_, b)) => f(b) >> op }
+          lm.foldLeft(F.unit) { case (op, (_, b)) => op >> f(b) }
 
         def publish1(a: A): F[Either[Topic.Closed, Unit]] =
-          state.flatModify {
-            case s @ State.Active(subs, _, n, false) =>
-              val inc = n + 1
-              val newState = s.copy(publishing = inc)
-
-              val sends = subs.foldLeft(F.pure(true)) { case (acc, (_, chan)) =>
-                chan.send(a).map(_.isRight).map2(acc)(_ && _)
-              }
-
-              val action = sends.flatMap { allSucceeded =>
-                state
-                  .flatModify {
-                    case s @ State.Active(subs, _, n, closing) =>
-                      val dec = n - 1
-                      if (dec == 0 && closing) {
-                        val closeAction = foreach(subs)(_.close.void)
-                        (State.Closed(), closeAction >> publishersFinished.complete(()).void)
-                      } else {
-                        (s.copy(publishing = dec), F.unit)
+          state.get.flatMap {
+            case State.Closed() =>
+              Topic.closed.pure[F]
+            case State.Active(subs, _) =>
+              subs.toList.foldLeftM(Topic.rightUnit) {
+                case (Left(Topic.Closed), _) => Topic.closed.pure[F]
+                case (Right(_), (_, chan)) =>
+                  chan.send(a).flatMap {
+                    case Right(_) => Topic.rightUnit.pure[F]
+                    case Left(_) =>
+                      state.get.map {
+                        case State.Closed() => Topic.closed
+                        case _              => Topic.rightUnit
                       }
-                    case s @ State.Closed() => (s, F.unit)
-                  }
-                  .map { _ =>
-                    if (allSucceeded) Topic.rightUnit else Topic.closed
                   }
               }
-              (newState, action)
-
-            case s @ State.Active(_, _, _, true) =>
-              (s, Topic.closed.pure[F])
-            case s @ State.Closed() =>
-              (s, Topic.closed.pure[F])
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
@@ -208,20 +195,18 @@ object Topic {
         def subscribeAwaitImpl(chan: Channel[F, A]): Resource[F, Stream[F, A]] = {
           val subscribe: F[Option[Long]] =
             state.flatModify {
-              case s @ State.Active(subs, nextId, _, false) =>
-                val newState = s.copy(subscribers = subs.updated(nextId, chan), nextId = nextId + 1)
+              case State.Active(subs, nextId) =>
+                val newState = State.Active(subs.updated(nextId, chan), nextId + 1)
                 val action = subscriberCount.update(_ + 1)
                 val result = Some(nextId)
                 newState -> action.as(result)
-              case s @ State.Active(_, _, _, true) =>
-                s -> F.pure(None)
               case closed @ State.Closed() =>
                 closed -> F.pure(None)
             }
 
           def unsubscribe(id: Long): F[Unit] =
             state.flatModify {
-              case s @ State.Active(subs, _, _, _) =>
+              case State.Active(subs, nextId) =>
                 // _After_ we remove the bounded channel for this
                 // subscriber, we need to drain it to unblock to
                 // publish loop which might have already enqueued
@@ -231,7 +216,7 @@ object Topic {
                     chan.close >> chan.stream.compile.drain
                   }
 
-                s.copy(subscribers = subs - id) -> (drainChannel *> subscriberCount.update(_ - 1))
+                State.Active(subs - id, nextId) -> (drainChannel *> subscriberCount.update(_ - 1))
 
               case closed @ State.Closed() =>
                 closed -> F.unit
@@ -265,15 +250,9 @@ object Topic {
 
         def close: F[Either[Topic.Closed, Unit]] =
           state.flatModify {
-            case s @ State.Active(subs, _, n, false) =>
-              if (n == 0) {
-                val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
-                (State.Closed(), (action >> publishersFinished.complete(())).as(Topic.rightUnit))
-              } else {
-                (s.copy(closing = true), publishersFinished.get.as(Topic.rightUnit))
-              }
-            case s @ State.Active(_, _, _, true) =>
-              (s, publishersFinished.get.as(Topic.rightUnit))
+            case State.Active(subs, _) =>
+              val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
+              (State.Closed(), action.as(Topic.rightUnit))
             case closed @ State.Closed() =>
               (closed, Topic.closed.pure[F])
           }
@@ -288,15 +267,13 @@ object Topic {
   private object State {
     case class Active[F[_], A](
         subscribers: LongMap[Channel[F, A]],
-        nextId: Long,
-        publishing: Long,
-        closing: Boolean
+        nextId: Long
     ) extends State[F, A]
 
     case class Closed[F[_], A]() extends State[F, A]
 
     def initial[F[_], A]: State[F, A] =
-      Active(LongMap.empty, 1L, 0L, false)
+      Active(LongMap.empty, 1L)
   }
 
   private final val closed: Either[Closed, Unit] = Left(Closed)
