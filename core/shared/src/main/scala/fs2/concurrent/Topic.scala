@@ -60,6 +60,10 @@ abstract class Topic[F[_], A] { self =>
     * Note: if `publish1` is called concurrently by multiple producers,
     * different subscribers may receive messages from different producers
     * in a different order.
+    *
+    * Note: if `publish1` returns `Left(Topic.Closed)`, it is possible
+    * that some subscribers received the event while others did not due
+    * to concurrent closure.
     */
   def publish1(a: A): F[Either[Topic.Closed, Unit]]
 
@@ -164,8 +168,18 @@ object Topic {
             case State.Closed() =>
               Topic.closed.pure[F]
             case State.Active(subs, _) =>
-              foreach(subs)(_.send(a).void)
-                .as(Topic.rightUnit)
+              subs.toList.foldLeftM(Topic.rightUnit) {
+                case (Left(Topic.Closed), _) => Topic.closed.pure[F]
+                case (Right(_), (_, chan)) =>
+                  chan.send(a).flatMap {
+                    case Right(_) => Topic.rightUnit.pure[F]
+                    case Left(_) =>
+                      state.get.map {
+                        case State.Closed() => Topic.closed
+                        case _              => Topic.rightUnit
+                      }
+                  }
+              }
           }
 
         def subscribeAwait(maxQueued: Int): Resource[F, Stream[F, A]] =
