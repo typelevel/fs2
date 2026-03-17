@@ -576,7 +576,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * The `chunkLimit` parameter controls backpressure on the source stream.
     */
   def conflateChunks[F2[x] >: F[x]: Concurrent](chunkLimit: Int): Stream[F2, Chunk[O]] =
-    Stream.eval(Channel.bounded[F2, Chunk[O]](chunkLimit)).flatMap { chan =>
+    Stream.eval(Channel.bounded[F2, Chunk[O]](chunkLimit - 1)).flatMap { chan =>
       val producer = chunks.through(chan.sendAll)
       val consumer = chan.stream.chunks.map(_.combineAll)
       consumer.concurrently(producer)
