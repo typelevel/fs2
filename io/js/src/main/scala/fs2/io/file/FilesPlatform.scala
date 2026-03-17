@@ -418,44 +418,42 @@ private[fs2] trait FilesCompanionPlatform {
     }
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
-        in.pull.stepLeg
-          .flatMap {
-            case None => Pull.done
-            case Some(leg) =>
-              Stream
-                .eval(F.async_[Writable] { cb =>
-                  val ws = facade.fs
-                    .createWriteStream(
-                      path.toString,
-                      new facade.fs.WriteStreamOptions {
-                        flags = combineFlags(_flags)
-                      }
-                    )
-                  ws.once[Unit](
-                    "ready",
-                    _ => {
-                      ws.removeAllListeners()
-                      cb(Right(ws))
+        in.pull.stepLeg.flatMap {
+          case None      => Pull.done
+          case Some(leg) =>
+            Stream
+              .eval(F.async_[Writable] { cb =>
+                val ws = facade.fs
+                  .createWriteStream(
+                    path.toString,
+                    new facade.fs.WriteStreamOptions {
+                      flags = combineFlags(_flags)
                     }
                   )
-                  ws.once[js.Error](
-                    "error",
-                    error => {
-                      ws.removeAllListeners()
-                      cb(Left(js.JavaScriptException(error)))
-                    }
-                  )
-                  ()
-                })
-                .flatMap { ws =>
-                  leg.stream
-                    .cons(leg.head)
-                    .through(writeWritable(F.pure(ws)))
-                }
-                .pull
-                .echo
-          }
-          .stream
+                ws.once[Unit](
+                  "ready",
+                  _ => {
+                    ws.removeAllListeners()
+                    cb(Right(ws))
+                  }
+                )
+                ws.once[js.Error](
+                  "error",
+                  error => {
+                    ws.removeAllListeners()
+                    cb(Left(js.JavaScriptException(error)))
+                  }
+                )
+                ()
+              })
+              .flatMap { ws =>
+                leg.stream
+                  .cons(leg.head)
+                  .through(writeWritable(F.pure(ws)))
+              }
+              .pull
+              .echo
+        }.stream
 
   }
 }
