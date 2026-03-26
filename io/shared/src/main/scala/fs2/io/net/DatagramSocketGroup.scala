@@ -35,7 +35,7 @@ trait DatagramSocketGroup[F[_]] {
     * @param options              socket options to apply to the underlying socket
     * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
     */
-  @deprecated("3.13.0", "Use Network[F].bindDatagramSocket instead")
+  @deprecated("Use Network[F].bindDatagramSocket instead", "3.13.0")
   def openDatagramSocket(
       address: Option[Host] = None,
       port: Option[Port] = None,

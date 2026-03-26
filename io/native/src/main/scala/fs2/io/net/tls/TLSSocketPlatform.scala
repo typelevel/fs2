@@ -85,11 +85,11 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def endOfInput: F[Unit] =
         socket.endOfInput
 
-      @deprecated("3.13.0", "Use address instead")
+      @deprecated("Use address instead", "3.13.0")
       def localAddress: F[SocketAddress[IpAddress]] =
         socket.localAddress
 
-      @deprecated("3.13.0", "Use peerAddress instead")
+      @deprecated("Use peerAddress instead", "3.13.0")
       def remoteAddress: F[SocketAddress[IpAddress]] =
         socket.remoteAddress
 
@@ -112,7 +112,7 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
       def applicationProtocol: F[String] = connection.applicationProtocol
 
-      @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
+      @deprecated("No replacement; sockets are open until they are finalized", "3.13.0")
       def isOpen: F[Boolean] = socket.isOpen
     }
 }

@@ -38,7 +38,7 @@ trait SocketGroup[F[_]] {
     * @param to      address of remote server
     * @param options socket options to apply to the underlying socket
     */
-  @deprecated("3.13.0", "Use Network[F].connect instead")
+  @deprecated("Use Network[F].connect instead", "3.13.0")
   def client(
       to: SocketAddress[Host],
       options: List[SocketOption] = List.empty
@@ -54,7 +54,7 @@ trait SocketGroup[F[_]] {
     * @param port               port to bind
     * @param options socket options to apply to the underlying socket
     */
-  @deprecated("3.13.0", "Use Network[F].bindAndAccept instead")
+  @deprecated("Use Network[F].bindAndAccept instead", "3.13.0")
   def server(
       address: Option[Host] = None,
       port: Option[Port] = None,
@@ -65,7 +65,7 @@ trait SocketGroup[F[_]] {
     *
     * Make sure to handle errors in the client socket Streams.
     */
-  @deprecated("3.13.0", "Use Network[F].bind instead")
+  @deprecated("Use Network[F].bind instead", "3.13.0")
   def serverResource(
       address: Option[Host] = None,
       port: Option[Port] = None,

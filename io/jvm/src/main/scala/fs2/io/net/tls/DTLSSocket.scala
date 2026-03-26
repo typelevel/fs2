@@ -99,8 +99,8 @@ object DTLSSocket {
         override def address = socket.address
 
         @deprecated(
-          "3.13.0",
-          "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+          "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe",
+          "3.13.0"
         )
         override def localAddress: F[SocketAddress[IpAddress]] = socket.localAddress
 
