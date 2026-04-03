@@ -445,7 +445,7 @@ private[fs2] trait FilesCompanionPlatform {
                   }
                 )
                 ()
-              })
+              }.adaptError { case IOException(ex) => ex })
               .flatMap { ws =>
                 leg.stream
                   .cons(leg.head)
