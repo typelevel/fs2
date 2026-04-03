@@ -422,30 +422,32 @@ private[fs2] trait FilesCompanionPlatform {
           case None      => Pull.done
           case Some(leg) =>
             Stream
-              .eval(F.async_[Writable] { cb =>
-                val ws = facade.fs
-                  .createWriteStream(
-                    path.toString,
-                    new facade.fs.WriteStreamOptions {
-                      flags = combineFlags(_flags)
+              .eval(
+                F.async_[Writable] { cb =>
+                  val ws = facade.fs
+                    .createWriteStream(
+                      path.toString,
+                      new facade.fs.WriteStreamOptions {
+                        flags = combineFlags(_flags)
+                      }
+                    )
+                  ws.once[Unit](
+                    "ready",
+                    _ => {
+                      ws.removeAllListeners()
+                      cb(Right(ws))
                     }
                   )
-                ws.once[Unit](
-                  "ready",
-                  _ => {
-                    ws.removeAllListeners()
-                    cb(Right(ws))
-                  }
-                )
-                ws.once[js.Error](
-                  "error",
-                  error => {
-                    ws.removeAllListeners()
-                    cb(Left(js.JavaScriptException(error)))
-                  }
-                )
-                ()
-              }.adaptError { case IOException(ex) => ex })
+                  ws.once[js.Error](
+                    "error",
+                    error => {
+                      ws.removeAllListeners()
+                      cb(Left(js.JavaScriptException(error)))
+                    }
+                  )
+                  ()
+                }.adaptError { case IOException(ex) => ex }
+              )
               .flatMap { ws =>
                 leg.stream
                   .cons(leg.head)
