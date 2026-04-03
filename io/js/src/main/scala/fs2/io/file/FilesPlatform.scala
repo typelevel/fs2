@@ -416,7 +416,7 @@ private[fs2] trait FilesCompanionPlatform {
         .chunkN(options.chunkSize)
         .flatMap(Stream.chunk)
     }
-   // want to run ci pipeline
+
     override def writeAll(path: Path, _flags: Flags): Pipe[F, Byte, Nothing] =
       in =>
         in.through {
