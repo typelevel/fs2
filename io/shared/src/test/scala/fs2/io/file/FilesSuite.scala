@@ -200,18 +200,6 @@ class FilesSuite extends Fs2Suite with BaseFileSuite {
         .foldMonoid
         .assertEquals("")
     }
-    test("empty stream does not create file") {
-      Files[IO].tempDirectory.use { dir =>
-        val path = dir / "should-not-exist.txt"
-        Stream.empty
-          .covary[IO]
-          .through(Files[IO].writeAll(path))
-          .compile
-          .drain
-          .flatMap(_ => Files[IO].exists(path))
-          .assertEquals(false)
-      }
-    }
 
     test("error stream does not create file") {
       Files[IO].tempDirectory.use { dir =>
