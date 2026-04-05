@@ -1040,17 +1040,18 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     underlying.flatMapOutput(evalOut).streamNoScope
   }
 
-  /** Like `evalMap`, but operates on chunks for performance. This means this operator
-    * is not lazy on every single element, rather on the chunks.
+  /** Like `evalMap`, but operates on chunks for performance. Evaluates `f` for all elements
+    * within a chunk using the Applicative instance, which allows parallel evaluation if supported by `F`.
     *
-    * For instance, `evalMap` would only print twice in the follow example (note the `take(2)`):
+    * This operator is not lazy on individual elements, only on chunks. For instance, `evalMap` would
+    * only print twice in the following example (note the `take(2)`):
     * @example {{{
     * scala> import cats.effect.SyncIO
     * scala> Stream(1,2,3,4).evalMap(i => SyncIO(println(i))).take(2).compile.drain.unsafeRunSync()
     * res0: Unit = ()
     * }}}
     *
-    * But with `evalMapChunk`, it will print 4 times:
+    * But with `evalMapChunk`, it will print 4 times (entire first chunk is processed):
     * @example {{{
     * scala> Stream(1,2,3,4).evalMapChunk(i => SyncIO(println(i))).take(2).compile.drain.unsafeRunSync()
     * res0: Unit = ()
@@ -1232,6 +1233,8 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
 
   /** Like `filter`, but the predicate `f` depends on the previously emitted and
     * current elements.
+    *
+    * The first element is always emitted (no previous element to compare).
     *
     * @example {{{
     * scala> Stream(1, 9, 5, 6, 7, 8, 9, 10).filterWithPrevious((previous, current) => previous < current).toList
