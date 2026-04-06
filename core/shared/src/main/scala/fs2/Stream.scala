@@ -5220,9 +5220,16 @@ object Stream extends StreamLowPriority {
           timedPull.timeout(t) >>
             timedPull.uncons.flatMap {
               case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
-              case Some((Left(_), next))      => f(go(next))
+              case Some((Left(_), next))      => f(skipStaleTimeouts(next))
               case None                       => Pull.done
             }
+        // After a timeout, skip any further queued timeouts, then resume normal processing
+        def skipStaleTimeouts(timedPull: Pull.Timed[F, O]): Pull[F, O2, Unit] =
+          timedPull.uncons.flatMap {
+            case Some((Right(elems), next)) => Pull.output(elems) >> go(next)
+            case Some((Left(_), next))      => skipStaleTimeouts(next)
+            case None                       => Pull.done
+          }
         go(timedPull)
       }
   }
