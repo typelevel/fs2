@@ -2005,7 +2005,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * This can be used to control how chunks are emitted downstream. See [[mergeAndAwaitDownstream]] for example.
     *
     * @param f The function that combines the output stream and a finalizer for the chunk.
-    *          This way we can controll when to pull pull next chunk from upstream.
+    *          This way we can control when to pull next chunk from upstream.
     */
   private def merge_[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
@@ -2046,7 +2046,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
             def sendChunk(chk: Chunk[O2]): F2[Unit] =
               output.send(f(Stream.chunk(chk), guard.release)) >> guard.acquire
 
-            (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
+            (Stream.exec(guard.acquire) ++ s.chunks.filter(_.nonEmpty).evalMap(chk => F.cede >> sendChunk(chk)))
               // Stop when the other upstream has errored or the downstream has completed.
               // This may also interrupt the initial call to `guard.acquire` as the call is made at the
               // beginning of the stream.
