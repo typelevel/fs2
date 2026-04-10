@@ -1041,7 +1041,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   }
 
   /** Like `evalMap`, but operates on chunks for performance. Evaluates `f` for all elements
-    * within a chunk using the Applicative instance, which allows parallel evaluation if supported by `F`.
+    * within a chunk .
     *
     * This operator is not lazy on individual elements, only on chunks. For instance, `evalMap` would
     * only print twice in the following example (note the `take(2)`):
