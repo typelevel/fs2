@@ -1,0 +1,90 @@
+[1mdiff --git a/core/shared/src/test/scala/fs2/StreamMergeSuite.scala b/core/shared/src/test/scala/fs2/StreamMergeSuite.scala[m
+[1mindex 32af3b77a..7f9ede54a 100644[m
+[1m--- a/core/shared/src/test/scala/fs2/StreamMergeSuite.scala[m
+[1m+++ b/core/shared/src/test/scala/fs2/StreamMergeSuite.scala[m
+[36m@@ -27,6 +27,7 @@[m [mimport cats.effect.kernel.{Deferred, Ref}[m
+ import cats.effect.testkit.TestControl[m
+ import org.scalacheck.effect.PropF.forAllF[m
+ [m
+[32m+[m
+ class StreamMergeSuite extends Fs2Suite {[m
+   group("merge") {[m
+     test("basic") {[m
+[36m@@ -172,6 +173,68 @@[m [mclass StreamMergeSuite extends Fs2Suite {[m
+     }[m
+   }[m
+ [m
+[32m+[m[32m  // Regression tests for issue #3697:[m
+[32m+[m[32m  // Stream.merge hangs when one branch is Stream.empty.repeat —[m
+[32m+[m[32m  // interruptAfter and fiber.cancel were both unresponsive.[m
+[32m+[m[32m  // Fix: added .filter(_.nonEmpty) + F.cede in merge_ to yield[m
+[32m+[m[32m  // an async boundary even when the stream emits only empty chunks.[m
+[32m+[m[32m  group("issue-3697 empty.repeat does not starve scheduler") {[m
+[32m+[m
+[32m+[m[32m    // Test 1: exact repro from the issue — interruptAfter must terminate[m
+[32m+[m[32m    test("Stream.empty.repeat merged with finite stream is interruptible") {[m
+[32m+[m[32m      TestControl.executeEmbed([m
+[32m+[m[32m        Stream.empty[m
+[32m+[m[32m          .covary[IO].repeat[m
+[32m+[m[32m          .merge(Stream.emits[IO, Int](List(4, 5, 6)))[m
+[32m+[m[32m          .interruptAfter(1.second)[m
+[32m+[m[32m          .compile[m
+[32m+[m[32m          .drain[m
+[32m+[m[32m      )[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Test 2: finite stream on the left, empty.repeat on the right[m
+[32m+[m[32m    test("finite stream merged with Stream.empty.repeat is interruptible") {[m
+[32m+[m[32m      TestControl.executeEmbed([m
+[32m+[m[32m        Stream[m
+[32m+[m[32m          .emits[IO, Int](List(1, 2, 3))[m
+[32m+[m[32m          .merge(Stream.empty.repeat)[m
+[32m+[m[32m          .interruptAfter(1.second)[m
+[32m+[m[32m          .compile[m
+[32m+[m[32m          .drain[m
+[32m+[m[32m      )[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Test 3: elements from the non-empty branch are not lost[m
+[32m+[m[32m    test("all elements from the non-empty branch are emitted") {[m
+[32m+[m[32m      TestControl.executeEmbed([m
+[32m+[m[32m        Stream.empty[m
+[32m+[m[32m          .covary[IO].repeat[m
+[32m+[m[32m          .merge(Stream.emits[IO, Int](List(7, 8, 9)))[m
+[32m+[m[32m          .interruptAfter(1.second)[m
+[32m+[m[32m          .compile[m
+[32m+[m[32m          .toList[m
+[32m+[m[32m          .map(result => assertEquals(result.sorted, List(7, 8, 9)))[m
+[32m+[m[32m      )[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    // Test 4: fiber.cancel must also unblock (second variant from the issue)[m
+[32m+[m[32m    test("fiber wrapping merge with empty.repeat can be cancelled") {[m
+[32m+[m[32m      TestControl.executeEmbed([m
+[32m+[m[32m        Stream.empty[m
+[32m+[m[32m          .covary[IO].repeat[m
+[32m+[m[32m          .merge(Stream.emits[IO, Int](List(1, 2, 3)))[m
+[32m+[m[32m          .interruptAfter(500.millis)[m
+[32m+[m[32m          .compile[m
+[32m+[m[32m          .drain[m
+[32m+[m[32m          .start[m
+[32m+[m[32m          .flatMap { fiber =>[m
+[32m+[m[32m            IO.sleep(600.millis) >> fiber.cancel >> fiber.join.void[m
+[32m+[m[32m          }[m
+[32m+[m[32m      )[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m
+   test("mergeHaltBoth") {[m
+     forAllF { (s1: Stream[Pure, Int], s2: Stream[Pure, Int]) =>[m
+       val s1List = s1.toList[m
+[36m@@ -287,6 +350,8 @@[m [mclass StreamMergeSuite extends Fs2Suite {[m
+       .assertEquals(Vector(1, 2))[m
+   }[m
+ [m
+[32m+[m
+[32m+[m
+   test("issue #3598") {[m
+ [m
+     sealed trait Data[m
