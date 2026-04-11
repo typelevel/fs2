@@ -22,9 +22,12 @@
 package fs2
 package io
 
-import cats.effect.kernel.Sync
+import cats.effect.kernel.{Async, Deferred, Outcome, Resource, Sync}
+import cats.effect.kernel.implicits._
 import cats.syntax.all._
+import fs2.io.internal.PipedStreamBuffer
 
+import java.io.{InputStream, OutputStream}
 import scala.reflect.ClassTag
 
 private[fs2] trait iojvmnative {
@@ -55,5 +58,56 @@ private[fs2] trait iojvmnative {
       case Some(resource) => io.readInputStream(resource.pure, chunkSize)
       case None           => Stream.raiseError(new IOException(s"Resource $name not found"))
     }
+
+  /** Take a function that emits to a `java.io.OutputStream` effectfully,
+    * and return a stream which, when run, will perform that function and emit
+    * the bytes recorded in the OutputStream as an fs2.Stream
+    *
+    * The stream produced by this will terminate if:
+    *   - `f` returns
+    *   - `f` calls `OutputStream#close`
+    *
+    * If none of those happens, the stream will run forever.
+    */
+  def readOutputStream[F[_]: Async](
+      chunkSize: Int
+  )(
+      f: OutputStream => F[Unit]
+  ): Stream[F, Byte] = {
+    val mkOutput: Resource[F, (OutputStream, InputStream)] =
+      Resource.make(Sync[F].delay {
+        val buf = new PipedStreamBuffer(chunkSize)
+        (buf.outputStream, buf.inputStream)
+      })(ois =>
+        Sync[F].blocking {
+          // Piped(I/O)Stream implementations cant't throw on close, no need to nest the handling here.
+          ois._2.close()
+          ois._1.close()
+        }
+      )
+
+    Stream.resource(mkOutput).flatMap { case (os, is) =>
+      Stream.eval(Deferred[F, Option[Throwable]]).flatMap { err =>
+        // We need to close the output stream regardless of how `f` finishes
+        // to ensure an outstanding blocking read on the input stream completes.
+        // In such a case, there's a race between completion of the read
+        // stream and finalization of the write stream, so we capture the error
+        // that occurs when writing and rethrow it.
+        val write = f(os).guaranteeCase((outcome: Outcome[F, Throwable, Unit]) =>
+          Sync[F].blocking(os.close()) *> err
+            .complete(outcome match {
+              case Outcome.Errored(t) => Some(t)
+              case _                  => None
+            })
+            .void
+        )
+        val read = readInputStream(is.pure[F], chunkSize, closeAfterUse = false)
+        read.concurrently(Stream.eval(write)) ++ Stream.eval(err.get).flatMap {
+          case None    => Stream.empty
+          case Some(t) => Stream.raiseError[F](t)
+        }
+      }
+    }
+  }
 
 }
