@@ -378,7 +378,8 @@ lazy val root = tlCrossRootProject
 
 lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
-  Test / nativeBrewFormulas += "openssl"
+  Test / nativeBrewFormulas += "openssl",
+  Test / nativeConfig ~= { _.withEmbedResources(true) }
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)

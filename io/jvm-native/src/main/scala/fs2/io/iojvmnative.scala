@@ -110,4 +110,26 @@ private[fs2] trait iojvmnative {
     }
   }
 
+  /** Pipe that converts a stream of bytes to a stream that will emit a single `java.io.InputStream`,
+    * that is closed whenever the resulting stream terminates.
+    *
+    * If the `close` of resulting input stream is invoked manually, then this will await until the
+    * original stream completely terminates.
+    *
+    * Because all `InputStream` methods block (including `close`), the resulting `InputStream`
+    * should be consumed on a different thread pool than the one that is backing the effect.
+    *
+    * Note that the implementation is not thread safe -- only one thread is allowed at any time
+    * to operate on the resulting `java.io.InputStream`.
+    */
+  def toInputStream[F[_]: Async]: Pipe[F, Byte, InputStream] =
+    source => Stream.resource(toInputStreamResource(source))
+
+  /** Like [[toInputStream]] but returns a `Resource` rather than a single element stream.
+    */
+  def toInputStreamResource[F[_]: Async](
+      source: Stream[F, Byte]
+  ): Resource[F, InputStream] =
+    JavaInputOutputStream.toInputStream(source)
+
 }
