@@ -2,6 +2,9 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+// Workaround for https://github.com/scala-native/scala-native/issues/2024
+Global / concurrentRestrictions += Tags.limit(NativeTags.Link, 1)
+
 ThisBuild / tlBaseVersion := "3.13"
 
 ThisBuild / organization := "co.fs2"
