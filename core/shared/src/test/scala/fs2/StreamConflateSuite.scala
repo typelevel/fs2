@@ -23,6 +23,7 @@ package fs2
 
 import cats.effect.IO
 import cats.effect.testkit.TestControl
+import cats.syntax.all._
 
 import scala.concurrent.duration._
 
@@ -44,4 +45,23 @@ class StreamConflateSuite extends Fs2Suite {
         )
     )
   }
+  test("conflateChunks respects chunk limit") {
+
+    (1 to 1000).toList.traverse_ { _ =>
+      Stream(1, 2, 3, 4, 5, 6, 7)
+        .covary[IO]
+        .chunkLimit(1)
+        .unchunks
+        .conflateChunks(3)
+        .compile
+        .toList
+        .map { chunks =>
+          assert(
+            chunks.forall(_.size <= 3),
+            s"Expected all chunks <= 3, but got: $chunks"
+          )
+        }
+    }
+  }
+
 }
