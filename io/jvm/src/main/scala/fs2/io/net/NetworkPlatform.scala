@@ -47,8 +47,8 @@ private[net] trait NetworkPlatform[F[_]] {
     * @param threadFactory factory used to create fixed threads
     */
   @deprecated(
-    "3.13.0",
-    "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead"
+    "Explicitly managed socket groups are no longer supported; use connect and bind operations on Network instead",
+    "3.13.0"
   )
   def socketGroup(
       threadCount: Int = 1,
@@ -65,8 +65,8 @@ private[net] trait NetworkPlatform[F[_]] {
     * @param threadFactory factory used to create selector thread
     */
   @deprecated(
-    "3.13.0",
-    "Explicitly managed socket groups are no longer supported; use bindDatagramSocket operation on Network instead"
+    "Explicitly managed socket groups are no longer supported; use bindDatagramSocket operation on Network instead",
+    "3.13.0"
   )
   def datagramSocketGroup(
       threadFactory: ThreadFactory = ThreadFactories.named("fs2-udp", true)
