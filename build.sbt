@@ -2,6 +2,9 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
+// Workaround for https://github.com/scala-native/scala-native/issues/2024
+Global / concurrentRestrictions += Tags.limit(NativeTags.Link, 1)
+
 ThisBuild / tlBaseVersion := "3.13"
 
 ThisBuild / organization := "co.fs2"
@@ -378,7 +381,8 @@ lazy val root = tlCrossRootProject
 
 lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
-  Test / nativeBrewFormulas += "openssl"
+  Test / nativeBrewFormulas += "openssl",
+  Test / nativeConfig ~= { _.withEmbedResources(true) }
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
