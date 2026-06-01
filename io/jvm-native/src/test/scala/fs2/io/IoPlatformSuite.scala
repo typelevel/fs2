@@ -275,8 +275,7 @@ class IoPlatformSuite extends Fs2Suite {
       bar.assertEquals("bar")
     }
     test("classloader") {
-      val resourcePath = if (isNative) "/fs2/io/foo" else "fs2/io/foo"
-      val size = readClassLoaderResource[IO](resourcePath, 8192).as(1L).compile.foldMonoid
+      val size = readClassLoaderResource[IO]("fs2/io/foo", 8192).as(1L).compile.foldMonoid
       size.assertEquals(3L)
     }
   }
