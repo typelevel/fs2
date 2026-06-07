@@ -117,17 +117,7 @@ sealed trait Channel[F[_], A] {
     */
   def closeWithElement(a: A): F[Either[Channel.Closed, Unit]]
 
-  /** Raises an error, closing the channel with an error state.
-    *
-    * No-op if the channel is closed, see [[close]] for further info.
-    */
-  def raiseError(e: Throwable): F[Either[Channel.Closed, Unit]]
-
-  /** Cancels the channel, closing it with a canceled state.
-    *
-    * No-op if the channel is closed, see [[close]] for further info.
-    */
-  def cancel: F[Either[Channel.Closed, Unit]]
+  private[concurrent] def closeWithExitCase(exitCase: ExitCase): F[Either[Channel.Closed, Unit]]
 
   /** Returns true if this channel is closed */
   def isClosed: F[Boolean]
@@ -227,12 +217,6 @@ object Channel {
                 notifyStream(waiting).as(rightUnit) <* signalClosure
               )
           }
-
-        def raiseError(e: Throwable): F[Either[Closed, Unit]] =
-          closeWithExitCase(ExitCase.Errored(e))
-
-        def cancel: F[Either[Closed, Unit]] =
-          closeWithExitCase(ExitCase.Canceled)
 
         def isClosed = closedGate.tryGet.map(_.isDefined)
 

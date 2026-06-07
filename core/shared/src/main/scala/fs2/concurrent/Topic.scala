@@ -242,13 +242,8 @@ object Topic {
         def closeWithExitCase(exitCase: ExitCase): F[Either[Closed, Unit]] =
           state.flatModify {
             case State.Active(subs, _) =>
-              val closeChannel = (channel: Channel[F, A]) =>
-                exitCase match {
-                  case ExitCase.Succeeded  => channel.close.void
-                  case ExitCase.Errored(e) => channel.raiseError(e).void
-                  case ExitCase.Canceled   => channel.cancel.void
-                }
-              val action = foreach(subs)(closeChannel) *> signalClosure.complete(())
+              val action =
+                foreach(subs)(_.closeWithExitCase(exitCase).void) *> signalClosure.complete(())
               (State.Closed(), action.as(Topic.rightUnit))
             case closed @ State.Closed() =>
               (closed, Topic.closed.pure[F])
