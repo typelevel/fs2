@@ -37,7 +37,7 @@ import fs2.io.internal.sysunOps._
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.string._
-import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
+import scala.scalanative.posix.sys.socket.{accept => _, _}
 import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._

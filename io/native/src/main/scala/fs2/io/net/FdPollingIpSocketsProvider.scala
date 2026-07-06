@@ -35,7 +35,7 @@ import fs2.io.internal.syssocket.{connect => sconnect, bind => sbind, _}
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.errno._
-import scala.scalanative.posix.sys.socket.{bind => _, connect => _, accept => _, _}
+import scala.scalanative.posix.sys.socket.{accept => _, _}
 import scala.scalanative.posix.unistd._
 
 private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: Async[F])
