@@ -367,6 +367,11 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   )
 )
 
+// Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
+lazy val disableImportWarningsOnDoctestSource = Seq(
+  Test / scalacOptions += "-Wconf:src=.*/src_managed/.*&cat=unused-imports:s"
+)
+
 lazy val root = tlCrossRootProject
   .aggregate(
     core,
@@ -387,6 +392,7 @@ lazy val commonNativeSettings = Seq[Setting[?]](
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
@@ -445,6 +451,7 @@ lazy val integration = project
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
@@ -555,6 +562,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-reactive-streams",
     libraryDependencies ++= Seq(
