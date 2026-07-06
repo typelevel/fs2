@@ -14,7 +14,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.18"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.7")
+ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.8")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -367,6 +367,11 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   )
 )
 
+// Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
+lazy val disableImportWarningsOnDoctestSource = Seq(
+  Test / scalacOptions += "-Wconf:msg=unused import&src=.*[/\\\\]src_managed[/\\\\].*:s"
+)
+
 lazy val root = tlCrossRootProject
   .aggregate(
     core,
@@ -387,17 +392,18 @@ lazy val commonNativeSettings = Seq[Setting[?]](
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.2.5",
       "org.typelevel" %%% "cats-core" % "2.13.0",
       "org.typelevel" %%% "cats-effect" % "3.7.0",
-      "org.typelevel" %%% "cats-mtl" % "1.6.0",
+      "org.typelevel" %%% "cats-mtl" % "1.7.0",
       "org.typelevel" %%% "cats-effect-laws" % "3.7.0" % Test,
       "org.typelevel" %%% "cats-effect-testkit" % "3.7.0" % Test,
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
-      "org.typelevel" %%% "cats-mtl-laws" % "1.6.0" % Test,
+      "org.typelevel" %%% "cats-mtl-laws" % "1.7.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
       "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test
@@ -445,6 +451,7 @@ lazy val integration = project
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
@@ -555,6 +562,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-reactive-streams",
     libraryDependencies ++= Seq(

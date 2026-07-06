@@ -570,7 +570,7 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     asSeqPlatform.getOrElse(this match {
       case indexedSeqChunk: Chunk.IndexedSeqChunk[?] =>
         indexedSeqChunk.s match {
-          case indexedSeq: IndexedSeq[O] =>
+          case indexedSeq: IndexedSeq[O] @unchecked =>
             indexedSeq
 
           case _ =>
@@ -787,7 +787,7 @@ object Chunk
           array(bldr.result()).asInstanceOf[Chunk[O]]
         }
 
-      case s: GIndexedSeq[O] =>
+      case s: GIndexedSeq[O] @unchecked =>
         if (s.isEmpty) empty
         else if (s.size == 1) singleton(s.head)
         else new IndexedSeqChunk(s)
