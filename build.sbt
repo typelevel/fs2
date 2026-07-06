@@ -369,7 +369,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
 
 // Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
 lazy val disableImportWarningsOnDoctestSource = Seq(
-  Test / scalacOptions += "-Wconf:src=.*/src_managed/.*&cat=unused-imports:s"
+  Test / scalacOptions += "-Wconf:msg=unused import&src=.*[/\\\\]src_managed[/\\\\].*:s"
 )
 
 lazy val root = tlCrossRootProject
