@@ -131,10 +131,11 @@ class IoPlatformSuite extends Fs2Suite {
       IO.async_[Unit] { cb =>
         writable.write(
           Chunk[Byte](0).toUint8Array,
-          _ => { // start the next write in the callback
-            writable.write(Chunk[Byte](1).toUint8Array, _ => cb(Right(())))
-            ()
-          }
+          _ =>
+            { // start the next write in the callback
+              writable.write(Chunk[Byte](1).toUint8Array, _ => cb(Right(())))
+              ()
+            }
         )
         ()
       }

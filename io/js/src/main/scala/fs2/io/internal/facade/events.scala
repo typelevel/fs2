@@ -65,21 +65,25 @@ private[io] object EventEmitter {
     def registerListener[F[_], E](eventName: String, dispatcher: Dispatcher[F])(
         listener: E => F[Unit]
     )(implicit F: Sync[F]): Resource[F, Unit] = Resource
-      .make(F.delay {
-        val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
-        eventTarget.on(eventName, fn)
-        fn
-      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
+      .make(
+        F.delay {
+          val fn: js.Function1[E, Unit] = e => dispatcher.unsafeRunAndForget(listener(e))
+          eventTarget.on(eventName, fn)
+          fn
+        }
+      )(fn => F.delay(eventTarget.removeListener(eventName, fn)))
       .void
 
     def registerListener2[F[_], E, A](eventName: String, dispatcher: Dispatcher[F])(
         listener: (E, A) => F[Unit]
     )(implicit F: Sync[F]): Resource[F, Unit] = Resource
-      .make(F.delay {
-        val fn: js.Function2[E, A, Unit] = (e, a) => dispatcher.unsafeRunAndForget(listener(e, a))
-        eventTarget.on(eventName, fn)
-        fn
-      })(fn => F.delay(eventTarget.removeListener(eventName, fn)))
+      .make(
+        F.delay {
+          val fn: js.Function2[E, A, Unit] = (e, a) => dispatcher.unsafeRunAndForget(listener(e, a))
+          eventTarget.on(eventName, fn)
+          fn
+        }
+      )(fn => F.delay(eventTarget.removeListener(eventName, fn)))
       .void
 
     def registerOneTimeListener[F[_], E](eventName: String)(
