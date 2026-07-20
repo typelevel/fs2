@@ -28,10 +28,12 @@ import org.scalacheck.Prop
 import scodec.*
 import scodec.Attempt.Successful
 import scodec.bits.*
-import scodec.compat.*
 import munit.Location
+import org.typelevel.scalaccompat.annotation.*
 
+@nowarn3("msg=unused import")
 class NTPPacketTest extends Fs2Suite {
+  import scodec.compat.*
   import NTPPacketTestData._
   test("ntp packet default roundtrip") {
     roundtrip[NTPPacket](NTPPacket.codec, NTPPacket.default)
@@ -60,7 +62,9 @@ class NTPPacketTest extends Fs2Suite {
   }
 }
 
+@nowarn3("msg=unused import")
 object NTPPacketTestData {
+  import scodec.compat.*
   lazy val genUInt8 = Gen.choose(0, 0xff)
   lazy val genUInt32 = Gen.choose(0L, 0xffffffffL)
   lazy val genULong64 = Gen.choose(BigInt(0), BigInt("18446744073709551615"))

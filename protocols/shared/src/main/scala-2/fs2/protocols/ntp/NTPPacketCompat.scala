@@ -21,11 +21,13 @@
 
 package fs2.protocols.ntp
 
+import org.typelevel.scalaccompat.annotation.*
 import scodec.*
-import scodec.compat.*
 import shapeless.Generic
 import shapeless.Nat
+@nowarn3("msg=unused import")
 private[ntp] trait NTPPacketCompat { self: NTPPacket.type =>
+  import scodec.compat.*
   def codec: Codec[NTPPacket] = layout
     .xmap(
       { case liVnMode *: rest =>

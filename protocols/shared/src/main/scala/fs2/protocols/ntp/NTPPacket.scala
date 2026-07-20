@@ -24,7 +24,7 @@ package fs2.protocols.ntp
 import scodec.*
 import scodec.bits.*
 import scodec.codecs.*
-import scodec.compat.*
+import org.typelevel.scalaccompat.annotation.*
 
 case class NTPPacket(
     li: LeapIndicator,
@@ -41,8 +41,9 @@ case class NTPPacket(
     receiveTime: BigInt,
     transmitTime: BigInt
 )
-
+@nowarn3("msg=unused import")
 object NTPPacket extends NTPPacketCompat {
+  import scodec.compat.*
 
   val default = NTPPacket(
     li = LeapIndicator.NoAdjustment,
