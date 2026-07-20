@@ -33,6 +33,22 @@ import java.nio.file.WatchEvent
 class WatcherSuite extends Fs2Suite with BaseFileSuite {
   override def munitIOTimeout = 1.minute
 
+  group("support watching a file") {
+    test("for relative paths without throwing NPE") {
+      val mkRelativePath = for {
+        cwd <- Files[IO].currentWorkingDirectory.toResource
+        file <- Files[IO].tempFile(Some(cwd), "", ".tmp", None)
+        relPath = cwd.relativize(file)
+      } yield relPath
+      mkRelativePath
+        .both(Watcher.default[IO])
+        .use { case (path, watcher) =>
+          watcher.watch(path)
+        }
+        .void
+    }
+  }
+
   group("supports watching a file") {
     test("for modifications") {
       Stream
