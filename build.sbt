@@ -384,10 +384,17 @@ lazy val root = tlCrossRootProject
     benchmark
   )
 
+val catsEffectUringVersion = "3.7.0-uring-SNAPSHOT"
+
 lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
   Test / nativeBrewFormulas += "openssl",
-  Test / nativeConfig ~= { _.withEmbedResources(true) }
+  Test / nativeConfig ~= { _.withEmbedResources(true) },
+  dependencyOverrides ++= Seq(
+    "org.typelevel" %%% "cats-effect" % catsEffectUringVersion,
+    "org.typelevel" %%% "cats-effect-kernel" % catsEffectUringVersion,
+    "org.typelevel" %%% "cats-effect-std" % catsEffectUringVersion
+  )
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)

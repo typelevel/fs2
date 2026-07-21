@@ -30,7 +30,9 @@ import scala.concurrent.duration._
 import scala.concurrent.TimeoutException
 import fs2.io.file._
 
-class SocketSuite extends Fs2Suite with SocketSuitePlatform {
+abstract class SocketSuiteBase extends Fs2Suite with SocketSuitePlatform {
+
+  implicit def network: Network[IO]
 
   val timeout = 30.seconds
 
@@ -273,15 +275,22 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
     }
 
     test("sockets are released at the end of the resource scope") {
-      val f =
-        Network[IO].bind(SocketAddress.port(port"9071")).use { serverSocket =>
-          serverSocket.accept.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
-            Network[IO].connect(serverSocket.address).use { client =>
-              client.read(1).assertEquals(None)
-            }
+      def exercise(serverSocket: ServerSocket[IO]) =
+        serverSocket.accept.foreach(_ => IO.sleep(1.second)).compile.drain.background.surround {
+          Network[IO].connect(serverSocket.address).use { client =>
+            client.read(1).assertEquals(None)
           }
         }
-      f >> f >> f
+
+      Network[IO]
+        .bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+        .use { serverSocket =>
+          exercise(serverSocket).as(serverSocket.address)
+        }
+        .flatMap { address =>
+          val f = Network[IO].bind(address).use(exercise)
+          f >> f
+        }
     }
 
     test("endOfOutput / endOfInput ignores ENOTCONN") {
@@ -344,4 +353,8 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
   }
+}
+
+class SocketSuite extends SocketSuiteBase {
+  override implicit lazy val network: Network[IO] = Network.forIO
 }
