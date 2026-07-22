@@ -25,6 +25,8 @@ package concurrent
 import cats.syntax.all._
 import cats.effect.IO
 import scala.concurrent.duration._
+import scala.concurrent.CancellationException
+
 import cats.effect.testkit.TestControl
 
 class TopicSuite extends Fs2Suite {
@@ -286,5 +288,28 @@ class TopicSuite extends Fs2Suite {
       } yield ()
 
     check.replicateA_(10000)
+  }
+
+  test("publisher cancellation does not deadlock") {
+    val program =
+      Topic[IO, String]
+        .flatMap { topic =>
+          val publisher =
+            Stream
+              .constant("1")
+              .covary[IO]
+              .evalTap(_ => IO.canceled)
+              .through(topic.publish)
+
+          Stream
+            .resource(topic.subscribeAwait(1))
+            .flatMap(subscriber => subscriber.concurrently(publisher))
+            .compile
+            .drain
+        }
+
+    TestControl
+      .executeEmbed(program)
+      .intercept[CancellationException]
   }
 }
