@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect._
+import cats.syntax.traverse._
 import fs2.compression._
 import org.scalacheck.effect.PropF.forAllF
 
@@ -323,6 +324,30 @@ class JvmNativeCompressionSuite extends CompressionSuite {
       .toVector
       .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
       .assertEquals(expectedContent)
+  }
+
+  test("gunzip handles concatenated gzip members (RFC 1952 § 2.2 / block gzip)") {
+    def gzipMember(s: String): IO[Chunk[Byte]] =
+      Stream
+        .chunk(Chunk.array(s.getBytes(StandardCharsets.UTF_8)))
+        .through(Compression[IO].gzip(8192))
+        .compile
+        .to(Chunk)
+
+    val parts = List("first member ", "second member ", "third member")
+    parts
+      .traverse(gzipMember)
+      .flatMap { members =>
+        Stream
+          .chunk(Chunk.concat(members))
+          .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+          .through(Compression[IO].gunzip(8192))
+          .flatMap(_.content)
+          .compile
+          .toVector
+      }
+      .map(bytes => new String(bytes.toArray, StandardCharsets.UTF_8))
+      .assertEquals(parts.mkString)
   }
 
   def toEncodableFileName(fileName: String): String =
