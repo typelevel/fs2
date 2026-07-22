@@ -25,7 +25,6 @@ import cats.effect.IO
 import cats.effect.LiftIO
 import cats.effect.kernel.Async
 import cats.effect.kernel.Resource
-
 sealed trait Processes[F[_]] {
 
   def spawn(process: ProcessBuilder): Resource[F, Process[F]]
