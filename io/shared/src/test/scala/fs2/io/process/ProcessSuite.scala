@@ -72,20 +72,19 @@ class ProcessSuite extends Fs2Suite {
       }
   }
 
-  if (!isNative)
-    test("cat") {
-      ProcessBuilder("cat").spawn[IO].use { p =>
-        val verySpecialMsg = "FS2 rocks!"
-        val in = Stream.emit(verySpecialMsg).through(fs2.text.utf8.encode).through(p.stdin)
-        val out = p.stdout.through(fs2.text.utf8.decode)
+  test("cat") {
+    ProcessBuilder("cat").spawn[IO].use { p =>
+      val verySpecialMsg = "FS2 rocks!"
+      val in = Stream.emit(verySpecialMsg).through(fs2.text.utf8.encode).through(p.stdin)
+      val out = p.stdout.through(fs2.text.utf8.decode)
 
-        out
-          .concurrently(in)
-          .compile
-          .string
-          .assertEquals(verySpecialMsg)
-      }
+      out
+        .concurrently(in)
+        .compile
+        .string
+        .assertEquals(verySpecialMsg)
     }
+  }
 
   test("working directory") {
     Files[IO].tempDirectory.use { wd0 =>
@@ -125,60 +124,55 @@ class ProcessSuite extends Fs2Suite {
     }
   }
 
-  if (!isNative)
-    test("stdin cancelation") {
-      ProcessBuilder("cat")
-        .spawn[IO]
-        .use { p =>
-          Stream
-            // apparently big enough to force `cat` to backpressure
-            .emit(Chunk.array(new Array[Byte](1024 * 1024)))
-            .unchunks
-            .repeat
-            .covary[IO]
-            .through(p.stdin)
-            .compile
-            .drain
-        }
-        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
-    }
-
-  if (!isNative)
-    test("stdout cancelation") {
-      ProcessBuilder("cat")
-        .spawn[IO]
-        .use(_.stdout.compile.drain)
-        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
-    }
-
-  if (!isNative)
-    test("stderr cancelation") {
-      ProcessBuilder("cat")
-        .spawn[IO]
-        .use(_.stderr.compile.drain)
-        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
-    }
-
-  if (!isNative)
-    test("exit value cancelation") {
-      ProcessBuilder("cat")
-        .spawn[IO]
-        .use(_.exitValue.void)
-        .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
-    }
-
-  if (!isNative)
-    test("flush") {
-      ProcessBuilder("cat").spawn[IO].use { p =>
-        val in = (Stream.emit("all drains lead to the ocean") ++ Stream.never[IO])
-          .through(fs2.text.utf8.encode)
+  test("stdin cancelation") {
+    ProcessBuilder("cat")
+      .spawn[IO]
+      .use { p =>
+        Stream
+          // apparently big enough to force `cat` to backpressure
+          .emit(Chunk.array(new Array[Byte](1024 * 1024)))
+          .unchunks
+          .repeat
+          .covary[IO]
           .through(p.stdin)
-
-        val out = p.stdout.through(fs2.text.utf8.decode).exists(_.contains("ocean"))
-
-        out.concurrently(in).compile.drain // will hang if not flushed
+          .compile
+          .drain
       }
+      .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+  }
+
+  test("stdout cancelation") {
+    ProcessBuilder("cat")
+      .spawn[IO]
+      .use(_.stdout.compile.drain)
+      .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+  }
+
+  test("stderr cancelation") {
+    ProcessBuilder("cat")
+      .spawn[IO]
+      .use(_.stderr.compile.drain)
+      .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+  }
+
+  test("exit value cancelation") {
+    ProcessBuilder("cat")
+      .spawn[IO]
+      .use(_.exitValue.void)
+      .timeoutTo(1.second, IO.unit) // assert that cancelation does not hang
+  }
+
+  test("flush") {
+    ProcessBuilder("cat").spawn[IO].use { p =>
+      val in = (Stream.emit("all drains lead to the ocean") ++ Stream.never[IO])
+        .through(fs2.text.utf8.encode)
+        .through(p.stdin)
+
+      val out = p.stdout.through(fs2.text.utf8.decode).exists(_.contains("ocean"))
+
+      out.concurrently(in).compile.drain // will hang if not flushed
     }
+  }
 
   test("close stdin") {
     ProcessBuilder("dd", "count=1").spawn[IO].use { p =>
