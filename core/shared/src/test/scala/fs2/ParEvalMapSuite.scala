@@ -293,4 +293,34 @@ class ParEvalMapSuite extends Fs2Suite {
         .timeout(2.seconds)
     }
   }
+
+  group("issue-3076, parEvalMap* runs resource finaliser before usage") {
+    test("parEvalMap") {
+      Deferred[IO, Unit]
+        .flatMap { d =>
+          Stream
+            .bracket(IO.unit)(_ => d.complete(()).void)
+            .parEvalMap(2)(_ => IO.sleep(1.second))
+            .evalMap(_ => IO.sleep(1.second) >> d.complete(()))
+            .timeout(5.seconds)
+            .compile
+            .last
+        }
+        .assertEquals(Some(true))
+    }
+
+    test("broadcastThrough") {
+      Deferred[IO, Unit]
+        .flatMap { d =>
+          Stream
+            .bracket(IO.unit)(_ => d.complete(()).void)
+            .broadcastThrough(identity[Stream[IO, Unit]])
+            .evalMap(_ => IO.sleep(1.second) >> d.complete(()))
+            .timeout(5.seconds)
+            .compile
+            .last
+        }
+        .assertEquals(Some(true))
+    }
+  }
 }
