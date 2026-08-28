@@ -216,8 +216,11 @@ object StreamSubscriber {
       def onComplete(): Unit = nextState(OnComplete)
       def onFinalize: F[Unit] = F.delay(nextState(OnFinalize))
       def dequeue1: F[Either[Throwable, Option[Chunk[A]]]] =
-        F.async_[Either[Throwable, Option[Chunk[A]]]] { cb =>
-          nextState(OnDequeue(out => cb(Right(out))))
+        F.async[Either[Throwable, Option[Chunk[A]]]] { cb =>
+          F.delay {
+            nextState(OnDequeue(out => cb(Right(out))))
+            Some(F.unit)
+          }
         }
     }
   }
