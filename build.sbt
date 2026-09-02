@@ -398,10 +398,10 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies ++= Seq(
       "org.scodec" %%% "scodec-bits" % "1.2.5",
       "org.typelevel" %%% "cats-core" % "2.13.0",
-      "org.typelevel" %%% "cats-effect" % "3.7.0",
+      "org.typelevel" %%% "cats-effect" % "3.7.1",
       "org.typelevel" %%% "cats-mtl" % "1.7.0",
-      "org.typelevel" %%% "cats-effect-laws" % "3.7.0" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.7.0" % Test,
+      "org.typelevel" %%% "cats-effect-laws" % "3.7.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.7.1" % Test,
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       "org.typelevel" %%% "cats-mtl-laws" % "1.7.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
@@ -461,8 +461,8 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.39.2" % Optional,
-      "com.google.jimfs" % "jimfs" % "1.3.1" % Test
+      "com.github.jnr" % "jnr-unixsocket" % "0.39.3" % Optional,
+      "com.google.jimfs" % "jimfs" % "1.3.2" % Test
     )
   )
   .jsSettings(
