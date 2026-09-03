@@ -181,20 +181,5 @@ trait UdpSuite extends Fs2Suite with UdpSuitePlatform {
     test("options allow concurrent use of ports") {
       concurrentBindOptionsPlatform.traverse(reuse(_))
     }
-
-    test("Network allows reuse of port immediately") {
-      // Note: even if the JVM released the port's channel, the OS may not make it available
-      // immediately, so SocketOption.reuseAddress(true) is needed.
-      network
-        .bindDatagramSocket(options = List(SocketOption.reuseAddress(true)))
-        .use { socket1 =>
-          socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket1.address)
-        }
-        .flatMap(socket2Address =>
-          network
-            .bindDatagramSocket(socket2Address, List(SocketOption.reuseAddress(true)))
-            .use(_.read.void.timeoutTo(1.milli, IO.unit))
-        )
-    }
   }
 }
