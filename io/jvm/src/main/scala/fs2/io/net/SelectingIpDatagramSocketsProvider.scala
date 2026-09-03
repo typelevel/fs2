@@ -46,8 +46,8 @@ private final class SelectingIpDatagramSocketsProvider[F[_]](selector: Selector)
           val jAddr = new InetSocketAddress(addr.toInetAddress, address.port.value)
           F.delay {
             ch.configureBlocking(false)
-            ch.bind(jAddr)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
+            ch.bind(jAddr)
           } *> F
             .delay {
               val isa = ch.getLocalAddress.asInstanceOf[InetSocketAddress]
