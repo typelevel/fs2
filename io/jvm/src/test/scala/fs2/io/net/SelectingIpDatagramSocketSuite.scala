@@ -46,4 +46,17 @@ class SelectingIpDatagramSocketSuite extends Fs2Suite {
   test("SO_REUSEADDR allows concurrent use of ports") {
     reuse(SocketOption.reuseAddress(true))
   }
+
+  test("Network allows reuse of port immediately") {
+    Network[IO]
+      .bindDatagramSocket()
+      .use { socket1 =>
+        val socket2Address = SocketAddress(Ipv4Address.Wildcard, socket1.address.asIpUnsafe.port)
+        socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket2Address)
+      }
+      .flatMap(socket2Address =>
+        Network[IO].bindDatagramSocket(socket2Address).use(_.read.void.timeoutTo(1.milli, IO.unit))
+      )
+  }
+
 }
