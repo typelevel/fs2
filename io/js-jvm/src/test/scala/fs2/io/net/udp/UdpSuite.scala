@@ -31,7 +31,27 @@ import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 
-class UdpSuite extends Fs2Suite {
+class IOUdpSuite extends UdpSuite {
+  protected override val network = Network[IO]
+}
+
+class AsyncUdpSuite extends UdpSuite {
+  protected override val network = Network.forAsync[IO]
+}
+
+trait UdpSuite extends Fs2Suite with UdpSuitePlatform {
+  protected def network: Network[IO]
+
+  private def reuse(option: SocketOption) = {
+    val options = List(option)
+
+    network.bindDatagramSocket(options = options).use { socket1 =>
+      val socket2Address = SocketAddress(Ipv4Address.Wildcard, socket1.address.asIpUnsafe.port)
+
+      network.bindDatagramSocket(socket2Address, options).use_
+    }
+  }
+
   private def sendAndReceive(socket: DatagramSocket[IO], toSend: Datagram): IO[Datagram] =
     socket
       .write(toSend) >> socket.read.timeoutTo(1.second, IO.defer(sendAndReceive(socket, toSend)))
@@ -44,12 +64,12 @@ class UdpSuite extends Fs2Suite {
     test("echo one") {
       val msg = Chunk.array("Hello, world!".getBytes)
       Stream
-        .resource(Network[IO].bindDatagramSocket(SocketAddress.Wildcard))
+        .resource(network.bindDatagramSocket(SocketAddress.Wildcard))
         .flatMap { serverSocket =>
           val serverAddress = SocketAddress(ip"127.0.0.1", serverSocket.address.asIpUnsafe.port)
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
           val client =
-            Stream.resource(Network[IO].bindDatagramSocket(SocketAddress.Wildcard)).evalMap {
+            Stream.resource(network.bindDatagramSocket(SocketAddress.Wildcard)).evalMap {
               clientSocket =>
                 sendAndReceive(clientSocket, Datagram(serverAddress, msg))
             }
@@ -71,11 +91,11 @@ class UdpSuite extends Fs2Suite {
         .sorted
 
       Stream
-        .resource(Network[IO].bindDatagramSocket())
+        .resource(network.bindDatagramSocket())
         .flatMap { serverSocket =>
           val serverAddress = SocketAddress(ip"127.0.0.1", serverSocket.address.asIpUnsafe.port)
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
-          val client = Stream.resource(Network[IO].bindDatagramSocket()).flatMap { clientSocket =>
+          val client = Stream.resource(network.bindDatagramSocket()).flatMap { clientSocket =>
             Stream
               .emits(msgs.map(msg => Datagram(serverAddress, msg)))
               .evalMap(msg => sendAndReceive(clientSocket, msg))
@@ -95,11 +115,11 @@ class UdpSuite extends Fs2Suite {
     test("echo connected") {
       val msg = Chunk.array("Hello, world!".getBytes)
       Stream
-        .resource(Network[IO].bindDatagramSocket())
+        .resource(network.bindDatagramSocket())
         .flatMap { serverSocket =>
           val serverAddress = serverSocket.address.asIpUnsafe
           val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
-          val client = Stream.resource(Network[IO].bindDatagramSocket()).evalMap { clientSocket =>
+          val client = Stream.resource(network.bindDatagramSocket()).evalMap { clientSocket =>
             clientSocket.connect(serverAddress) >> sendAndReceiveBytes(clientSocket, msg)
           }
           client.concurrently(server)
@@ -116,7 +136,7 @@ class UdpSuite extends Fs2Suite {
       val msg = Chunk.array("Hello, world!".getBytes)
       val outgoingInterface =
         // Get first non-loopback interface with an IPv4 address
-        Network[IO].interfaces.getAll.map { interfaces =>
+        network.interfaces.getAll.map { interfaces =>
           interfaces.values
             .filterNot(_.isLoopback)
             .flatMap(iface =>
@@ -129,12 +149,12 @@ class UdpSuite extends Fs2Suite {
         .flatMap { out =>
           Stream
             .resource(
-              Network[IO]
+              network
                 .bindDatagramSocket(
                   options = List(SocketOption.multicastTtl(1), SocketOption.multicastInterface(out))
                 )
                 .evalMap { serverSocket =>
-                  Network[IO].interfaces.getAll.flatMap { interfaces =>
+                  network.interfaces.getAll.flatMap { interfaces =>
                     interfaces.values.toList
                       .filter(iface =>
                         iface.addresses.exists(_.address.fold(_ => true, _ => false))
@@ -147,7 +167,7 @@ class UdpSuite extends Fs2Suite {
             .flatMap { serverSocket =>
               val server = serverSocket.reads.foreach(packet => serverSocket.write(packet))
               val client =
-                Stream.resource(Network[IO].bindDatagramSocket()).flatMap { clientSocket =>
+                Stream.resource(network.bindDatagramSocket()).flatMap { clientSocket =>
                   val to = SocketAddress(group.address, serverSocket.address.asIpUnsafe.port)
                   Stream.eval(clientSocket.write(msg, to) >> clientSocket.read)
                 }
@@ -158,6 +178,22 @@ class UdpSuite extends Fs2Suite {
         .lastOrError
         .map(_.bytes)
         .assertEquals(msg)
+    }
+
+    test("options allow concurrent use of ports") {
+      concurrentBindOptionsPlatform.traverse(reuse(_))
+    }
+
+    test("Network allows reuse of port immediately") {
+      network
+        .bindDatagramSocket()
+        .use { socket1 =>
+          val socket2Address = SocketAddress(Ipv4Address.Wildcard, socket1.address.asIpUnsafe.port)
+          socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket2Address)
+        }
+        .flatMap(socket2Address =>
+          network.bindDatagramSocket(socket2Address).use(_.read.void.timeoutTo(1.milli, IO.unit))
+        )
     }
   }
 }
