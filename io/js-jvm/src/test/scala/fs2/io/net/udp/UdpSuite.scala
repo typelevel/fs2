@@ -46,9 +46,7 @@ trait UdpSuite extends Fs2Suite with UdpSuitePlatform {
     val options = List(option)
 
     network.bindDatagramSocket(options = options).use { socket1 =>
-      val socket2Address = SocketAddress(Ipv4Address.Wildcard, socket1.address.asIpUnsafe.port)
-
-      network.bindDatagramSocket(socket2Address, options).use_
+      network.bindDatagramSocket(socket1.address, options).use_
     }
   }
 
@@ -185,14 +183,17 @@ trait UdpSuite extends Fs2Suite with UdpSuitePlatform {
     }
 
     test("Network allows reuse of port immediately") {
+      // Note: even if the JVM released the port's channel, the OS may not make it available
+      // immediately, so SocketOption.reuseAddress(true) is needed.
       network
-        .bindDatagramSocket()
+        .bindDatagramSocket(options = List(SocketOption.reuseAddress(true)))
         .use { socket1 =>
-          val socket2Address = SocketAddress(Ipv4Address.Wildcard, socket1.address.asIpUnsafe.port)
-          socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket2Address)
+          socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket1.address)
         }
         .flatMap(socket2Address =>
-          network.bindDatagramSocket(socket2Address).use(_.read.void.timeoutTo(1.milli, IO.unit))
+          network
+            .bindDatagramSocket(socket2Address, List(SocketOption.reuseAddress(true)))
+            .use(_.read.void.timeoutTo(1.milli, IO.unit))
         )
     }
   }
