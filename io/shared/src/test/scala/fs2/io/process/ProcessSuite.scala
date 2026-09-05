@@ -188,4 +188,95 @@ class ProcessSuite extends Fs2Suite {
     }
   }
 
+  test("redirectErrorStream") {
+    ProcessBuilder(
+      "node",
+      "-e",
+      "console.log('stdout'); console.error('stderr')"
+    ).withRedirectErrorStream(true)
+      .spawn[IO]
+      .use { p =>
+        p.stdout
+          .through(fs2.text.utf8.decode)
+          .compile
+          .string
+          .assertEquals("stdout\nstderr\n")
+      }
+  }
+
+  test("Redirect.ToPath") {
+    Files[IO].tempFile.use { path =>
+      ProcessBuilder("echo", "hello").withStdout(Redirect.toPath(path)).spawn[IO].use { p =>
+        p.exitValue *>
+          Files[IO]
+            .readAll(path)
+            .through(fs2.text.utf8.decode)
+            .compile
+            .string
+            .assertEquals("hello\n") *>
+          p.stdout.compile.toVector.assertEquals(Vector.empty) *>
+          p.stderr.compile.toVector.assertEquals(Vector.empty)
+      }
+    }
+  }
+
+  test("Redirect.ToPath append") {
+    Files[IO].tempFile.use { path =>
+      val msg1 = "hello\n"
+      val msg2 = "world\n"
+      Stream
+        .emit(msg1)
+        .through(fs2.text.utf8.encode)
+        .through(Files[IO].writeAll(path))
+        .compile
+        .drain *>
+        ProcessBuilder("echo", "world")
+          .withStdout(Redirect.toPath(path, append = true))
+          .spawn[IO]
+          .use { p =>
+            p.exitValue *>
+              Files[IO]
+                .readAll(path)
+                .through(fs2.text.utf8.decode)
+                .compile
+                .string
+                .assertEquals(msg1 + msg2)
+          }
+    }
+  }
+
+  test("Redirect.FromPath") {
+    Files[IO].tempFile.use { path =>
+      val msg = "hello from file"
+      Stream
+        .emit(msg)
+        .through(fs2.text.utf8.encode)
+        .through(Files[IO].writeAll(path))
+        .compile
+        .drain *>
+        ProcessBuilder("cat").withStdin(Redirect.fromPath(path)).spawn[IO].use { p =>
+          p.stdout.through(fs2.text.utf8.decode).compile.string.assertEquals(msg) <* p.exitValue
+        }
+    }
+  }
+
+  test("Redirect.Discard") {
+    ProcessBuilder("echo", "hello").withStdout(Redirect.discard).spawn[IO].use { p =>
+      p.exitValue.assertEquals(0) *>
+        p.stdout.compile.toVector.assertEquals(Vector.empty)
+    }
+  }
+
+  test("redirectErrorStream empty stderr") {
+    ProcessBuilder(
+      "node",
+      "-e",
+      "console.log('stdout'); console.error('stderr')"
+    ).withRedirectErrorStream(true)
+      .spawn[IO]
+      .use { p =>
+        p.stderr.compile.toVector.assertEquals(Vector.empty)
+      }
+  }
+
 }
