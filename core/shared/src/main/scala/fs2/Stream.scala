@@ -2013,16 +2013,44 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     Stream.force(fstream)
   }
 
-  /** Implementation of [[merge]], however allows specifying how to combine the output stream.
-    * This can be used to control how chunks are emitted downstream. See [[mergeAndAwaitDownstream]] for example.
+  /** Interleaves the two inputs nondeterministically. The output stream
+    * halts after BOTH `s1` and `s2` terminate normally, or in the event
+    * of an uncaught failure on either `s1` or `s2`. Has the property that
+    * `merge(Stream.empty, s) == s` and `merge(raiseError(e), s)` will
+    * eventually terminate with `raiseError(e)`, possibly after emitting some
+    * elements of `s` first.
+    *
+    * Neither side pulls a further chunk from its upstream until the resulting
+    * stream is asked for the next element, so `merge` does not read ahead of
+    * downstream demand any more than it must in order to race the two sides.
+    * Concretely, the implementation always tries to pull one chunk from each
+    * side before waiting for one of them to be consumed, so there may be up to
+    * two chunks (one from each stream) waiting to be processed while the
+    * resulting stream is processing elements. Use [[prefetch]] on either side
+    * if you do want a chunk fetched ahead of demand.
+    *
+    * Also note that if either side produces empty chunk,
+    * the processing on that side continues,
+    * w/o downstream requiring to consume result.
+    *
+    * If either side does not emit anything (i.e. as result of drain) that side
+    * will continue to run even when the resulting stream did not ask for more
+    * data. If a side needs to make progress independently of downstream demand,
+    * consider [[concurrently]] instead.
     *
     * @param f The function that combines the output stream and a finalizer for the chunk.
     *          This way we can control when to pull pull next chunk from upstream.
+    *
+    * @example {{{
+    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
+    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
+    * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
+    * scala> s.take(6).compile.toVector.unsafeRunSync()
+    * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
+    * }}}
     */
-  private def merge_[F2[x] >: F[x], O2 >: O](
+  def merge[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
-  )(
-      f: (Stream[F2, O2], F2[Unit]) => Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] =
     Stream.force {
       // `State` describes the state of an upstream stream (`this` and `that` are both upstream streams)
@@ -2053,10 +2081,11 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
           case (Some(r1), Some(r2)) => CompositeFailure.fromResults(r1, r2)
         }
         def run(s: Stream[F2, O2]): F2[Unit] =
-          // `guard` ensures we do not pull another chunk until the previous one has been produced for downstream.
+          // `guard` ensures we do not pull another chunk until the previous one
+          // has been consumed by the downstream.
           Semaphore[F2](1).flatMap { guard =>
             def sendChunk(chk: Chunk[O2]): F2[Unit] =
-              output.send(f(Stream.chunk(chk), guard.release)) >> guard.acquire
+              output.send(Stream.chunk(chk) ++ Stream.exec(guard.release)) >> guard.acquire
 
             (Stream.exec(guard.acquire) ++ s.chunks.foreach(sendChunk))
               // Stop when the other upstream has errored or the downstream has completed.
@@ -2091,64 +2120,16 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       }
     }
 
-  /** Like [[merge]], but ensures that each chunk is fully consumed downstream before pulling the next chunk from the same side.
-    * This looses the equivalence with `Stream(this, that).parJoinUnbounded` but can be useful when we need to never read ahead from
-    * the merged streams.
+  /** Alias for [[merge]], retained for source compatibility.
     *
-    * @note Pay attention to possible deadlocks of "this" or "that" when using this function, notably in parallel processing
-    *       as unless the chunk is fully processed / scope of the chunk is released, the next chunk will not be pulled.
-    *
-    * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> import cats.effect._
-    * scala> Ref.of[IO, Int](0).flatMap{ ref =>
-    *      |   fs2.Stream.never[IO].mergeAndAwaitDownstream(fs2.Stream.repeatEval(ref.get)).evalMap(value => {
-    *      |     IO.sleep(1.second) >> ref.set(value + 1) as value
-    *      |   }).take(6).compile.toVector
-    *      | }.unsafeRunSync()
-    * res0: Vector[Int] = Vector(0, 1, 2, 3, 4, 5)
-    * }}}
+    * This was introduced as a variant of `merge` that never reads ahead of
+    * downstream demand. `merge` now has that property itself, so the two are
+    * equivalent.
     */
   def mergeAndAwaitDownstream[F2[x] >: F[x], O2 >: O](
       that: Stream[F2, O2]
   )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    merge_(that) { case (s, fin) => s.onFinalize(fin) }
-
-  /** Interleaves the two inputs nondeterministically. The output stream
-    * halts after BOTH `s1` and `s2` terminate normally, or in the event
-    * of an uncaught failure on either `s1` or `s2`. Has the property that
-    * `merge(Stream.empty, s) == s` and `merge(raiseError(e), s)` will
-    * eventually terminate with `raiseError(e)`, possibly after emitting some
-    * elements of `s` first.
-    *
-    * The implementation always tries to pull one chunk from each side
-    * before waiting for it to be consumed by resulting stream.
-    * As such, there may be up to two chunks (one from each stream)
-    * waiting to be processed while the resulting stream
-    * is processing elements.
-    *
-    * Also note that if either side produces empty chunk,
-    * the processing on that side continues,
-    * w/o downstream requiring to consume result.
-    *
-    * If either side does not emit anything (i.e. as result of drain) that side
-    * will continue to run even when the resulting stream did not ask for more data.
-    *
-    * Note that even when this is equivalent to `Stream(this, that).parJoinUnbounded`,
-    * this implementation is little more efficient
-    *
-    * @example {{{
-    * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
-    * scala> val s1 = Stream.awakeEvery[IO](500.millis).scan(0)((acc, _) => acc + 1)
-    * scala> val s = s1.merge(Stream.sleep_[IO](250.millis) ++ s1)
-    * scala> s.take(6).compile.toVector.unsafeRunSync()
-    * res0: Vector[Int] = Vector(0, 0, 1, 1, 2, 2)
-    * }}}
-    */
-  def merge[F2[x] >: F[x], O2 >: O](
-      that: Stream[F2, O2]
-  )(implicit F: Concurrent[F2]): Stream[F2, O2] =
-    merge_(that) { case (s, fin) => Stream.exec(fin) ++ s }
+    merge(that)
 
   /** Like `merge`, but halts as soon as _either_ branch halts. */
   def mergeHaltBoth[F2[x] >: F[x]: Concurrent, O2 >: O](
