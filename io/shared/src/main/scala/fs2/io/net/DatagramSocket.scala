@@ -79,8 +79,8 @@ trait DatagramSocket[F[_]] extends DatagramSocketPlatform[F] {
 
   /** Returns the local address of this udp socket. */
   @deprecated(
-    "3.13.0",
-    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe",
+    "3.13.0"
   )
   def localAddress: F[SocketAddress[IpAddress]]
 

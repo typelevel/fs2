@@ -33,65 +33,116 @@ import scala.scalajs.js.JSConverters._
 
 private[process] trait ProcessesCompanionPlatform {
   def forAsync[F[_]](implicit F: Async[F]): Processes[F] = new UnsealedProcesses[F] {
-    def spawn(process: ProcessBuilder): Resource[F, Process[F]] =
-      Resource {
-        F.async_[(Process[F], F[Unit])] { cb =>
-          val childProcess = facade.child_process.spawn(
-            process.command,
-            process.args.toJSArray,
-            new facade.child_process.SpawnOptions {
-              cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
-              env =
-                if (process.inheritEnv)
-                  (facade.process.env ++ process.extraEnv).toJSDictionary
-                else
-                  process.extraEnv.toJSDictionary
+    def spawn(process: ProcessBuilder): Resource[F, Process[F]] = {
+
+      def open(redirect: Redirect, flags: String): Resource[F, js.Any] =
+        redirect match {
+          case Redirect.Pipe           => Resource.pure("pipe")
+          case Redirect.Inherit        => Resource.pure("inherit")
+          case Redirect.Discard        => Resource.pure("ignore")
+          case Redirect.FromPath(path) =>
+            Resource
+              .make(F.delay(facade.fs.openSync(path.toString, flags)))(fd =>
+                F.delay(facade.fs.closeSync(fd))
+              )
+              .map(_.asInstanceOf[js.Any])
+          case Redirect.ToPath(path, append) =>
+            val f = if (append) "a" else "w"
+            Resource
+              .make(F.delay(facade.fs.openSync(path.toString, f)))(fd =>
+                F.delay(facade.fs.closeSync(fd))
+              )
+              .map(_.asInstanceOf[js.Any])
+        }
+
+      (
+        open(process.stdin, "r"),
+        open(process.stdout, "w"),
+        open(process.stderr, "w")
+      ).tupled.flatMap { case (stdinO, stdoutO, stderrO) =>
+        Resource {
+          F.async_[(Process[F], F[Unit])] { cb =>
+            val childProcess = facade.child_process.spawn(
+              process.command,
+              process.args.toJSArray,
+              new facade.child_process.SpawnOptions {
+                cwd = process.workingDirectory.fold[js.UndefOr[String]](js.undefined)(_.toString)
+                env =
+                  if (process.inheritEnv)
+                    (facade.process.env ++ process.extraEnv).toJSDictionary
+                  else
+                    process.extraEnv.toJSDictionary
+                stdio = js.Array(
+                  stdinO,
+                  stdoutO,
+                  if (process.redirectErrorStream) stdoutO else stderrO
+                )
+              }
+            )
+
+            val fs2Process = new UnsealedProcess[F] {
+
+              def isAlive: F[Boolean] = F.delay {
+                (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
+              }
+
+              def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
+                F.delay {
+                  (childProcess.exitCode: Any) match {
+                    case i: Int => Right(i)
+                    case _      =>
+                      val f: js.Function1[Any, Unit] = {
+                        case i: Int => cb(Right(i))
+                        case _      => // do nothing
+                      }
+                      childProcess.once("exit", f)
+                      Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                  }
+                }
+              }
+
+              def stdin = childProcess.stdin match {
+                case null => _.drain
+                case s    => writeWritable(F.delay(s))
+              }
+
+              def stdout = {
+                val out = childProcess.stdout match {
+                  case null => Stream.empty
+                  case s    => unsafeReadReadable(s)
+                }
+                if (process.redirectErrorStream) {
+                  val err = childProcess.stderr match {
+                    case null => Stream.empty
+                    case s    => unsafeReadReadable(s)
+                  }
+                  out.merge(err)
+                } else out
+              }
+
+              def stderr = childProcess.stderr match {
+                case null => Stream.empty
+                case s => if (process.redirectErrorStream) Stream.empty else unsafeReadReadable(s)
+              }
             }
-          )
 
-          val fs2Process = new UnsealedProcess[F] {
-
-            def isAlive: F[Boolean] = F.delay {
-              (childProcess.exitCode eq null) && (childProcess.signalCode eq null)
-            }
-
-            def exitValue: F[Int] = F.asyncCheckAttempt[Int] { cb =>
+            val finalize = F.asyncCheckAttempt[Unit] { cb =>
               F.delay {
-                (childProcess.exitCode: Any) match {
-                  case i: Int => Right(i)
-                  case _      =>
-                    val f: js.Function1[Any, Unit] = {
-                      case i: Int => cb(Right(i))
-                      case _      => // do nothing
-                    }
-                    childProcess.once("exit", f)
-                    Left(Some(F.delay(childProcess.removeListener("exit", f))))
+                if ((childProcess.exitCode ne null) || (childProcess.signalCode ne null)) {
+                  Either.unit
+                } else {
+                  childProcess.kill()
+                  childProcess.once("exit", () => cb(Either.unit))
+                  Left(None)
                 }
               }
             }
 
-            def stdin = writeWritable(F.delay(childProcess.stdin))
-
-            def stdout = unsafeReadReadable(childProcess.stdout)
-
-            def stderr = unsafeReadReadable(childProcess.stderr)
+            childProcess.once("spawn", () => cb(Right(fs2Process -> finalize)))
+            childProcess.once[js.Error]("error", e => cb(Left(js.JavaScriptException(e))))
           }
-
-          val finalize = F.asyncCheckAttempt[Unit] { cb =>
-            F.delay {
-              if ((childProcess.exitCode ne null) || (childProcess.signalCode ne null)) {
-                Either.unit
-              } else {
-                childProcess.kill()
-                childProcess.once("exit", () => cb(Either.unit))
-                Left(None)
-              }
-            }
-          }
-
-          childProcess.once("spawn", () => cb(Right(fs2Process -> finalize)))
-          childProcess.once[js.Error]("error", e => cb(Left(js.JavaScriptException(e))))
         }
       }
+    }
   }
 }

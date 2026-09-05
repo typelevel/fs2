@@ -25,7 +25,7 @@ import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
-import cats.{Eval => _, _}
+import cats.{Applicative, Id, MonadError, ~>}
 import cats.effect.kernel._
 import cats.syntax.all._
 

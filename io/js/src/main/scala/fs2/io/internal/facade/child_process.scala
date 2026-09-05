@@ -45,7 +45,7 @@ private[io] object child_process {
     var cwd: js.UndefOr[String] = js.undefined
 
     var env: js.UndefOr[js.Dictionary[String]] = js.undefined
-
+    var stdio: js.UndefOr[js.Any] = js.undefined
   }
 
   @js.native

@@ -2,7 +2,10 @@ import com.typesafe.tools.mima.core._
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-ThisBuild / tlBaseVersion := "3.12"
+// Workaround for https://github.com/scala-native/scala-native/issues/2024
+Global / concurrentRestrictions += Tags.limit(NativeTags.Link, 1)
+
+ThisBuild / tlBaseVersion := "3.13"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
@@ -11,7 +14,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.18"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.7")
+ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.8")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -361,7 +364,38 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   ProblemFilters.exclude[InheritedNewAbstractMethodProblem](
     "fs2.io.net.tls.TLSContext#Builder.fs2$io$net$tls$TLSContextCompanionPlatform$BuilderPlatform$$$outer"
+  ),
+  // Process stream redirection: #3170
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stdin"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stdout"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.stderr"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.redirectErrorStream"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStdin"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStdout"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem]("fs2.io.process.ProcessBuilder.withStderr"),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.withRedirectErrorStream"
+  ),
+  ProblemFilters.exclude[ReversedMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder.inheritStdio"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.copy"
+  ),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.this"
+  ),
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.io.process.ProcessBuilder$ProcessBuilderImpl$"),
+  ProblemFilters.exclude[DirectMissingMethodProblem](
+    "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
   )
+)
+
+// Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
+lazy val disableImportWarningsOnDoctestSource = Seq(
+  Test / scalacOptions += "-Wconf:msg=unused import&src=.*[/\\\\]src_managed[/\\\\].*:s"
 )
 
 lazy val root = tlCrossRootProject
@@ -378,25 +412,27 @@ lazy val root = tlCrossRootProject
 
 lazy val commonNativeSettings = Seq[Setting[?]](
   tlVersionIntroduced := List("2.12", "2.13", "3").map(_ -> "3.13.0").toMap,
-  Test / nativeBrewFormulas += "openssl"
+  Test / nativeBrewFormulas += "openssl",
+  Test / nativeConfig ~= { _.withEmbedResources(true) }
 )
 
 lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("core"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-core",
     libraryDependencies ++= Seq(
-      "org.scodec" %%% "scodec-bits" % "1.2.4",
+      "org.scodec" %%% "scodec-bits" % "1.2.5",
       "org.typelevel" %%% "cats-core" % "2.13.0",
-      "org.typelevel" %%% "cats-effect" % "3.7.0-RC1",
-      "org.typelevel" %%% "cats-mtl" % "1.6.0",
-      "org.typelevel" %%% "cats-effect-laws" % "3.7.0-RC1" % Test,
-      "org.typelevel" %%% "cats-effect-testkit" % "3.7.0-RC1" % Test,
+      "org.typelevel" %%% "cats-effect" % "3.7.1",
+      "org.typelevel" %%% "cats-mtl" % "1.7.0",
+      "org.typelevel" %%% "cats-effect-laws" % "3.7.1" % Test,
+      "org.typelevel" %%% "cats-effect-testkit" % "3.7.1" % Test,
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
-      "org.typelevel" %%% "cats-mtl-laws" % "1.6.0" % Test,
+      "org.typelevel" %%% "cats-mtl-laws" % "1.7.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test,
-      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0-RC1" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test
     ),
     tlJdkRelease := None,
     Compile / doc / scalacOptions ++= (if (scalaVersion.value.startsWith("2.")) Seq("-nowarn")
@@ -432,7 +468,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0-RC1" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
@@ -441,17 +477,18 @@ lazy val integration = project
 
 lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("io"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-io",
     tlVersionIntroduced ~= { _.updated("3", "3.1.0") },
-    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0-RC3",
+    libraryDependencies += "com.comcast" %%% "ip4s-core" % "3.8.0",
     tlJdkRelease := None
   )
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.38.24" % Optional,
-      "com.google.jimfs" % "jimfs" % "1.3.1" % Test
+      "com.github.jnr" % "jnr-unixsocket" % "0.39.3" % Optional,
+      "com.google.jimfs" % "jimfs" % "1.3.2" % Test
     )
   )
   .jsSettings(
@@ -551,6 +588,7 @@ lazy val protocols = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 
 lazy val reactiveStreams = project
   .in(file("reactive-streams"))
+  .settings(disableImportWarningsOnDoctestSource)
   .settings(
     name := "fs2-reactive-streams",
     libraryDependencies ++= Seq(

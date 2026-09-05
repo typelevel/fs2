@@ -22,26 +22,8 @@
 package fs2
 package io
 package net
+package udp
 
-import cats.effect.kernel.Resource
-import com.comcast.ip4s._
-
-trait DatagramSocketGroup[F[_]] {
-
-  /** Creates a UDP socket bound to the specified address.
-    *
-    * @param address              address to bind to; defaults to all interfaces
-    * @param port                 port to bind to; defaults to an ephemeral port
-    * @param options              socket options to apply to the underlying socket
-    * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
-    */
-  @deprecated("Use Network[F].bindDatagramSocket instead", "3.13.0")
-  def openDatagramSocket(
-      address: Option[Host] = None,
-      port: Option[Port] = None,
-      options: List[DatagramSocketOption] = Nil,
-      protocolFamily: Option[DatagramSocketGroup.ProtocolFamily] = None
-  ): Resource[F, DatagramSocket[F]]
+trait UdpSuitePlatform {
+  val concurrentBindOptionsPlatform = Nil
 }
-
-private[net] object DatagramSocketGroup extends DatagramSocketGroupCompanionPlatform

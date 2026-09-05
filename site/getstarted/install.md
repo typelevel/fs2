@@ -28,7 +28,7 @@ libraryDependencies += "co.fs2" %%% "fs2-scodec" % "@VERSION@"
 
 // Node.js only, and requires module support to be enabled
 libraryDependencies += "co.fs2" %%% "fs2-io" % "@VERSION@"
-scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)) 
+scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule))
 ```
 
 The fs2-core as well as fs2-io and fs2-scodec libraries are also supported on Scala Native:
@@ -48,3 +48,17 @@ If upgrading from the 2.x series, see the [release notes for 3.0.0](https://gith
 If upgrading from the 1.x series, see the [release notes for 2.0.0](https://github.com/typelevel/fs2/releases/tag/v2.0.0) for help with upgrading.
 
 There are [detailed migration guides](https://github.com/typelevel/fs2/blob/main/docs/) for migrating from older versions.
+
+### Native
+
+For scala native, fs2 has a dependancy on both [s2n](https://github.com/aws/s2n-tls) and [openssl](https://github.com/openssl/openssl). To be able to link a scala-native fs2 based application, s2n and openssl will need to be made available to the linker. If you are observing a linker error in the logs similar to the following on native (commonly, if fs2 is a transitive dependency):
+
+```
+[error] ld: library 's2n' not found
+```
+
+Then it is recommended to install s2n and openssl. On macOS for example, this can be done with homebrew:
+
+```sh
+brew install openssl s2n
+```

@@ -135,7 +135,7 @@ Now let's implement a server application that communicates with the client app w
 import cats.effect.Concurrent
 
 def echoServer[F[_]: Concurrent: Network]: F[Unit] =
-  Stream.resource(Network[F].bind(SocketAddress.port(port"5555"))).map { serverSocket =>
+  Stream.resource(Network[F].bind(SocketAddress.port(port"5555"))).flatMap { serverSocket =>
     serverSocket.accept.map { clientSocket =>
       clientSocket.reads
         .through(text.utf8.decode)

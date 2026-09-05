@@ -22,26 +22,28 @@
 package fs2
 package io
 package net
+package udp
 
-import cats.effect.kernel.Resource
-import com.comcast.ip4s._
+import cats.effect.IO
 
-trait DatagramSocketGroup[F[_]] {
+import scala.concurrent.duration._
 
-  /** Creates a UDP socket bound to the specified address.
-    *
-    * @param address              address to bind to; defaults to all interfaces
-    * @param port                 port to bind to; defaults to an ephemeral port
-    * @param options              socket options to apply to the underlying socket
-    * @param protocolFamily       protocol family to use when opening the supporting `DatagramChannel`
-    */
-  @deprecated("Use Network[F].bindDatagramSocket instead", "3.13.0")
-  def openDatagramSocket(
-      address: Option[Host] = None,
-      port: Option[Port] = None,
-      options: List[DatagramSocketOption] = Nil,
-      protocolFamily: Option[DatagramSocketGroup.ProtocolFamily] = None
-  ): Resource[F, DatagramSocket[F]]
+trait UdpSuitePlatform { self: UdpSuite =>
+  val concurrentBindOptionsPlatform =
+    List(SocketOption.reuseAddress(true), SocketOption.reusePort(true))
+
+  test("Network allows reuse of port immediately") {
+    // Note: even if the JVM released the port's channel, the OS may not make it available
+    // immediately, so SocketOption.reuseAddress(true) is needed.
+    network
+      .bindDatagramSocket(options = List(SocketOption.reuseAddress(true)))
+      .use { socket1 =>
+        socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket1.address)
+      }
+      .flatMap(socket2Address =>
+        network
+          .bindDatagramSocket(socket2Address, List(SocketOption.reuseAddress(true)))
+          .use(_.read.void.timeoutTo(1.milli, IO.unit))
+      )
+  }
 }
-
-private[net] object DatagramSocketGroup extends DatagramSocketGroupCompanionPlatform

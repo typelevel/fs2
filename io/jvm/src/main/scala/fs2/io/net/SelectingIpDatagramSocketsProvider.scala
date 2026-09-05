@@ -23,6 +23,8 @@ package fs2
 package io
 package net
 
+import scala.concurrent.duration._
+
 import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
 import com.comcast.ip4s.{Dns, Host, SocketAddress}
@@ -40,14 +42,18 @@ private final class SelectingIpDatagramSocketsProvider[F[_]](selector: Selector)
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] =
     Resource
-      .make(F.delay(selector.provider.openDatagramChannel()))(ch => F.delay(ch.close()))
+      .make(F.delay(selector.provider.openDatagramChannel())) { ch =>
+        // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+        // give the runtime/cpu time to do something else; some guesswork involved here
+        F.delay(ch.close()) >> F.whileM_(F.delay(ch.isRegistered()))(F.sleep(2.millis))
+      }
       .evalMap { ch =>
         address.host.resolve[F].flatMap { addr =>
           val jAddr = new InetSocketAddress(addr.toInetAddress, address.port.value)
           F.delay {
             ch.configureBlocking(false)
-            ch.bind(jAddr)
             options.foreach(opt => ch.setOption(opt.key, opt.value))
+            ch.bind(jAddr)
           } *> F
             .delay {
               val isa = ch.getLocalAddress.asInstanceOf[InetSocketAddress]

@@ -49,6 +49,27 @@ private[process] trait ProcessesCompanionPlatform {
               env.put(k, v)
             }
 
+            def toJavaRedirect(redirect: Redirect): lang.ProcessBuilder.Redirect =
+              redirect match {
+                case Redirect.Pipe    => lang.ProcessBuilder.Redirect.PIPE
+                case Redirect.Inherit => lang.ProcessBuilder.Redirect.INHERIT
+                case Redirect.Discard =>
+                  val devNull =
+                    if (System.getProperty("os.name").toLowerCase.contains("windows")) "NUL"
+                    else "/dev/null"
+                  lang.ProcessBuilder.Redirect.to(new java.io.File(devNull))
+                case Redirect.FromPath(path) =>
+                  lang.ProcessBuilder.Redirect.from(path.toNioPath.toFile)
+                case Redirect.ToPath(path, append) =>
+                  if (append) lang.ProcessBuilder.Redirect.appendTo(path.toNioPath.toFile)
+                  else lang.ProcessBuilder.Redirect.to(path.toNioPath.toFile)
+              }
+
+            builder.redirectInput(toJavaRedirect(process.stdin))
+            builder.redirectOutput(toJavaRedirect(process.stdout))
+            builder.redirectError(toJavaRedirect(process.stderr))
+            builder.redirectErrorStream(process.redirectErrorStream)
+
             builder.start()
           }
         } { process =>
@@ -64,31 +85,40 @@ private[process] trait ProcessesCompanionPlatform {
               F.unit
             )
         }
-        .map { process =>
+        .map { jProcess =>
           new UnsealedProcess[F] {
-            def isAlive = F.delay(process.isAlive())
+            def isAlive = F.delay(jProcess.isAlive())
 
             def exitValue = isAlive.ifM(
-              evalOnVirtualThreadIfAvailable(F.interruptible(process.waitFor())),
-              F.delay(process.exitValue())
+              evalOnVirtualThreadIfAvailable(F.interruptible(jProcess.waitFor())),
+              F.delay(jProcess.exitValue())
             )
 
-            def stdin = writeOutputStreamCancelable(
-              F.delay(process.getOutputStream()),
-              F.blocking(process.destroy())
-            )
+            def stdin =
+              if (process.stdin == Redirect.Pipe)
+                writeOutputStreamCancelable(
+                  F.delay(jProcess.getOutputStream()),
+                  F.blocking(jProcess.destroy())
+                )
+              else _.drain
 
-            def stdout = readInputStreamCancelable(
-              F.delay(process.getInputStream()),
-              F.blocking(process.destroy()),
-              8192
-            )
+            def stdout =
+              if (process.stdout == Redirect.Pipe)
+                readInputStreamCancelable(
+                  F.delay(jProcess.getInputStream()),
+                  F.blocking(jProcess.destroy()),
+                  8192
+                )
+              else Stream.empty
 
-            def stderr = readInputStreamCancelable(
-              F.delay(process.getErrorStream()),
-              F.blocking(process.destroy()),
-              8192
-            )
+            def stderr =
+              if (process.stderr == Redirect.Pipe && !process.redirectErrorStream)
+                readInputStreamCancelable(
+                  F.delay(jProcess.getErrorStream()),
+                  F.blocking(jProcess.destroy()),
+                  8192
+                )
+              else Stream.empty
 
           }
         }

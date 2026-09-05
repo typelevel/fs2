@@ -96,18 +96,18 @@ trait Socket[F[_]] extends SocketInfo[F] {
 
   // Deprecated members
 
-  @deprecated("3.13.0", "No replacement; sockets are open until they are finalized")
+  @deprecated("No replacement; sockets are open until they are finalized", "3.13.0")
   def isOpen: F[Boolean]
 
   @deprecated(
-    "3.13.0",
-    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+    "Use address instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe",
+    "3.13.0"
   )
   def localAddress: F[SocketAddress[IpAddress]]
 
   @deprecated(
-    "3.13.0",
-    "Use peerAddress instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe"
+    "Use peerAddress instead, which returns GenSocketAddress instead of F[SocketAddress[IpAddress]]. If ip and port are needed, call .asIpUnsafe",
+    "3.13.0"
   )
   def remoteAddress: F[SocketAddress[IpAddress]]
 }

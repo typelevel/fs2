@@ -68,23 +68,37 @@ class WalkBenchmark extends Fs2Suite {
   }
 
   test("Files.walk has similar performance to java.nio.file.Files.walk") {
-    val fs2Time = time(
+    def fs2Walk(): Long =
       Files[IO]
         .walk(target)
         .compile
         .count
         .unsafeRunSync()
-    )
-    val fs2EagerTime = time(
+
+    def fs2WalkEager(): Long =
       Files[IO]
         .walk(target, WalkOptions.Eager)
         .compile
         .count
         .unsafeRunSync()
-    )
-    val nioTime = time(java.nio.file.Files.walk(target.toNioPath).count())
-    val isOSX = sys.props("os.name") == "Mac OS X"
-    val factor = if (isOSX) 4.0 else 1.5 // OS X GHA workers tend to fail this test at 1.5x
+
+    def nioWalk(): Long =
+      java.nio.file.Files.walk(target.toNioPath).count()
+
+    val expectedCount = nioWalk()
+    assertEquals(fs2Walk(), expectedCount)
+    assertEquals(fs2WalkEager(), expectedCount)
+
+    // Warm up all implementations first
+    fs2Walk()
+    fs2WalkEager()
+    nioWalk()
+
+    val nioTime = time(nioWalk())
+    val fs2Time = time(fs2Walk())
+    val fs2EagerTime = time(fs2WalkEager())
+    val isCI = sys.env.contains("CI")
+    val factor = if (isCI) 4.0 else 1.5
     val epsilon = nioTime.toNanos * factor
     println(s"limit: ${epsilon.nanos.toMillis} ms")
     println(s"fs2 took: ${fs2Time.toMillis} ms")

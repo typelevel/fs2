@@ -288,7 +288,7 @@ object Watcher {
         types: Seq[Watcher.EventType],
         modifiers: Seq[WatchEvent.Modifier]
     ): F[F[Unit]] =
-      registerUntracked(path.toNioPath.getParent, types, modifiers).flatMap(key =>
+      registerUntracked(path.absolute.toNioPath.getParent(), types, modifiers).flatMap(key =>
         track(
           Registration(
             path.toNioPath,

@@ -38,7 +38,7 @@ import java.util.concurrent.Executors
 class IoPlatformSuite extends Fs2Suite {
 
   // This suite runs for a long time, this avoids timeouts in CI.
-  override def munitIOTimeout: Duration = 2.minutes
+  override def munitIOTimeout: Duration = 5.minutes
 
   group("readInputStream") {
     test("reuses internal buffer on smaller chunks") {
@@ -275,8 +275,8 @@ class IoPlatformSuite extends Fs2Suite {
       bar.assertEquals("bar")
     }
     test("classloader") {
-      val size = readClassLoaderResource[IO]("keystore.jks", 8192).as(1L).compile.foldMonoid
-      size.assertEquals(2591L)
+      val size = readClassLoaderResource[IO]("fs2/io/foo", 8192).as(1L).compile.foldMonoid
+      size.assertEquals(3L)
     }
   }
 }

@@ -36,18 +36,19 @@ import com.comcast.ip4s.{
 import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
-import scala.scalanative.posix.arpa.inet._
 import scala.scalanative.posix.errno.ENOPROTOOPT
 import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
-import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.unistd._
+import scala.scalanative.posix.sys.socket._
+import scala.scalanative.posix.sys.socketOps._
+import scala.scalanative.posix.netinet.in._
+import scala.scalanative.posix.arpa.inet._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import NativeUtil._
-import netinetin._
 import netinetinOps._
 import syssocket._
 import sysun._
@@ -82,7 +83,8 @@ private[io] object SocketHelpers {
         StandardSocketOptions.SO_REUSEADDR,
         StandardSocketOptions.SO_REUSEPORT,
         StandardSocketOptions.SO_KEEPALIVE,
-        StandardSocketOptions.TCP_NODELAY
+        StandardSocketOptions.TCP_NODELAY,
+        fs2.io.net.SocketOption.OriginalDestination
       )
     )
 
@@ -99,6 +101,10 @@ private[io] object SocketHelpers {
       getOptionBool(fd, SO_KEEPALIVE)
     case StandardSocketOptions.TCP_NODELAY =>
       getTcpOptionBool(fd, TCP_NODELAY)
+    case fs2.io.net.SocketOption.OriginalDestination =>
+      // linux kernel option: https://github.com/torvalds/linux/blob/master/include/uapi/linux/netfilter_ipv4.h#L52
+      val SO_ORIGINAL_DST = 80
+      getIpOptSocketAddress(fd, SO_ORIGINAL_DST)
     case _ => Sync[F].pure(None)
   }).asInstanceOf[F[Option[A]]]
 
@@ -113,6 +119,24 @@ private[io] object SocketHelpers {
 
   def getTcpOptionInt[F[_]: Sync](fd: CInt, option: CInt): F[Option[Int]] =
     getOptionImpl(fd, IPPROTO_TCP /* aka SOL_TCP */, option)
+
+  def getIpOptSocketAddress[F[_]](fd: CInt, option: CInt)(implicit
+      F: Sync[F]
+  ): F[Option[SocketAddress[IpAddress]]] =
+    F.delay {
+      val size = sizeOf[sockaddr_storage]
+      val ptr = stackalloc[Byte](size)
+      val szPtr = stackalloc[UInt]()
+      !szPtr = size.toUInt
+      val ret = guardMask(
+        getsockopt(fd, IPPROTO_IP, option, ptr, szPtr)
+      )(_ == ENOPROTOOPT)
+      if (ret == ENOPROTOOPT) None
+      else {
+        val sa = ptr.asInstanceOf[Ptr[sockaddr]]
+        Some(toSocketAddress(sa, sa.sa_family.toInt).asIpUnsafe)
+      }
+    }
 
   def getOptionImpl[F[_]](fd: CInt, level: CInt, option: CInt)(implicit
       F: Sync[F]

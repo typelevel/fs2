@@ -25,6 +25,20 @@ package process
 import cats.effect.kernel.Resource
 import fs2.io.file.Path
 
+sealed trait Redirect
+
+object Redirect {
+  case object Pipe extends Redirect
+  case object Inherit extends Redirect
+  case object Discard extends Redirect
+  case class FromPath(path: Path) extends Redirect
+  case class ToPath(path: Path, append: Boolean) extends Redirect
+
+  def fromPath(path: Path): Redirect = FromPath(path)
+  def toPath(path: Path, append: Boolean = false): Redirect = ToPath(path, append)
+  def discard: Redirect = Discard
+}
+
 sealed abstract class ProcessBuilder private {
 
   /** Command to run. */
@@ -49,6 +63,18 @@ sealed abstract class ProcessBuilder private {
     */
   def workingDirectory: Option[Path]
 
+  /** Redirection for `stdin`. Defaults to [[Redirect.Pipe]]. */
+  def stdin: Redirect = Redirect.Pipe
+
+  /** Redirection for `stdout`. Defaults to [[Redirect.Pipe]]. */
+  def stdout: Redirect = Redirect.Pipe
+
+  /** Redirection for `stderr`. Defaults to [[Redirect.Pipe]]. */
+  def stderr: Redirect = Redirect.Pipe
+
+  /** Whether to merge `stderr` into `stdout`. Defaults to `false`. */
+  def redirectErrorStream: Boolean = false
+
   /** @see [[command]] */
   def withCommand(command: String): ProcessBuilder
 
@@ -67,6 +93,34 @@ sealed abstract class ProcessBuilder private {
   /** @see [[workingDirectory]] */
   def withCurrentWorkingDirectory: ProcessBuilder
 
+  /** @see [[stdin]] */
+  def withStdin(stdin: Redirect): ProcessBuilder = {
+    val _ = stdin
+    this
+  }
+
+  /** @see [[stdout]] */
+  def withStdout(stdout: Redirect): ProcessBuilder = {
+    val _ = stdout
+    this
+  }
+
+  /** @see [[stderr]] */
+  def withStderr(stderr: Redirect): ProcessBuilder = {
+    val _ = stderr
+    this
+  }
+
+  /** @see [[redirectErrorStream]] */
+  def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder = {
+    val _ = redirectErrorStream
+    this
+  }
+
+  /** Sets `stdin`, `stdout`, and `stderr` to [[Redirect.Inherit]]. */
+  def inheritStdio: ProcessBuilder =
+    withStdin(Redirect.Inherit).withStdout(Redirect.Inherit).withStderr(Redirect.Inherit)
+
   /** Starts the process and returns a handle for interacting with it.
     * Closing the resource will kill the process if it has not already terminated.
     */
@@ -77,7 +131,17 @@ sealed abstract class ProcessBuilder private {
 object ProcessBuilder {
 
   def apply(command: String, args: List[String]): ProcessBuilder =
-    ProcessBuilderImpl(command, args, true, Map.empty, None)
+    ProcessBuilderImpl(
+      command,
+      args,
+      true,
+      Map.empty,
+      None,
+      Redirect.Pipe,
+      Redirect.Pipe,
+      Redirect.Pipe,
+      false
+    )
 
   def apply(command: String, args: String*): ProcessBuilder =
     apply(command, args.toList)
@@ -87,7 +151,11 @@ object ProcessBuilder {
       args: List[String],
       inheritEnv: Boolean,
       extraEnv: Map[String, String],
-      workingDirectory: Option[Path]
+      workingDirectory: Option[Path],
+      override val stdin: Redirect,
+      override val stdout: Redirect,
+      override val stderr: Redirect,
+      override val redirectErrorStream: Boolean
   ) extends ProcessBuilder {
 
     def withCommand(command: String): ProcessBuilder = copy(command = command)
@@ -101,6 +169,15 @@ object ProcessBuilder {
     def withWorkingDirectory(workingDirectory: Path): ProcessBuilder =
       copy(workingDirectory = Some(workingDirectory))
     def withCurrentWorkingDirectory: ProcessBuilder = copy(workingDirectory = None)
+
+    override def withStdin(stdin: Redirect): ProcessBuilder = copy(stdin = stdin)
+    override def withStdout(stdout: Redirect): ProcessBuilder = copy(stdout = stdout)
+    override def withStderr(stderr: Redirect): ProcessBuilder = copy(stderr = stderr)
+    override def withRedirectErrorStream(redirectErrorStream: Boolean): ProcessBuilder =
+      copy(redirectErrorStream = redirectErrorStream)
+
+    override def inheritStdio: ProcessBuilder =
+      copy(stdin = Redirect.Inherit, stdout = Redirect.Inherit, stderr = Redirect.Inherit)
   }
 
 }
