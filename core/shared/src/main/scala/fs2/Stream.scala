@@ -92,6 +92,15 @@ import java.util.concurrent.Flow.{Processor, Publisher, Subscriber}
   * but their stream counterparts return an (either empty or singleton) stream.
   * Other methods, like `zipWithPrevious`, have a more complicated but still pure translation to list methods.
   *
+  * == Scopes and Concurrent Effects ==
+  *
+  * Stream combinators which require `F` to have a `Concurrent` instance generally do not propagate open scopes. Finalizers
+  * may be run concurrently with subsequent operations in the stream. This means that these combinators should not be used
+  * with streams that must hold resources (eg. a network socket).
+  *
+  * The `parJoin` family of methods is designed to allow the elements of streams of resources to be used safely concurrently.
+  * Beware however that they still do not propagate the resource scope past the `parJoin` combinator.
+  *
   * == Type-Class instances and laws of the Stream Operations ==
   *
   * Laws (using infix syntax):
@@ -1799,7 +1808,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   ): Stream[F2, O] =
     interruptWhen(haltWhenTrue.get)
 
-  /** Alias for `interruptWhen(haltWhenTrue.discrete)`. */
+  /** Alias for `interruptWhen(haltWhenTrue.discrete)`.
+    *
+    * This method propagates scopes despite requiring `Concurrent`.
+    */
   def interruptWhen[F2[x] >: F[x]: Concurrent](
       haltWhenTrue: Signal[F2, Boolean]
   ): Stream[F2, O] =
@@ -2025,6 +2037,9 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     * will continue to run even when the resulting stream did not ask for more
     * data. If a side needs to make progress independently of downstream demand,
     * consider [[concurrently]] instead.
+    *
+    * @param f The function that combines the output stream and a finalizer for the chunk.
+    *          This way we can control when to pull pull next chunk from upstream.
     *
     * @example {{{
     * scala> import scala.concurrent.duration._, cats.effect.IO, cats.effect.unsafe.implicits.global
@@ -2374,7 +2389,7 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
                 val init = initFork(pushed.complete(()).void)
                 poll(init).onCancel(releaseAndCheckCompletion).flatMap { send =>
                   val action = F.catchNonFatal(f(el)).flatten.attempt.flatMap(send) *> pushed.get
-                  F.start(stop.get.race(action) *> releaseAndCheckCompletion)
+                  F.start(stop.get.race(action).void.guarantee(releaseAndCheckCompletion))
                 }
               }
           }
@@ -2438,7 +2453,10 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       pauseWhen(pauseSignal).mergeHaltBoth(writer)
     }
 
-  /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`. */
+  /** Pause this stream when `pauseWhenTrue` is `true`, resume when it's `false`.
+    *
+    * This method propagates scopes despite requiring `Concurrent`.
+    */
   def pauseWhen[F2[x] >: F[x]: Concurrent](
       pauseWhenTrue: Signal[F2, Boolean]
   ): Stream[F2, O] = {

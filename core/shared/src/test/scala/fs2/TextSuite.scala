@@ -324,6 +324,15 @@ class TextSuite extends Fs2Suite {
         )
       }
     }
+
+    test("linesLimited rejects long lines completed in a single chunk") {
+      val longLine = "x" * 1000 + "\n"
+      val singleChunk = Stream.emit(longLine).covary[Fallible]
+      assert(singleChunk.through(text.linesLimited(10)).toList.isLeft)
+
+      val multiChunk = Stream.emits(longLine.toList.map(_.toString)).covary[Fallible]
+      assert(multiChunk.through(text.linesLimited(10)).toList.isLeft)
+    }
   }
 
   group("string2char / char2string") {

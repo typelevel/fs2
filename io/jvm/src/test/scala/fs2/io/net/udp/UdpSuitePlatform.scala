@@ -19,51 +19,31 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2
+package io
+package net
+package udp
 
-import org.typelevel.scalaccompat.annotation._
+import cats.effect.IO
 
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
+import scala.concurrent.duration._
 
-import events.EventEmitter
+trait UdpSuitePlatform { self: UdpSuite =>
+  val concurrentBindOptionsPlatform =
+    List(SocketOption.reuseAddress(true), SocketOption.reusePort(true))
 
-@nowarn212("cat=unused")
-private[io] object child_process {
-
-  @js.native
-  @JSImport("child_process", "spawn")
-  def spawn(
-      command: String,
-      args: js.Array[String],
-      options: SpawnOptions
-  ): ChildProcess =
-    js.native
-
-  trait SpawnOptions extends js.Object {
-
-    var cwd: js.UndefOr[String] = js.undefined
-
-    var env: js.UndefOr[js.Dictionary[String]] = js.undefined
-    var stdio: js.UndefOr[js.Any] = js.undefined
+  test("Network allows reuse of port immediately") {
+    // Note: even if the JVM released the port's channel, the OS may not make it available
+    // immediately, so SocketOption.reuseAddress(true) is needed.
+    network
+      .bindDatagramSocket(options = List(SocketOption.reuseAddress(true)))
+      .use { socket1 =>
+        socket1.read.void.timeoutTo(10.millis, IO.unit) *> IO.pure(socket1.address)
+      }
+      .flatMap(socket2Address =>
+        network
+          .bindDatagramSocket(socket2Address, List(SocketOption.reuseAddress(true)))
+          .use(_.read.void.timeoutTo(1.milli, IO.unit))
+      )
   }
-
-  @js.native
-  trait ChildProcess extends EventEmitter {
-
-    def stdin: fs2.io.Writable = js.native
-
-    def stdout: fs2.io.Readable = js.native
-
-    def stderr: fs2.io.Readable = js.native
-
-    // can also be `null`, so can't use `Int` ...
-    def exitCode: js.Any = js.native
-
-    def signalCode: String = js.native
-
-    def kill(): Boolean
-
-  }
-
 }

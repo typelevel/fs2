@@ -553,11 +553,25 @@ object text {
           }
 
           maxLineLength match {
-            case Some((max, raiseThrowable)) if stringBuilder.length > max =>
-              Pull.raiseError[F](
-                new LineTooLongException(stringBuilder.length, max)
-              )(using raiseThrowable)
-            case _ =>
+            case Some((max, raiseThrowable)) =>
+              val tooLongLength =
+                (linesBuffer.iterator.map(_.length) ++ Iterator(stringBuilder.length))
+                  .filter(_ > max)
+                  .reduceOption(_ max _)
+              tooLongLength match {
+                case Some(length) =>
+                  Pull.raiseError[F](
+                    new LineTooLongException(length, max)
+                  )(using raiseThrowable)
+                case None =>
+                  Pull.output(Chunk.from(linesBuffer)) >> go(
+                    stream,
+                    stringBuilder,
+                    ignoreFirstCharNewLine,
+                    first = false
+                  )
+              }
+            case None =>
               Pull.output(Chunk.from(linesBuffer)) >> go(
                 stream,
                 stringBuilder,

@@ -86,11 +86,9 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
   ): Resource[F, ServerSocket[F]] =
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
-        def waitForDeregistration: F[Unit] =
-          // sleep time set to be short enough to not noticeably delay shutdown but long enough to
-          // give the runtime/cpu time to do something else; some guesswork involved here
-          F.delay(ch.isRegistered()).ifM(F.sleep(2.millis) >> waitForDeregistration, F.unit)
-        F.delay(ch.close()) >> waitForDeregistration
+        // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+        // give the runtime/cpu time to do something else; some guesswork involved here
+        F.delay(ch.close()) >> F.whileM_(F.delay(ch.isRegistered()))(F.sleep(2.millis))
       }
       .evalMap { sch =>
         val configure = address.host.resolve.flatMap { addr =>

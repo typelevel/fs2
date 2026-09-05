@@ -19,51 +19,11 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package fs2.io.internal.facade
+package fs2
+package io
+package net
+package udp
 
-import org.typelevel.scalaccompat.annotation._
-
-import scala.scalajs.js
-import scala.scalajs.js.annotation.JSImport
-
-import events.EventEmitter
-
-@nowarn212("cat=unused")
-private[io] object child_process {
-
-  @js.native
-  @JSImport("child_process", "spawn")
-  def spawn(
-      command: String,
-      args: js.Array[String],
-      options: SpawnOptions
-  ): ChildProcess =
-    js.native
-
-  trait SpawnOptions extends js.Object {
-
-    var cwd: js.UndefOr[String] = js.undefined
-
-    var env: js.UndefOr[js.Dictionary[String]] = js.undefined
-    var stdio: js.UndefOr[js.Any] = js.undefined
-  }
-
-  @js.native
-  trait ChildProcess extends EventEmitter {
-
-    def stdin: fs2.io.Writable = js.native
-
-    def stdout: fs2.io.Readable = js.native
-
-    def stderr: fs2.io.Readable = js.native
-
-    // can also be `null`, so can't use `Int` ...
-    def exitCode: js.Any = js.native
-
-    def signalCode: String = js.native
-
-    def kill(): Boolean
-
-  }
-
+trait UdpSuitePlatform {
+  val concurrentBindOptionsPlatform = Nil
 }
