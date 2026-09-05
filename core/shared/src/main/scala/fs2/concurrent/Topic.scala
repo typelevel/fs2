@@ -170,10 +170,10 @@ object Topic {
             case State.Active(subs, _) =>
               subs.toList.foldLeftM(Topic.rightUnit) {
                 case (Left(Topic.Closed), _) => Topic.closed.pure[F]
-                case (Right(_), (_, chan)) =>
+                case (Right(_), (_, chan))   =>
                   chan.send(a).flatMap {
                     case Right(_) => Topic.rightUnit.pure[F]
-                    case Left(_) =>
+                    case Left(_)  =>
                       state.get.map {
                         case State.Closed() => Topic.closed
                         case _              => Topic.rightUnit
