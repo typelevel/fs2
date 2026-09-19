@@ -431,7 +431,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       "org.typelevel" %%% "cats-mtl-laws" % "1.7.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test
     ),
     tlJdkRelease := None,
@@ -468,7 +468,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
