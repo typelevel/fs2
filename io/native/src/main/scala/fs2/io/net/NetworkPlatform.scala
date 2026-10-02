@@ -46,6 +46,21 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         )
     }
 
+  def forUring[F[_]: Async: LiftIO]: Network[F] =
+    new AsyncProviderBasedNetwork[F] {
+      protected def mkIpSocketsProvider =
+        new UringIpSocketsProvider[F]()(Dns.forAsync, implicitly, implicitly)
+      protected def mkUnixSocketsProvider = new FdPollingUnixSocketsProvider[F]
+      protected def mkIpDatagramSocketsProvider =
+        throw new UnsupportedOperationException(
+          "Datagram sockets not currently supported on Native"
+        )
+      protected def mkUnixDatagramSocketsProvider =
+        throw new UnsupportedOperationException(
+          "Unix datagram sockets not currently supported on Native"
+        )
+    }
+
   def forAsync[F[_]](implicit F: Async[F]): Network[F] =
     forAsyncAndDns(F, Dns.forAsync(F))
 
