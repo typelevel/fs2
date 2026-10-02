@@ -25,21 +25,11 @@ package benchmark
 import cats.effect.IO
 import org.openjdk.jmh.annotations.{Benchmark, Param, Scope, State}
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 @State(Scope.Thread)
-class GroupWithinBenchmark {
+class GroupChunksWithinBenchmark {
 
-  /*  For Branch 2.5.x
-  import cats.effect.{Timer, ContextShift}
-  import scala.concurrent.ExecutionContext
-  lazy protected implicit val ioTimer: Timer[IO] = IO.timer(ExecutionContext.global)
-
-  lazy protected implicit val ioContextShift: ContextShift[IO] =
-    IO.contextShift(ExecutionContext.global)
-   */
-
-  // only for branch 3.x
   import cats.effect.unsafe.implicits.global
 
   val bufferWindow = 100.micros
@@ -51,23 +41,23 @@ class GroupWithinBenchmark {
   var bufferSize: Int = _
 
   @Benchmark
-  def groupWithin(): Unit =
+  def groupChunksWithin(): Unit =
     Stream
       .range(0, rangeLength)
       .covary[IO]
-      .groupWithin(bufferSize, bufferWindow)
+      .groupChunksWithin(bufferSize, bufferWindow)
       .compile
       .drain
       .unsafeRunSync()
 
   @Benchmark
-  def groupWithinChunkedUpstream(): Unit =
+  def groupChunksWithinChunkedUpstream(): Unit =
     Stream
       .range(0, rangeLength)
       .chunkN(bufferSize / 4 + 1)
       .unchunks
       .covary[IO]
-      .groupWithin(bufferSize, bufferWindow)
+      .groupChunksWithin(bufferSize, bufferWindow)
       .compile
       .drain
       .unsafeRunSync()

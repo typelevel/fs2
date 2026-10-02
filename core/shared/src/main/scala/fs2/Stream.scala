@@ -1625,6 +1625,84 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     }
   }
 
+  /** Like [[groupWithin]], but works on chunks for better performance.
+    */
+  def groupChunksWithin[F2[x] >: F[x]](
+      chunkSize: Int,
+      timeout: FiniteDuration
+  )(implicit F: Temporal[F2]): Stream[F2, Chunk[O]] =
+    Stream.force {
+      require(chunkSize > 0, s"chunkSize must be > 0, but got ${chunkSize.toString}")
+
+      val StopConsumer = none[Chunk[O]].pure[F2]
+      val Skip = Chunk.empty[O].some.pure[F2]
+
+      final case class Buffer[A](chunk: Chunk[A], done: Option[ExitCase]) {
+        def size: Int = chunk.size
+        def isEmpty: Boolean = chunk.isEmpty
+        def nonEmpty: Boolean = chunk.nonEmpty
+        def isFull: Boolean = size >= chunkSize
+        def isDone: Boolean = done.isDefined
+      }
+
+      ConditionedRef.of[F2, Buffer[O]](Buffer(chunk = Chunk.empty[O], done = none)).map { buffer =>
+        val producer = chunks
+          .evalMap { chunk =>
+            buffer
+              .updateAndGet(b => b.copy(chunk = b.chunk ++ chunk))
+              .flatMap(b => F.whenA(b.isFull)(buffer.waitUntil(!_.isFull)))
+          }
+          .onFinalizeCase(exitCase => buffer.update(_.copy(done = exitCase.some)))
+          .compile
+          .drain
+
+        def take(b: Buffer[O], n: Int): (Buffer[O], F2[Option[Chunk[O]]]) = {
+          val (taken, remaining) = b.chunk.splitAt(n)
+          b.copy(chunk = remaining) -> taken.some.pure[F2]
+        }
+
+        // None means upstream is done, and the buffer is drained.
+        def takeOrExit(all: Boolean): F2[Option[Chunk[O]]] =
+          buffer.modify { b =>
+            if (b.nonEmpty && (all || b.isDone)) take(b, n = b.size)
+            // Take all potential batches so that producer doesn't need to wait for timeout
+            else if (b.isFull) take(b, n = b.size - b.size % chunkSize)
+            else
+              b -> (b.done match {
+                case None /* not full & no-timeout */ => Skip
+                case Some(ExitCase.Errored(e))        => F.raiseError[Option[Chunk[O]]](e)
+                case Some(_) /* empty */              => StopConsumer
+              })
+          }.flatten
+
+        val onTimeout = takeOrExit(all = true).flatMap {
+          case Some(batch) if batch.isEmpty =>
+            buffer.waitUntil(b => b.nonEmpty || b.isDone) >> takeOrExit(all = true)
+          case result => result.pure[F2]
+        }
+
+        val nextBatch: F2[Option[Chunk[O]]] =
+          // Potentially skip starting timer fiber if buffer is full
+          takeOrExit(all = false).flatMap {
+            case Some(batch) if batch.isEmpty =>
+              F.race(F.sleep(timeout), buffer.waitUntil(b => b.isFull || b.isDone))
+                .flatMap {
+                  case Left(_ /* timeout */ )             => onTimeout
+                  case Right(_ /* full batch or done */ ) => takeOrExit(all = false)
+                }
+            case result => result.pure[F2]
+          }
+
+        def emitBatches: Pull[F2, Chunk[O], Unit] =
+          Pull.eval(nextBatch).flatMap {
+            case Some(batch) => Pull.output(Chunk.from(batch.grouped(chunkSize))) >> emitBatches
+            case None        => Pull.done
+          }
+
+        Stream.bracket(producer.start)(_.cancel) >> emitBatches.stream
+      }
+    }
+
   /** If `this` terminates with `Stream.raiseError(e)`, invoke `h(e)`.
     *
     * @example {{{
