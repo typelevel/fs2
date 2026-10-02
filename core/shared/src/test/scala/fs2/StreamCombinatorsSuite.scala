@@ -510,6 +510,50 @@ class StreamCombinatorsSuite extends Fs2Suite {
     }
   }
 
+  group("onErrorEvalTap") {
+    test("rethrows the original error") {
+      Counter[SyncIO].flatMap { counter =>
+        Stream
+          .range(0, 3)
+          .append(Stream.raiseError[SyncIO](new Err))
+          .onErrorEvalTap {
+            case _: IllegalStateException => counter.decrement
+            case _: Err                   => counter.increment
+          }
+          .compile
+          .drain
+          .intercept[Err] >> counter.get.assertEquals(1L)
+      }
+    }
+
+    test("fires an effect for matching errors only") {
+      Counter[SyncIO].flatMap { counter =>
+        Stream
+          .range(0, 3)
+          .append(Stream.raiseError[SyncIO](new Err))
+          .onErrorEvalTap { case _: IllegalStateException =>
+            counter.increment
+          }
+          .compile
+          .drain
+          .intercept[Err] >> counter.get.assertEquals(0L)
+      }
+    }
+
+    test("voids the underlying effect errors") {
+      Counter[SyncIO].flatMap { counter =>
+        Stream
+          .raiseError[SyncIO](new Err)
+          .onErrorEvalTap { case _: Err =>
+            counter.increment *> SyncIO.raiseError(new IllegalStateException("Oops!"))
+          }
+          .compile
+          .drain
+          .intercept[Err] >> counter.get.assertEquals(1L)
+      }
+    }
+  }
+
   test("evalScan") {
     forAllF { (s: Stream[Pure, Int], n: String) =>
       val f: (String, Int) => IO[String] = (a: String, b: Int) => IO.pure(a + b)
