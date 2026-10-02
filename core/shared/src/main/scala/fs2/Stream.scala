@@ -1159,11 +1159,13 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
       pf: PartialFunction[Throwable, F2[O2]]
   )(implicit F: ApplicativeError[F2, Throwable]): Stream[F2, O] =
     handleErrorWith { t =>
-      val rethrow = new Stream(Pull.fail(t))
+      import fs2.Stream.NotApplied
+      val rethrow = new Stream[F2, O](Pull.fail(t))
+      val eff = pf.applyOrElse(t, NotApplied)
 
-      pf
-        .andThen(fo => Stream.exec(fo.void.voidError) ++ rethrow)
-        .applyOrElse(t, (_: Throwable) => rethrow)
+      if (eff.asInstanceOf[AnyRef] ne NotApplied)
+        Stream.exec(eff.asInstanceOf[F2[O2]].void.voidError) ++ rethrow
+      else rethrow
     }
 
   @deprecated("Use overload without functor", "3.7.0")
@@ -3328,6 +3330,9 @@ object Stream extends StreamLowPriority {
   /** A pure stream that just emits the unit value once and ends.
     */
   val unit: Stream[Pure, Unit] = Pull.outUnit.streamNoScope
+
+  // A special value that is used to indicate that whether a PartialFunction is not applied
+  private final val NotApplied: Any => Any = _ => Stream.NotApplied
 
   /** Creates a single element stream that gets its value by evaluating the supplied effect. If the effect fails, a `Left`
     * is emitted. Otherwise, a `Right` is emitted.
