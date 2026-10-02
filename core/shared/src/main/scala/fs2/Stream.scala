@@ -1158,11 +1158,12 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
   def onErrorEvalTap[F2[x] >: F[x], O2](
       pf: PartialFunction[Throwable, F2[O2]]
   )(implicit F: ApplicativeError[F2, Throwable]): Stream[F2, O] =
-    handleErrorWith {
-      case t if pf.isDefinedAt(t) =>
-        Pull.eval(pf(t).void.voidError).streamNoScope ++ new Stream(Pull.fail(t))
-      case t =>
-        new Stream(Pull.fail(t))
+    handleErrorWith { t =>
+      val rethrow = new Stream(Pull.fail(t))
+
+      pf
+        .andThen(fo => Stream.exec(fo.void.voidError) ++ rethrow)
+        .applyOrElse(t, (_: Throwable) => rethrow)
     }
 
   @deprecated("Use overload without functor", "3.7.0")
