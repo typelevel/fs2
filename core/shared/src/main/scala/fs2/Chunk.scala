@@ -207,6 +207,24 @@ abstract class Chunk[+O] extends Serializable with ChunkPlatform[O] with ChunkRu
     }
   }
 
+  /** Splits this chunk into groups of `n` elements, the last of which may be smaller.
+    *
+    * Like `List#grouped`, an empty chunk has no groups, and `n` must be positive.
+    */
+  def grouped(n: Int): Vector[Chunk[O]] = {
+    require(n > 0, s"n must be positive, but got ${n.toString}")
+
+    @tailrec
+    def loop(rest: Chunk[O], acc: Vector[Chunk[O]]): Vector[Chunk[O]] =
+      if (rest.size <= n) acc :+ rest
+      else {
+        val (group, remaining) = rest.splitAt(n)
+        loop(rest = remaining, acc = acc :+ group)
+      }
+
+    if (isEmpty) Vector.empty else loop(rest = this, acc = Vector.empty)
+  }
+
   /** Gets the first element of this chunk. */
   def head: Option[O] = if (isEmpty) None else Some(apply(0))
 

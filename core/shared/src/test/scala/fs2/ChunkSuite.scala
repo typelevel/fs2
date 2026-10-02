@@ -131,6 +131,25 @@ class ChunkSuite extends Fs2Suite {
       }
     }
 
+    test("Chunk.grouped of an empty chunk has no groups, like List#grouped") {
+      assertEquals(Chunk.empty[Int].grouped(3), Vector.empty)
+      assertEquals(List.empty[Int].grouped(3).toList, Nil)
+    }
+
+    test("Chunk.grouped rejects a non-positive group size, like List#grouped") {
+      List(0, -1).foreach { n =>
+        intercept[IllegalArgumentException](Chunk(1, 2, 3).grouped(n))
+        intercept[IllegalArgumentException](Chunk.empty[Int].grouped(n))
+        intercept[IllegalArgumentException](List(1, 2, 3).grouped(n))
+      }
+    }
+
+    test("Chunk.grouped returns a chunk that fits in one group as is") {
+      forAll { (c: Chunk[Int]) =>
+        if (c.nonEmpty) assert(c.grouped(c.size).head eq c)
+      }
+    }
+
     class OddStringExtractor {
       val callCounter: AtomicInteger = new AtomicInteger(0)
 
@@ -166,6 +185,11 @@ class ChunkSuite extends Fs2Suite {
       }
       property("isEmpty") {
         forAll((c: Chunk[A]) => assertEquals(c.isEmpty, c.toList.isEmpty))
+      }
+      property("grouped") {
+        forAll(genChunk, Gen.choose(1, 50)) { (c: Chunk[A], n: Int) =>
+          assertEquals(c.grouped(n).map(_.toList).toList, c.toList.grouped(n).toList)
+        }
       }
       property("toArray") {
         forAll { (c: Chunk[A]) =>
