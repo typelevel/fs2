@@ -1152,6 +1152,19 @@ final class Stream[+F[_], +O] private[fs2] (private[fs2] val underlying: Pull[F,
     underlying.flatMapOutput(tapOut).streamNoScope
   }
 
+  /** Executes an effect for certain errors, then rethrows the original error.
+    * Voids any error thrown by the given effect. Any non-matching error is rethrown as well.
+    */
+  def onErrorEvalTap[F2[x] >: F[x], O2](
+      pf: PartialFunction[Throwable, F2[O2]]
+  )(implicit F: ApplicativeError[F2, Throwable]): Stream[F2, O] =
+    handleErrorWith {
+      case t if pf.isDefinedAt(t) =>
+        Pull.eval(pf(t).void.voidError).streamNoScope ++ new Stream(Pull.fail(t))
+      case t =>
+        new Stream(Pull.fail(t))
+    }
+
   @deprecated("Use overload without functor", "3.7.0")
   private[fs2] def evalTap[F2[x] >: F[x], O2](f: O => F2[O2], F: Functor[F2]): Stream[F2, O] =
     evalTap(f)
