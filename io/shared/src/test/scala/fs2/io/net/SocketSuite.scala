@@ -343,5 +343,21 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           assertEquals(received, expected)
         }
     }
+
+    test("ipv6 - bind, connect and echo over loopback") {
+      val msg = Chunk.array("fs2.rocks".getBytes)
+      Network[IO].bind(SocketAddress(ip"::1", Port.Wildcard)).use { serverSocket =>
+        IO(assertEquals(serverSocket.address.asIpUnsafe.host, ip"::1")) *>
+          Network[IO].connect(serverSocket.address).use { client =>
+            serverSocket.accept.head
+              .evalMap { server =>
+                IO(assertEquals(server.peerAddress, client.address)) *>
+                  client.write(msg) *> server.readN(msg.size).assertEquals(msg)
+              }
+              .compile
+              .drain
+          }
+      }
+    }
   }
 }
