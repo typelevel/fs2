@@ -50,26 +50,40 @@ class PeerCertificatesSuite extends TLSSuite {
       )
     }
 
+  /** Connected (server, client) sockets, before any read or write. */
+  private def sockets(
+      serverParams: TLSParameters,
+      serverContext: Resource[IO, TLSContext[IO]],
+      clientContext: Resource[IO, TLSContext[IO]]
+  ): Resource[IO, (TLSSocket[IO], TLSSocket[IO])] =
+    for {
+      serverContext <- serverContext
+      clientContext <- clientContext
+      serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+      server = serverSocket.accept.head.compile.resource.lastOrError
+        .flatMap(serverContext.serverBuilder(_).withParameters(serverParams).build)
+      client = Network[IO].connect(serverSocket.address).flatMap(clientContext.client(_))
+      sockets <- (server, client).parTupled
+    } yield sockets
+
+  // The JVM handshakes on the first read or write, which needs both sides at once
+  private def handshake(server: TLSSocket[IO], client: TLSSocket[IO]): IO[Unit] =
+    (server.write(Chunk.empty), client.write(Chunk.empty)).parTupled.void
+
+  private def seenBy(
+      server: TLSSocket[IO],
+      client: TLSSocket[IO]
+  ): IO[(List[ByteVector], List[ByteVector])] =
+    (server.peerCertificates, client.peerCertificates).tupled
+
   /** Completes a handshake and returns the peer certificates seen by (server, client). */
   private def peerCertificates(
       serverParams: TLSParameters,
       serverContext: Resource[IO, TLSContext[IO]],
       clientContext: Resource[IO, TLSContext[IO]]
   ): IO[(List[ByteVector], List[ByteVector])] =
-    (for {
-      serverContext <- serverContext
-      clientContext <- clientContext
-      serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
-      server = serverSocket.accept.head.compile.resource.lastOrError
-        .flatMap(serverContext.serverBuilder(_).withParameters(serverParams).build)
-        .evalTap(_.write(Chunk.empty)) // the JVM handshakes on first read or write
-      client = Network[IO]
-        .connect(serverSocket.address)
-        .flatMap(clientContext.client(_))
-        .evalTap(_.write(Chunk.empty))
-      sockets <- (server, client).parTupled
-    } yield sockets).use { case (server, client) =>
-      (server.peerCertificates, client.peerCertificates).tupled
+    sockets(serverParams, serverContext, clientContext).use { case (server, client) =>
+      handshake(server, client) >> seenBy(server, client)
     }
 
   private val testContext = Resource.eval(testTlsContext)
@@ -82,6 +96,21 @@ class PeerCertificatesSuite extends TLSSuite {
       IO {
         assertEquals(seenByServer, List(cert))
         assertEquals(seenByClient, List(cert))
+      }
+    }
+  }
+
+  test("empty until the handshake completes on the first read or write") {
+    (
+      testCertificate,
+      sockets(TLSParameters(needClientAuth = true), testContext, testContext).use {
+        case (server, client) =>
+          (seenBy(server, client), handshake(server, client) >> seenBy(server, client)).tupled
+      }
+    ).flatMapN { case (cert, (before, after)) =>
+      IO {
+        assertEquals(before, (Nil, Nil))
+        assertEquals(after, (List(cert), List(cert)))
       }
     }
   }
