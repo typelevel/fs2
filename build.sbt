@@ -391,7 +391,7 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
   ),
-  // sealed trait: TLSSocket.peerCertificates
+  // sealed trait: #3783
   ProblemFilters.exclude[ReversedMissingMethodProblem](
     "fs2.io.net.tls.TLSSocket.peerCertificates"
   )
