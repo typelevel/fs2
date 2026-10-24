@@ -96,7 +96,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       _ <- Resource.eval {
         F.delay {
           toSockaddrUn(address.path)(addr => guard_(ubind(fd, addr, sizeof[sockaddr_un].toUInt)))
-        } *> F.delay(guard_(listen(fd, 0)))
+        } *> F.delay(guard_(listen(fd, SOMAXCONN)))
       }
 
       address0 = address

@@ -54,7 +54,12 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
     _ <- Resource.eval {
       handle
         .pollWriteRec(false) { connected =>
-          if (connected) SocketHelpers.checkSocketError[IO](fd).as(Either.unit)
+          // Writability doesn't prove the connection completed: the poller may wake us
+          // early, e.g. for an event from before connect was called.
+          if (connected)
+            SocketHelpers.checkSocketError[IO](fd) *>
+              IO(SocketHelpers.isConnected(fd, if (ipv4) AF_INET else AF_INET6))
+                .map(if (_) Either.unit else Left(true))
           else
             IO {
               SocketHelpers.toSockaddr(address) { (addr, len) =>
@@ -97,7 +102,9 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
         }
       }
 
-      SocketHelpers.setOption(fd, SO_REUSEADDR, 1) *> bindF *> F.delay(guard_(listen(fd, 0)))
+      SocketHelpers.setOption(fd, SO_REUSEADDR, 1) *> bindF *> F.delay(
+        guard_(listen(fd, SOMAXCONN))
+      )
     }
 
     sockets = Stream
