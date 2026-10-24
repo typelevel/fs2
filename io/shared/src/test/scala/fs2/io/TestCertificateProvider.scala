@@ -104,39 +104,59 @@ object TestCertificateProvider {
     Files[IO].tempDirectory.use { dir =>
       def p(name: String) = (dir / name).toString
 
+      // Used instead of the system config, which makes OpenSSL 1.1.1 duplicate extensions.
+      // Key identifiers are explicit as only OpenSSL 3 adds them by default.
+      val config =
+        """[req]
+          |distinguished_name = dn
+          |
+          |[dn]
+          |
+          |[root]
+          |basicConstraints = critical,CA:TRUE
+          |keyUsage = critical,keyCertSign,cRLSign
+          |subjectKeyIdentifier = hash
+          |
+          |[intermediate]
+          |basicConstraints = critical,CA:TRUE
+          |keyUsage = critical,keyCertSign,cRLSign
+          |subjectKeyIdentifier = hash
+          |authorityKeyIdentifier = keyid,issuer
+          |
+          |[leaf]
+          |basicConstraints = critical,CA:FALSE
+          |keyUsage = critical,digitalSignature,keyEncipherment
+          |extendedKeyUsage = serverAuth,clientAuth
+          |subjectAltName = DNS:localhost,IP:127.0.0.1,DNS:Unknown
+          |subjectKeyIdentifier = hash
+          |authorityKeyIdentifier = keyid,issuer
+          |""".stripMargin
+      val configPath = p("openssl.cnf")
+
       def newKeyAndCsr(name: String, cn: String) =
         run(
-          List("openssl", "req", "-newkey", "rsa:2048", "-nodes", "-subj", s"/CN=$cn") ++
-            List("-keyout", p(s"$name.key"), "-out", p(s"$name.csr"))
+          List("openssl", "req", "-config", configPath, "-newkey", "rsa:2048", "-nodes") ++
+            List("-subj", s"/CN=$cn", "-keyout", p(s"$name.key"), "-out", p(s"$name.csr"))
         )
 
-      def sign(name: String, issuer: String, ext: String) =
-        writeFile(dir / s"$name.ext", ext) >>
-          run(
-            List("openssl", "x509", "-req", "-in", p(s"$name.csr"), "-days", "365", "-sha256") ++
-              List("-CA", p(s"$issuer.pem"), "-CAkey", p(s"$issuer.key"), "-CAcreateserial") ++
-              List("-extfile", p(s"$name.ext"), "-out", p(s"$name.pem"))
-          )
-
-      val caExt = "basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n"
-      val leafExt =
-        "basicConstraints=critical,CA:FALSE\n" +
-          "keyUsage=critical,digitalSignature,keyEncipherment\n" +
-          "extendedKeyUsage=serverAuth,clientAuth\n" +
-          "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:Unknown\n"
+      def sign(name: String, issuer: String) =
+        run(
+          List("openssl", "x509", "-req", "-in", p(s"$name.csr"), "-days", "365", "-sha256") ++
+            List("-CA", p(s"$issuer.pem"), "-CAkey", p(s"$issuer.key"), "-CAcreateserial") ++
+            List("-extfile", configPath, "-extensions", name, "-out", p(s"$name.pem"))
+        )
 
       for {
+        _ <- writeFile(dir / "openssl.cnf", config)
         _ <- run(
-          List("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "365") ++
-            List("-sha256", "-subj", "/CN=FS2 Test Root") ++
-            List("-addext", "basicConstraints=critical,CA:TRUE") ++
-            List("-addext", "keyUsage=critical,keyCertSign,cRLSign") ++
-            List("-keyout", p("root.key"), "-out", p("root.pem"))
+          List("openssl", "req", "-config", configPath, "-extensions", "root", "-x509") ++
+            List("-newkey", "rsa:2048", "-nodes", "-days", "365", "-sha256") ++
+            List("-subj", "/CN=FS2 Test Root", "-keyout", p("root.key"), "-out", p("root.pem"))
         )
         _ <- newKeyAndCsr("intermediate", "FS2 Test Intermediate")
-        _ <- sign("intermediate", "root", caExt)
+        _ <- sign("intermediate", "root")
         _ <- newKeyAndCsr("leaf", "localhost")
-        _ <- sign("leaf", "intermediate", leafExt)
+        _ <- sign("leaf", "intermediate")
         root <- readFile(dir / "root.pem")
         intermediate <- readFile(dir / "intermediate.pem")
         leaf <- readFile(dir / "leaf.pem")
