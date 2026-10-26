@@ -44,15 +44,15 @@ import scala.scalanative.posix.unistd._
 import scala.scalanative.posix.sys.socket._
 import scala.scalanative.posix.sys.socketOps._
 import scala.scalanative.posix.netinet.in._
+import scala.scalanative.posix.netinet.inOps._
 import scala.scalanative.posix.arpa.inet._
+import scala.scalanative.posix.sys.un._
+import scala.scalanative.posix.sys.unOps._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
 import NativeUtil._
-import netinetinOps._
 import syssocket._
-import sysun._
-import sysunOps._
 
 private[io] object SocketHelpers {
 
@@ -338,8 +338,8 @@ private[io] object SocketHelpers {
 
     val bytes = address.host.toBytes
     var i = 0
-    while (i < 0) {
-      addr.sin6_addr.s6_addr(i) = bytes(i).toUByte
+    while (i < 16) {
+      addr.at4.s6_addr(i) = bytes(i).toUByte
       i += 1
     }
   }
