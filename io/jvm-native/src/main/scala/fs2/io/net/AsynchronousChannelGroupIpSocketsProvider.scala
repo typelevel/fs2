@@ -81,6 +81,8 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
 
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(options)
+
     val setup: Resource[F, AsynchronousServerSocketChannel] =
       Resource.eval(address.host.resolve[F]).flatMap { addr =>
         Resource
@@ -95,7 +97,8 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
                 new InetSocketAddress(
                   if (addr.isWildcard) null else addr.toInetAddress,
                   address.port.value
-                )
+                ),
+                backlog.getOrElse(0)
               )
             )
           )
@@ -125,7 +128,7 @@ private[net] class AsynchronousChannelGroupIpSocketsProvider[F[_]] private (
 
         def setOpts(ch: AsynchronousSocketChannel) =
           F.delay {
-            options.foreach(o => ch.setOption(o.key, o.value))
+            filteredOptions.foreach(o => ch.setOption(o.key, o.value))
           }
 
         Stream.resource(acceptChannel.attempt).flatMap {

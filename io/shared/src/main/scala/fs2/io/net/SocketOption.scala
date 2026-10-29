@@ -44,6 +44,26 @@ object SocketOption extends SocketOptionCompanionPlatform {
     val value = value0
   }
 
+  /** Removes any `SocketOption.Backlog` options from the supplied list, returning the remaining
+    * options and the backlog value, if one was specified.
+    */
+  private[net] def extractBacklog(
+      options: List[SocketOption]
+  ): (List[SocketOption], Option[Int]) = {
+    var backlog: Option[Int] = None
+
+    val filteredOptions = options.filter { opt =>
+      if (opt.key == SocketOption.Backlog) {
+        backlog = Some(opt.value.asInstanceOf[Int])
+        false
+      } else {
+        true
+      }
+    }
+
+    (filteredOptions, backlog)
+  }
+
   private[net] def extractUnixSocketDeletes[F[_]: Applicative: Files](
       options: List[SocketOption],
       address: UnixSocketAddress

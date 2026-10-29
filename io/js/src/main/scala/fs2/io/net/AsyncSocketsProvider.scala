@@ -145,6 +145,7 @@ private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
   ): Resource[F, ServerSocket[F]] =
     (for {
       dispatcher <- Dispatcher.sequential[F]
+      (filteredOptions, backlog) = SocketOption.extractBacklog(options)
       channel <- Channel.unbounded[F, facade.net.Socket].toResource
       server <- Resource.make(
         F
@@ -171,17 +172,19 @@ private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
           server.registerOneTimeListener[F, js.Error]("error") { e =>
             cb(Left(js.JavaScriptException(e)))
           } <* F.delay {
+            val listenOptions = new facade.net.ListenOptions {}
             address match {
               case Left(addr) =>
-                if (
-                  addr.host.isInstanceOf[IpAddress] && addr.host.asInstanceOf[IpAddress].isWildcard
-                )
-                  server.listen(addr.port.value, () => cb(Right(())))
-                else
-                  server.listen(addr.port.value, addr.host.toString, () => cb(Right(())))
+                listenOptions.port = addr.port.value
+                addr.host match {
+                  case ip: IpAddress if ip.isWildcard => ()
+                  case host                           => listenOptions.host = host.toString
+                }
               case Right(addr) =>
-                server.listen(addr.path, () => cb(Right(())))
+                listenOptions.path = addr.path
             }
+            backlog.foreach(b => listenOptions.backlog = b)
+            server.listen(listenOptions, () => cb(Right(())))
           }
         }
         .toResource
@@ -205,7 +208,7 @@ private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
       }
       address0 = address
       sockets = channel.stream
-        .evalTap(setSocketOptions(options))
+        .evalTap(setSocketOptions(filteredOptions))
         .flatMap { sock =>
           val address = address0 match {
             case Left(_) =>

@@ -60,14 +60,15 @@ private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
         }
     )
 
-  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
+  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) = {
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(options)
     evalOnVirtualThreadIfAvailable(
       Resource
         .make(
           F.blocking(ServerSocketChannel.open(StandardProtocolFamily.UNIX))
         )(ch => F.blocking(ch.close()))
         .evalTap { sch =>
-          F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path)))
+          F.blocking(sch.bind(UnixDomainSocketAddress.of(address.path), backlog.getOrElse(0)))
             .cancelable(F.blocking(sch.close()))
         }
         .map { sch =>
@@ -76,7 +77,8 @@ private[net] class JdkUnixSocketsProvider[F[_]: Files](implicit F: Async[F])
               .makeFull[F, SocketChannel] { poll =>
                 poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close())))
               }(ch => F.blocking(ch.close()))
-              .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
+              .evalTap(ch => F.delay(filteredOptions.foreach(o => ch.setOption(o.key, o.value))))
         }
     )
+  }
 }
