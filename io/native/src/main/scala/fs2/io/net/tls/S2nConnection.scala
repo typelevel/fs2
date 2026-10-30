@@ -199,7 +199,10 @@ private[tls] object S2nConnection {
           .void
 
       def applicationProtocol =
-        F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
+        F.delay(s2n_get_application_protocol(conn)).map {
+          case null => ""
+          case ptr  => fromCString(ptr)
+        }
 
       def session = F.delay {
         val len = guard(s2n_connection_get_session_length(conn))
