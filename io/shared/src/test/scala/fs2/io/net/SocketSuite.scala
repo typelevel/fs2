@@ -258,6 +258,11 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .assertEquals(clientCount.toLong)
     }
 
+    test("backlog - non-positive values are rejected") {
+      intercept[IllegalArgumentException](SocketOption.backlog(0))
+      intercept[IllegalArgumentException](SocketOption.backlog(-1))
+    }
+
     test("read after timed out read") {
       val setup = for {
         serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))

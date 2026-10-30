@@ -94,11 +94,14 @@ private[net] trait SocketOptionCompanionPlatform { self: SocketOption.type =>
   def timeout(value: FiniteDuration): SocketOption = apply(Timeout, value)
 
   /** Sets the maximum number of pending connections on a server socket, i.e., the `backlog`
-    * option passed to `server.listen`. Only applies when binding a server socket. When not
-    * specified, the Node.js default backlog is used.
+    * option passed to `server.listen`. Only applies when binding a server socket. The value must
+    * be positive. When not specified, the Node.js default backlog is used.
     */
   object Backlog extends Key[Int]
-  def backlog(value: Int): SocketOption = apply(Backlog, value)
+  def backlog(value: Int): SocketOption = {
+    require(value > 0, s"backlog must be positive, was $value")
+    apply(Backlog, value)
+  }
 
   object UnixSocketDeleteIfExists extends Key[Boolean] {
     override private[net] def set[F[_]: Sync](
