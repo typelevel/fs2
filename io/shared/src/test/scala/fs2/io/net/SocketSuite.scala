@@ -167,7 +167,9 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         _ <- Network[IO]
           .connect(SocketAddress(host"localhost", port))
           .use_
-          .interceptMessage[ConnectException]("Connection refused")
+          .intercept[ConnectException]
+          // Newer JDKs append details, e.g. "Connection refused (connect failed)"
+          .map(ex => assert(ex.getMessage.startsWith("Connection refused"), ex.getMessage))
       } yield ()
 
       val addressAlreadyInUse =
@@ -175,7 +177,8 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           Network[IO]
             .bind(serverSocket.address)
             .use_
-            .interceptMessage[BindException]("Address already in use")
+            .intercept[BindException]
+            .map(ex => assert(ex.getMessage.startsWith("Address already in use"), ex.getMessage))
         }
 
       val unknownHost = Network[IO]
