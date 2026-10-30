@@ -134,6 +134,25 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .drain
     }
 
+    test("writeIncremental - records total bytes sent") {
+      val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val readOnlyServer = server.map(_.reads).parJoinUnbounded
+          val client =
+            clients.take(1).flatMap { socket =>
+              socket.writeIncremental(message)
+            }
+
+          client.concurrently(readOnlyServer)
+        }
+        .compile
+        .foldMonoid
+        .map(bytes => assertEquals(bytes, message.size))
+    }
+
     test("addresses - should match across client and server sockets") {
       Stream
         .resource(setup)

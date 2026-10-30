@@ -34,7 +34,6 @@ import javax.net.ssl.{
   TrustManagerFactory,
   X509ExtendedTrustManager
 }
-import cats.Applicative
 import cats.effect.kernel.{Async, Resource}
 import cats.syntax.all._
 import com.comcast.ip4s.{IpAddress, SocketAddress}
@@ -159,8 +158,8 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte]): F[Unit] =
-                      socket.write(data)
+                    def write(data: Chunk[Byte]): Stream[F, Int] =
+                      socket.writeIncremental(data)
                     def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
                       socket.read(maxBytes)
                   },
@@ -194,9 +193,9 @@ private[tls] trait TLSContextCompanionPlatform { self: TLSContext.type =>
               .eval(
                 engine(
                   new TLSEngine.Binding[F] {
-                    def write(data: Chunk[Byte]): F[Unit] =
-                      if (data.isEmpty) Applicative[F].unit
-                      else socket.write(data, remoteAddress)
+                    def write(data: Chunk[Byte]): Stream[F, Int] =
+                      if (data.isEmpty) Stream.empty
+                      else Stream.eval(socket.write(data, remoteAddress).as(data.size))
                     def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
                       socket.read.map(p => Some(p.bytes))
                   },

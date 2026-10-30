@@ -112,8 +112,15 @@ private[net] trait SocketCompanionPlatform {
     override def write(bytes: Chunk[Byte]): F[Unit] =
       Stream.chunk(bytes).through(writes).compile.drain
 
+    override def writeIncremental(bytes: fs2.Chunk[Byte]): fs2.Stream[F, Int] =
+      Stream.chunk(bytes).through(writesIncremental)
+
     override def writes: Pipe[F, Byte, Nothing] =
       writeWritable(F.pure(sock), endAfterUse = false)
+
+    override def writesIncremental: Pipe[F, Byte, Int] =
+      writeWritableIncremental(F.pure(sock), endAfterUse = false)
+
   }
 
 }

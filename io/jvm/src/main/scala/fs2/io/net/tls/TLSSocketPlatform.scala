@@ -56,6 +56,9 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def write(bytes: Chunk[Byte]): F[Unit] =
         engine.write(bytes)
 
+      override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] =
+        engine.writeIncremental(bytes)
+
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         engine.read(maxBytes)
 

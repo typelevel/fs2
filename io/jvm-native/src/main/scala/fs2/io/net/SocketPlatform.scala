@@ -148,6 +148,22 @@ private[net] trait SocketCompanionPlatform {
       }
     }
 
+    override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] = {
+      def go(buff: ByteBuffer): Pull[F, Int, Unit] =
+        Pull
+          .eval(F.async[Int] { cb =>
+            ch.write(buff, null, new IntCompletionHandler(cb))
+            F.delay(Some(endOfOutput.voidError))
+          })
+          .flatMap { written =>
+            Pull.output1(written) >>
+              go(buff).whenA(written >= 0 && buff.remaining() > 0)
+          }
+
+      Stream.resource(writeMutex.lock) >>
+        Stream.eval(F.delay(bytes.toByteBuffer)).flatMap(go(_).stream)
+    }
+
     override def localAddress: F[SocketAddress[IpAddress]] =
       asyncInstance.pure(address.asIpUnsafe)
 

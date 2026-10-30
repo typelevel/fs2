@@ -42,12 +42,13 @@ private[tls] trait TLSEngine[F[_]] {
   def stopWrap: F[Unit]
   def stopUnwrap: F[Unit]
   def write(data: Chunk[Byte]): F[Unit]
+  def writeIncremental(data: Chunk[Byte]): Stream[F, Int]
   def read(maxBytes: Int): F[Option[Chunk[Byte]]]
 }
 
 private[tls] object TLSEngine {
   trait Binding[F[_]] {
-    def write(data: Chunk[Byte]): F[Unit]
+    def write(data: Chunk[Byte]): Stream[F, Int]
     def read(maxBytes: Int): F[Option[Chunk[Byte]]]
   }
 
@@ -85,41 +86,54 @@ private[tls] object TLSEngine {
       def stopUnwrap = Sync[F].delay(engine.closeInbound()).attempt.void
 
       def write(data: Chunk[Byte]): F[Unit] =
-        writeMutex.lock.surround(write0(data))
+        writeIncremental(data).compile.drain
 
-      private def write0(data: Chunk[Byte]): F[Unit] =
-        wrapBuffer.input(data) >> wrap
+      def writeIncremental(data: Chunk[Byte]): Stream[F, Int] =
+        Stream.resource(writeMutex.lock) >> write0(data)
+
+      private def write0(data: Chunk[Byte]): Stream[F, Int] =
+        Stream.eval(wrapBuffer.input(data)) >> wrap.stream
 
       /** Performs a wrap operation on the underlying engine. */
-      private def wrap: F[Unit] =
-        wrapBuffer
-          .perform(engine.wrap(_, _))
-          .flatTap(result => log(s"wrap result: $result"))
+      private def wrap: Pull[F, Int, Unit] =
+        Pull
+          .eval(
+            wrapBuffer
+              .perform(engine.wrap(_, _))
+              .flatTap(result => log(s"wrap result: $result"))
+          )
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
-                doWrite >> {
+                doWrite.pull.echo >> {
                   result.getHandshakeStatus match {
                     case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-                      wrapBuffer.inputRemains
+                      Pull
+                        .eval(wrapBuffer.inputRemains)
                         .flatMap(x => wrap.whenA(x > 0 && result.bytesConsumed > 0))
                     case _ =>
-                      handshakeMutex.lock
-                        .surround(stepHandshake(result, true)) >> wrap
+                      // TODO: is this the right way to use and close the resource?
+                      Pull.scope(
+                        Stream
+                          .resource(handshakeMutex.lock)
+                          .flatMap(_ => stepHandshake(result, true).stream)
+                          .pull
+                          .echo
+                      ) >> wrap
                   }
                 }
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doWrite
+                doWrite.pull.echo
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                wrapBuffer.expandOutput >> wrap
+                Pull.eval(wrapBuffer.expandOutput) >> wrap
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap
+                Pull.eval(stopWrap)
             }
           }
 
-      private def doWrite: F[Unit] =
-        wrapBuffer.output(Int.MaxValue).flatMap { out =>
-          if (out.isEmpty) Applicative[F].unit
+      private def doWrite: Stream[F, Int] =
+        Stream.eval(wrapBuffer.output(Int.MaxValue)).flatMap { out =>
+          if (out.isEmpty) Stream.empty
           else binding.write(out)
         }
 
@@ -169,7 +183,7 @@ private[tls] object TLSEngine {
                     unwrap(maxBytes)
                   case _ =>
                     handshakeMutex.lock
-                      .surround(stepHandshake(result, false)) >> unwrap(
+                      .surround(stepHandshake(result, false).stream.compile.drain) >> unwrap(
                       maxBytes
                     )
                 }
@@ -194,28 +208,29 @@ private[tls] object TLSEngine {
       private def stepHandshake(
           result: SSLEngineResult,
           lastOperationWrap: Boolean
-      ): F[Unit] =
+      ): Pull[F, Int, Unit] =
         result.getHandshakeStatus match {
           case SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING =>
-            Applicative[F].unit
+            Pull.done
           case SSLEngineResult.HandshakeStatus.FINISHED =>
-            unwrapBuffer.inputRemains.flatMap { remaining =>
+            Pull.eval(unwrapBuffer.inputRemains).flatMap { remaining =>
               if (remaining > 0) unwrapHandshake
-              else Applicative[F].unit
+              else Pull.done
             }
           case SSLEngineResult.HandshakeStatus.NEED_TASK =>
-            sslEngineTaskRunner.runDelegatedTasks >> (if (lastOperationWrap) wrapHandshake
-                                                      else unwrapHandshake)
+            Pull.eval(sslEngineTaskRunner.runDelegatedTasks) >>
+              (if (lastOperationWrap) wrapHandshake
+               else unwrapHandshake)
           case SSLEngineResult.HandshakeStatus.NEED_WRAP =>
             wrapHandshake
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP =>
-            unwrapBuffer.inputRemains.flatMap { remaining =>
+            Pull.eval(unwrapBuffer.inputRemains).flatMap { remaining =>
               if (remaining > 0 && result.getStatus != SSLEngineResult.Status.BUFFER_UNDERFLOW)
                 unwrapHandshake
               else
-                binding.read(engine.getSession.getPacketBufferSize).flatMap {
-                  case Some(c) => unwrapBuffer.input(c) >> unwrapHandshake
-                  case None    => stopUnwrap
+                Pull.eval(binding.read(engine.getSession.getPacketBufferSize)).flatMap {
+                  case Some(c) => Pull.eval(unwrapBuffer.input(c)) >> unwrapHandshake
+                  case None    => Pull.eval(stopUnwrap)
                 }
             }
           case SSLEngineResult.HandshakeStatus.NEED_UNWRAP_AGAIN =>
@@ -223,29 +238,35 @@ private[tls] object TLSEngine {
         }
 
       /** Performs a wrap operation as part of handshaking. */
-      private def wrapHandshake: F[Unit] =
-        wrapBuffer
-          .perform(engine.wrap(_, _))
-          .flatTap(result => log(s"wrapHandshake result: $result"))
+      private def wrapHandshake: Pull[F, Int, Unit] =
+        Pull
+          .eval(
+            wrapBuffer
+              .perform(engine.wrap(_, _))
+              .flatTap(result => log(s"wrapHandshake result: $result"))
+          )
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK | SSLEngineResult.Status.BUFFER_UNDERFLOW =>
-                doWrite >> stepHandshake(
+                doWrite.pull.echo >> stepHandshake(
                   result,
                   true
                 )
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                wrapBuffer.expandOutput >> wrapHandshake
+                Pull.eval(wrapBuffer.expandOutput) >> wrapHandshake
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap
+                Pull.eval(stopWrap >> stopUnwrap)
             }
           }
 
       /** Performs an unwrap operation as part of handshaking. */
-      private def unwrapHandshake: F[Unit] =
-        unwrapBuffer
-          .perform(engine.unwrap(_, _))
-          .flatTap(result => log(s"unwrapHandshake result: $result"))
+      private def unwrapHandshake: Pull[F, Int, Unit] =
+        Pull
+          .eval(
+            unwrapBuffer
+              .perform(engine.unwrap(_, _))
+              .flatTap(result => log(s"unwrapHandshake result: $result"))
+          )
           .flatMap { result =>
             result.getStatus match {
               case SSLEngineResult.Status.OK =>
@@ -253,9 +274,9 @@ private[tls] object TLSEngine {
               case SSLEngineResult.Status.BUFFER_UNDERFLOW =>
                 stepHandshake(result, false)
               case SSLEngineResult.Status.BUFFER_OVERFLOW =>
-                unwrapBuffer.expandOutput >> unwrapHandshake
+                Pull.eval(unwrapBuffer.expandOutput) >> unwrapHandshake
               case SSLEngineResult.Status.CLOSED =>
-                stopWrap >> stopUnwrap
+                Pull.eval(stopWrap >> stopUnwrap)
             }
           }
     }
