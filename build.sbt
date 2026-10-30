@@ -390,7 +390,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.process.ProcessBuilder$ProcessBuilderImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
-  )
+  ),
+  // private class, no longer extends Socket.BufferedReads
+  ProblemFilters.exclude[MissingTypesProblem]("fs2.io.net.SelectingSocket"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.readChunk")
 )
 
 // Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
