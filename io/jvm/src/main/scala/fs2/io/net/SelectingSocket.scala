@@ -57,10 +57,10 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     asyncInstance.pure(peerAddress)
 
   protected def readChunk(buf: ByteBuffer): F[Int] =
-    F.delay(ch.read(buf)).flatMap { readed =>
-      if (readed == 0) selector.select(ch, OP_READ).to *> readChunk(buf)
-      else F.pure(readed)
-    }
+    F.delay(ch.read(buf))
+
+  override protected def awaitReadable: F[Unit] =
+    selector.select(ch, OP_READ).void.to
 
   def write(bytes: Chunk[Byte]): F[Unit] = {
     def go(buf: ByteBuffer): F[Unit] =

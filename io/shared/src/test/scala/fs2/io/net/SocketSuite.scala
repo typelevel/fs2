@@ -113,6 +113,36 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .assertEquals(sizes)
     }
 
+    test("read and readN wait for data that arrives later") {
+      def bytes(s: String) = Chunk.array(s.getBytes)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val slowServer = server.map { socket =>
+            Stream
+              .emits(List("he", "llo", "wor", "ld", "!"))
+              .evalMap(s => IO.sleep(100.millis) *> socket.write(bytes(s)))
+              .onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+
+          val client =
+            clients.take(1).evalMap { socket =>
+              for {
+                hello <- socket.readN(5)
+                world <- socket.readN(5)
+                bang <- socket.read(10)
+                eof <- socket.read(10)
+              } yield (hello, world, bang, eof)
+            }
+
+          client.concurrently(slowServer)
+        }
+        .compile
+        .lastOrError
+        .assertEquals((bytes("hello"), bytes("world"), Some(bytes("!")), None))
+    }
+
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
 

@@ -49,21 +49,40 @@ private[net] trait SocketCompanionPlatform {
   )(implicit F: Async[F])
       extends Socket[F] {
     private[this] final val defaultReadSize = 8192
-    private[this] var readBuffer: ByteBuffer = ByteBuffer.allocate(defaultReadSize)
 
-    private def withReadBuffer[A](size: Int)(f: ByteBuffer => F[A]): F[A] =
-      readMutex.lock.surround {
-        F.delay {
-          if (readBuffer.capacity() < size)
-            readBuffer = ByteBuffer.allocate(size)
-          else
-            (readBuffer: Buffer).limit(size)
-          f(readBuffer)
-        }.flatten
+    // Allocated on demand and dropped while waiting for the channel to become readable, so that
+    // idle sockets don't retain a read buffer. Only accessed while holding the read mutex.
+    private[this] var readBuffer: ByteBuffer = null
+
+    /** Returns the read buffer with its limit set to `size`, allocating a new buffer if needed. */
+    private def readBufferOfSize(size: Int): F[ByteBuffer] =
+      F.delay {
+        if (readBuffer == null || readBuffer.capacity() < size)
+          readBuffer = ByteBuffer.allocate(size)
+        else
+          (readBuffer: Buffer).limit(size)
+        readBuffer
       }
 
-    /** Performs a single channel read operation in to the supplied buffer. */
+    /** Drops the read buffer, unless it holds partially read data, and waits for the channel to
+      * become readable.
+      */
+    private def awaitReadableWithoutBuffer: F[Unit] =
+      F.delay {
+        if (readBuffer != null && readBuffer.position() == 0)
+          readBuffer = null
+      } *> awaitReadable
+
+    /** Performs a single channel read operation in to the supplied buffer.
+      *
+      * Returns the number of bytes read or -1 if the channel has reached end-of-stream. May
+      * return 0 if no data is currently available, in which case `awaitReadable` is used to wait
+      * for data before reading again.
+      */
     protected def readChunk(buffer: ByteBuffer): F[Int]
+
+    /** Waits for the channel to become readable. Only used when `readChunk` returns 0. */
+    protected def awaitReadable: F[Unit] = F.unit
 
     /** Copies the contents of the supplied buffer to a `Chunk[Byte]` and clears the buffer contents. */
     private def releaseBuffer(buffer: ByteBuffer): F[Chunk[Byte]] =
@@ -82,20 +101,27 @@ private[net] trait SocketCompanionPlatform {
       }
 
     def read(max: Int): F[Option[Chunk[Byte]]] =
-      withReadBuffer(max) { buffer =>
-        readChunk(buffer).flatMap { read =>
-          if (read < 0) F.pure(None)
-          else releaseBuffer(buffer).map(Some(_))
-        }
+      readMutex.lock.surround {
+        def go: F[Option[Chunk[Byte]]] =
+          readBufferOfSize(max).flatMap { buffer =>
+            readChunk(buffer).flatMap { read =>
+              if (read < 0) F.pure(None)
+              else if (read == 0 && buffer.hasRemaining()) awaitReadableWithoutBuffer >> go
+              else releaseBuffer(buffer).map(Some(_))
+            }
+          }
+        go
       }
 
     def readN(max: Int): F[Chunk[Byte]] =
-      withReadBuffer(max) { buffer =>
+      readMutex.lock.surround {
         def go: F[Chunk[Byte]] =
-          readChunk(buffer).flatMap { readBytes =>
-            if (readBytes < 0 || buffer.position() >= max)
-              releaseBuffer(buffer)
-            else go
+          readBufferOfSize(max).flatMap { buffer =>
+            readChunk(buffer).flatMap { readBytes =>
+              if (readBytes < 0 || buffer.position() >= max) releaseBuffer(buffer)
+              else if (readBytes == 0) awaitReadableWithoutBuffer >> go
+              else go
+            }
           }
         go
       }
