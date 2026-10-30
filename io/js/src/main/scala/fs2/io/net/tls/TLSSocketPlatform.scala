@@ -32,6 +32,9 @@ import fs2.io.internal.facade
 import fs2.io.internal.SuspendedStream
 import scodec.bits.ByteVector
 
+import scala.annotation.tailrec
+import scala.scalajs.js
+
 private[tls] trait TLSSocketPlatform[F[_]]
 
 private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
@@ -59,15 +62,45 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
         case false            => "".pure // mimicking JVM
         case protocol: String => protocol.pure
         case _                => F.raiseError(new NoSuchElementException)
-      }
+      },
+      F.delay(verifiedPeerCertificates(tlsSock))
     )
+
+  private final val MaxChainDepth = 100
+
+  private def isNullish(a: Any): Boolean = a == null || js.isUndefined(a)
+
+  // Node keeps the peer's certificate even when it failed verification
+  // (e.g. requestCert without rejectUnauthorized), so only return it if verified.
+  private def verifiedPeerCertificates(sock: facade.tls.TLSSocket): List[ByteVector] = {
+    val ssl: Any = sock.ssl
+    if (isNullish(ssl) || !isNullish(sock.ssl.verifyError())) Nil
+    else {
+      // Bounded in case of a malformed issuer cycle
+      @tailrec
+      def go(
+          cert: facade.tls.DetailedPeerCertificate,
+          acc: List[ByteVector],
+          depth: Int
+      ): List[ByteVector] =
+        if (isNullish(cert) || isNullish(cert.raw) || depth >= MaxChainDepth) acc.reverse
+        else {
+          val chain = ByteVector.view(cert.raw.get) :: acc
+          val issuer = cert.issuerCertificate
+          if (isNullish(issuer) || (issuer.get eq cert)) chain.reverse
+          else go(issuer.get, chain, depth + 1)
+        }
+      go(sock.getPeerCertificate(true), Nil, 0)
+    }
+  }
 
   private[tls] final class AsyncTLSSocket[F[_]: Async](
       sock: facade.tls.TLSSocket,
       readStream: SuspendedStream[F, Byte],
       underlying: Socket[F],
       val session: F[SSLSession],
-      val applicationProtocol: F[String]
+      val applicationProtocol: F[String],
+      val peerCertificates: F[List[ByteVector]]
   ) extends Socket.AsyncSocket[F](
         sock,
         readStream,

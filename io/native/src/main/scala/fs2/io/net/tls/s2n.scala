@@ -60,6 +60,7 @@ private[tls] object s2n {
   type s2n_config
   type s2n_connection
   type s2n_cert_chain_and_key
+  type s2n_cert
   type s2n_async_pkey_op
   type s2n_cert_private_key
 
@@ -207,6 +208,28 @@ private[tls] object s2n {
 
   def s2n_connection_get_selected_cert(conn: Ptr[s2n_connection]): Ptr[s2n_cert_chain_and_key] =
     extern
+
+  def s2n_connection_get_peer_cert_chain(
+      conn: Ptr[s2n_connection],
+      cert_chain: Ptr[s2n_cert_chain_and_key]
+  ): CInt = extern
+
+  def s2n_cert_chain_get_length(
+      chain_and_key: Ptr[s2n_cert_chain_and_key],
+      cert_length: Ptr[CUnsignedInt]
+  ): CInt = extern
+
+  def s2n_cert_chain_get_cert(
+      chain_and_key: Ptr[s2n_cert_chain_and_key],
+      out_cert: Ptr[Ptr[s2n_cert]],
+      cert_idx: CUnsignedInt
+  ): CInt = extern
+
+  def s2n_cert_get_der(
+      cert: Ptr[s2n_cert],
+      out_cert_der: Ptr[Ptr[Byte]],
+      cert_length: Ptr[CUnsignedInt]
+  ): CInt = extern
 
   def s2n_config_set_async_pkey_callback(config: Ptr[s2n_config], fn: s2n_async_pkey_fn): CInt =
     extern

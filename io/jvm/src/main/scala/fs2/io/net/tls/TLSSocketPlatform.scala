@@ -30,6 +30,9 @@ import cats.effect.kernel._
 import cats.syntax.all._
 
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import scodec.bits.ByteVector
+
+import javax.net.ssl.SSLPeerUnverifiedException
 
 private[tls] trait TLSSocketPlatform[F[_]] {
 
@@ -119,6 +122,13 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
 
       def applicationProtocol: F[String] =
         engine.applicationProtocol
+
+      def peerCertificates: F[List[ByteVector]] =
+        engine.session.map { session =>
+          // Throws when the peer was not authenticated, e.g. it sent no certificate
+          try session.getPeerCertificates.toList.map(c => ByteVector.view(c.getEncoded))
+          catch { case _: SSLPeerUnverifiedException => Nil }
+        }
 
       @deprecated("No replacement; sockets are open until they are finalized", "3.13.0")
       def isOpen: F[Boolean] = socket.isOpen

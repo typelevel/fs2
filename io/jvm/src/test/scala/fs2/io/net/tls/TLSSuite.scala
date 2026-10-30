@@ -26,36 +26,61 @@ package tls
 
 import cats.effect.IO
 
+import java.security.{KeyFactory, KeyStore, PrivateKey}
+import java.security.cert.{Certificate, CertificateFactory}
+
 abstract class TLSSuite extends Fs2Suite {
   def testTlsContext: IO[TLSContext[IO]] =
     TestCertificateProvider.getCertificateAndPrivateKey.flatMap { certPair =>
-      IO.blocking {
-        val keyStore = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType)
-        keyStore.load(null, null)
+      val cert = parseCertificate(certPair.certificatePem)
+      keyStoreTlsContext(
+        Some((parsePrivateKey(certPair.privateKeyPem), List(cert))),
+        trusted = List(cert)
+      )
+    }
 
-        val certFactory = java.security.cert.CertificateFactory.getInstance("X.509")
-        val cert = certFactory.generateCertificate(
-          new java.io.ByteArrayInputStream(
-            certPair.certificatePem.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-          )
-        )
+  /** Trusts the test certificate but has no key, so it cannot present a certificate. */
+  def testClientTlsContext: IO[TLSContext[IO]] =
+    TestCertificateProvider.getCertificateAndPrivateKey.flatMap { certPair =>
+      keyStoreTlsContext(None, trusted = List(parseCertificate(certPair.certificatePem)))
+    }
 
-        val keyFactory = java.security.KeyFactory.getInstance("RSA")
-        val keyPem = certPair.privateKeyPem
-          .replaceAll("-----BEGIN (.*)-----", "")
-          .replaceAll("-----END (.*)-----", "")
-          .replaceAll("\\s", "")
-        val keyBytes = java.util.Base64.getDecoder.decode(keyPem)
-        val keySpec = new java.security.spec.PKCS8EncodedKeySpec(keyBytes)
-        val key = keyFactory.generatePrivate(keySpec)
+  protected def parseCertificate(pem: String): Certificate =
+    CertificateFactory
+      .getInstance("X.509")
+      .generateCertificate(
+        new java.io.ByteArrayInputStream(pem.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      )
 
-        keyStore.setKeyEntry("alias", key, "password".toCharArray, Array(cert))
-        keyStore.setCertificateEntry("ca", cert)
+  protected def parsePrivateKey(pem: String): PrivateKey = {
+    val keyBytes = java.util.Base64.getDecoder.decode(
+      pem
+        .replaceAll("-----BEGIN (.*)-----", "")
+        .replaceAll("-----END (.*)-----", "")
+        .replaceAll("\\s", "")
+    )
+    KeyFactory
+      .getInstance("RSA")
+      .generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(keyBytes))
+  }
 
-        keyStore
-      }.flatMap { ks =>
-        Network[IO].tlsContext.fromKeyStore(ks, "password".toCharArray)
+  /** A context presenting `identity` (a key and its certificate chain, leaf first), if any,
+    * and trusting `trusted`.
+    */
+  protected def keyStoreTlsContext(
+      identity: Option[(PrivateKey, List[Certificate])],
+      trusted: List[Certificate]
+  ): IO[TLSContext[IO]] =
+    IO.blocking {
+      val keyStore = KeyStore.getInstance(KeyStore.getDefaultType)
+      keyStore.load(null, null)
+      identity.foreach { case (key, chain) =>
+        keyStore.setKeyEntry("alias", key, "password".toCharArray, chain.toArray)
       }
+      trusted.zipWithIndex.foreach { case (cert, i) => keyStore.setCertificateEntry(s"ca$i", cert) }
+      keyStore
+    }.flatMap { ks =>
+      Network[IO].tlsContext.fromKeyStore(ks, "password".toCharArray)
     }
 
   val logger = TLSLogger.Disabled
