@@ -83,7 +83,8 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
   override def bindIp(
       address: SocketAddress[Host],
       options: List[SocketOption]
-  ): Resource[F, ServerSocket[F]] =
+  ): Resource[F, ServerSocket[F]] = {
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(options)
     Resource
       .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
         // sleep time set to be short enough to not noticeably delay shutdown but long enough to
@@ -98,7 +99,8 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
               new InetSocketAddress(
                 if (addr.isWildcard) null else addr.toInetAddress,
                 address.port.value
-              )
+              ),
+              backlog.getOrElse(0)
             )
           }
         }
@@ -121,7 +123,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
         val accept = acceptLoop.evalMap { ch =>
           F.delay {
             ch.configureBlocking(false)
-            options.foreach(opt => ch.setOption(opt.key, opt.value))
+            filteredOptions.foreach(opt => ch.setOption(opt.key, opt.value))
             localAddress(ch) -> remoteAddress(ch)
           }.flatMap { case (addr, peerAddr) =>
             SelectingSocket[F](
@@ -135,6 +137,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
 
         configure *> F.delay(ServerSocket(SocketInfo.forAsync(sch), accept))
       }
+  }
 
   private def localAddress(ch: SocketChannel): SocketAddress[IpAddress] =
     SocketAddress.fromInetSocketAddress(

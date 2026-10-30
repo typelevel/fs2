@@ -97,6 +97,21 @@ private[net] trait SocketOptionCompanionPlatform {
     def `type`() = classOf[SocketAddress[IpAddress]]
   }
 
+  /** Sets the maximum number of pending connections on a server socket, i.e., the `backlog`
+    * argument passed to `listen`. Only applies when binding a server socket. The value must be
+    * positive. When not specified, the default depends on the socket provider: the JDK default
+    * (50) for JDK sockets, 128 for JNR unix sockets, and 0 on Scala Native (which the OS may
+    * round up).
+    */
+  val Backlog: Key[JInt] = new Key[JInt] {
+    def name() = "FS2_BACKLOG"
+    def `type`() = classOf[JInt]
+  }
+  def backlog(value: Int): SocketOption = {
+    require(value > 0, s"backlog must be positive, was $value")
+    integer(Backlog, value)
+  }
+
   val UnixSocketDeleteIfExists: Key[JBoolean] = new Key[JBoolean] {
     def name() = "FS2_UNIX_DELETE_IF_EXISTS"
     def `type`() = classOf[JBoolean]

@@ -78,6 +78,8 @@ sealed trait Network[F[_]]
     * TCP is used when the supplied address contains an IP address or hostname. Unix sockets are also
     * supported (when the supplied address contains a unix socket address).
     *
+    * The listen backlog of the server socket can be set with `SocketOption.backlog`.
+    *
     * @param address              address to bind to
     * @param options              socket options to apply to each accepted socket
     */

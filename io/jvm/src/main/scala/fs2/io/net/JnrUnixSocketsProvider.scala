@@ -61,12 +61,18 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
       )
       .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
 
-  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) =
+  protected def openServerChannel(address: UnixSocketAddress, options: List[SocketOption]) = {
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(options)
     Resource
       .make(F.blocking(UnixServerSocketChannel.open()))(ch => F.blocking(ch.close()))
       .evalTap { sch =>
-        F.blocking(sch.socket().bind(new JnrUnixSocketAddress(address.path)))
-          .cancelable(F.blocking(sch.close()))
+        F.blocking {
+          val addr = new JnrUnixSocketAddress(address.path)
+          backlog match {
+            case Some(b) => sch.socket().bind(addr, b)
+            case None    => sch.socket().bind(addr)
+          }
+        }.cancelable(F.blocking(sch.close()))
       }
       .map { sch =>
         def raiseOptionError[A]: F[A] =
@@ -87,6 +93,7 @@ private[net] class JnrUnixSocketsProvider[F[_]](implicit F: Async[F], F2: Files[
             .makeFull[F, SocketChannel] { poll =>
               F.widen(poll(F.blocking(sch.accept).cancelable(F.blocking(sch.close()))))
             }(ch => F.blocking(ch.close()))
-            .evalTap(ch => F.delay(options.foreach(o => ch.setOption(o.key, o.value))))
+            .evalTap(ch => F.delay(filteredOptions.foreach(o => ch.setOption(o.key, o.value))))
       }
+  }
 }

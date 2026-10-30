@@ -84,6 +84,7 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = for {
     poller <- Resource.eval(fileDescriptorPoller[F])
+    (filteredOptions, backlog) = SocketOption.extractBacklog(options)
     resolvedHost <- Resource.eval(address.host.resolve)
     ipv4 = resolvedHost.isInstanceOf[Ipv4Address]
     fd <- SocketHelpers.openNonBlocking(if (ipv4) AF_INET else AF_INET6, SOCK_STREAM)
@@ -97,7 +98,9 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
         }
       }
 
-      SocketHelpers.setOption(fd, SO_REUSEADDR, 1) *> bindF *> F.delay(guard_(listen(fd, 0)))
+      SocketHelpers.setOption(fd, SO_REUSEADDR, 1) *> bindF *> F.delay(
+        guard_(listen(fd, backlog.getOrElse(0)))
+      )
     }
 
     sockets = Stream
@@ -131,7 +134,9 @@ private final class FdPollingIpSocketsProvider[F[_]: Dns: LiftIO](implicit F: As
           (_, fd) = addrFd
           _ <- Resource.eval {
             val setNonBlock = if (!LinktimeInfo.isLinux) setNonBlocking(fd) else F.unit
-            setNonBlock *> options.traverse(so => SocketHelpers.setOption(fd, so.key, so.value))
+            setNonBlock *> filteredOptions.traverse(so =>
+              SocketHelpers.setOption(fd, so.key, so.value)
+            )
           }
           handle <- poller.registerFileDescriptor(fd, true, true).mapK(LiftIO.liftK)
           socket <- FdPollingSocket[F](

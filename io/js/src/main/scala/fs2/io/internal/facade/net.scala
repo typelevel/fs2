@@ -53,6 +53,8 @@ private[io] object net {
 
     def listen(port: Int, host: String, connectListener: js.Function0[Unit]): Server = js.native
 
+    def listen(options: ListenOptions, connectListener: js.Function0[Unit]): Server = js.native
+
   }
 
   @js.native
@@ -70,6 +72,9 @@ private[io] object net {
 
   trait ListenOptions extends js.Object {
     var path: js.UndefOr[String] = js.undefined
+    var port: js.UndefOr[Int] = js.undefined
+    var host: js.UndefOr[String] = js.undefined
+    var backlog: js.UndefOr[Int] = js.undefined
   }
 
   trait SocketOptions extends js.Object {
