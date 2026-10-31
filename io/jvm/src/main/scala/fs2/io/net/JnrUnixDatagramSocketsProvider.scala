@@ -67,9 +67,10 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
 
-    delete *> Resource
+    Resource.eval(deleteIfExists) *> Resource
       .make(F.blocking(UnixDatagramChannel.open()))(ch => F.blocking(ch.close()))
       .evalTap { ch =>
         F.blocking(ch.bind(new JnrUnixSocketAddress(address.path)))
@@ -197,5 +198,6 @@ private[net] class JnrUnixDatagramSocketsProvider[F[_]](implicit F: Async[F], F2
             )
         }
       }
+      .flatMap(server => deleteOnClose.map(_ => server))
   }
 }
