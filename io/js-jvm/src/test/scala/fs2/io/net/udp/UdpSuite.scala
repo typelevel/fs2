@@ -31,6 +31,14 @@ import com.comcast.ip4s._
 
 import scala.concurrent.duration._
 
+object UdpSuite {
+
+  /** Tags tests that send multicast to the local network, which the macOS 15+ GitHub runners block
+    * (https://github.com/actions/runner-images/issues/10924), so the macOS CI job excludes them.
+    */
+  val Multicast = new munit.Tag("Multicast")
+}
+
 class IOUdpSuite extends UdpSuite {
   protected override val network = Network[IO]
 }
@@ -128,7 +136,7 @@ trait UdpSuite extends Fs2Suite with UdpSuitePlatform {
         .assertEquals(msg)
     }
 
-    test("multicast") {
+    test("multicast".tag(UdpSuite.Multicast)) {
       val group = mip"239.10.10.10"
       val groupJoin = MulticastJoin.asm(group)
       val msg = Chunk.array("Hello, world!".getBytes)
