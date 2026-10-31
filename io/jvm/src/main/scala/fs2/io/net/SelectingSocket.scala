@@ -89,17 +89,44 @@ private final class SelectingSocket[F[_]: LiftIO] private (
       go
     }
 
+  /** Reads up to `max - filled` bytes in to `dest` at offset `filled`, without waiting for the
+    * channel to become readable. `dest` is allocated with size `max` once the first bytes arrive,
+    * so that each byte is copied only once, out of the scratch buffer, and so that a socket waiting
+    * for its first bytes doesn't hold on to an array.
+    *
+    * Returns the (possibly newly allocated) destination and the number of bytes read, which is
+    * negative at end-of-stream.
+    */
+  private def readAvailableInto(
+      dest: Array[Byte],
+      filled: Int,
+      max: Int
+  ): F[(Array[Byte], Int)] =
+    F.delay {
+      val buffer = SelectingSocket.scratchBuffer(max - filled)
+      val read = ch.read(buffer)
+      if (read <= 0) (dest, read)
+      else {
+        val target = if (dest.length == 0) new Array[Byte](max) else dest
+        (buffer: Buffer).flip()
+        buffer.get(target, filled, read)
+        (target, read)
+      }
+    }
+
   def readN(max: Int): F[Chunk[Byte]] =
     readMutex.lock.surround {
-      def go(acc: Chunk[Byte]): F[Chunk[Byte]] =
-        if (acc.size >= max) F.pure(acc)
+      def go(dest: Array[Byte], filled: Int): F[Chunk[Byte]] =
+        if (filled >= max) F.pure(Chunk.array(dest))
         else
-          readAvailable(max - acc.size).flatMap {
-            case None                         => F.pure(acc)
-            case Some(bytes) if bytes.isEmpty => awaitReadable >> go(acc)
-            case Some(bytes)                  => go(acc ++ bytes)
+          readAvailableInto(dest, filled, max).flatMap {
+            case (next, read) if read < 0 =>
+              // end-of-stream before `max` bytes; don't retain the unused part of `dest`
+              F.pure(Chunk.array(java.util.Arrays.copyOf(next, filled)))
+            case (next, 0)    => awaitReadable >> go(next, filled)
+            case (next, read) => go(next, filled + read)
           }
-      go(Chunk.empty).map(_.compact)
+      if (max <= 0) F.pure(Chunk.empty) else go(Array.emptyByteArray, 0)
     }
 
   def reads: Stream[F, Byte] =
@@ -166,22 +193,30 @@ private final class SelectingSocket[F[_]: LiftIO] private (
 private object SelectingSocket {
   private final val DefaultReadSize = 8192
 
+  /** Upper bound on the size of a scratch buffer. Each thread keeps its buffer for as long as it
+    * lives, so a single large read must not leave a large buffer behind.
+    */
+  private final val MaxScratchSize = 64 * 1024
+
   private[this] val scratchBuffers = new ThreadLocal[ByteBuffer]
 
-  /** Returns the current thread's scratch buffer, cleared and with its limit set to `size`.
+  /** Returns the current thread's scratch buffer, cleared and with its limit set to `size`, capped
+    * at `MaxScratchSize`. A single read may therefore return fewer than `size` bytes, which callers
+    * already allow for.
     *
     * The buffer is only used within a single synchronous read and its contents are copied out
     * before returning, so it never escapes the reading thread. It is a direct buffer, so the
     * channel reads in to it without going through the JDK's own per-thread temporary buffer.
     */
   private def scratchBuffer(size: Int): ByteBuffer = {
+    val limit = math.min(size, MaxScratchSize)
     var buffer = scratchBuffers.get()
-    if (buffer == null || buffer.capacity() < size) {
-      buffer = ByteBuffer.allocateDirect(math.max(size, DefaultReadSize))
+    if (buffer == null || buffer.capacity() < limit) {
+      buffer = ByteBuffer.allocateDirect(math.max(limit, DefaultReadSize))
       scratchBuffers.set(buffer)
     }
     (buffer: Buffer).clear()
-    (buffer: Buffer).limit(size)
+    (buffer: Buffer).limit(limit)
     buffer
   }
 

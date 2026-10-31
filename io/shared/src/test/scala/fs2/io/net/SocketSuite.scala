@@ -143,6 +143,64 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .assertEquals((bytes("hello"), bytes("world"), Some(bytes("!")), None))
     }
 
+    test("read and readN handle sizes larger than a single channel read") {
+      val data = Chunk.array(Array.tabulate(1024 * 1024 + 1)(i => (i % 251).toByte))
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val bulkServer = server.map { socket =>
+            Stream.exec(socket.write(data)).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+
+          val client =
+            clients.take(1).evalMap { socket =>
+              for {
+                first <- socket.readN(700000)
+                second <- socket.read(4 * 1024 * 1024)
+                rest <- socket.reads.chunks.compile.fold(Chunk.empty[Byte])(_ ++ _)
+              } yield (
+                first.size,
+                second.exists(_.nonEmpty),
+                first ++ second.getOrElse(Chunk.empty) ++ rest
+              )
+            }
+
+          client.concurrently(bulkServer)
+        }
+        .compile
+        .lastOrError
+        .map { case (firstSize, secondNonEmpty, received) =>
+          assertEquals(firstSize, 700000)
+          assert(secondNonEmpty)
+          assertEquals(received, data)
+        }
+    }
+
+    // The Node.js socket doesn't return a partial chunk from readN at end-of-stream
+    if (isJVM || isNative)
+      test("readN returns the remaining bytes at end-of-stream") {
+        val data = Chunk.array(Array.tabulate(100000)(i => (i % 251).toByte))
+
+        Stream
+          .resource(setup)
+          .flatMap { case (server, clients) =>
+            val bulkServer = server.map { socket =>
+              Stream.exec(socket.write(data)).onFinalize(socket.endOfOutput)
+            }.parJoinUnbounded
+
+            val client =
+              clients.take(1).evalMap { socket =>
+                socket.readN(1024 * 1024).flatMap(bytes => socket.read(10).map((bytes, _)))
+              }
+
+            client.concurrently(bulkServer)
+          }
+          .compile
+          .lastOrError
+          .assertEquals((data, None))
+      }
+
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
 
