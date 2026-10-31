@@ -72,7 +72,7 @@ private[net] trait SocketCompanionPlatform {
       read(_.pull.unconsLimit(maxBytes))
 
     override def readN(numBytes: Int): F[Chunk[Byte]] =
-      OptionT(read(_.pull.unconsN(numBytes))).getOrElse(Chunk.empty)
+      OptionT(read(_.pull.unconsN(numBytes, allowFewer = true))).getOrElse(Chunk.empty)
 
     override def reads: Stream[F, Byte] = readStream.stream
 
