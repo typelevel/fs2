@@ -23,10 +23,40 @@ package fs2
 package io.net
 
 import cats.effect.IO
+import com.comcast.ip4s.UnixSocketAddress
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  if (JdkUnixSocketsProvider.supported)
+  private def testBindFailureKeepsPath(
+      provider: String,
+      sockets: UnixSocketsProvider[IO]
+  ) =
+    test(s"does not delete the path when binding fails - $provider") {
+      val address = UnixSocketAddress(s"fs2-unix-sockets-bind-failure-$provider.sock")
+      val path = java.nio.file.Paths.get(address.path)
+      java.nio.file.Files
+        .write(path, "not a socket".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      for {
+        result <- sockets.bindUnix(address, Nil).use(_ => IO.unit).attempt
+        exists = java.nio.file.Files.exists(path)
+        _ <- IO(java.nio.file.Files.deleteIfExists(path))
+      } yield {
+        assert(result.isLeft, "binding to an existing path should fail")
+        assert(exists, "a failed bind must not delete the existing path")
+      }
+    }
+
+  if (JdkUnixSocketsProvider.supported) {
     testProvider("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
-  if (JnrUnixSocketsProvider.supported)
+    testBindFailureKeepsPath("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
+  }
+  // jnr native library is not available on Windows
+  if (
+    JnrUnixSocketsProvider.supported && !System
+      .getProperty("os.name")
+      .toLowerCase
+      .contains("windows")
+  ) {
     testProvider("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
+    testBindFailureKeepsPath("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
+  }
 }

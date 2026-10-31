@@ -47,7 +47,7 @@ object SocketOption extends SocketOptionCompanionPlatform {
   private[net] def extractUnixSocketDeletes[F[_]: Applicative: Files](
       options: List[SocketOption],
       address: UnixSocketAddress
-  ): (List[SocketOption], Resource[F, Unit]) = {
+  ): (List[SocketOption], F[Unit], Resource[F, Unit]) = {
     var deleteIfExists: Boolean = false
     var deleteOnClose: Boolean = true
 
@@ -63,12 +63,13 @@ object SocketOption extends SocketOptionCompanionPlatform {
       }
     }
 
-    val delete = Resource.make {
+    val deleteIfExistsAction =
       Files[F].deleteIfExists(Path(address.path)).whenA(deleteIfExists)
-    } { _ =>
-      Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
-    }
+    val deleteOnCloseResource =
+      Resource.make(Applicative[F].unit)(_ =>
+        Files[F].deleteIfExists(Path(address.path)).whenA(deleteOnClose)
+      )
 
-    (filteredOptions, delete)
+    (filteredOptions, deleteIfExistsAction, deleteOnCloseResource)
   }
 }
