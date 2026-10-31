@@ -113,6 +113,28 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .assertEquals(sizes)
     }
 
+    test("readN returns the remaining bytes when the peer closes before enough arrive") {
+      val message = Chunk.array("hello".getBytes)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val closingServer = server.map { socket =>
+            Stream.exec(socket.write(message)).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+
+          val client =
+            clients.take(1).evalMap { socket =>
+              socket.readN(message.size + 10).flatMap(bytes => socket.read(10).map((bytes, _)))
+            }
+
+          client.concurrently(closingServer)
+        }
+        .compile
+        .lastOrError
+        .assertEquals((message, None))
+    }
+
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
 
