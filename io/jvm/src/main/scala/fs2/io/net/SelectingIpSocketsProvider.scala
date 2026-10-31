@@ -22,19 +22,12 @@
 package fs2
 package io.net
 
-import scala.concurrent.duration._
-
 import cats.effect.{Async, LiftIO, Resource, Selector}
 import cats.syntax.all._
 import com.comcast.ip4s.{Dns, Host, IpAddress, SocketAddress}
 
 import java.net.InetSocketAddress
-import java.nio.channels.{
-  AsynchronousCloseException,
-  ClosedChannelException,
-  SelectionKey,
-  SocketChannel
-}
+import java.nio.channels.{SelectionKey, SocketChannel}
 
 private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implicit
     F: Async[F],
@@ -85,11 +78,9 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] =
     Resource
-      .make(F.delay(selector.provider.openServerSocketChannel())) { ch =>
-        // sleep time set to be short enough to not noticeably delay shutdown but long enough to
-        // give the runtime/cpu time to do something else; some guesswork involved here
-        F.delay(ch.close()) >> F.whileM_(F.delay(ch.isRegistered()))(F.sleep(2.millis))
-      }
+      .make(F.delay(selector.provider.openServerSocketChannel()))(
+        SelectingSocket.closeServerChannel[F]
+      )
       .evalMap { sch =>
         val configure = address.host.resolve.flatMap { addr =>
           F.delay {
@@ -103,22 +94,7 @@ private final class SelectingIpSocketsProvider[F[_]](selector: Selector)(implici
           }
         }
 
-        def acceptLoop: Stream[F, SocketChannel] = Stream
-          .bracketFull[F, SocketChannel] { poll =>
-            def go: F[SocketChannel] =
-              F.delay(sch.accept()).flatMap {
-                case null => poll(selector.select(sch, SelectionKey.OP_ACCEPT).to) *> go
-                case ch   => F.pure(ch)
-              }
-            go
-          }((ch, _) => F.delay(ch.close()))
-          .repeat
-          .handleErrorWith {
-            case _: AsynchronousCloseException | _: ClosedChannelException => acceptLoop
-            case ex                                                        => Stream.raiseError(ex)
-          }
-
-        val accept = acceptLoop.evalMap { ch =>
+        val accept = SelectingSocket.acceptLoop[F](selector, sch).evalMap { ch =>
           F.delay {
             ch.configureBlocking(false)
             options.foreach(opt => ch.setOption(opt.key, opt.value))

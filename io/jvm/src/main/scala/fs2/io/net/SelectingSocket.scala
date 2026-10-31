@@ -29,20 +29,26 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
 import java.nio.{Buffer, ByteBuffer}
-import java.nio.channels.SelectionKey.OP_READ
-import java.nio.channels.SelectionKey.OP_WRITE
-import java.nio.channels.SocketChannel
+import java.nio.channels.{
+  AsynchronousCloseException,
+  ClosedChannelException,
+  ServerSocketChannel,
+  SocketChannel
+}
+import java.nio.channels.SelectionKey.{OP_ACCEPT, OP_READ, OP_WRITE}
+
+import scala.concurrent.duration._
 
 private final class SelectingSocket[F[_]: LiftIO] private (
     selector: Selector,
     ch: SocketChannel,
     readMutex: Mutex[F],
     writeMutex: Mutex[F],
-    override val address: SocketAddress[IpAddress],
-    val peerAddress: SocketAddress[IpAddress]
+    override val address: GenSocketAddress,
+    val peerAddress: GenSocketAddress
 )(implicit F: Async[F])
     extends Socket[F]
     with SocketInfo.AsyncSocketInfo[F] {
@@ -51,10 +57,10 @@ private final class SelectingSocket[F[_]: LiftIO] private (
   protected def channel = ch
 
   override def localAddress: F[SocketAddress[IpAddress]] =
-    asyncInstance.pure(address)
+    asyncInstance.delay(address.asIpUnsafe)
 
   override def remoteAddress: F[SocketAddress[IpAddress]] =
-    asyncInstance.pure(peerAddress)
+    asyncInstance.delay(peerAddress.asIpUnsafe)
 
   /** Reads up to `max` bytes without waiting for the channel to become readable.
     *
@@ -220,11 +226,37 @@ private object SelectingSocket {
     buffer
   }
 
+  /** Accepts connections on a non-blocking server channel, waiting on `selector` between them. */
+  def acceptLoop[F[_]: LiftIO](selector: Selector, sch: ServerSocketChannel)(implicit
+      F: Async[F]
+  ): Stream[F, SocketChannel] =
+    Stream
+      .bracketFull[F, SocketChannel] { poll =>
+        def go: F[SocketChannel] =
+          F.delay(sch.accept()).flatMap {
+            case null => poll(selector.select(sch, OP_ACCEPT).to) *> go
+            case ch   => F.pure(ch)
+          }
+        go
+      }((ch, _) => F.delay(ch.close()))
+      .repeat
+      .handleErrorWith {
+        case _: AsynchronousCloseException | _: ClosedChannelException =>
+          acceptLoop(selector, sch)
+        case ex => Stream.raiseError(ex)
+      }
+
+  /** Closes a server channel and waits for it to be deregistered from the selector. */
+  def closeServerChannel[F[_]](sch: ServerSocketChannel)(implicit F: Async[F]): F[Unit] =
+    // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+    // give the runtime/cpu time to do something else; some guesswork involved here
+    F.delay(sch.close()) >> F.whileM_(F.delay(sch.isRegistered()))(F.sleep(2.millis))
+
   def apply[F[_]: LiftIO](
       selector: Selector,
       ch: SocketChannel,
-      address: SocketAddress[IpAddress],
-      remoteAddress: SocketAddress[IpAddress]
+      address: GenSocketAddress,
+      remoteAddress: GenSocketAddress
   )(implicit F: Async[F]): F[Socket[F]] =
     (Mutex[F], Mutex[F]).flatMapN { (readMutex, writeMutex) =>
       F.delay {

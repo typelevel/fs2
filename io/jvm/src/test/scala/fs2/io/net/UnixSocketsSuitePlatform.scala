@@ -23,10 +23,42 @@ package fs2
 package io.net
 
 import cats.effect.IO
+import cats.syntax.all._
+import com.comcast.ip4s.UnixSocketAddress
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
   if (JdkUnixSocketsProvider.supported)
     testProvider("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
   if (JnrUnixSocketsProvider.supported)
     testProvider("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
+
+  if (JdkUnixSocketsProvider.supported) {
+    // Network[IO] picks the selecting provider, as the IO runtime has a Selector
+    testProvider(
+      "selecting",
+      new UnixSocketsProvider[IO] {
+        def connectUnix(address: UnixSocketAddress, options: List[SocketOption]) =
+          Network[IO].connect(address, options)
+        def bindUnix(address: UnixSocketAddress, options: List[SocketOption]) =
+          Network[IO].bind(address, options)
+      }
+    )
+
+    test("Network uses selecting sockets for unix sockets when a Selector is available") {
+      val address = UnixSocketAddress("fs2-unix-sockets-selecting-test.sock")
+      Network[IO]
+        .bind(address, Nil)
+        .flatMap { server =>
+          Network[IO]
+            .connect(address, Nil)
+            .product(server.accept.take(1).compile.resource.lastOrError)
+        }
+        .use { case (client, accepted) =>
+          IO {
+            assertEquals(client.getClass.getSimpleName, "SelectingSocket")
+            assertEquals(accepted.getClass.getSimpleName, "SelectingSocket")
+          }
+        }
+    }
+  }
 }

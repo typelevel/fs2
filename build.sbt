@@ -393,7 +393,10 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ),
   // private class, no longer extends Socket.BufferedReads
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.net.SelectingSocket"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.readChunk")
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.readChunk"),
+  // private class, now also used for unix sockets
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.address"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.peerAddress")
 )
 
 // Disables unused import warnings on generated source due to https://github.com/sbt-doctest/sbt-doctest/issues/779
