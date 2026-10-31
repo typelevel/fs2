@@ -14,7 +14,7 @@ ThisBuild / startYear := Some(2013)
 val Scala213 = "2.13.18"
 
 ThisBuild / scalaVersion := Scala213
-ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.8")
+ThisBuild / crossScalaVersions := Seq("2.12.21", Scala213, "3.3.9")
 ThisBuild / tlVersionIntroduced := Map("3" -> "3.0.3")
 
 ThisBuild / githubWorkflowOSes := Seq("ubuntu-latest")
@@ -490,7 +490,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.39.3" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.39.7" % Optional,
       "com.google.jimfs" % "jimfs" % "1.3.2" % Test
     )
   )
