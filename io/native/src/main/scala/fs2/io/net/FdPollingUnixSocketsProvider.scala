@@ -32,12 +32,12 @@ import fs2.io.file.Files
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.SocketHelpers
 import fs2.io.internal.syssocket.{connect => uconnect, bind => ubind, _}
-import fs2.io.internal.sysun._
-import fs2.io.internal.sysunOps._
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket.{accept => _, _}
+import scala.scalanative.posix.sys.un._
+import scala.scalanative.posix.sys.unOps._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
