@@ -37,13 +37,12 @@ ThisBuild / githubWorkflowAddedJobs +=
     scalas = Nil,
     sbtStepPreamble = Nil,
     javas = List(githubWorkflowJavaVersions.value.head),
-    oses = List(
-      "macos-14"
-    ), // FIXME: macos-15 breaks sending multicast to local network - https://github.com/actions/runner-images/issues/10924
+    oses = List("macos-15"),
     matrixAdds = Map("project" -> List("ioJS", "ioJVM", "ioNative")),
     steps = githubWorkflowJobSetup.value.toList ++ List(
       WorkflowStep.Run(List("brew install s2n"), cond = Some("matrix.project == 'ioNative'")),
-      WorkflowStep.Sbt(List("${{ matrix.project }}/test"))
+      // macOS 15+ runners block sending multicast to the local network - https://github.com/actions/runner-images/issues/10924
+      WorkflowStep.Sbt(List("${{ matrix.project }}/testOnly -- --exclude-tags=Multicast"))
     )
   )
 
@@ -431,7 +430,7 @@ lazy val core = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.typelevel" %%% "cats-laws" % "2.13.0" % Test,
       "org.typelevel" %%% "cats-mtl-laws" % "1.7.0" % Test,
       "org.typelevel" %%% "discipline-munit" % "2.0.0" % Test,
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test,
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test,
       "org.typelevel" %%% "scalacheck-effect-munit" % "2.1.0" % Test
     ),
     tlJdkRelease := None,
@@ -468,7 +467,7 @@ lazy val integration = project
     fork := true,
     javaOptions += "-Dcats.effect.tracing.mode=none",
     libraryDependencies ++= Seq(
-      "org.typelevel" %%% "munit-cats-effect" % "2.2.0" % Test
+      "org.typelevel" %%% "munit-cats-effect" % "2.2.1" % Test
     )
   )
   .enablePlugins(NoPublishPlugin)
@@ -487,7 +486,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.39.7" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.39.8" % Optional,
       "com.google.jimfs" % "jimfs" % "1.3.2" % Test
     )
   )
