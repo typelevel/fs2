@@ -24,6 +24,8 @@ package io
 package net
 package tls
 
+import scodec.bits.ByteVector
+
 /** TCP socket that supports encryption via TLS.
   *
   * To construct a `TLSSocket`, use the `client` and `server` methods on `TLSContext`.
@@ -38,6 +40,18 @@ sealed trait TLSSocket[F[_]] extends Socket[F] with TLSSocketPlatform[F] {
   /** Provides access to the current application protocol that has been negotiated.
     */
   def applicationProtocol: F[String]
+
+  /** Provides access to the peer's certificate chain, DER-encoded, with the peer's own
+    * certificate first. Contains only certificates accepted by the trust configuration
+    * during the handshake, and is empty if the peer presented none.
+    *
+    * On the JVM, this is the chain as sent by the peer, so a trust manager that accepts
+    * everything (such as `insecure`) returns unverified certificates. It is empty until
+    * the handshake completes on the first read or write. On Node.js and Scala Native,
+    * this is the verified chain including the trusted root, and is empty if verification
+    * was skipped.
+    */
+  def peerCertificates: F[List[ByteVector]]
 
 }
 

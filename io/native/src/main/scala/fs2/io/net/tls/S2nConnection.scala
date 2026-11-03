@@ -55,6 +55,8 @@ private[tls] trait S2nConnection[F[_]] {
 
   def session: F[SSLSession]
 
+  def peerCertificates: F[List[ByteVector]]
+
 }
 
 private[tls] object S2nConnection {
@@ -206,6 +208,28 @@ private[tls] object S2nConnection {
         val buf = new Array[Byte](len)
         val copied = guard(s2n_connection_get_session(conn, buf.atUnsafe(0), len.toUInt))
         new SSLSession(ByteVector.view(buf, 0, copied))
+      }
+
+      def peerCertificates = F.delay {
+        val chain = guard(s2n_cert_chain_and_key_new())
+        try
+          // Fails when there is no verified peer chain: S2N_ERR_CERT_NOT_VALIDATED if the
+          // peer sent no certificate, S2N_ERR_NULL if verification is disabled
+          if (s2n_connection_get_peer_cert_chain(conn, chain) != S2N_SUCCESS) Nil
+          else {
+            val length = stackalloc[CUnsignedInt]()
+            guard_(s2n_cert_chain_get_length(chain, length))
+            val cert = stackalloc[Ptr[s2n_cert]]()
+            val der = stackalloc[Ptr[Byte]]()
+            val derLength = stackalloc[CUnsignedInt]()
+            List.tabulate((!length).toInt) { i =>
+              guard_(s2n_cert_chain_get_cert(chain, cert, i.toUInt))
+              guard_(s2n_cert_get_der(!cert, der, derLength))
+              // Copies, as `der` points into `chain`, which is freed below
+              ByteVector.fromPtr(!der, (!derLength).toLong)
+            }
+          }
+        finally guard_(s2n_cert_chain_and_key_free(chain))
       }
 
       private def blindingSleep: F[Unit] =
