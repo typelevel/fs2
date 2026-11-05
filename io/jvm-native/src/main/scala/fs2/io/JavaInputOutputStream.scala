@@ -123,7 +123,7 @@ private[io] object JavaInputOutputStream {
             }
           case None =>
             n match {
-              case Done(None)      => -1.pure[F]
+              case Done(None)      => (-1).pure[F]
               case Done(Some(err)) =>
                 F.raiseError[Int](new IOException("Stream is in failed state", err))
               case _ =>

@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.comcast.ip4s.{UnknownHostException => Ip4sUnknownHostException, _}
 
 import scala.concurrent.duration._
@@ -113,6 +114,28 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .assertEquals(sizes)
     }
 
+    test("readN returns the remaining bytes when the peer closes before enough arrive") {
+      val message = Chunk.array("hello".getBytes)
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val closingServer = server.map { socket =>
+            Stream.exec(socket.write(message)).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+
+          val client =
+            clients.take(1).evalMap { socket =>
+              socket.readN(message.size + 10).flatMap(bytes => socket.read(10).map((bytes, _)))
+            }
+
+          client.concurrently(closingServer)
+        }
+        .compile
+        .lastOrError
+        .assertEquals((message, None))
+    }
+
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
 
@@ -167,7 +190,9 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         _ <- Network[IO]
           .connect(SocketAddress(host"localhost", port))
           .use_
-          .interceptMessage[ConnectException]("Connection refused")
+          .intercept[ConnectException]
+          // Newer JDKs append details, e.g. "Connection refused (connect failed)"
+          .map(ex => assert(ex.getMessage.startsWith("Connection refused"), ex.getMessage))
       } yield ()
 
       val addressAlreadyInUse =
@@ -175,7 +200,8 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
           Network[IO]
             .bind(serverSocket.address)
             .use_
-            .interceptMessage[BindException]("Address already in use")
+            .intercept[BindException]
+            .map(ex => assert(ex.getMessage.startsWith("Address already in use"), ex.getMessage))
         }
 
       val unknownHost = Network[IO]
@@ -227,6 +253,36 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .map { msgs =>
           assertEquals(msgs, Vector(msg))
         }
+    }
+
+    test("backlog - pending connections are queued before being accepted") {
+      // More than the JVM's default backlog of 50
+      val clientCount = 64
+
+      Network[IO]
+        .bind(
+          SocketAddress(ip"127.0.0.1", Port.Wildcard),
+          List(SocketOption.backlog(clientCount))
+        )
+        .use { serverSocket =>
+          // Connect all clients before accepting any of them, so they have to wait in the backlog
+          List
+            .fill(clientCount)(Network[IO].connect(serverSocket.address))
+            .parSequence
+            .use { _ =>
+              serverSocket.accept
+                .take(clientCount.toLong)
+                .compile
+                .count
+            }
+        }
+        .timeout(timeout)
+        .assertEquals(clientCount.toLong)
+    }
+
+    test("backlog - non-positive values are rejected") {
+      intercept[IllegalArgumentException](SocketOption.backlog(0))
+      intercept[IllegalArgumentException](SocketOption.backlog(-1))
     }
 
     test("read after timed out read") {
