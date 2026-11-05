@@ -36,7 +36,7 @@ import com.comcast.ip4s.{
 import java.net.SocketOption
 import java.net.StandardSocketOptions
 import scala.scalanative.meta.LinktimeInfo
-import scala.scalanative.posix.errno.ENOPROTOOPT
+import scala.scalanative.posix.errno.{ENOPROTOOPT, ENOTCONN, errno}
 import scala.scalanative.posix.netinet.in.IPPROTO_TCP
 import scala.scalanative.posix.netinet.tcp._
 import scala.scalanative.posix.string._
@@ -253,6 +253,15 @@ private[io] object SocketHelpers {
     SocketHelpers.toSocketAddress(domain) { (addr, len) =>
       guard_(getsockname(fd, addr, len))
     }
+
+  /** Whether a non-blocking `connect` has completed. `getpeername` fails with
+    * `ENOTCONN` while the connection is still being established.
+    */
+  def isConnected(fd: Int, domain: CInt): Boolean = allocateSockaddr(domain) { (addr, len) =>
+    if (getpeername(fd, addr, len) == 0) true
+    else if (errno == ENOTCONN) false
+    else throw errnoToThrowable(errno)
+  }
 
   def getPeerAddress(fd: Int, domain: CInt): GenSocketAddress =
     SocketHelpers.toSocketAddress(domain) { (addr, len) =>
