@@ -60,9 +60,12 @@ private[net] abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: As
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val bound =
+      openServerChannel(address, filteredOptions).flatMap(server => deleteOnClose.map(_ => server))
 
-    (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
+    (Resource.eval(deleteIfExists) *> bound).map { case (info, accept) =>
       val acceptIncoming =
         Stream
           .resource(accept.attempt)

@@ -65,8 +65,12 @@ private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
-    delete *> bindIpOrUnix(Right(address), filteredOptions)
+    val (filteredOptions, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val bound = bindIpOrUnix(Right(address), filteredOptions).flatMap(server =>
+      deleteOnClose.map(_ => server)
+    )
+    Resource.eval(deleteIfExists) *> bound
   }
 
   override def bindDatagramSocket(
@@ -79,8 +83,12 @@ private[net] final class AsyncSocketsProvider[F[_]](implicit F: Async[F])
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, DatagramSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
-    delete *> bindDatagramSocketIpOrUnix(Right(address), filteredOptions)
+    val (filteredOptions, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val bound = bindDatagramSocketIpOrUnix(Right(address), filteredOptions).flatMap(server =>
+      deleteOnClose.map(_ => server)
+    )
+    Resource.eval(deleteIfExists) *> bound
   }
 
   private def setSocketOptions(options: List[SocketOption])(socket: facade.net.Socket): F[Unit] =
