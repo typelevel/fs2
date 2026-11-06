@@ -24,6 +24,7 @@ package io
 package net
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.comcast.ip4s.{UnknownHostException => Ip4sUnknownHostException, _}
 
 import scala.concurrent.duration._
@@ -177,29 +178,49 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         }
     }
 
-    // The Node.js socket doesn't return a partial chunk from readN at end-of-stream
-    if (isJVM || isNative)
-      test("readN returns the remaining bytes at end-of-stream") {
-        val data = Chunk.array(Array.tabulate(100000)(i => (i % 251).toByte))
+    test("readN returns the remaining bytes when the peer closes before enough arrive") {
+      val message = Chunk.array("hello".getBytes)
 
-        Stream
-          .resource(setup)
-          .flatMap { case (server, clients) =>
-            val bulkServer = server.map { socket =>
-              Stream.exec(socket.write(data)).onFinalize(socket.endOfOutput)
-            }.parJoinUnbounded
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val closingServer = server.map { socket =>
+            Stream.exec(socket.write(message)).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
 
-            val client =
-              clients.take(1).evalMap { socket =>
-                socket.readN(1024 * 1024).flatMap(bytes => socket.read(10).map((bytes, _)))
-              }
+          val client =
+            clients.take(1).evalMap { socket =>
+              socket.readN(message.size + 10).flatMap(bytes => socket.read(10).map((bytes, _)))
+            }
 
-            client.concurrently(bulkServer)
-          }
-          .compile
-          .lastOrError
-          .assertEquals((data, None))
-      }
+          client.concurrently(closingServer)
+        }
+        .compile
+        .lastOrError
+        .assertEquals((message, None))
+    }
+
+    test("readN returns the remaining bytes at end-of-stream after several reads") {
+      val data = Chunk.array(Array.tabulate(100000)(i => (i % 251).toByte))
+
+      Stream
+        .resource(setup)
+        .flatMap { case (server, clients) =>
+          val bulkServer = server.map { socket =>
+            Stream.exec(socket.write(data)).onFinalize(socket.endOfOutput)
+          }.parJoinUnbounded
+
+          val client =
+            clients.take(1).evalMap { socket =>
+              socket.readN(1024 * 1024).flatMap(bytes => socket.read(10).map((bytes, _)))
+            }
+
+          client.concurrently(bulkServer)
+        }
+        .compile
+        .lastOrError
+        .assertEquals((data, None))
+    }
 
     test("write - concurrent calls do not cause a WritePendingException") {
       val message = Chunk.array(("123456789012345678901234567890" * 10000).getBytes)
@@ -318,6 +339,36 @@ class SocketSuite extends Fs2Suite with SocketSuitePlatform {
         .map { msgs =>
           assertEquals(msgs, Vector(msg))
         }
+    }
+
+    test("backlog - pending connections are queued before being accepted") {
+      // More than the JVM's default backlog of 50
+      val clientCount = 64
+
+      Network[IO]
+        .bind(
+          SocketAddress(ip"127.0.0.1", Port.Wildcard),
+          List(SocketOption.backlog(clientCount))
+        )
+        .use { serverSocket =>
+          // Connect all clients before accepting any of them, so they have to wait in the backlog
+          List
+            .fill(clientCount)(Network[IO].connect(serverSocket.address))
+            .parSequence
+            .use { _ =>
+              serverSocket.accept
+                .take(clientCount.toLong)
+                .compile
+                .count
+            }
+        }
+        .timeout(timeout)
+        .assertEquals(clientCount.toLong)
+    }
+
+    test("backlog - non-positive values are rejected") {
+      intercept[IllegalArgumentException](SocketOption.backlog(0))
+      intercept[IllegalArgumentException](SocketOption.backlog(-1))
     }
 
     test("read after timed out read") {
