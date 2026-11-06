@@ -29,38 +29,117 @@ import cats.effect.Selector
 import cats.effect.kernel.Async
 import cats.effect.std.Mutex
 import cats.syntax.all._
-import com.comcast.ip4s.{IpAddress, SocketAddress}
+import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
 
-import java.nio.ByteBuffer
-import java.nio.channels.SelectionKey.OP_READ
-import java.nio.channels.SelectionKey.OP_WRITE
-import java.nio.channels.SocketChannel
+import java.nio.{Buffer, ByteBuffer}
+import java.nio.channels.{
+  AsynchronousCloseException,
+  ClosedChannelException,
+  ServerSocketChannel,
+  SocketChannel
+}
+import java.nio.channels.SelectionKey.{OP_ACCEPT, OP_READ, OP_WRITE}
+
+import scala.concurrent.duration._
 
 private final class SelectingSocket[F[_]: LiftIO] private (
     selector: Selector,
     ch: SocketChannel,
     readMutex: Mutex[F],
     writeMutex: Mutex[F],
-    override val address: SocketAddress[IpAddress],
-    val peerAddress: SocketAddress[IpAddress]
+    override val address: GenSocketAddress,
+    val peerAddress: GenSocketAddress
 )(implicit F: Async[F])
-    extends Socket.BufferedReads(readMutex)
+    extends Socket[F]
     with SocketInfo.AsyncSocketInfo[F] {
 
   protected def asyncInstance = F
   protected def channel = ch
 
   override def localAddress: F[SocketAddress[IpAddress]] =
-    asyncInstance.pure(address)
+    asyncInstance.delay(address.asIpUnsafe)
 
   override def remoteAddress: F[SocketAddress[IpAddress]] =
-    asyncInstance.pure(peerAddress)
+    asyncInstance.delay(peerAddress.asIpUnsafe)
 
-  protected def readChunk(buf: ByteBuffer): F[Int] =
-    F.delay(ch.read(buf)).flatMap { readed =>
-      if (readed == 0) selector.select(ch, OP_READ).to *> readChunk(buf)
-      else F.pure(readed)
+  /** Reads up to `max` bytes without waiting for the channel to become readable.
+    *
+    * The bytes are read in to the current thread's scratch buffer and copied to a new chunk, so
+    * that sockets don't hold on to a read buffer between reads. Returns `None` at end-of-stream
+    * and an empty chunk if no data is currently available.
+    */
+  private def readAvailable(max: Int): F[Option[Chunk[Byte]]] =
+    F.delay {
+      val buffer = SelectingSocket.scratchBuffer(max)
+      val read = ch.read(buffer)
+      if (read < 0) None
+      else if (read == 0) Some(Chunk.empty)
+      else {
+        val dest = new Array[Byte](read)
+        (buffer: Buffer).flip()
+        buffer.get(dest)
+        Some(Chunk.array(dest))
+      }
     }
+
+  private def awaitReadable: F[Unit] =
+    selector.select(ch, OP_READ).void.to
+
+  def read(max: Int): F[Option[Chunk[Byte]]] =
+    readMutex.lock.surround {
+      def go: F[Option[Chunk[Byte]]] =
+        readAvailable(max).flatMap {
+          case Some(bytes) if bytes.isEmpty && max > 0 => awaitReadable >> go
+          case result                                  => F.pure(result)
+        }
+      go
+    }
+
+  /** Reads up to `max - filled` bytes in to `dest` at offset `filled`, without waiting for the
+    * channel to become readable. `dest` is allocated with size `max` once the first bytes arrive,
+    * so that each byte is copied only once, out of the scratch buffer, and so that a socket waiting
+    * for its first bytes doesn't hold on to an array.
+    *
+    * Returns the (possibly newly allocated) destination and the number of bytes read, which is
+    * negative at end-of-stream.
+    */
+  private def readAvailableInto(
+      dest: Array[Byte],
+      filled: Int,
+      max: Int
+  ): F[(Array[Byte], Int)] =
+    F.delay {
+      val buffer = SelectingSocket.scratchBuffer(max - filled)
+      val read = ch.read(buffer)
+      if (read <= 0) (dest, read)
+      else {
+        val target = if (dest.length == 0) new Array[Byte](max) else dest
+        (buffer: Buffer).flip()
+        buffer.get(target, filled, read)
+        (target, read)
+      }
+    }
+
+  def readN(max: Int): F[Chunk[Byte]] =
+    readMutex.lock.surround {
+      def go(dest: Array[Byte], filled: Int): F[Chunk[Byte]] =
+        if (filled >= max) F.pure(Chunk.array(dest))
+        else
+          readAvailableInto(dest, filled, max).flatMap {
+            case (next, read) if read < 0 =>
+              // end-of-stream before `max` bytes; don't retain the unused part of `dest`
+              F.pure(Chunk.array(java.util.Arrays.copyOf(next, filled)))
+            case (next, 0)    => awaitReadable >> go(next, filled)
+            case (next, read) => go(next, filled + read)
+          }
+      if (max <= 0) F.pure(Chunk.empty) else go(Array.emptyByteArray, 0)
+    }
+
+  def reads: Stream[F, Byte] =
+    Stream.repeatEval(read(SelectingSocket.DefaultReadSize)).unNoneTerminate.unchunks
+
+  def writes: Pipe[F, Byte, Nothing] =
+    _.chunks.foreach(write)
 
   def write(bytes: Chunk[Byte]): F[Unit] = {
     def go(buf: ByteBuffer): F[Unit] =
@@ -118,11 +197,66 @@ private final class SelectingSocket[F[_]: LiftIO] private (
 }
 
 private object SelectingSocket {
+  private final val DefaultReadSize = 8192
+
+  /** Upper bound on the size of a scratch buffer. Each thread keeps its buffer for as long as it
+    * lives, so a single large read must not leave a large buffer behind.
+    */
+  private final val MaxScratchSize = 64 * 1024
+
+  private[this] val scratchBuffers = new ThreadLocal[ByteBuffer]
+
+  /** Returns the current thread's scratch buffer, cleared and with its limit set to `size`, capped
+    * at `MaxScratchSize`. A single read may therefore return fewer than `size` bytes, which callers
+    * already allow for.
+    *
+    * The buffer is only used within a single synchronous read and its contents are copied out
+    * before returning, so it never escapes the reading thread. It is a direct buffer, so the
+    * channel reads in to it without going through the JDK's own per-thread temporary buffer.
+    */
+  private def scratchBuffer(size: Int): ByteBuffer = {
+    val limit = math.min(size, MaxScratchSize)
+    var buffer = scratchBuffers.get()
+    if (buffer == null || buffer.capacity() < limit) {
+      buffer = ByteBuffer.allocateDirect(math.max(limit, DefaultReadSize))
+      scratchBuffers.set(buffer)
+    }
+    (buffer: Buffer).clear()
+    (buffer: Buffer).limit(limit)
+    buffer
+  }
+
+  /** Accepts connections on a non-blocking server channel, waiting on `selector` between them. */
+  def acceptLoop[F[_]: LiftIO](selector: Selector, sch: ServerSocketChannel)(implicit
+      F: Async[F]
+  ): Stream[F, SocketChannel] =
+    Stream
+      .bracketFull[F, SocketChannel] { poll =>
+        def go: F[SocketChannel] =
+          F.delay(sch.accept()).flatMap {
+            case null => poll(selector.select(sch, OP_ACCEPT).to) *> go
+            case ch   => F.pure(ch)
+          }
+        go
+      }((ch, _) => F.delay(ch.close()))
+      .repeat
+      .handleErrorWith {
+        case _: AsynchronousCloseException | _: ClosedChannelException =>
+          acceptLoop(selector, sch)
+        case ex => Stream.raiseError(ex)
+      }
+
+  /** Closes a server channel and waits for it to be deregistered from the selector. */
+  def closeServerChannel[F[_]](sch: ServerSocketChannel)(implicit F: Async[F]): F[Unit] =
+    // sleep time set to be short enough to not noticeably delay shutdown but long enough to
+    // give the runtime/cpu time to do something else; some guesswork involved here
+    F.delay(sch.close()) >> F.whileM_(F.delay(sch.isRegistered()))(F.sleep(2.millis))
+
   def apply[F[_]: LiftIO](
       selector: Selector,
       ch: SocketChannel,
-      address: SocketAddress[IpAddress],
-      remoteAddress: SocketAddress[IpAddress]
+      address: GenSocketAddress,
+      remoteAddress: GenSocketAddress
   )(implicit F: Async[F]): F[Socket[F]] =
     (Mutex[F], Mutex[F]).flatMapN { (readMutex, writeMutex) =>
       F.delay {
