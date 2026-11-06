@@ -83,7 +83,8 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
 
-    val (optionsWithoutDeletes, deleteIfExists, deleteOnClose) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (optionsWithoutDeletes, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
     val (filteredOptions, backlog) = SocketOption.extractBacklog(optionsWithoutDeletes)
 
     (for {
