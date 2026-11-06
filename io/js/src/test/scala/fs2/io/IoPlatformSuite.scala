@@ -141,6 +141,31 @@ class IoPlatformSuite extends Fs2Suite {
     }.take(2).compile.toList.assertEquals(List[Byte](0, 1))
   }
 
+  test("reads every chunk already buffered in a Readable") {
+    def readable = {
+      val duplex = new facade.stream.Duplex(
+        new facade.stream.DuplexOptions {
+          var autoDestroy = false
+          var read = _ => ()
+          var write = (_, _, _, _) => ()
+          var `final` = (_, _) => ()
+          var destroy = (_, _, _) => ()
+        }
+      )
+      List[Byte](0, 1, 2).foreach(b => duplex.push(Chunk(b, b).toUint8Array))
+      duplex
+    }
+
+    Stream
+      .resource(suspendReadableAndRead[IO, Duplex]()(readable))
+      .flatMap(_._2)
+      .take(6)
+      .compile
+      .toList
+      .timeout(1.second)
+      .assertEquals(List[Byte](0, 0, 1, 1, 2, 2))
+  }
+
   test("toReadable does not start input stream eagerly") {
     IO.ref(true).flatMap { notStarted =>
       toReadableResource(Stream.exec(notStarted.set(false))).surround {
