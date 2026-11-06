@@ -70,7 +70,8 @@ private final class SelectingUnixSocketsProvider[F[_]: Files](selector: Selector
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (withoutDeletes, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(withoutDeletes)
 
     delete *> Resource
       .make(
@@ -79,7 +80,7 @@ private final class SelectingUnixSocketsProvider[F[_]: Files](selector: Selector
       .evalMap { sch =>
         val configure = F.delay {
           sch.configureBlocking(false)
-          sch.bind(UnixDomainSocketAddress.of(address.path))
+          sch.bind(UnixDomainSocketAddress.of(address.path), backlog.getOrElse(0))
         }
 
         val accept = SelectingSocket.acceptLoop[F](selector, sch).evalMap { ch =>
