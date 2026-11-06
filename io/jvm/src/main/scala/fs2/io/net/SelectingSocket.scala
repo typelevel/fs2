@@ -77,6 +77,20 @@ private final class SelectingSocket[F[_]: LiftIO] private (
     }
   }
 
+  override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] = {
+    def go(buf: ByteBuffer): Pull[F, Int, Unit] =
+      Pull.eval(F.delay(ch.write(buf))).flatMap { written =>
+        if (buf.remaining() > 0)
+          Pull.eval(selector.select(ch, OP_WRITE).to).void >>
+            Pull.output1(written) >>
+            go(buf)
+        else Pull.output1(written)
+      }
+
+    Stream.resource(writeMutex.lock) >>
+      Stream.eval(F.delay(bytes.toByteBuffer)).flatMap(go(_).stream)
+  }
+
   def isOpen: F[Boolean] = F.delay(ch.isOpen)
 
   def endOfOutput: F[Unit] =
