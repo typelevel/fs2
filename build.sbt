@@ -389,6 +389,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.process.ProcessBuilder$ProcessBuilderImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
+  ),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem](
+    "fs2.io.net.SocketOption.extractUnixSocketDeletes"
   )
 )
 
