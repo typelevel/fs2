@@ -83,12 +83,14 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
 
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (optionsWithoutDeletes, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(optionsWithoutDeletes)
 
-    for {
+    (for {
       poller <- Resource.eval(fileDescriptorPoller[F])
 
-      _ <- delete
+      _ <- Resource.eval(deleteIfExists)
 
       fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
 
@@ -96,7 +98,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       _ <- Resource.eval {
         F.delay {
           toSockaddrUn(address.path)(addr => guard_(ubind(fd, addr, sizeof[sockaddr_un].toUInt)))
-        } *> F.delay(guard_(listen(fd, 0)))
+        } *> F.delay(guard_(listen(fd, backlog.getOrElse(0))))
       }
 
       address0 = address
@@ -153,7 +155,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         .repeat
         .unNone
 
-    } yield ServerSocket(info, clients)
+    } yield ServerSocket(info, clients)).flatMap(server => deleteOnClose.map(_ => server))
   }
 
   private def toSockaddrUn[A](path: String)(f: Ptr[sockaddr] => A): A = {
