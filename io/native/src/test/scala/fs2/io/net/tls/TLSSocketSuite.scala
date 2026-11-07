@@ -354,4 +354,77 @@ class TLSSocketSuite extends TLSSuite {
       checkStarvation.both(checkBlinding).void
     }
   }
+
+  test("present application protocol") {
+    val setup = for {
+      tlsContext <- testTlsContext
+      serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+      client = Network[IO]
+        .connect(serverSocket.address)
+        .flatMap(
+          tlsContext
+            .clientBuilder(_)
+            .withParameters(
+              TLSParameters(serverName = Some("Unknown"), protocolPreferences = Some(List("h2")))
+            )
+            .build
+        )
+    } yield serverSocket.accept.flatMap(s =>
+      Stream.resource(
+        tlsContext
+          .serverBuilder(s)
+          .withParameters(TLSParameters(protocolPreferences = Some(List("h2"))))
+          .build
+      )
+    ) -> client
+
+    Stream
+      .resource(setup)
+      .flatMap { case (server, clientSocket) =>
+        val echoServer = server.map { socket =>
+          socket.reads.chunks.foreach(socket.write(_))
+        }.parJoinUnbounded
+
+        val client = Stream.resource(clientSocket).evalMap { clientSocket =>
+          clientSocket.applicationProtocol
+        }
+
+        client.concurrently(echoServer)
+      }
+      .compile
+      .lastOrError
+      .map(assertEquals(_, "h2"))
+  }
+
+  test("missing application protocol") {
+    val setup = for {
+      tlsContext <- testTlsContext
+      serverSocket <- Network[IO].bind(SocketAddress(ip"127.0.0.1", Port.Wildcard))
+      client = Network[IO]
+        .connect(serverSocket.address)
+        .flatMap(
+          tlsContext
+            .clientBuilder(_)
+            .withParameters(TLSParameters(serverName = Some("Unknown")))
+            .build
+        )
+    } yield serverSocket.accept.flatMap(s => Stream.resource(tlsContext.server(s))) -> client
+
+    Stream
+      .resource(setup)
+      .flatMap { case (server, clientSocket) =>
+        val echoServer = server.map { socket =>
+          socket.reads.chunks.foreach(socket.write(_))
+        }.parJoinUnbounded
+
+        val client = Stream.resource(clientSocket).evalMap { clientSocket =>
+          clientSocket.applicationProtocol
+        }
+
+        client.concurrently(echoServer)
+      }
+      .compile
+      .lastOrError
+      .map(assertEquals(_, ""))
+  }
 }
