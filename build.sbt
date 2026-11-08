@@ -390,6 +390,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
   ),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem](
+    "fs2.io.net.SocketOption.extractUnixSocketDeletes"
+  ),
   // private class, no longer extends Socket.BufferedReads
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.net.SelectingSocket"),
   ProblemFilters.exclude[DirectMissingMethodProblem]("fs2.io.net.SelectingSocket.readChunk"),

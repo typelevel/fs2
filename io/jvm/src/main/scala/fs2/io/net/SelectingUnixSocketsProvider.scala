@@ -70,10 +70,13 @@ private final class SelectingUnixSocketsProvider[F[_]: Files](selector: Selector
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    val (withoutDeletes, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (withoutDeletes, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
     val (filteredOptions, backlog) = SocketOption.extractBacklog(withoutDeletes)
 
-    delete *> Resource
+    // Register the delete-on-close only after a successful bind, so that a failed bind doesn't
+    // delete a path that this socket never owned
+    Resource.eval(deleteIfExists) *> Resource
       .make(
         F.delay(selector.provider.openServerSocketChannel(StandardProtocolFamily.UNIX))
       )(SelectingSocket.closeServerChannel[F])
@@ -92,5 +95,6 @@ private final class SelectingUnixSocketsProvider[F[_]: Files](selector: Selector
 
         configure *> F.delay(ServerSocket(SocketInfo.forAsync(sch), accept))
       }
+      .flatMap(server => deleteOnClose.map(_ => server))
   }
 }

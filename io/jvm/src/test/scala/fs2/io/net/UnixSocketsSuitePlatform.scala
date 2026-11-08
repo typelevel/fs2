@@ -27,22 +27,50 @@ import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
 
 trait UnixSocketsSuitePlatform { self: UnixSocketsSuite =>
-  if (JdkUnixSocketsProvider.supported)
+  private def testBindFailureKeepsPath(
+      provider: String,
+      sockets: UnixSocketsProvider[IO]
+  ) =
+    test(s"does not delete the path when binding fails - $provider") {
+      val address = UnixSocketAddress(s"fs2-unix-sockets-bind-failure-$provider.sock")
+      val path = java.nio.file.Paths.get(address.path)
+      java.nio.file.Files
+        .write(path, "not a socket".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      for {
+        result <- sockets.bindUnix(address, Nil).use(_ => IO.unit).attempt
+        exists = java.nio.file.Files.exists(path)
+        _ <- IO(java.nio.file.Files.deleteIfExists(path))
+      } yield {
+        assert(result.isLeft, "binding to an existing path should fail")
+        assert(exists, "a failed bind must not delete the existing path")
+      }
+    }
+
+  if (JdkUnixSocketsProvider.supported) {
     testProvider("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
-  if (JnrUnixSocketsProvider.supported)
+    testBindFailureKeepsPath("jdk", JdkUnixSocketsProvider.forAsyncAndFiles[IO])
+  }
+  // jnr native library is not available on Windows
+  if (
+    JnrUnixSocketsProvider.supported && !System
+      .getProperty("os.name")
+      .toLowerCase
+      .contains("windows")
+  ) {
     testProvider("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
+    testBindFailureKeepsPath("jnr", JnrUnixSocketsProvider.forAsyncAndFiles[IO])
+  }
 
   if (JdkUnixSocketsProvider.supported) {
     // Network[IO] picks the selecting provider, as the IO runtime has a Selector
-    testProvider(
-      "selecting",
-      new UnixSocketsProvider[IO] {
-        def connectUnix(address: UnixSocketAddress, options: List[SocketOption]) =
-          Network[IO].connect(address, options)
-        def bindUnix(address: UnixSocketAddress, options: List[SocketOption]) =
-          Network[IO].bind(address, options)
-      }
-    )
+    val selecting = new UnixSocketsProvider[IO] {
+      def connectUnix(address: UnixSocketAddress, options: List[SocketOption]) =
+        Network[IO].connect(address, options)
+      def bindUnix(address: UnixSocketAddress, options: List[SocketOption]) =
+        Network[IO].bind(address, options)
+    }
+    testProvider("selecting", selecting)
+    testBindFailureKeepsPath("selecting", selecting)
 
     test("Network uses selecting sockets for unix sockets when a Selector is available") {
       val address = UnixSocketAddress("fs2-unix-sockets-selecting-test.sock")
