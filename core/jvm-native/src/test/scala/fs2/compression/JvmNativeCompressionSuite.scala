@@ -22,6 +22,7 @@
 package fs2
 
 import cats.effect._
+import cats.syntax.traverse._
 import fs2.compression._
 import org.scalacheck.effect.PropF.forAllF
 
@@ -323,6 +324,234 @@ class JvmNativeCompressionSuite extends CompressionSuite {
       .toVector
       .map(vector => new String(vector.toArray, StandardCharsets.US_ASCII))
       .assertEquals(expectedContent)
+  }
+
+  test("gunzip handles concatenated gzip members (RFC 1952 § 2.2 / block gzip)") {
+    def gzipMember(s: String): IO[Chunk[Byte]] =
+      Stream
+        .chunk(Chunk.array(s.getBytes(StandardCharsets.UTF_8)))
+        .through(Compression[IO].gzip(8192))
+        .compile
+        .to(Chunk)
+
+    val parts = List("first member ", "second member ", "third member")
+    parts
+      .traverse(gzipMember)
+      .flatMap { members =>
+        Stream
+          .chunk(Chunk.concat(members))
+          .rechunkRandomlyWithSeed(0.1, 2)(0L)
+          .through(Compression[IO].gunzip(8192))
+          .flatMap(_.content)
+          .compile
+          .toVector
+      }
+      .map(bytes => new String(bytes.toArray, StandardCharsets.UTF_8))
+      .assertEquals(parts.mkString)
+  }
+
+  test("gunzip handles trailing empty-content gzip member (BGZF EOF marker)") {
+    def gzipMember(bytes: Array[Byte]): IO[Chunk[Byte]] =
+      Stream
+        .chunk(Chunk.array(bytes))
+        .through(Compression[IO].gzip(8192))
+        .compile
+        .to(Chunk)
+
+    val payload = "payload bytes".getBytes(StandardCharsets.UTF_8)
+    for {
+      member <- gzipMember(payload)
+      emptyMember <- gzipMember(Array.emptyByteArray)
+      result <- Stream
+        .chunk(Chunk.concat(List(member, emptyMember)))
+        .through(Compression[IO].gunzip(8192))
+        .flatMap(_.content)
+        .compile
+        .toVector
+      _ = assertEquals(result, payload.toVector)
+    } yield ()
+  }
+
+  test("gunzip handles a single empty-content gzip member") {
+    Stream
+      .chunk(Chunk.empty[Byte])
+      .through(Compression[IO].gzip(8192))
+      .through(Compression[IO].gunzip(8192))
+      .flatMap(_.content)
+      .compile
+      .toVector
+      .assertEquals(Vector.empty[Byte])
+  }
+
+  test(
+    "gunzip handles concatenated members whose subsequent headers carry FNAME / FCOMMENT / FHCRC"
+  ) {
+    val payloads = List("alpha payload", "beta payload", "gamma payload")
+
+    def richMember(s: String, idx: Int): IO[Chunk[Byte]] =
+      Stream
+        .chunk(Chunk.array(s.getBytes(StandardCharsets.UTF_8)))
+        .through(
+          Compression[IO].gzip(
+            fileName = Some(s"member-$idx.txt"),
+            modificationTime = Some(Instant.ofEpochSecond(1700000000L + idx.toLong)),
+            comment = Some(s"comment for member $idx"),
+            deflateParams = DeflateParams(
+              bufferSize = 8192,
+              header = ZLibParams.Header.GZIP,
+              level = DeflateParams.Level.DEFAULT,
+              strategy = DeflateParams.Strategy.DEFAULT,
+              flushMode = DeflateParams.FlushMode.DEFAULT,
+              fhCrcEnabled = true
+            )
+          )
+        )
+        .compile
+        .to(Chunk)
+
+    payloads.zipWithIndex
+      .traverse { case (s, i) => richMember(s, i) }
+      .flatMap { members =>
+        Stream
+          .chunk(Chunk.concat(members))
+          .through(Compression[IO].gunzip(8192))
+          .flatMap(_.content)
+          .compile
+          .toVector
+      }
+      .map(bytes => new String(bytes.toArray, StandardCharsets.UTF_8))
+      .assertEquals(payloads.mkString)
+  }
+
+  test("gunzip of concatenated members survives chunk boundaries straddling trailers") {
+    def gzipMember(s: String): IO[Chunk[Byte]] =
+      Stream
+        .chunk(Chunk.array(s.getBytes(StandardCharsets.UTF_8)))
+        .through(Compression[IO].gzip(8192))
+        .compile
+        .to(Chunk)
+
+    val parts = List("alpha ", "beta ", "gamma")
+    parts
+      .traverse(gzipMember)
+      .flatMap { members =>
+        Stream
+          .chunk(Chunk.concat(members))
+          .chunkLimit(1)
+          .unchunks
+          .through(Compression[IO].gunzip(8192))
+          .flatMap(_.content)
+          .compile
+          .toVector
+      }
+      .map(bytes => new String(bytes.toArray, StandardCharsets.UTF_8))
+      .assertEquals(parts.mkString)
+  }
+
+  test("gunzip handles many concatenated members without allocating per-member inflaters") {
+    val memberCount = 2048
+    val payload = "block"
+
+    Stream
+      .chunk(Chunk.array(payload.getBytes(StandardCharsets.UTF_8)))
+      .through(Compression[IO].gzip(8192))
+      .compile
+      .to(Chunk)
+      .flatMap { oneMember =>
+        val replicated = Chunk.concat(List.fill(memberCount)(oneMember))
+        Stream
+          .chunk(replicated)
+          .through(Compression[IO].gunzip(8192))
+          .flatMap(_.content)
+          .compile
+          .toVector
+          .map(_.size)
+      }
+      .assertEquals(memberCount * payload.length)
+  }
+
+  test("gunzip of a large BGZF-format file") {
+    val input = {
+      val a = new Array[Byte](4 * 1024 * 1024)
+      new scala.util.Random(0xbeefL).nextBytes(a)
+      a
+    }
+    val blockInputSize = 65280
+
+    def bgzfBlock(data: Array[Byte], offset: Int, length: Int): Array[Byte] = {
+      val deflater = new Deflater(Deflater.DEFAULT_COMPRESSION, true)
+      try {
+        deflater.setInput(data, offset, length)
+        deflater.finish()
+        val deflated = new ByteArrayOutputStream()
+        val tmp = new Array[Byte](8192)
+        while (!deflater.finished()) {
+          val n = deflater.deflate(tmp)
+          deflated.write(tmp, 0, n)
+        }
+        val deflatedBytes = deflated.toByteArray
+        val crc = new CRC32()
+        crc.update(data, offset, length)
+        val crcVal = crc.getValue
+        val totalBlockSize = 12 + 6 + deflatedBytes.length + 8
+        val bsize = totalBlockSize - 1
+        val out = new ByteArrayOutputStream(totalBlockSize)
+        out.write(
+          Array[Byte](
+            0x1f.toByte,
+            0x8b.toByte,
+            0x08,
+            0x04,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0xff.toByte,
+            0x06,
+            0x00,
+            'B'.toByte,
+            'C'.toByte,
+            0x02,
+            0x00,
+            (bsize & 0xff).toByte,
+            ((bsize >> 8) & 0xff).toByte
+          )
+        )
+        out.write(deflatedBytes)
+        out.write(
+          Array[Byte](
+            (crcVal & 0xff).toByte,
+            ((crcVal >> 8) & 0xff).toByte,
+            ((crcVal >> 16) & 0xff).toByte,
+            ((crcVal >> 24) & 0xff).toByte,
+            (length & 0xff).toByte,
+            ((length >> 8) & 0xff).toByte,
+            ((length >> 16) & 0xff).toByte,
+            ((length >> 24) & 0xff).toByte
+          )
+        )
+        out.toByteArray
+      } finally deflater.end()
+    }
+
+    val bgzf = new ByteArrayOutputStream(input.length)
+    var offset = 0
+    while (offset < input.length) {
+      val chunkLen = Math.min(blockInputSize, input.length - offset)
+      bgzf.write(bgzfBlock(input, offset, chunkLen))
+      offset += chunkLen
+    }
+
+    Stream
+      .chunk(Chunk.array(bgzf.toByteArray))
+      .rechunkRandomlyWithSeed(0.1, 2)(System.nanoTime())
+      .through(Compression[IO].gunzip(8192))
+      .flatMap(_.content)
+      .compile
+      .to(Chunk)
+      .map(_.toByteVector)
+      .assertEquals(ByteVector.view(input))
   }
 
   def toEncodableFileName(fileName: String): String =
