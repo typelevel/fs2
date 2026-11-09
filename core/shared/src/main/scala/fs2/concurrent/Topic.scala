@@ -23,6 +23,7 @@ package fs2
 package concurrent
 
 import cats.effect._
+import cats.effect.Resource.ExitCase
 import cats.syntax.all._
 import scala.collection.immutable.LongMap
 
@@ -220,7 +221,8 @@ object Topic {
         }
 
         def publish: Pipe[F, A, Nothing] = { in =>
-          (in ++ Stream.exec(close.void))
+          in
+            .onFinalizeCase(closeWithExitCase(_).void)
             .evalMap(publish1)
             .takeWhile(_.isRight)
             .drain
@@ -235,9 +237,13 @@ object Topic {
         def subscribers: Stream[F, Int] = subscriberCount.discrete
 
         def close: F[Either[Topic.Closed, Unit]] =
+          closeWithExitCase(ExitCase.Succeeded)
+
+        def closeWithExitCase(exitCase: ExitCase): F[Either[Closed, Unit]] =
           state.flatModify {
             case State.Active(subs, _) =>
-              val action = foreach(subs)(_.close.void) *> signalClosure.complete(())
+              val action =
+                foreach(subs)(_.closeWithExitCase(exitCase).void) *> signalClosure.complete(())
               (State.Closed(), action.as(Topic.rightUnit))
             case closed @ State.Closed() =>
               (closed, Topic.closed.pure[F])
