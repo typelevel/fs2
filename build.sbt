@@ -389,6 +389,9 @@ ThisBuild / mimaBinaryIssueFilters ++= Seq(
   ProblemFilters.exclude[MissingTypesProblem]("fs2.io.process.ProcessBuilder$ProcessBuilderImpl$"),
   ProblemFilters.exclude[DirectMissingMethodProblem](
     "fs2.io.process.ProcessBuilder#ProcessBuilderImpl.apply"
+  ),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem](
+    "fs2.io.net.SocketOption.extractUnixSocketDeletes"
   )
 )
 
@@ -486,7 +489,7 @@ lazy val io = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Test / fork := true,
     libraryDependencies ++= Seq(
-      "com.github.jnr" % "jnr-unixsocket" % "0.39.8" % Optional,
+      "com.github.jnr" % "jnr-unixsocket" % "0.39.9" % Optional,
       "com.google.jimfs" % "jimfs" % "1.3.2" % Test
     )
   )
