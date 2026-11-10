@@ -192,17 +192,25 @@ private[fs2] trait ioplatform {
   def writeWritable[F[_]](
       writable: F[Writable],
       endAfterUse: Boolean = true
-  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] =
+  )(implicit F: Async[F]): Pipe[F, Byte, Nothing] = stream =>
+    writeWritableIncremental(writable, endAfterUse)(F)(stream).drain
+
+  /** Writes all bytes to the specified `Writable`.
+    */
+  def writeWritableIncremental[F[_]](
+      writable: F[Writable],
+      endAfterUse: Boolean = true
+  )(implicit F: Async[F]): Pipe[F, Byte, Int] =
     in =>
       Stream
         .eval(writable)
         .flatMap { writable =>
-          val writes = in.chunks.foreach { chunk =>
-            F.async[Unit] { cb =>
+          val writes = in.chunks.evalMap { chunk =>
+            F.async[Int] { cb =>
               F.delay {
                 writable.write(
                   chunk.toUint8Array,
-                  e => cb(e.filterNot(_ == null).toLeft(()).leftMap(js.JavaScriptException))
+                  e => cb(e.filterNot(_ == null).toLeft(chunk.size).leftMap(js.JavaScriptException))
                 )
                 Some(F.delay(writable.destroy()))
               }

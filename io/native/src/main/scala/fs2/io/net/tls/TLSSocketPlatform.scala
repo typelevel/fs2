@@ -51,7 +51,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       writeMutex <- Mutex[F]
     } yield new UnsealedTLSSocket[F] {
       def write(bytes: Chunk[Byte]): F[Unit] =
-        writeMutex.lock.surround(connection.write(bytes))
+        writeMutex.lock.surround(connection.write(bytes).compile.drain)
+
+      override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] =
+        Stream.resource(writeMutex.lock) >> connection.write(bytes)
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         connection.read(maxBytes)

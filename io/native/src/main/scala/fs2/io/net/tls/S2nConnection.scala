@@ -47,7 +47,7 @@ private[tls] trait S2nConnection[F[_]] {
 
   def read(n: Int): F[Option[Chunk[Byte]]]
 
-  def write(bytes: Chunk[Byte]): F[Unit]
+  def write(bytes: Chunk[Byte]): Stream[F, Int]
 
   def shutdown: F[Unit]
 
@@ -164,22 +164,27 @@ private[tls] object S2nConnection {
         go(0)
       }
 
-      def write(bytes: Chunk[Byte]) = {
+      def write(bytes: Chunk[Byte]): Stream[F, Int] = {
         val Chunk.ArraySlice(buf, offset, n) = bytes.toArraySlice
 
-        def go(i: Int): F[Unit] =
-          F.delay {
-            writeTasks.set(F.unit)
-            val blocked = stackalloc[s2n_blocked_status]()
-            val wrote = guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
-            (!blocked, Math.max(wrote, 0))
-          }.productL(F.delay(writeTasks.get).flatten)
+        def go(i: Int): Pull[F, Int, Unit] =
+          Pull
+            .eval {
+              F.delay {
+                writeTasks.set(F.unit)
+                val blocked = stackalloc[s2n_blocked_status]()
+                val wrote =
+                  guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
+                (!blocked, Math.max(wrote, 0))
+              }.productL(F.delay(writeTasks.get).flatten)
+            }
             .flatMap { case (blocked, wrote) =>
               val total = i + wrote
-              go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
+              Pull
+                .output1(wrote) >> go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
             }
 
-        go(0)
+        go(0).stream
       }
 
       def shutdown =

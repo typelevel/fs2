@@ -23,7 +23,6 @@ package fs2
 package io.net
 
 import cats.effect.{Async, FileDescriptorPollHandle, IO, LiftIO, Resource}
-import cats.syntax.all._
 import com.comcast.ip4s.GenSocketAddress
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.{ResizableBuffer, SocketHelpers}
@@ -90,10 +89,12 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
 
   def reads: Stream[F, Byte] = Stream.repeatEval(read(DefaultReadSize)).unNoneTerminate.unchunks
 
-  def write(bytes: Chunk[Byte]): F[Unit] = {
+  def write(bytes: Chunk[Byte]): F[Unit] = writeIncremental(bytes).compile.drain
+
+  override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] = {
     val Chunk.ArraySlice(buf, offset, length) = bytes.toArraySlice
 
-    def go(pos: Int): IO[Either[Int, Unit]] =
+    def writeNext(pos: Int): IO[Either[Int, Int]] =
       IO {
         if (LinktimeInfo.isLinux)
           guardSSize(
@@ -101,18 +102,26 @@ private final class FdPollingSocket[F[_]: LiftIO] private (
           ).toInt
         else
           guard(unistd.write(fd, buf.atUnsafe(offset + pos), (length - pos).toUSize))
-      }.flatMap { wrote =>
-        if (wrote >= 0) {
-          val newPos = pos + wrote
-          if (newPos < length)
-            go(newPos)
-          else
-            IO.pure(Either.unit)
-        } else
-          IO.pure(Left(pos))
+      }.map { wrote =>
+        if (wrote >= 0)
+          Right(wrote)
+        else
+          Left(pos)
       }
 
-    handle.pollWriteRec(0)(go(_)).to
+    def writeAll(pos: Int): Pull[F, Int, Unit] = Pull
+      .eval(handle.pollWriteRec(pos)(writeNext(_)).to)
+      .flatMap { wrote =>
+        Pull.output1(wrote) >> {
+          val newPos = pos + wrote
+          if (newPos < length)
+            writeAll(newPos)
+          else
+            Pull.done
+        }
+      }
+
+    writeAll(0).stream
   }
 
   def writes: Pipe[F, Byte, Nothing] = _.chunks.foreach(write(_))

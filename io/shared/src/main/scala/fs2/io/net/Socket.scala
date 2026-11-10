@@ -66,6 +66,22 @@ trait Socket[F[_]] extends SocketInfo[F] {
     */
   def writes: Pipe[F, Byte, Nothing]
 
+  /** Writes `bytes` to the peer, reporting as bytes are written.
+    *
+    * Completes when the bytes are written to the socket.
+    *
+    * @note This default implementation will just `write` then report the total
+    * written. When possible, socket implementations in FS2 provide an override
+    * to provide more fine-grained reporting.
+    */
+  def writeIncremental(
+      bytes: Chunk[Byte]
+  ): Stream[F, Int] = Stream.eval(write(bytes)) >> Stream(bytes.size)
+
+  /** Writes the supplied stream of bytes to this socket via `writeIncremental` semantics.
+    */
+  def writesIncremental: Pipe[F, Byte, Int] = s => s.chunks.flatMap(writeIncremental)
+
   /** Reads a file and writes it to a socket.
     * Streams the file contents of the specified size and sends them over the socket.
     * The stream terminates when the entire file has reached end of file or the specified count is reached.
