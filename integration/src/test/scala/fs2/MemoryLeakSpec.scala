@@ -223,6 +223,7 @@ class MemoryLeakSpec extends FunSuite {
       .flatMap { _ =>
         Stream.eval(IO {
           cnt = (cnt + 1) % 1000000
+          cnt
         })
       }
   }

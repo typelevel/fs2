@@ -28,6 +28,7 @@ import cats.effect.{Async, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all._
 import com.comcast.ip4s.{GenSocketAddress, IpAddress, SocketAddress}
+import scodec.bits.ByteVector
 
 private[tls] trait TLSSocketPlatform[F[_]]
 
@@ -51,7 +52,10 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       writeMutex <- Mutex[F]
     } yield new UnsealedTLSSocket[F] {
       def write(bytes: Chunk[Byte]): F[Unit] =
-        writeMutex.lock.surround(connection.write(bytes))
+        writeMutex.lock.surround(connection.write(bytes).compile.drain)
+
+      override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] =
+        Stream.resource(writeMutex.lock) >> connection.write(bytes)
 
       private def read0(maxBytes: Int): F[Option[Chunk[Byte]]] =
         connection.read(maxBytes)
@@ -111,6 +115,8 @@ private[tls] trait TLSSocketCompanionPlatform { self: TLSSocket.type =>
       def session: F[SSLSession] = connection.session
 
       def applicationProtocol: F[String] = connection.applicationProtocol
+
+      def peerCertificates: F[List[ByteVector]] = connection.peerCertificates
 
       @deprecated("No replacement; sockets are open until they are finalized", "3.13.0")
       def isOpen: F[Boolean] = socket.isOpen
