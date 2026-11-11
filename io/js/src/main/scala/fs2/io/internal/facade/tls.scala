@@ -191,10 +191,24 @@ private[io] object tls {
 
     def getSession(): js.UndefOr[Uint8Array] = js.native
 
+    // Returns an empty object if the peer sent no certificate, or null if the socket is destroyed
+    def getPeerCertificate(detailed: Boolean): DetailedPeerCertificate = js.native
+
+  }
+
+  @js.native
+  trait DetailedPeerCertificate extends js.Object {
+
+    def raw: js.UndefOr[Uint8Array] = js.native
+
+    // Refers to itself on a self-signed certificate
+    def issuerCertificate: js.UndefOr[DetailedPeerCertificate] = js.native
+
   }
 
   @js.native
   trait SSL extends js.Object {
+    // null if the peer's certificate was verified
     def verifyError(): js.Error = js.native
   }
 
