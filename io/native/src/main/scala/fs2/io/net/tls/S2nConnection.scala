@@ -47,13 +47,15 @@ private[tls] trait S2nConnection[F[_]] {
 
   def read(n: Int): F[Option[Chunk[Byte]]]
 
-  def write(bytes: Chunk[Byte]): F[Unit]
+  def write(bytes: Chunk[Byte]): Stream[F, Int]
 
   def shutdown: F[Unit]
 
   def applicationProtocol: F[String]
 
   def session: F[SSLSession]
+
+  def peerCertificates: F[List[ByteVector]]
 
 }
 
@@ -164,22 +166,27 @@ private[tls] object S2nConnection {
         go(0)
       }
 
-      def write(bytes: Chunk[Byte]) = {
+      def write(bytes: Chunk[Byte]): Stream[F, Int] = {
         val Chunk.ArraySlice(buf, offset, n) = bytes.toArraySlice
 
-        def go(i: Int): F[Unit] =
-          F.delay {
-            writeTasks.set(F.unit)
-            val blocked = stackalloc[s2n_blocked_status]()
-            val wrote = guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
-            (!blocked, Math.max(wrote, 0))
-          }.productL(F.delay(writeTasks.get).flatten)
+        def go(i: Int): Pull[F, Int, Unit] =
+          Pull
+            .eval {
+              F.delay {
+                writeTasks.set(F.unit)
+                val blocked = stackalloc[s2n_blocked_status]()
+                val wrote =
+                  guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
+                (!blocked, Math.max(wrote, 0))
+              }.productL(F.delay(writeTasks.get).flatten)
+            }
             .flatMap { case (blocked, wrote) =>
               val total = i + wrote
-              go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
+              Pull
+                .output1(wrote) >> go(total).unlessA(blocked.toInt == S2N_NOT_BLOCKED && total >= n)
             }
 
-        go(0)
+        go(0).stream
       }
 
       def shutdown =
@@ -199,13 +206,38 @@ private[tls] object S2nConnection {
           .void
 
       def applicationProtocol =
-        F.delay(guard(s2n_get_application_protocol(conn))).map(fromCString(_))
+        F.delay(s2n_get_application_protocol(conn)).map {
+          case null => ""
+          case ptr  => fromCString(ptr)
+        }
 
       def session = F.delay {
         val len = guard(s2n_connection_get_session_length(conn))
         val buf = new Array[Byte](len)
         val copied = guard(s2n_connection_get_session(conn, buf.atUnsafe(0), len.toUInt))
         new SSLSession(ByteVector.view(buf, 0, copied))
+      }
+
+      def peerCertificates = F.delay {
+        val chain = guard(s2n_cert_chain_and_key_new())
+        try
+          // Fails when there is no verified peer chain: S2N_ERR_CERT_NOT_VALIDATED if the
+          // peer sent no certificate, S2N_ERR_NULL if verification is disabled
+          if (s2n_connection_get_peer_cert_chain(conn, chain) != S2N_SUCCESS) Nil
+          else {
+            val length = stackalloc[CUnsignedInt]()
+            guard_(s2n_cert_chain_get_length(chain, length))
+            val cert = stackalloc[Ptr[s2n_cert]]()
+            val der = stackalloc[Ptr[Byte]]()
+            val derLength = stackalloc[CUnsignedInt]()
+            List.tabulate((!length).toInt) { i =>
+              guard_(s2n_cert_chain_get_cert(chain, cert, i.toUInt))
+              guard_(s2n_cert_get_der(!cert, der, derLength))
+              // Copies, as `der` points into `chain`, which is freed below
+              ByteVector.fromPtr(!der, (!derLength).toLong)
+            }
+          }
+        finally guard_(s2n_cert_chain_and_key_free(chain))
       }
 
       private def blindingSleep: F[Unit] =
