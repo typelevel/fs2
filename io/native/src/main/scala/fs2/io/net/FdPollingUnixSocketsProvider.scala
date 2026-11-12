@@ -32,12 +32,12 @@ import fs2.io.file.Files
 import fs2.io.internal.NativeUtil._
 import fs2.io.internal.SocketHelpers
 import fs2.io.internal.syssocket.{connect => uconnect, bind => ubind, _}
-import fs2.io.internal.sysun._
-import fs2.io.internal.sysunOps._
 
 import scala.scalanative.meta.LinktimeInfo
 import scala.scalanative.posix.string._
 import scala.scalanative.posix.sys.socket.{accept => _, _}
+import scala.scalanative.posix.sys.un._
+import scala.scalanative.posix.sys.unOps._
 import scala.scalanative.posix.unistd._
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
@@ -83,12 +83,14 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
 
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (optionsWithoutDeletes, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, backlog) = SocketOption.extractBacklog(optionsWithoutDeletes)
 
-    for {
+    (for {
       poller <- Resource.eval(fileDescriptorPoller[F])
 
-      _ <- delete
+      _ <- Resource.eval(deleteIfExists)
 
       fd <- SocketHelpers.openNonBlocking(AF_UNIX, SOCK_STREAM)
 
@@ -96,7 +98,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
       _ <- Resource.eval {
         F.delay {
           toSockaddrUn(address.path)(addr => guard_(ubind(fd, addr, sizeof[sockaddr_un].toUInt)))
-        } *> F.delay(guard_(listen(fd, 0)))
+        } *> F.delay(guard_(listen(fd, backlog.getOrElse(SOMAXCONN))))
       }
 
       address0 = address
@@ -153,7 +155,7 @@ private final class FdPollingUnixSocketsProvider[F[_]: Files: LiftIO](implicit F
         .repeat
         .unNone
 
-    } yield ServerSocket(info, clients)
+    } yield ServerSocket(info, clients)).flatMap(server => deleteOnClose.map(_ => server))
   }
 
   private def toSockaddrUn[A](path: String)(f: Ptr[sockaddr] => A): A = {

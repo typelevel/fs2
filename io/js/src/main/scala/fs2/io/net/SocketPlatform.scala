@@ -72,7 +72,7 @@ private[net] trait SocketCompanionPlatform {
       read(_.pull.unconsLimit(maxBytes))
 
     override def readN(numBytes: Int): F[Chunk[Byte]] =
-      OptionT(read(_.pull.unconsN(numBytes))).getOrElse(Chunk.empty)
+      OptionT(read(_.pull.unconsN(numBytes, allowFewer = true))).getOrElse(Chunk.empty)
 
     override def reads: Stream[F, Byte] = readStream.stream
 
@@ -112,8 +112,15 @@ private[net] trait SocketCompanionPlatform {
     override def write(bytes: Chunk[Byte]): F[Unit] =
       Stream.chunk(bytes).through(writes).compile.drain
 
+    override def writeIncremental(bytes: fs2.Chunk[Byte]): fs2.Stream[F, Int] =
+      Stream.chunk(bytes).through(writesIncremental)
+
     override def writes: Pipe[F, Byte, Nothing] =
       writeWritable(F.pure(sock), endAfterUse = false)
+
+    override def writesIncremental: Pipe[F, Byte, Int] =
+      writeWritableIncremental(F.pure(sock), endAfterUse = false)
+
   }
 
 }

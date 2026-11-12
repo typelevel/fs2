@@ -60,9 +60,12 @@ private[net] abstract class AsyncUnixSocketsProvider[F[_]: Files](implicit F: As
       address: UnixSocketAddress,
       options: List[SocketOption]
   ): Resource[F, ServerSocket[F]] = {
-    val (filteredOptions, delete) = SocketOption.extractUnixSocketDeletes(options, address)
+    val (filteredOptions, deleteIfExists, deleteOnClose) =
+      SocketOption.extractUnixSocketDeletes(options, address)
+    val bound =
+      openServerChannel(address, filteredOptions).flatMap(server => deleteOnClose.map(_ => server))
 
-    (delete *> openServerChannel(address, filteredOptions)).map { case (info, accept) =>
+    (Resource.eval(deleteIfExists) *> bound).map { case (info, accept) =>
       val acceptIncoming =
         Stream
           .resource(accept.attempt)
@@ -115,6 +118,16 @@ private[net] object AsyncUnixSocketsProvider {
       writeMutex.lock.surround {
         F.delay(bytes.toByteBuffer).flatMap(buffer => evalOnVirtualThreadIfAvailable(go(buffer)))
       }
+    }
+
+    override def writeIncremental(bytes: Chunk[Byte]): Stream[F, Int] = {
+      def go(buff: ByteBuffer): Pull[F, Int, Unit] =
+        Pull
+          .eval(evalOnVirtualThreadIfAvailable(F.blocking(ch.write(buff))).cancelable(close))
+          .flatMap(written => Pull.output1(written) >> go(buff).whenA(buff.remaining() > 0))
+
+      Stream.resource(writeMutex.lock) *>
+        Stream.eval(F.delay(bytes.toByteBuffer)).flatMap(go(_).stream)
     }
 
     private def raiseIpAddressError[A]: F[A] =

@@ -251,6 +251,18 @@ class TLSSocketSuite extends TLSSuite {
             raw.write(b) >> IO(totalWritten += b.size) >> IO(totalWritten >= limit)
               .ifM(endOfOutput, IO.unit)
           }
+
+        override def writeIncremental(bytes: Chunk[Byte]): Stream[IO, Int] =
+          if (totalWritten >= limit) Stream.eval(endOfOutput).drain
+          else {
+            val b = bytes.take(limit - totalWritten)
+            raw.writeIncremental(b) ++ Stream
+              .eval(
+                IO(totalWritten += b.size) >> IO(totalWritten >= limit).ifM(endOfOutput, IO.unit)
+              )
+              .drain
+          }
+
       }
 
       // Setup an HTTPS echo server & a client that starts a TLS handshake but only sends the first few bytes and then signals no more output
