@@ -31,6 +31,7 @@ import cats.effect.kernel.{Async, Resource}
 import com.comcast.ip4s.{Dns, GenSocketAddress}
 
 import fs2.internal.ThreadFactories
+import fs2.io.file.Files
 
 import java.util.concurrent.ThreadFactory
 
@@ -94,6 +95,24 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
           case None           => orElse
         }
 
+      private def selectingUnix[A](
+          ifSelecting: SelectingUnixSocketsProvider[F] => Resource[F, A],
+          orElse: => Resource[F, A]
+      ): Resource[F, A] =
+        if (JdkUnixSocketsProvider.supported)
+          Resource.eval(tryGetSelector).flatMap {
+            case Some(selector) =>
+              ifSelecting(
+                new SelectingUnixSocketsProvider[F](selector)(
+                  Files.forAsync[F],
+                  implicitly,
+                  implicitly
+                )
+              )
+            case None => orElse
+          }
+        else orElse
+
       private def selectingDatagram[A](
           ifSelecting: SelectingIpDatagramSocketsProvider[F] => Resource[F, A],
           orElse: => Resource[F, A]
@@ -110,7 +129,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         matchAddress(
           address,
           sa => selecting(_.connectIp(sa, options), fallback.connect(sa, options)),
-          ua => fallback.connect(ua, options)
+          ua => selectingUnix(_.connectUnix(ua, options), fallback.connect(ua, options))
         )
 
       override def bind(
@@ -120,7 +139,7 @@ private[net] trait NetworkCompanionPlatform extends NetworkLowPriority { self: N
         matchAddress(
           address,
           sa => selecting(_.bindIp(sa, options), fallback.bind(sa, options)),
-          ua => fallback.bind(ua, options)
+          ua => selectingUnix(_.bindUnix(ua, options), fallback.bind(ua, options))
         )
 
       override def bindDatagramSocket(

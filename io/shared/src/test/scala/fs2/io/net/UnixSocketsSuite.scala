@@ -25,6 +25,7 @@ package io.net
 import scala.concurrent.duration._
 
 import cats.effect.IO
+import cats.syntax.all._
 import com.comcast.ip4s.UnixSocketAddress
 
 class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
@@ -84,6 +85,29 @@ class UnixSocketsSuite extends Fs2Suite with UnixSocketsSuitePlatform {
         .concurrently(server)
         .compile
         .drain
+    }
+
+    test(s"backlog - $provider") {
+      val address = UnixSocketAddress("fs2-unix-sockets-test.sock")
+      // More than the JVM's default backlog of 50
+      val clientCount = 64
+
+      sockets
+        .bindUnix(address, List(SocketOption.backlog(clientCount)))
+        .use { serverSocket =>
+          // Connect all clients before accepting any of them, so they have to wait in the backlog
+          List
+            .fill(clientCount)(sockets.connectUnix(address, Nil))
+            .parSequence
+            .use { _ =>
+              serverSocket.accept
+                .take(clientCount.toLong)
+                .compile
+                .count
+            }
+        }
+        .timeout(10.seconds)
+        .assertEquals(clientCount.toLong)
     }
   }
 }
