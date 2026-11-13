@@ -153,6 +153,13 @@ class MemoryLeakSpec extends FunSuite {
       .groupWithin(256, 1.second)
   }
 
+  leakTest("groupChunksWithin --- repeated idle timeouts") {
+    Stream
+      .awakeEvery[IO](1.second)
+      .as(1)
+      .groupWithin(256, 1.millis)
+  }
+
   leakTest("topic continuous publish") {
     Stream
       .eval(Topic[IO, Int])

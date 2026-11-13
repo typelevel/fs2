@@ -763,7 +763,7 @@ class StreamCombinatorsSuite extends Fs2Suite {
           s.covary[IO]
             .evalTap(sleep)
             .groupWithin(groupSize, timeout)
-            .flatMap(Stream.chunk)
+            .unchunks
             .assertEmitsSameAs(s)
         }
       }
@@ -851,6 +851,37 @@ class StreamCombinatorsSuite extends Fs2Suite {
       TestControl.executeEmbed {
         source
           .groupWithin(size, t)
+          .map(_.toList)
+          .assertEmits(expected)
+      }
+    }
+
+    test("accumulation and splitting with timeouts between bursts") {
+      val t = 200.millis
+      val chunkSize = 5
+
+      def chunk(from: Int, to: Int) =
+        Stream.range(from, to + 1).chunkAll.unchunks
+
+      val source =
+        chunk(from = 1, to = 3) ++
+          Stream.sleep_[IO](t + t / 2) ++
+          chunk(from = 4, to = 15) ++
+          Stream.sleep_[IO](t + t / 2) ++
+          chunk(from = 16, to = 22)
+
+      val expected = List(
+        (1 to 3).toList,
+        (4 to 8).toList,
+        (9 to 13).toList,
+        (14 to 15).toList,
+        (16 to 20).toList,
+        (21 to 22).toList
+      )
+
+      TestControl.executeEmbed {
+        source
+          .groupWithin(chunkSize, t)
           .map(_.toList)
           .assertEmits(expected)
       }
@@ -983,6 +1014,63 @@ class StreamCombinatorsSuite extends Fs2Suite {
           .compile
           .lastOrError
           .assertEquals(rangeLength)
+      }
+    }
+
+    test("makes progress with a zero timeout") {
+      Stream
+        .range(0, 100)
+        .covary[IO]
+        .evalTap(_ => IO.sleep(1.milli))
+        .groupWithin(chunkSize = 10, timeout = Duration.Zero)
+        .unchunks
+        .compile
+        .toList
+        .timeout(30.seconds)
+        .assertEquals((0 until 100).toList)
+    }
+
+    test("splits upstream chunks larger than chunkSize") {
+      TestControl.executeEmbed {
+        Stream
+          .emits(1 to 12)
+          .covary[IO]
+          .groupWithin(chunkSize = 5, timeout = 1.day)
+          .map(_.toList)
+          .assertEmits(List((1 to 5).toList, (6 to 10).toList, (11 to 12).toList))
+      }
+    }
+
+    test("emits every full group of a large upstream chunk without waiting for the timeout") {
+      TestControl.executeEmbed {
+        (Stream.emits(1 to 100) ++ Stream.never[IO])
+          .groupWithin(chunkSize = 10, timeout = 1.day)
+          .take(10)
+          .compile
+          .toList
+          .timed
+          .map { case (elapsed, chunks) =>
+            assertEquals(elapsed, Duration.Zero)
+            assertEquals(chunks.map(_.toList), (1 to 100).toList.grouped(10).toList)
+          }
+      }
+    }
+
+    test("emits a burst arriving after several idle timeouts") {
+      val timeout = 100.millis
+      val chunkSize = 5
+
+      val source =
+        Stream.sleep_[IO](timeout * 10) ++
+          Stream.emits(1 to 3) ++
+          Stream.sleep_[IO](timeout * 10) ++
+          Stream.emits(4 to 6)
+
+      TestControl.executeEmbed {
+        source
+          .groupWithin(chunkSize, timeout)
+          .map(_.toList)
+          .assertEmits(List(List(1, 2, 3), List(4, 5, 6)))
       }
     }
   }
