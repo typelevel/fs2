@@ -32,6 +32,7 @@ import fs2.io.internal.facade
 
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
+import scala.annotation.tailrec
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.Uint8Array
 
@@ -153,10 +154,17 @@ private[fs2] trait ioplatform {
     readable.once("error", listener.handleError(_))
     readable.once("end", () => listener.handleEnd())
 
+    // since Node.js 26, `read()` returns one buffered chunk at a time, and 'readable'
+    // is emitted again only after `read()` returns null, so each event drains the buffer
+    @tailrec
+    def readBuffered(acc: Chunk[Byte]): Chunk[Byte] =
+      readable.read() match {
+        case null => acc
+        case next => readBuffered(acc ++ Chunk.uint8Array(next))
+      }
+
     listener.readableEvents.adaptError { case IOException(ex) => ex } >>
-      Stream.evalUnChunk(
-        F.delay(Option(readable.read()).fold(Chunk.empty[Byte])(Chunk.uint8Array(_)))
-      )
+      Stream.evalUnChunk(F.delay(readBuffered(Chunk.empty)))
   }
 
   /** `Pipe` that converts a stream of bytes to a stream that will emit a single `Readable`,
