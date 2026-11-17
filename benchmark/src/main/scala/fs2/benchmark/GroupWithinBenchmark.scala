@@ -59,4 +59,16 @@ class GroupWithinBenchmark {
       .compile
       .drain
       .unsafeRunSync()
+
+  @Benchmark
+  def groupWithinChunkedUpstream(): Unit =
+    Stream
+      .range(0, rangeLength)
+      .chunkN(bufferSize / 4 + 1)
+      .unchunks
+      .covary[IO]
+      .groupWithin(bufferSize, bufferWindow)
+      .compile
+      .drain
+      .unsafeRunSync()
 }
