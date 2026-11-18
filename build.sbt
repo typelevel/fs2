@@ -5,7 +5,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 // Workaround for https://github.com/scala-native/scala-native/issues/2024
 Global / concurrentRestrictions += Tags.limit(NativeTags.Link, 1)
 
-ThisBuild / tlBaseVersion := "3.15"
+ThisBuild / tlBaseVersion := "3.16"
 
 ThisBuild / organization := "co.fs2"
 ThisBuild / organizationName := "Functional Streams for Scala"
