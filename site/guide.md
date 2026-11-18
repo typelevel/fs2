@@ -520,6 +520,7 @@ bookParts
   .through(Files[IO].writeAll(Path("testdata/tom_sawyer.txt")))
   .compile
   .drain
+  .attempt
   .unsafeRunSync()
 ```
 
