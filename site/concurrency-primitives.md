@@ -272,3 +272,68 @@ object Resources extends IOApp.Simple {
   }
 }
 ```
+
+### Batching Concurrent Requests
+
+Many systems handle a request much more efficiently in a batch than one by one: a database can commit many writes in one transaction (group commit), and a service can answer many lookups with one query (as a DataLoader does). When the requests come from many concurrent callers, a `Queue` and a `Deferred` per request let you batch them and still answer each caller.
+
+Each caller offers its request, together with a `Deferred` for the result, to a `Queue` and waits on the `Deferred`. A single stream takes the requests from the queue in chunks. `Stream.fromQueueUnterminated(queue, maxBatchSize).chunks` emits everything that is in the queue (up to `maxBatchSize`), so the batches grow when requests come in faster than they are processed. Each chunk is processed as one batch, and each `Deferred` is completed with the result or the error of its own request.
+
+If a batch fails, one bad request should not fail all the other requests in the batch. In this example, the requests of a failed batch are retried one by one, so that each caller gets the result or the error of its own request.
+
+```scala mdoc:silent
+import cats.effect.{Concurrent, Deferred, IO, Resource}
+import cats.effect.std.Queue
+import cats.syntax.all._
+import fs2.{Chunk, Stream}
+
+object Batcher {
+
+  /** Returns a function that submits a request and waits for its result.
+    *
+    * Concurrently submitted requests are processed in batches of up to `maxBatchSize` requests
+    * by `runBatch`, which must return exactly one result per request, in the same order.
+    */
+  def apply[F[_], A, B](maxBatchSize: Int)(runBatch: Chunk[A] => F[Chunk[B]])(implicit
+      F: Concurrent[F]
+  ): Resource[F, A => F[B]] = {
+    type Request = (A, Deferred[F, Either[Throwable, B]])
+
+    def runOne(a: A): F[B] =
+      runBatch(Chunk.singleton(a)).flatMap(
+        _.head.liftTo[F](new IllegalStateException("runBatch returned no result"))
+      )
+
+    def process(batch: Chunk[Request]): F[Unit] =
+      runBatch(batch.map(_._1)).attempt.flatMap {
+        case Right(results) if results.size == batch.size =>
+          batch.zip(results).traverse_ { case ((_, result), b) => result.complete(Right(b)) }
+        case Left(error) if batch.size == 1 =>
+          batch.traverse_ { case (_, result) => result.complete(Left(error)) }
+        case _ =>
+          // Isolate the failure: retry the requests one by one
+          batch.traverse_ { case (a, result) => runOne(a).attempt.flatMap(result.complete) }
+      }
+
+    for {
+      queue <- Resource.eval(Queue.unbounded[F, Request])
+      _ <- F.background(
+        Stream.fromQueueUnterminated(queue, maxBatchSize).chunks.foreach(process).compile.drain
+      )
+    } yield (a: A) =>
+      Deferred[F, Either[Throwable, B]].flatMap { result =>
+        queue.offer(a -> result) *> result.get.rethrow
+      }
+  }
+}
+
+// Looks up the lengths of many names with one "query" per batch
+val lengths: IO[List[Int]] =
+  Batcher[IO, String, Int](maxBatchSize = 100) { names =>
+    IO.println(s"Looking up ${names.size} names").as(names.map(_.length))
+  }.use { lookup =>
+    List("Alice", "Bob", "Carol").parTraverse(lookup)
+  }
+```
+
+Instead of `chunks`, you can use `groupWithin(maxBatchSize, maxWait)` to wait a short time for a batch to fill up, at the cost of extra latency when there is little load.
