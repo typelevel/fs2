@@ -5,6 +5,7 @@ In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scal
 - `Topic[F, A]`
 - `Channel[F, A]`
 - `Signal[F, A]`
+- `Batcher`
 
 In addition, `Stream` provides functions to interact with cats-effect's `Queue`. 
 
@@ -88,6 +89,28 @@ val program = for {
 
 program.unsafeRunSync()
 ```
+
+### Batcher
+
+Many systems handle requests much more efficiently in a batch than one by one: a database can commit many writes in one transaction (group commit), and a service can answer many lookups with one query (as a DataLoader does). `Batcher` lets many concurrent callers each submit one request and wait for its own result, while a single background fiber runs the waiting requests in batches.
+
+`Batcher(maxBatchSize)(runBatch)` returns a `Resource` of a function `A => F[B]`. `runBatch` must return one result per request, in the same order. Each batch contains all the requests that wait when the previous batch completes (up to `maxBatchSize`), so the batches grow under load. If a batch fails, or returns a wrong number of results, its requests are run again one at a time, so that each caller gets the result or the error of its own request. When the resource is released, the callers that still wait fail with an `IllegalStateException`.
+
+```scala mdoc:silent
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import cats.syntax.all._
+import fs2.concurrent.Batcher
+
+// Looks up the lengths of many names with one "query" per batch
+Batcher[IO, String, Int](maxBatchSize = 100) { names =>
+  IO.println(s"Looking up ${names.size} names").as(names.map(_.length))
+}.use { lookup =>
+  List("Alice", "Bob", "Carol").parTraverse(lookup)
+}.unsafeRunSync()
+```
+
+Use `Batcher.within(maxBatchSize, maxWait)` to wait up to `maxWait` for a batch to fill up, at the cost of extra latency when there is little load.
 
 ## Advanced Examples
 
