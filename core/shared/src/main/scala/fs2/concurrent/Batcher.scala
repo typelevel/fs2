@@ -117,13 +117,11 @@ object Batcher {
     def runOne(a: A): F[B] =
       (F.unit >> runBatch(Chunk.singleton(a))).flatMap { results =>
         if (results.size == 1) F.pure(results(0))
-        else F.raiseError(wrongSize(1, results.size))
+        else F.raiseError(wrongSize(results.size))
       }
 
-    def wrongSize(expected: Int, actual: Int): Throwable =
-      new IllegalStateException(
-        s"runBatch returned ${actual.toString} results for ${expected.toString} requests"
-      )
+    def wrongSize(actual: Int): Throwable =
+      new IllegalStateException(s"runBatch returned ${actual.toString} results for 1 request")
 
     def process(all: Chunk[Request[F, A, B]]): F[Unit] =
       // Skip the requests whose callers were canceled
@@ -136,7 +134,7 @@ object Batcher {
                 request.result.complete(Right(b))
               }
             case Right(results) if batch.size == 1 =>
-              batch.traverse_(_.result.complete(Left(wrongSize(1, results.size))))
+              batch.traverse_(_.result.complete(Left(wrongSize(results.size))))
             case Left(error) if batch.size == 1 =>
               batch.traverse_(_.result.complete(Left(error)))
             case _ =>

@@ -92,7 +92,7 @@ class BatcherSuite extends Fs2Suite {
       assertEquals(results.collect { case Right(b) => b }, List(2, 4, 8))
       results(2) match {
         case Left(e: IllegalStateException) =>
-          assertEquals(e.getMessage, "runBatch returned 0 results for 1 requests")
+          assertEquals(e.getMessage, "runBatch returned 0 results for 1 request")
         case other => fail(s"unexpected result: $other")
       }
     }
