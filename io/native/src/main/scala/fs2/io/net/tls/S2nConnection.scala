@@ -24,6 +24,7 @@ package io.net
 package tls
 
 import cats.effect.kernel.Async
+import cats.effect.kernel.Outcome
 import cats.effect.kernel.Resource
 import cats.effect.syntax.all._
 import cats.syntax.all._
@@ -31,6 +32,7 @@ import fs2.io.internal.ResizableBuffer
 import scodec.bits.ByteVector
 
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration._
 import scala.scalanative.libc
@@ -173,7 +175,7 @@ private[tls] object S2nConnection {
           Pull
             .eval {
               F.delay {
-                writeTasks.set(F.unit)
+                clearWriteTasks()
                 val blocked = stackalloc[s2n_blocked_status]()
                 val wrote =
                   guard(s2n_send(conn, buf.atUnsafe(offset + i), (n - i).toCSSize, blocked))
@@ -192,7 +194,7 @@ private[tls] object S2nConnection {
       def shutdown =
         F.delay {
           readTasks.set(F.unit)
-          writeTasks.set(F.unit)
+          clearWriteTasks()
           val blocked = stackalloc[s2n_blocked_status]()
           guard_(s2n_shutdown(conn, blocked))
           !blocked
@@ -239,6 +241,13 @@ private[tls] object S2nConnection {
           }
         finally guard_(s2n_cert_chain_and_key_free(chain))
       }
+
+      // Drops the queued socket writes, unless one has not finished because the operation that
+      // queued it was canceled. s2n counts its bytes as sent, so dropping it would corrupt the
+      // stream and leave sendAvailable false, blocking every later send. Kept, the next write
+      // or shutdown runs it before anything newer is sent.
+      private def clearWriteTasks(): Unit =
+        if (sendAvailable.get) writeTasks.set(F.unit)
 
       private def blindingSleep: F[Unit] =
         F.delay(s2n_connection_get_delay(conn).toLong.nanos)
@@ -292,9 +301,22 @@ private[tls] object S2nConnection {
     implicit val F = async
 
     if (sendAvailable.getAndSet(false)) {
+      val bytes = Chunk.byteVector(ByteVector.fromPtr(buf, len.toLong))
+      // How much of `bytes` reached the socket, so a rerun after cancelation resumes from there
+      val sent = new AtomicInteger(0)
       val writeTask =
-        socket.write(Chunk.byteVector(ByteVector.fromPtr(buf, len.toLong))) *>
-          F.delay(sendAvailable.set(true))
+        F.defer {
+          socket
+            .writeIncremental(bytes.drop(sent.get))
+            .foreach(wrote => F.delay(sent.addAndGet(wrote)).void)
+            .compile
+            .drain
+        }.guaranteeCase {
+          // Stays queued, so the next write or shutdown sends the rest, see clearWriteTasks
+          case Outcome.Canceled() => F.unit
+          // Also after an error, else every later send, including shutdown's, blocks forever
+          case _ => F.delay(sendAvailable.set(true))
+        }
       writeTasks.getAndUpdate(_ *> writeTask)
       len.toInt
     } else {
