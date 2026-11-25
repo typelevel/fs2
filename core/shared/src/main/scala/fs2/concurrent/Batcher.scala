@@ -179,6 +179,57 @@ object Batcher {
   private def missingKey(key: Any): Throwable =
     new NoSuchElementException(s"runBatch returned no result for key ${String.valueOf(key)}")
 
+  /** Creates a batcher that runs batches of up to `maxBatchSize` requests,
+    * where `runBatch` returns the results in the order of the requests.
+    *
+    * `runBatch` gets the requests of a batch as a `Chunk`, and must return
+    * exactly one result per request, in the same order. The results are
+    * matched to the requests only by position, so `runBatch` must keep the
+    * order of the requests. Many batch operations do not, for example a SQL
+    * query with `IN (...)`. In such cases, use [[Batcher.keyed]], which
+    * matches the results to the requests by key.
+    *
+    * If `runBatch` returns a different number of results, all the requests
+    * of the batch fail with an `IllegalStateException`. If `runBatch`
+    * fails, all the requests of the batch fail with the same error.
+    *
+    * @param maxBatchSize the maximum number of requests in one batch, must be > 0
+    * @param runBatch runs one batch of requests and returns one result per
+    *                 request, in the same order
+    */
+  def positional[F[_], A, B](maxBatchSize: Int)(runBatch: Chunk[A] => F[Chunk[B]])(implicit
+      F: Concurrent[F]
+  ): Resource[F, A => F[B]] =
+    apply[F, A, B](maxBatchSize)(byPosition(runBatch))
+
+  /** Like [[Batcher.positional]], but waits up to `maxWait` for a batch to
+    * fill up. See [[Batcher.within]].
+    *
+    * @param maxBatchSize the maximum number of requests in one batch, must be > 0
+    * @param maxWait the maximum time that a request waits for its batch to fill up
+    * @param runBatch runs one batch of requests and returns one result per
+    *                 request, in the same order
+    */
+  def positionalWithin[F[_], A, B](maxBatchSize: Int, maxWait: FiniteDuration)(
+      runBatch: Chunk[A] => F[Chunk[B]]
+  )(implicit F: Temporal[F]): Resource[F, A => F[B]] =
+    within[F, A, B](maxBatchSize, maxWait)(byPosition(runBatch))
+
+  private def byPosition[F[_], A, B](runBatch: Chunk[A] => F[Chunk[B]])(implicit
+      F: Concurrent[F]
+  ): Chunk[(A, Deferred[F, Either[Throwable, B]])] => F[Unit] =
+    requests =>
+      runBatch(requests.map(_._1)).flatMap { results =>
+        if (results.size == requests.size)
+          requests.zip(results).traverse_ { case ((_, slot), b) => slot.complete(Right(b)) }
+        else F.raiseError(wrongSize(results.size, requests.size))
+      }
+
+  private def wrongSize(actual: Int, expected: Int): Throwable =
+    new IllegalStateException(
+      s"runBatch returned ${actual.toString} results for ${expected.toString} requests"
+    )
+
   private final class Request[F[_], A, B](
       val value: A,
       val result: Deferred[F, Either[Throwable, B]]

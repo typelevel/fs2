@@ -257,6 +257,57 @@ class BatcherSuite extends Fs2Suite {
     }
   }
 
+  test("positional matches the results to the requests by position") {
+    val runBatch: Chunk[Int] => IO[Chunk[Int]] = as => IO.sleep(10.millis).as(as.map(_ * 2))
+    val test = Batcher.positional[IO, Int, Int](maxBatchSize = 100)(runBatch).use { double =>
+      (1 to 20).toList.parTraverse(double)
+    }
+    TestControl.executeEmbed(test).assertEquals((1 to 20).toList.map(_ * 2))
+  }
+
+  test("positional fails the whole batch on a wrong result count") {
+    val test = for {
+      gate <- Deferred[IO, Unit]
+      // The first batch waits for the gate, the second one loses a result
+      runBatch = (as: Chunk[Int]) => if (as.size == 1) gate.get.as(as) else IO.pure(as.drop(1))
+      results <- Batcher.positional[IO, Int, Int](maxBatchSize = 100)(runBatch).use { identity =>
+        for {
+          first <- identity(1).attempt.start
+          _ <- IO.sleep(1.second)
+          others <- List(2, 3, 4).traverse(a => identity(a).attempt.start)
+          _ <- IO.sleep(1.second)
+          _ <- gate.complete(())
+          firstResult <- first.joinWithNever
+          otherResults <- others.traverse(_.joinWithNever)
+        } yield (firstResult, otherResults)
+      }
+    } yield {
+      val (firstResult, otherResults) = results
+      assertEquals(firstResult, Right(1))
+      otherResults.foreach {
+        case Left(e: IllegalStateException) =>
+          assertEquals(e.getMessage, "runBatch returned 2 results for 3 requests")
+        case other => fail(s"unexpected result: $other")
+      }
+    }
+    TestControl.executeEmbed(test)
+  }
+
+  test("positionalWithin waits up to maxWait for a batch to fill up") {
+    val test = for {
+      batches <- Ref[IO].of(List.empty[List[Int]])
+      runBatch = (as: Chunk[Int]) => batches.update(as.toList :: _).as(as.map(_ * 2))
+      results <- Batcher
+        .positionalWithin[IO, Int, Int](maxBatchSize = 3, maxWait = 1.second)(runBatch)
+        .use(double => List(1, 2).parTraverse(i => IO.sleep(i.millis) *> double(i)))
+      recorded <- batches.get
+    } yield {
+      assertEquals(results, List(2, 4))
+      assertEquals(recorded, List(List(1, 2)))
+    }
+    TestControl.executeEmbed(test)
+  }
+
   test("rejects a non-positive maxBatchSize") {
     intercept[IllegalArgumentException](
       Batcher[IO, Int, Int](maxBatchSize = 0)(_ => IO.unit)
