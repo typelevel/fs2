@@ -111,7 +111,7 @@ object Batcher {
   private def released: Throwable = new IllegalStateException("Batcher has been released")
 
   private def create[F[_], A, B](
-      batches: Stream[F, Request[F, A, B]] => Stream[F, Chunk[Request[F, A, B]]]
+      batches: Pipe[F, Request[F, A, B], Chunk[Request[F, A, B]]]
   )(runBatch: Chunk[A] => F[Chunk[B]])(implicit F: Concurrent[F]): Resource[F, A => F[B]] = {
 
     def runOne(a: A): F[B] =
