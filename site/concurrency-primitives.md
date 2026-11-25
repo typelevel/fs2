@@ -5,6 +5,7 @@ In the [`fs2.concurrent` package](https://github.com/functional-streams-for-scal
 - `Topic[F, A]`
 - `Channel[F, A]`
 - `Signal[F, A]`
+- `Batcher`
 
 In addition, `Stream` provides functions to interact with cats-effect's `Queue`. 
 
@@ -88,6 +89,41 @@ val program = for {
 
 program.unsafeRunSync()
 ```
+
+### Batcher
+
+Many systems handle requests much more efficiently in a batch than one by one: a database can commit many writes in one transaction (group commit), and a service can answer many lookups with one query (as a DataLoader does). `Batcher` lets many concurrent callers each submit one request and wait for its own result, while a single background fiber runs the waiting requests in batches.
+
+Each variant returns a `Resource` of a function `A => F[B]`. Each batch contains all the requests that wait when the previous batch completes (up to `maxBatchSize`), so the batches grow under load. The variants differ in how `runBatch` gives the results back to the callers:
+
+- `Batcher(maxBatchSize)(runBatch)`: `runBatch` gets each request together with a `Deferred`, and completes the result of each request itself. Because each result goes directly to its own request, the results cannot get mixed up. If `runBatch` fails, the requests that are still open fail with the same error. If `runBatch` leaves a request open, that request fails with an `IllegalStateException`.
+- `Batcher.keyed(maxBatchSize)(key)(runBatch)`: `runBatch` gets the requests as a `Map` by key, and returns the results as a `Map` by key. Requests with equal keys in the same batch are sent to `runBatch` only once, so they must be interchangeable. This deduplication applies to one batch only, it is not a cache. If a key has no result, the requests with that key fail with a `NoSuchElementException`.
+- `Batcher.positional(maxBatchSize)(runBatch)`: `runBatch` gets the requests as a `Chunk`, and returns one result per request, in the same order. The results are matched to the requests only by position, so `runBatch` must keep the order. Many batch operations do not keep it, for example a SQL query with `IN (...)`. In such cases, use `keyed`. If the number of results is wrong, the whole batch fails with an `IllegalStateException`.
+
+When the resource is released, the callers that still wait fail with an `IllegalStateException`.
+
+```scala mdoc:silent
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
+import cats.syntax.all._
+import fs2.concurrent.Batcher
+
+// Looks up many users with one "query" per batch
+Batcher.keyed[IO, Int, Int, String](maxBatchSize = 100)(identity) { ids =>
+  IO.println(s"Looking up ${ids.size} users").as(ids.map { case (id, _) => id -> s"user-$id" })
+}.use { lookup =>
+  List(1, 2, 3, 1).parTraverse(lookup)
+}.unsafeRunSync()
+
+// Completes the result of each request itself
+Batcher[IO, String, Int](maxBatchSize = 100) { requests =>
+  requests.traverse_ { case (name, result) => result.complete(Right(name.length)) }
+}.use { length =>
+  List("Alice", "Bob", "Carol").parTraverse(length)
+}.unsafeRunSync()
+```
+
+Use `Batcher.within`, `Batcher.keyedWithin` or `Batcher.positionalWithin` with an extra `maxWait` parameter to wait up to `maxWait` for a batch to fill up, at the cost of extra latency when there is little load.
 
 ## Advanced Examples
 
