@@ -64,10 +64,10 @@ import scala.concurrent.duration.FiniteDuration
   *
   * @example {{{
   * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global, cats.syntax.all._
-  * scala> Batcher[IO, String, Int](maxBatchSize = 100) { requests =>
-  *      |   requests.traverse_ { case (name, result) => result.complete(Right(name.length)) }
-  *      | }.use(lookup => List("Alice", "Bob").parTraverse(lookup)).unsafeRunSync()
-  * res0: List[Int] = List(5, 3)
+  * scala> Batcher.keyed[IO, Int, Int, String](maxBatchSize = 100)(identity) { ids =>
+  *      |   IO.pure(ids.map { case (id, _) => id -> s"user-$id" })
+  *      | }.use(lookup => List(1, 2, 1).parTraverse(lookup)).unsafeRunSync()
+  * res0: List[String] = List(user-1, user-2, user-1)
   * }}}
   */
 object Batcher {
@@ -122,6 +122,62 @@ object Batcher {
     requirePositive(maxBatchSize)
     create[F, A, B](_.groupWithin(maxBatchSize, maxWait))(runBatch)
   }
+
+  /** Creates a batcher that runs batches of up to `maxBatchSize` requests,
+    * where `runBatch` gets the requests and returns the results by key.
+    *
+    * The requests of a batch are grouped by `key`. `runBatch` gets one
+    * request per key, and returns a `Map` from each key to its result. The
+    * result of each key is given to all the callers whose request has that
+    * key. The order of the entries in the returned `Map` does not matter.
+    *
+    * Requests with equal keys must be interchangeable: only the first
+    * request of each key in a batch is given to `runBatch`, the others are
+    * dropped. This deduplication applies to one batch only, the results are
+    * not cached between batches.
+    *
+    * If the returned `Map` has no result for a key, all the requests with
+    * that key fail with a `NoSuchElementException`. Extra keys are ignored.
+    * If `runBatch` fails, all the requests of the batch fail with the same
+    * error.
+    *
+    * @param maxBatchSize the maximum number of requests in one batch, must be > 0
+    * @param key gives the key of a request
+    * @param runBatch runs one batch of requests and returns the results by key
+    */
+  def keyed[F[_], K, A, B](maxBatchSize: Int)(key: A => K)(
+      runBatch: Map[K, A] => F[Map[K, B]]
+  )(implicit F: Concurrent[F]): Resource[F, A => F[B]] =
+    apply[F, A, B](maxBatchSize)(byKey(key)(runBatch))
+
+  /** Like [[Batcher.keyed]], but waits up to `maxWait` for a batch to fill
+    * up. See [[Batcher.within]].
+    *
+    * @param maxBatchSize the maximum number of requests in one batch, must be > 0
+    * @param maxWait the maximum time that a request waits for its batch to fill up
+    * @param key gives the key of a request
+    * @param runBatch runs one batch of requests and returns the results by key
+    */
+  def keyedWithin[F[_], K, A, B](maxBatchSize: Int, maxWait: FiniteDuration)(key: A => K)(
+      runBatch: Map[K, A] => F[Map[K, B]]
+  )(implicit F: Temporal[F]): Resource[F, A => F[B]] =
+    within[F, A, B](maxBatchSize, maxWait)(byKey(key)(runBatch))
+
+  private def byKey[F[_], K, A, B](key: A => K)(runBatch: Map[K, A] => F[Map[K, B]])(implicit
+      F: Concurrent[F]
+  ): Chunk[(A, Deferred[F, Either[Throwable, B]])] => F[Unit] =
+    requests => {
+      val groups = requests.toList.groupBy { case (a, _) => key(a) }
+      runBatch(groups.map { case (k, group) => k -> group.head._1 }).flatMap { results =>
+        groups.toList.traverse_ { case (k, group) =>
+          val result = results.get(k).toRight[Throwable](missingKey(k))
+          group.traverse_ { case (_, slot) => slot.complete(result) }
+        }
+      }
+    }
+
+  private def missingKey(key: Any): Throwable =
+    new NoSuchElementException(s"runBatch returned no result for key ${String.valueOf(key)}")
 
   private final class Request[F[_], A, B](
       val value: A,

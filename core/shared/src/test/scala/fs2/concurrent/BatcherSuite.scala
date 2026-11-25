@@ -197,6 +197,66 @@ class BatcherSuite extends Fs2Suite {
     TestControl.executeEmbed(test)
   }
 
+  test("keyed matches the results to the requests by key") {
+    // Builds the result map in the reverse order of the keys
+    val runBatch: Map[Int, Int] => IO[Map[Int, String]] =
+      as =>
+        IO.sleep(10.millis)
+          .as(as.toList.sortBy(-_._1).map { case (k, a) => k -> s"r$a" }.toMap)
+    val test = Batcher.keyed[IO, Int, Int, String](maxBatchSize = 100)(identity)(runBatch).use {
+      lookup => (1 to 20).toList.parTraverse(lookup)
+    }
+    TestControl.executeEmbed(test).assertEquals((1 to 20).toList.map(i => s"r$i"))
+  }
+
+  test("keyed sends each key of a batch once") {
+    val test = for {
+      batches <- Ref[IO].of(List.empty[Map[String, String]])
+      gate <- Deferred[IO, Unit]
+      runBatch = (as: Map[String, String]) =>
+        batches.update(as :: _) *> gate.get.as(as.map { case (k, a) => k -> a.length })
+      results <- Batcher
+        .keyed[IO, String, String, Int](maxBatchSize = 100)(_.toLowerCase)(runBatch)
+        .use { length =>
+          for {
+            // Starts the first batch, which waits for the gate
+            first <- length("x").start
+            _ <- IO.sleep(1.second)
+            // These requests all go into the second batch, in this order
+            others <- List("Ab", "ab", "cde", "AB")
+              .traverse(a => length(a).start <* IO.sleep(1.millis))
+            _ <- IO.sleep(1.second)
+            _ <- gate.complete(())
+            firstResult <- first.joinWithNever
+            otherResults <- others.traverse(_.joinWithNever)
+          } yield firstResult :: otherResults
+        }
+      recorded <- batches.get
+    } yield {
+      assertEquals(results, List(1, 2, 2, 3, 2))
+      assertEquals(recorded.reverse, List(Map("x" -> "x"), Map("ab" -> "Ab", "cde" -> "cde")))
+    }
+    TestControl.executeEmbed(test)
+  }
+
+  test("keyed fails only the requests of a missing key") {
+    // Returns no result for the key 3
+    val runBatch: Map[Int, Int] => IO[Map[Int, Int]] =
+      as => IO.sleep(10.millis).as(as.collect { case (k, a) if k != 3 => k -> a * 2 })
+    val test = Batcher.keyed[IO, Int, Int, Int](maxBatchSize = 100)(identity)(runBatch).use {
+      double => List(1, 3, 2, 3).parTraverse(double(_).attempt)
+    }
+    TestControl.executeEmbed(test).map { results =>
+      assertEquals(results(0), Right(2))
+      assertEquals(results(2), Right(4))
+      List(results(1), results(3)).foreach {
+        case Left(e: NoSuchElementException) =>
+          assertEquals(e.getMessage, "runBatch returned no result for key 3")
+        case other => fail(s"unexpected result: $other")
+      }
+    }
+  }
+
   test("rejects a non-positive maxBatchSize") {
     intercept[IllegalArgumentException](
       Batcher[IO, Int, Int](maxBatchSize = 0)(_ => IO.unit)
