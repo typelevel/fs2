@@ -29,12 +29,20 @@ import scala.concurrent.duration._
 
 class BatcherSuite extends Fs2Suite {
 
+  private type Slot = (Int, Deferred[IO, Either[Throwable, Int]])
+
+  // Completes each slot with a result
+  private def completeAll(requests: Chunk[Slot])(f: Int => Int): IO[Unit] =
+    requests.traverse_ { case (a, result) => result.complete(Right(f(a))) }
+
   // Runs a batch after a delay, records the batch, and doubles each request
   private def recording(
       batches: Ref[IO, List[List[Int]]],
       delay: FiniteDuration = 10.millis
-  ): Chunk[Int] => IO[Chunk[Int]] =
-    as => batches.update(as.toList :: _) *> IO.sleep(delay).as(as.map(_ * 2))
+  ): Chunk[Slot] => IO[Unit] =
+    requests =>
+      batches.update(requests.map(_._1).toList :: _) *> IO.sleep(delay) *>
+        completeAll(requests)(_ * 2)
 
   test("batches concurrent requests and gives each caller its own result") {
     val test = for {
@@ -67,41 +75,42 @@ class BatcherSuite extends Fs2Suite {
     TestControl.executeEmbed(test)
   }
 
-  test("isolates a failed request") {
-    val failure = new RuntimeException("negative")
-    val runBatch: Chunk[Int] => IO[Chunk[Int]] =
-      as => IO.sleep(10.millis) *> IO.raiseError(failure).whenA(as.exists(_ < 0)).as(as.map(_ * 2))
-    val test = Batcher[IO, Int, Int](maxBatchSize = 100)(runBatch).use { double =>
-      List(1, 2, -3, 4, -5, 6).parTraverse(double(_).attempt)
-    }
-    TestControl
-      .executeEmbed(test)
-      .assertEquals(
-        List(Right(2), Right(4), Left(failure), Right(8), Left(failure), Right(12))
-      )
-  }
-
-  test("isolates a request with a wrong result count") {
-    // Returns no result for 3
-    val runBatch: Chunk[Int] => IO[Chunk[Int]] =
-      as => IO.sleep(10.millis).as(as.filter(_ != 3).map(_ * 2))
+  test("fails a request whose result runBatch leaves open") {
+    // Completes only the even requests
+    val runBatch: Chunk[Slot] => IO[Unit] =
+      requests => IO.sleep(10.millis) *> completeAll(requests.filter(_._1 % 2 == 0))(_ * 2)
     val test = Batcher[IO, Int, Int](maxBatchSize = 100)(runBatch).use { double =>
       List(1, 2, 3, 4).parTraverse(double(_).attempt)
     }
     TestControl.executeEmbed(test).map { results =>
-      assertEquals(results.collect { case Right(b) => b }, List(2, 4, 8))
-      results(2) match {
+      assertEquals(results.collect { case Right(b) => b }, List(4, 8))
+      List(results(0), results(2)).foreach {
         case Left(e: IllegalStateException) =>
-          assertEquals(e.getMessage, "runBatch returned 0 results for 1 request")
+          assertEquals(e.getMessage, "runBatch did not complete the result of a request")
         case other => fail(s"unexpected result: $other")
       }
     }
   }
 
+  test("a failed runBatch fails the open requests and keeps the completed ones") {
+    val failure = new RuntimeException("boom")
+    // Completes only the even requests, then fails
+    val runBatch: Chunk[Slot] => IO[Unit] =
+      requests =>
+        IO.sleep(10.millis) *> completeAll(requests.filter(_._1 % 2 == 0))(_ * 2) *>
+          IO.raiseError(failure)
+    val test = Batcher[IO, Int, Int](maxBatchSize = 100)(runBatch).use { double =>
+      List(1, 2, 3, 4).parTraverse(double(_).attempt)
+    }
+    TestControl
+      .executeEmbed(test)
+      .assertEquals(List(Left(failure), Right(4), Left(failure), Right(8)))
+  }
+
   test("fails waiting callers and later calls when released") {
     val test = for {
       started <- Deferred[IO, Unit]
-      runBatch = (_: Chunk[Int]) => started.complete(()) *> IO.never[Chunk[Int]]
+      runBatch = (_: Chunk[Slot]) => started.complete(()) *> IO.never[Unit]
       allocated <- Batcher[IO, Int, Int](maxBatchSize = 1)(runBatch).allocated
       (double, release) = allocated
       // The first request is in progress, the second one waits in the queue
@@ -125,8 +134,11 @@ class BatcherSuite extends Fs2Suite {
     val test = for {
       batches <- Ref[IO].of(List.empty[List[Int]])
       gate <- Deferred[IO, Unit]
-      runBatch = (as: Chunk[Int]) =>
-        batches.update(as.toList :: _) *> gate.get.whenA(as.toList == List(1)).as(as)
+      runBatch = (requests: Chunk[Slot]) => {
+        val as = requests.map(_._1).toList
+        batches.update(as :: _) *> gate.get.whenA(as == List(1)) *>
+          completeAll(requests)(identity)
+      }
       results <- Batcher[IO, Int, Int](maxBatchSize = 100)(runBatch).use { identity =>
         for {
           first <- identity(1).start
@@ -152,7 +164,7 @@ class BatcherSuite extends Fs2Suite {
   test("a caller canceled while its batch is in progress does not affect the batch") {
     val test = for {
       gate <- Deferred[IO, Unit]
-      runBatch = (as: Chunk[Int]) => gate.get.as(as)
+      runBatch = (requests: Chunk[Slot]) => gate.get *> completeAll(requests)(identity)
       results <- Batcher[IO, Int, Int](maxBatchSize = 100)(runBatch).use { identity =>
         for {
           canceled <- identity(1).start
@@ -187,7 +199,7 @@ class BatcherSuite extends Fs2Suite {
 
   test("rejects a non-positive maxBatchSize") {
     intercept[IllegalArgumentException](
-      Batcher[IO, Int, Int](maxBatchSize = 0)(IO.pure(_))
+      Batcher[IO, Int, Int](maxBatchSize = 0)(_ => IO.unit)
     )
   }
 }

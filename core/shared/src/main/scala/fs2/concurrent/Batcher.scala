@@ -38,10 +38,20 @@ import scala.concurrent.duration.FiniteDuration
   * processed. This is useful, for example, to commit many writes in one
   * transaction (group commit), or to answer many lookups with one query.
   *
-  * `runBatch` must return exactly one result per request, in the same order
-  * as the requests. If `runBatch` fails, or returns a different number of
-  * results, the requests of that batch are run again one at a time, so that
-  * each caller gets the result or the error of its own request.
+  * There are three variants, which differ in how `runBatch` gives the
+  * results back to the callers:
+  *
+  *  - [[Batcher.apply]]: `runBatch` gets each request together with a
+  *    `Deferred` and completes the result of each request itself.
+  *  - [[Batcher.keyed]]: `runBatch` gets the requests as a `Map` by key and
+  *    returns the results as a `Map` by key. Requests with equal keys in the
+  *    same batch are sent only once.
+  *  - [[Batcher.positional]]: `runBatch` gets the requests as a `Chunk` and
+  *    returns the results as a `Chunk`, matched to the requests by position.
+  *
+  * Each variant has a counterpart that waits up to a maximum time for a
+  * batch to fill up: [[Batcher.within]], [[Batcher.keyedWithin]] and
+  * [[Batcher.positionalWithin]].
   *
   * The background fiber is tied to the returned resource. When the resource
   * is released, the batch in progress is canceled, and all the callers that
@@ -54,33 +64,47 @@ import scala.concurrent.duration.FiniteDuration
   *
   * @example {{{
   * scala> import cats.effect.IO, cats.effect.unsafe.implicits.global, cats.syntax.all._
-  * scala> Batcher[IO, String, Int](maxBatchSize = 100) { names =>
-  *      |   IO.pure(names.map(_.length))
+  * scala> Batcher[IO, String, Int](maxBatchSize = 100) { requests =>
+  *      |   requests.traverse_ { case (name, result) => result.complete(Right(name.length)) }
   *      | }.use(lookup => List("Alice", "Bob").parTraverse(lookup)).unsafeRunSync()
   * res0: List[Int] = List(5, 3)
   * }}}
   */
 object Batcher {
 
-  /** Creates a batcher that runs batches of up to `maxBatchSize` requests.
+  /** Creates a batcher that runs batches of up to `maxBatchSize` requests,
+    * where `runBatch` completes the result of each request itself.
+    *
+    * `runBatch` gets each request of the batch together with a `Deferred`
+    * for its result, and must complete each `Deferred` with the result
+    * (`Right`) or the error (`Left`) of its request. Because each result is
+    * put directly into the slot of its own request, the results cannot get
+    * mixed up.
+    *
+    * If `runBatch` fails, all the requests of the batch whose results are
+    * not yet complete fail with the same error. If `runBatch` completes
+    * without completing the result of a request, that request fails with an
+    * `IllegalStateException`, so that no caller waits forever. A result that
+    * is already complete cannot be changed: `Deferred.complete` then returns
+    * `false`.
     *
     * Each batch contains all the requests that wait when the previous batch
     * completes, up to `maxBatchSize`. A request that comes in when no batch
     * is in progress starts a new batch immediately.
     *
     * @param maxBatchSize the maximum number of requests in one batch, must be > 0
-    * @param runBatch runs one batch of requests and returns one result per
-    *                 request, in the same order
+    * @param runBatch runs one batch of requests and completes the result of
+    *                 each request
     */
-  def apply[F[_], A, B](maxBatchSize: Int)(runBatch: Chunk[A] => F[Chunk[B]])(implicit
-      F: Concurrent[F]
-  ): Resource[F, A => F[B]] = {
-    require(maxBatchSize > 0, s"maxBatchSize must be > 0, but got ${maxBatchSize.toString}")
+  def apply[F[_], A, B](maxBatchSize: Int)(
+      runBatch: Chunk[(A, Deferred[F, Either[Throwable, B]])] => F[Unit]
+  )(implicit F: Concurrent[F]): Resource[F, A => F[B]] = {
+    requirePositive(maxBatchSize)
     create[F, A, B](_.chunkLimit(maxBatchSize))(runBatch)
   }
 
-  /** Creates a batcher that runs batches of up to `maxBatchSize` requests,
-    * and waits up to `maxWait` for a batch to fill up.
+  /** Like [[Batcher.apply]], but waits up to `maxWait` for a batch to fill
+    * up.
     *
     * A batch starts when it contains `maxBatchSize` requests, or when
     * `maxWait` has elapsed since its first request came in, whichever
@@ -89,13 +113,13 @@ object Batcher {
     *
     * @param maxBatchSize the maximum number of requests in one batch, must be > 0
     * @param maxWait the maximum time that a request waits for its batch to fill up
-    * @param runBatch runs one batch of requests and returns one result per
-    *                 request, in the same order
+    * @param runBatch runs one batch of requests and completes the result of
+    *                 each request
     */
   def within[F[_], A, B](maxBatchSize: Int, maxWait: FiniteDuration)(
-      runBatch: Chunk[A] => F[Chunk[B]]
+      runBatch: Chunk[(A, Deferred[F, Either[Throwable, B]])] => F[Unit]
   )(implicit F: Temporal[F]): Resource[F, A => F[B]] = {
-    require(maxBatchSize > 0, s"maxBatchSize must be > 0, but got ${maxBatchSize.toString}")
+    requirePositive(maxBatchSize)
     create[F, A, B](_.groupWithin(maxBatchSize, maxWait))(runBatch)
   }
 
@@ -110,39 +134,29 @@ object Batcher {
 
   private def released: Throwable = new IllegalStateException("Batcher has been released")
 
+  private def notCompleted: Throwable =
+    new IllegalStateException("runBatch did not complete the result of a request")
+
+  private def requirePositive(maxBatchSize: Int): Unit =
+    require(maxBatchSize > 0, s"maxBatchSize must be > 0, but got ${maxBatchSize.toString}")
+
   private def create[F[_], A, B](
       batches: Pipe[F, Request[F, A, B], Chunk[Request[F, A, B]]]
-  )(runBatch: Chunk[A] => F[Chunk[B]])(implicit F: Concurrent[F]): Resource[F, A => F[B]] = {
-
-    def runOne(a: A): F[B] =
-      (F.unit >> runBatch(Chunk.singleton(a))).flatMap { results =>
-        if (results.size == 1) F.pure(results(0))
-        else F.raiseError(wrongSize(results.size))
-      }
-
-    def wrongSize(actual: Int): Throwable =
-      new IllegalStateException(s"runBatch returned ${actual.toString} results for 1 request")
+  )(
+      runBatch: Chunk[(A, Deferred[F, Either[Throwable, B]])] => F[Unit]
+  )(implicit F: Concurrent[F]): Resource[F, A => F[B]] = {
 
     def process(all: Chunk[Request[F, A, B]]): F[Unit] =
       // Skip the requests whose callers were canceled
       all.filterA(_.result.tryGet.map(_.isEmpty)).flatMap { batch =>
         if (batch.isEmpty) F.unit
         else
-          (F.unit >> runBatch(batch.map(_.value))).attempt.flatMap {
-            case Right(results) if results.size == batch.size =>
-              batch.zip(results).traverse_ { case (request, b) =>
-                request.result.complete(Right(b))
-              }
-            case Right(results) if batch.size == 1 =>
-              batch.traverse_(_.result.complete(Left(wrongSize(results.size))))
-            case Left(error) if batch.size == 1 =>
+          (F.unit >> runBatch(batch.map(request => (request.value, request.result)))).attempt
+            .flatMap { outcome =>
+              // Fail the requests that runBatch left open, so that no caller waits forever
+              val error = outcome.fold(identity, _ => notCompleted)
               batch.traverse_(_.result.complete(Left(error)))
-            case _ =>
-              // Isolate the failure: run the requests one at a time
-              batch.traverse_ { request =>
-                runOne(request.value).attempt.flatMap(request.result.complete)
-              }
-          }
+            }
       }
 
     for {
